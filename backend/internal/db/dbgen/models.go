@@ -9,6 +9,64 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Level struct {
+	ID        uuid.UUID
+	TenantID  uuid.UUID
+	StoreID   uuid.UUID
+	Name      string
+	Active    bool
+	CreatedAt pgtype.Timestamptz
+}
+
+type Position struct {
+	ID        uuid.UUID
+	TenantID  uuid.UUID
+	StoreID   uuid.UUID
+	Name      string
+	Active    bool
+	CreatedAt pgtype.Timestamptz
+}
+
+type Role struct {
+	ID        uuid.UUID
+	TenantID  uuid.UUID
+	StoreID   uuid.UUID
+	Name      string
+	IsOwner   bool
+	CreatedAt pgtype.Timestamptz
+}
+
+type RolePermission struct {
+	TenantID   uuid.UUID
+	StoreID    uuid.UUID
+	RoleID     uuid.UUID
+	Permission string
+	Scope      *string
+	WindowDays *int32
+}
+
+type Staff struct {
+	ID            uuid.UUID
+	TenantID      uuid.UUID
+	StoreID       uuid.UUID
+	Name          string
+	Number        string
+	LevelID       *uuid.UUID
+	PositionID    *uuid.UUID
+	LoginAccount  *string
+	PasswordHash  *string
+	Active        bool
+	DeactivatedAt pgtype.Timestamptz
+	CreatedAt     pgtype.Timestamptz
+}
+
+type StaffRole struct {
+	TenantID uuid.UUID
+	StoreID  uuid.UUID
+	StaffID  uuid.UUID
+	RoleID   uuid.UUID
+}
+
 type Store struct {
 	ID        uuid.UUID
 	TenantID  uuid.UUID

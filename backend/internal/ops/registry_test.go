@@ -69,7 +69,7 @@ func TestOperationsClosedToAIAreNotTools(t *testing.T) {
 	op.Name, op.Kind, op.AI = "redeem_voucher", ops.Write, ops.AINone
 	ops.Register(r, op)
 
-	caller := ops.Caller{Permissions: []ops.Permission{"thing.view"}}
+	caller := ops.Caller{Permissions: map[ops.Permission]ops.Grant{"thing.view": {}}}
 	if tools := r.Tools(caller); len(tools) != 0 {
 		t.Fatalf("tools = %v, want none", tools)
 	}

@@ -126,7 +126,7 @@ func (r *Registry) invoke(ctx context.Context, caller Caller, e *entry, run func
 	var out any
 	err := db.InTenant(ctx, r.pool, caller.TenantID, func(q *dbgen.Queries) error {
 		var err error
-		out, err = run(ctx, Env{Caller: caller, Q: q})
+		out, err = run(ctx, Env{Caller: caller, Grant: caller.Grant(e.permission), Q: q})
 		return err
 	})
 	return out, err
@@ -137,7 +137,7 @@ func (r *Registry) Permissions() []Permission {
 	seen := map[Permission]bool{}
 	var out []Permission
 	for _, e := range r.ops {
-		if !seen[e.permission] {
+		if e.permission != LoggedIn && !seen[e.permission] {
 			seen[e.permission] = true
 			out = append(out, e.permission)
 		}
@@ -148,9 +148,12 @@ func (r *Registry) Permissions() []Permission {
 
 func httpError(err error) error {
 	var v huma.StatusError
+	var rule *RuleError
 	switch {
 	case errors.As(err, &v):
 		return v
+	case errors.As(err, &rule):
+		return huma.Error409Conflict(rule.Message)
 	case errors.Is(err, ErrUnauthenticated):
 		return huma.Error401Unauthorized(err.Error())
 	case errors.Is(err, ErrForbidden):

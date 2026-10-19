@@ -11,39 +11,80 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/wzhlinhai/salon/backend/internal/auth"
 	"github.com/wzhlinhai/salon/backend/internal/httpapi"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 )
 
-// App 是一个完整的后端实例，调用者用测试令牌识别。
+// App 是一个完整的后端实例。调用者可以用真实的账号密码登录，也可以由测试直接指定。
 type App struct {
 	Handler  http.Handler
 	Registry *ops.Registry
+	Auth     *auth.Service
 
 	mu      sync.Mutex
 	callers map[string]ops.Caller
 }
 
 // New 用 pool 组装后端。
-func New(pool *pgxpool.Pool) *App {
-	a := &App{callers: map[string]ops.Caller{}}
-	a.Handler, a.Registry = httpapi.New(pool, a.authenticate)
+func New(t testing.TB, pool *pgxpool.Pool) *App {
+	t.Helper()
+	svc, err := auth.NewService(pool, []byte("test secret that is at least 32 bytes long"), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &App{Auth: svc, callers: map[string]ops.Caller{}}
+	a.Handler, a.Registry = httpapi.New(pool, httpapi.Config{Authenticate: a.authenticate, Login: svc.Login})
 	return a
 }
 
+// authenticate 先认测试直接指定的调用者，再走真实的登录凭证。
 func (a *App) authenticate(r *http.Request) (ops.Caller, bool) {
 	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if !ok {
 		return ops.Caller{}, false
 	}
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	c, ok := a.callers[token]
-	return c, ok
+	a.mu.Unlock()
+	if ok {
+		return c, true
+	}
+	return a.Auth.Authenticate(r)
+}
+
+// Login 通过 HTTP 登录，返回状态码和登录凭证。
+func (a *App) Login(t testing.TB, account, password string) (int, string) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]string{"account": account, "password": password})
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	a.Handler.ServeHTTP(rec, req)
+	var out struct {
+		Token string `json:"token"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	return rec.Code, out.Token
+}
+
+// HTTPWithToken 用登录凭证通过 HTTP 调用操作。
+func (a *App) HTTPWithToken(t testing.TB, token, op string, args any) Result {
+	t.Helper()
+	return a.do(t, token, op, args)
+}
+
+// CallerFor 用登录凭证识别调用者，与 HTTP 请求的识别方式相同。AI 调用用它取得发起人本人的 Caller。
+func (a *App) CallerFor(t testing.TB, token string) (ops.Caller, bool) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	return a.Auth.Authenticate(req)
 }
 
 func (a *App) token(c ops.Caller) string {
@@ -65,14 +106,23 @@ type Result struct {
 // HTTP 以 caller 身份通过 HTTP 调用操作。caller 为 nil 时不带登录信息。
 func (a *App) HTTP(t testing.TB, caller *ops.Caller, op string, args any) Result {
 	t.Helper()
+	token := ""
+	if caller != nil {
+		token = a.token(*caller)
+	}
+	return a.do(t, token, op, args)
+}
+
+func (a *App) do(t testing.TB, token, op string, args any) Result {
+	t.Helper()
 	body, err := json.Marshal(args)
 	if err != nil {
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest(http.MethodPost, ops.PathPrefix+op, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	if caller != nil {
-		req.Header.Set("Authorization", "Bearer "+a.token(*caller))
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	rec := httptest.NewRecorder()
 	a.Handler.ServeHTTP(rec, req)
@@ -112,7 +162,7 @@ func statusOf(err error) int {
 		return http.StatusForbidden
 	case errors.Is(err, ops.ErrNotFound), errors.Is(err, ops.ErrUnknownOperation):
 		return http.StatusNotFound
-	case errors.Is(err, ops.ErrDraftRequired):
+	case errors.Is(err, ops.ErrDraftRequired), errors.As(err, new(*ops.RuleError)):
 		return http.StatusConflict
 	}
 	return http.StatusInternalServerError

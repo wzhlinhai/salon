@@ -9,9 +9,16 @@ Go 服务，技术栈见 [ADR-0007](../docs/adr/0007-p0-technology-stack.md)。
 ```bash
 go test ./...                                  # 每个测试包启动一个全新的 PostgreSQL 容器
 go tool sqlc generate                          # 修改 internal/db/queries 或迁移后重新生成
+go run ./cmd/salon openapi > openapi.json      # 输出 OpenAPI 文档，不需要数据库
 DATABASE_URL=postgres://... go run ./cmd/salon migrate up
-DATABASE_URL=postgres://... go run ./cmd/salon serve   # HTTP_ADDR 默认 :8080，健康检查 GET /healthz
+DATABASE_URL=postgres://... BOOTSTRAP_PASSWORD=... go run ./cmd/salon bootstrap \
+  -tenant 本店 -store 本店 -owner-name 姓名 -owner-number 001 -owner-account boss
+DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 ```
+
+`serve` 的可选环境变量：`HTTP_ADDR`（默认 `:8080`）、`TOKEN_TTL`（默认 `12h`）。健康检查 `GET /healthz`，登录 `POST /api/auth/login`。
+
+`bootstrap` 开一个新租户：门店、内置的老板角色、四个默认角色（初始权限见 ADR-0009）和第一名老板。
 
 ## 租户隔离（ADR-0003、ADR-0005）
 
@@ -33,3 +40,11 @@ DATABASE_URL=postgres://... go run ./cmd/salon serve   # HTTP_ADDR 默认 :8080�
 - 权限检查只在 `ops` 里做：HTTP 和 AI 调用都经过同一条路径，先检查权限，再在调用者租户的事务里执行。操作处理函数里不再检查权限。
 - 写操作只能声明为 `AIDraft`（AI 调用只产生草稿）或 `AINone`（不向 AI 开放），声明为 AI 可直接执行时启动即失败。草稿（P0-29）实现之前，AI 调用写操作一律被拒绝。
 - 测试用 `optest` 对 HTTP 和 AI 两条路径跑同一组用例。
+
+## 登录与权限（ADR-0009）
+
+- 权限目录在 `internal/perm`。新的业务操作用这里的常量声明所需权限；只要登录即可的操作用 `ops.LoggedIn`。
+- 登录凭证（JWT）只有员工和租户。每次请求由 `auth.Service.Authenticate` 从数据库读取员工当前的角色，算出有效权限：各角色取并集，同一项权限的限制取最宽；老板拥有目录中的全部权限。停用员工或收回权限，下一次请求即生效。
+- 有数据范围或时间窗口的操作，处理函数从 `env.Grant` 读取限制并据此过滤。
+- 授权规则在 `internal/staff`：只有老板能授予或去掉老板角色；其他人授予、收回的角色和编辑的权限不能超过自己；不能修改权限比自己大的员工的档案、账号或在职状态；在职老板不能变成 0 人（用老板角色的行锁串行检查）。
+- 员工记录不能删除：`salon_app` 没有 `staff` 表的 DELETE 权限。

@@ -1,7 +1,9 @@
 package httpapi_test
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +12,8 @@ import (
 
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/httpapi"
+	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/perm"
 )
 
 func getHealth(t *testing.T, h http.Handler) (int, map[string]string) {
@@ -41,6 +45,22 @@ func TestHealthzReportsUnreachableDatabase(t *testing.T) {
 }
 
 func newServer(pool *pgxpool.Pool) http.Handler {
-	e, _ := httpapi.New(pool, httpapi.DenyAll)
+	e, _ := httpapi.New(pool, httpapi.Config{
+		Authenticate: func(*http.Request) (ops.Caller, bool) { return ops.Caller{}, false },
+		Login:        func(context.Context, string, string) (string, error) { return "", errors.New("no login") },
+	})
 	return e
+}
+
+func TestEveryOperationPermissionIsInCatalogue(t *testing.T) {
+	pool := dbtest.NewPool(t)
+	_, reg := httpapi.New(pool, httpapi.Config{
+		Authenticate: func(*http.Request) (ops.Caller, bool) { return ops.Caller{}, false },
+		Login:        func(context.Context, string, string) (string, error) { return "", errors.New("no login") },
+	})
+	for _, p := range reg.Permissions() {
+		if _, ok := perm.Lookup(p); !ok {
+			t.Errorf("operation permission %q is not in perm.Catalogue", p)
+		}
+	}
 }

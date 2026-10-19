@@ -1,0 +1,23 @@
+{
+  "name": "salon-admin",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "generate:api": "cd ../backend && go run ./cmd/salon openapi > ../admin/openapi.json && cd ../admin && openapi-typescript openapi.json -o app/utils/api.d.ts",
+    "typecheck": "nuxt typecheck",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "@nuxt/ui": "^4.12.0",
+    "nuxt": "^4.6.2",
+    "openapi-fetch": "^0.17.0",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^5.9.3",
+    "vue-tsc": "^3.3.13"
+  }
+}

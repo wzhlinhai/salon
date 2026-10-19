@@ -8,7 +8,6 @@ package ops
 import (
 	"context"
 	"errors"
-	"slices"
 
 	"github.com/google/uuid"
 
@@ -46,17 +45,75 @@ const (
 	ChannelAI
 )
 
-// Caller 是发起调用的人。AI 调用使用发起人本人的 Caller，权限与本人一致。
+// LoggedIn 表示只要是已登录的在职员工就可以调用，例如查看自己的信息。
+const LoggedIn Permission = "logged_in"
+
+// Scope 是权限的数据范围（ADR-0009）。
+type Scope string
+
+const (
+	// ScopeSelf：只限本人作为负责人或参与员工出现过的单、本人的业绩、本人负责的顾客。
+	ScopeSelf Scope = "self"
+	// ScopeStore：本门店全部。
+	ScopeStore Scope = "store"
+)
+
+// Grant 是调用者拥有的一项权限及其限制。
+type Grant struct {
+	// Scope 为空表示该权限不区分数据范围。
+	Scope Scope
+	// WindowDays 为 nil 表示不限时间；0 表示只限当天（营业日）；N 表示 N 天内。
+	WindowDays *int
+}
+
+// Covers 报告 g 是否不窄于 other：数据范围和时间窗口都至少一样宽。
+func (g Grant) Covers(other Grant) bool {
+	if g.Scope == ScopeSelf && other.Scope == ScopeStore {
+		return false
+	}
+	if g.WindowDays != nil && (other.WindowDays == nil || *other.WindowDays > *g.WindowDays) {
+		return false
+	}
+	return true
+}
+
+// Widen 返回 g 与 other 中较宽的限制组合，用于多个角色取并集。
+func (g Grant) Widen(other Grant) Grant {
+	var out Grant
+	switch {
+	case g.Scope == ScopeStore || other.Scope == ScopeStore:
+		out.Scope = ScopeStore
+	case g.Scope == ScopeSelf || other.Scope == ScopeSelf:
+		out.Scope = ScopeSelf
+	}
+	if g.WindowDays != nil && other.WindowDays != nil {
+		out.WindowDays = new(max(*g.WindowDays, *other.WindowDays))
+	}
+	return out
+}
+
+// Caller 是发起调用的人。AI 调用使用发起人本人的 Caller，权限与本人一致（ADR-0009）。
 type Caller struct {
-	TenantID    uuid.UUID
-	StoreID     uuid.UUID
-	StaffID     uuid.UUID
-	Permissions []Permission
+	TenantID uuid.UUID
+	StoreID  uuid.UUID
+	StaffID  uuid.UUID
+	// Owner：调用者有老板角色。只有老板能授予或去掉老板角色（ADR-0009）。
+	Owner       bool
+	Permissions map[Permission]Grant
 	Channel     Channel
 }
 
 // Has 报告调用者是否有权限 p。
-func (c Caller) Has(p Permission) bool { return slices.Contains(c.Permissions, p) }
+func (c Caller) Has(p Permission) bool {
+	if p == LoggedIn {
+		return c.StaffID != uuid.Nil
+	}
+	_, ok := c.Permissions[p]
+	return ok
+}
+
+// Grant 返回调用者在权限 p 上的限制。
+func (c Caller) Grant(p Permission) Grant { return c.Permissions[p] }
 
 type callerKey struct{}
 
@@ -84,10 +141,20 @@ var (
 	ErrNotFound = errors.New("not found")
 )
 
+// RuleError 表示请求违反了业务规则，例如删掉最后一名在职老板。Message 面向人和 AI。
+type RuleError struct{ Message string }
+
+func (e *RuleError) Error() string { return e.Message }
+
+// Rule 返回一个 RuleError。
+func Rule(msg string) error { return &RuleError{Message: msg} }
+
 // Env 是操作执行时可用的环境。Q 已处于调用者租户的事务中。
 type Env struct {
 	Caller Caller
-	Q      *dbgen.Queries
+	// Grant 是调用者在该操作所需权限上的限制。有数据范围或时间窗口的操作要按它过滤。
+	Grant Grant
+	Q     *dbgen.Queries
 }
 
 // Operation 声明一个业务操作。I 是参数，O 是返回值，二者都是普通的 JSON 结构体，
