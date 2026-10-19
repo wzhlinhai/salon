@@ -6,8 +6,10 @@
 |---|---|---|---|
 | 后端语言 | Go | — | 单二进制部署；账务代码用显式 SQL 和强类型，便于审计 |
 | HTTP 框架 | Echo v5（v5.4.0，2026-09-27） | MIT | mms 同样使用 v5 |
+| 接口定义 | Huma（MIT，有 Echo v5 适配器） | MIT | 从同一份 Go 类型生成 OpenAPI 和 AI 工具的参数定义，HTTP 与 AI 共用 |
 | 数据库 | PostgreSQL + 行级安全 | PostgreSQL 协议 | 按租户隔离（ADR-0003） |
 | 数据访问 | pgx v5（v5.11.0）+ sqlc | MIT | sqlc 从显式 SQL 生成类型安全代码，不用 ORM 隐藏查询 |
+| 测试数据库 | testcontainers-go | MIT | 测试跑在真实 PostgreSQL 容器中 |
 | 迁移 | goose（v3.29.0） | MIT | |
 | 金额 | shopspring/decimal；数据库用 NUMERIC | MIT | 禁止用浮点表示金额 |
 | 认证 | argon2id（密码）+ JWT | 实现时核实 | 沿用 mms 的依赖组合 |
@@ -15,7 +17,10 @@
 | 员工端、顾客端 | uni-app（Vue 3，TypeScript），编译到微信小程序 | Apache-2.0 | 一个小程序按角色显示；H5 作为备用 |
 | 收款 | 收款适配层，见下文 | 视实现而定 | 具体路径取决于收款方案 |
 | 团购核销 | 平台适配层：Prepare / Consume / Cancel / Status，带幂等键 | — | 见下文 |
-| AI 模型 | DeepSeek V4.1 Flash（模型名 `deepseek-flash`），DeepSeek 官方 OpenAI 兼容的 Chat Completions | 服务条款 | 自写薄适配层，不绑定厂商 SDK |
+| AI 模型 | DeepSeek V4.1 Flash（模型名 `deepseek-flash`），通过 DeepSeek 的 OpenAI 兼容接口 | 服务条款 | 用 OpenAI 官方 Go SDK（openai-go，Apache-2.0），地址指向 DeepSeek；不用 DeepSeek 专有功能 |
+| 报表图表 | ECharts | Apache-2.0 | |
+| Excel 导入导出 | excelize | BSD-3-Clause | |
+| 预约日历 | schedule-x 或 vue-cal（待验证能否按员工分列） | MIT | FullCalendar 的资源视图需付费，不采用 |
 
 ## 收款
 
@@ -84,4 +89,5 @@
 - 支付库维护风险由适配层隔离：替换一个库只动一个实现。
 - 团购已定无限聚核（过渡），AI 已定 DeepSeek V4.1 Flash，托管定为阿里云。收款通道做成可选，门店设置里启用哪些不需要现在定。乐刷和银联的接入方式还需要调研。
 - 调研中的版本号和许可证是 2026-10-19 查询的结果。实现时要锁定版本，并在 `go.mod`、`package.json` 中记录。
+- 复用原则：能用 MIT、Apache-2.0、BSD 许可的开源库就直接用，不重复造轮子。业务规则（账务、业绩、提成、轮牌、开单、草稿）自己写。AGPL 项目（mms、fuint、OCA commission）只借鉴思路，不引入代码。
 - 来源：`research/open-source-salon-systems`、`research/payments-and-hardware`、`research/shouqianba-integration`、`research/group-buy-aggregators`、`research/llm-selection`、`research/miniprogram-launch` 分支上 `docs/research/` 下的 2026-10-18 调研文档。
