@@ -56,7 +56,8 @@ func run(ctx context.Context, args []string) error {
 			addr = ":8080"
 		}
 		sc := echo.StartConfig{Address: addr, HideBanner: true}
-		return sc.Start(ctx, httpapi.New(pool))
+		e, _ := httpapi.New(pool, httpapi.DenyAll)
+		return sc.Start(ctx, e)
 	case args[0] == "migrate" && len(args) == 2:
 		switch args[1] {
 		case "up":
