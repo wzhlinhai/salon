@@ -10,6 +10,7 @@
 > - "wechatpay-go""小程序后期用 uni-app" → 收款接入库取决于「收款方案」；小程序已在 P0 范围内。
 > - "识别回头客：微信付款码 openid" → 降为辅助手段，前提是能拿到稳定的付款人标识（店里目前没有自己的微信商户号），见 `docs/feature-catalogue.md`。
 > - "旧 P0 范围" → 见 `docs/feature-catalogue.md` 和「P0 功能范围取舍」。
+> - 2026-10-19 店主补充："P0 是成熟综合美发单店的基础能力" → [ADR-0006](../adr/0006-p0-scope-is-mature-single-store-baseline.md)；"Go + Echo + sqlc + ... + Nuxt" 的技术栈正式确定为 → [ADR-0007](../adr/0007-p0-technology-stack.md)。
 
 ## 背景
 
