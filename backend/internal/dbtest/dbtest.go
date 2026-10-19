@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
@@ -19,6 +20,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/wzhlinhai/salon/backend/internal/db"
+	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 )
 
 // Image 是测试使用的 PostgreSQL 镜像。
@@ -88,4 +90,23 @@ func NewPool(t testing.TB) *pgxpool.Pool {
 		t.Fatal(err)
 	}
 	return pool
+}
+
+// NewTenant 在 pool 中建一个租户和它的一家门店，返回二者的 ID。
+func NewTenant(t testing.TB, pool *pgxpool.Pool, name string) (tenantID, storeID uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	tenantID = uuid.New()
+	err := db.InTenant(ctx, pool, tenantID, func(q *dbgen.Queries) error {
+		if _, err := q.CreateTenant(ctx, dbgen.CreateTenantParams{ID: tenantID, Name: name}); err != nil {
+			return err
+		}
+		s, err := q.CreateStore(ctx, dbgen.CreateStoreParams{TenantID: tenantID, Name: name + "门店"})
+		storeID = s.ID
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tenantID, storeID
 }
