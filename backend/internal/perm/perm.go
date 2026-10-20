@@ -7,32 +7,36 @@ package perm
 import "github.com/wzhlinhai/salon/backend/internal/ops"
 
 const (
-	OrderCreate       ops.Permission = "order.create"
-	OrderEdit         ops.Permission = "order.edit"
-	OrderVoid         ops.Permission = "order.void"
-	OrderReprice      ops.Permission = "order.reprice"
-	PaymentCollect    ops.Permission = "payment.collect"
-	CardSell          ops.Permission = "card.sell"
-	CardAdjust        ops.Permission = "card.adjust"
-	GroupBuyRedeem    ops.Permission = "groupbuy.redeem"
-	AfterSalesManage  ops.Permission = "aftersales.manage"
-	QueueOperate      ops.Permission = "queue.operate"
-	QueueView         ops.Permission = "queue.view"
-	BookingManage     ops.Permission = "booking.manage"
-	AttendanceClock   ops.Permission = "attendance.clock"
-	AttendanceManage  ops.Permission = "attendance.manage"
-	CustomerView      ops.Permission = "customer.view"
-	CustomerFullPhone ops.Permission = "customer.full_phone"
-	PerformanceView   ops.Permission = "performance.view"
-	ReportView        ops.Permission = "report.view"
-	ClosingDaily      ops.Permission = "closing.daily"
-	ClosingSeal       ops.Permission = "closing.seal"
-	PayrollManage     ops.Permission = "payroll.manage"
-	StaffManage       ops.Permission = "staff.manage"
-	AuditLogView      ops.Permission = "audit_log.view"
-	RoleManage        ops.Permission = "role.manage"
-	SettingsManage    ops.Permission = "settings.manage"
-	DataImportExport  ops.Permission = "data.import_export"
+	OrderCreate         ops.Permission = "order.create"
+	OrderEdit           ops.Permission = "order.edit"
+	OrderVoid           ops.Permission = "order.void"
+	OrderReprice        ops.Permission = "order.reprice"
+	PaymentCollect      ops.Permission = "payment.collect"
+	CardSell            ops.Permission = "card.sell"
+	CardAdjust          ops.Permission = "card.adjust"
+	GroupBuyRedeem      ops.Permission = "groupbuy.redeem"
+	AfterSalesManage    ops.Permission = "aftersales.manage"
+	QueueOperate        ops.Permission = "queue.operate"
+	QueueView           ops.Permission = "queue.view"
+	BookingManage       ops.Permission = "booking.manage"
+	AttendanceClock     ops.Permission = "attendance.clock"
+	AttendanceManage    ops.Permission = "attendance.manage"
+	CustomerEdit        ops.Permission = "customer.edit"
+	CustomerSafetyLabel ops.Permission = "customer.safety_label"
+	CustomerMerge       ops.Permission = "customer.merge"
+	CustomerAssign      ops.Permission = "customer.assign"
+	CustomerView        ops.Permission = "customer.view"
+	CustomerFullPhone   ops.Permission = "customer.full_phone"
+	PerformanceView     ops.Permission = "performance.view"
+	ReportView          ops.Permission = "report.view"
+	ClosingDaily        ops.Permission = "closing.daily"
+	ClosingSeal         ops.Permission = "closing.seal"
+	PayrollManage       ops.Permission = "payroll.manage"
+	StaffManage         ops.Permission = "staff.manage"
+	AuditLogView        ops.Permission = "audit_log.view"
+	RoleManage          ops.Permission = "role.manage"
+	SettingsManage      ops.Permission = "settings.manage"
+	DataImportExport    ops.Permission = "data.import_export"
 )
 
 // Def 描述一项权限。
@@ -61,6 +65,10 @@ var Catalogue = []Def{
 	{BookingManage, "预约管理", true, false},
 	{AttendanceClock, "打卡", false, false},
 	{AttendanceManage, "补卡、考勤审核", false, false},
+	{CustomerEdit, "顾客建档、改资料", false, false},
+	{CustomerSafetyLabel, "安全标签", false, false},
+	{CustomerMerge, "合并顾客、修改手机号", false, false},
+	{CustomerAssign, "分配顾客负责人、交接", false, false},
 	{CustomerView, "看顾客档案、卡余额", true, false},
 	{CustomerFullPhone, "看完整手机号", false, false},
 	{PerformanceView, "看业绩、提成", true, false},
@@ -128,57 +136,66 @@ const OwnerRoleName = "老板"
 // DefaultRoles 是四个默认角色的初始权限（ADR-0009 的表格）。老板是内置角色，不在此列。
 var DefaultRoles = []DefaultRole{
 	{"店长", map[ops.Permission]ops.Grant{
-		OrderCreate:       plain,
-		OrderEdit:         {Scope: ops.ScopeStore, WindowDays: days(7)},
-		OrderVoid:         {WindowDays: days(7)},
-		OrderReprice:      plain,
-		PaymentCollect:    plain,
-		CardSell:          plain,
-		CardAdjust:        plain,
-		GroupBuyRedeem:    plain,
-		AfterSalesManage:  plain,
-		QueueOperate:      plain,
-		QueueView:         plain,
-		BookingManage:     store,
-		AttendanceClock:   plain,
-		AttendanceManage:  plain,
-		CustomerView:      store,
-		CustomerFullPhone: plain,
-		PerformanceView:   store,
-		ReportView:        plain,
-		ClosingDaily:      plain,
-		ClosingSeal:       plain,
-		PayrollManage:     plain,
-		StaffManage:       plain,
-		AuditLogView:      plain,
+		OrderCreate:         plain,
+		OrderEdit:           {Scope: ops.ScopeStore, WindowDays: days(7)},
+		OrderVoid:           {WindowDays: days(7)},
+		OrderReprice:        plain,
+		PaymentCollect:      plain,
+		CardSell:            plain,
+		CardAdjust:          plain,
+		GroupBuyRedeem:      plain,
+		AfterSalesManage:    plain,
+		QueueOperate:        plain,
+		QueueView:           plain,
+		BookingManage:       store,
+		AttendanceClock:     plain,
+		AttendanceManage:    plain,
+		CustomerView:        store,
+		CustomerFullPhone:   plain,
+		PerformanceView:     store,
+		ReportView:          plain,
+		ClosingDaily:        plain,
+		ClosingSeal:         plain,
+		PayrollManage:       plain,
+		StaffManage:         plain,
+		AuditLogView:        plain,
+		CustomerSafetyLabel: plain,
+		CustomerEdit:        plain,
+		CustomerMerge:       plain,
+		CustomerAssign:      plain,
 	}},
 	{"发型师", map[ops.Permission]ops.Grant{
-		OrderCreate:     plain,
-		OrderEdit:       {Scope: ops.ScopeSelf, WindowDays: days(0)},
-		QueueView:       plain,
-		BookingManage:   self,
-		AttendanceClock: plain,
-		CustomerView:    store,
-		PerformanceView: self,
+		OrderCreate:         plain,
+		OrderEdit:           {Scope: ops.ScopeSelf, WindowDays: days(0)},
+		QueueView:           plain,
+		BookingManage:       self,
+		AttendanceClock:     plain,
+		CustomerView:        store,
+		PerformanceView:     self,
+		CustomerSafetyLabel: plain,
+		CustomerEdit:        plain,
 	}},
 	{"助理", map[ops.Permission]ops.Grant{
-		QueueView:       plain,
-		AttendanceClock: plain,
-		CustomerView:    store,
-		PerformanceView: self,
+		QueueView:           plain,
+		AttendanceClock:     plain,
+		CustomerView:        store,
+		PerformanceView:     self,
+		CustomerSafetyLabel: plain,
 	}},
 	{"前台", map[ops.Permission]ops.Grant{
-		OrderCreate:       plain,
-		OrderEdit:         {Scope: ops.ScopeStore, WindowDays: days(0)},
-		PaymentCollect:    plain,
-		CardSell:          plain,
-		GroupBuyRedeem:    plain,
-		QueueOperate:      plain,
-		QueueView:         plain,
-		BookingManage:     store,
-		AttendanceClock:   plain,
-		CustomerView:      store,
-		CustomerFullPhone: plain,
-		ClosingDaily:      plain,
+		OrderCreate:         plain,
+		OrderEdit:           {Scope: ops.ScopeStore, WindowDays: days(0)},
+		PaymentCollect:      plain,
+		CardSell:            plain,
+		GroupBuyRedeem:      plain,
+		QueueOperate:        plain,
+		QueueView:           plain,
+		BookingManage:       store,
+		AttendanceClock:     plain,
+		CustomerView:        store,
+		CustomerFullPhone:   plain,
+		ClosingDaily:        plain,
+		CustomerSafetyLabel: plain,
+		CustomerEdit:        plain,
 	}},
 }

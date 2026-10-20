@@ -48,6 +48,11 @@ func Bootstrap(ctx context.Context, pool *pgxpool.Pool, in BootstrapInput) (Boot
 			return err
 		}
 		res.StoreID = store.ID
+		for _, name := range []string{"路过进店", "老客介绍", "员工带客", "美团", "抖音", "预约", "其他"} {
+			if _, err := q.CreateCustomerSource(ctx, dbgen.CreateCustomerSourceParams{TenantID: res.TenantID, StoreID: store.ID, Name: name}); err != nil {
+				return err
+			}
+		}
 		owner, err := q.CreateRole(ctx, dbgen.CreateRoleParams{
 			TenantID: res.TenantID, StoreID: store.ID, Name: perm.OwnerRoleName, IsOwner: true,
 		})

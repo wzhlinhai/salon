@@ -21,6 +21,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/add_customer_phone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 给还没有手机号的顾客补上手机号 */
+        post: operations["add_customer_phone"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/add_safety_label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 记录顾客安全提醒及观察营业日 */
+        post: operations["add_safety_label"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/assign_customer_responsible": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 批量分配顾客负责人 */
+        post: operations["assign_customer_responsible"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/change_customer_phone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 修改顾客已有的手机号 */
+        post: operations["change_customer_phone"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/change_my_password": {
         parameters: {
             query?: never;
@@ -49,6 +117,40 @@ export interface paths {
         put?: never;
         /** 修改一项门店设置，从指定的营业日开始执行；之前的业务和已下的单不受影响 */
         post: operations["change_setting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/create_customer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按手机号查找或新建顾客，无手机号则建未识别顾客 */
+        post: operations["create_customer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/create_customer_source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 新建顾客来源 */
+        post: operations["create_customer_source"];
         delete?: never;
         options?: never;
         head?: never;
@@ -157,6 +259,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/get_customer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看顾客档案和安全提醒 */
+        post: operations["get_customer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/get_me": {
         parameters: {
             query?: never;
@@ -208,6 +327,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/hand_over_customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 将员工负责的全部未合并顾客移交给在职员工 */
+        post: operations["hand_over_customers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_audit_log": {
         parameters: {
             query?: never;
@@ -217,8 +353,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 查看员工与角色的修改记录：谁、何时、改了什么、改前改后 */
+        /** 查看业务操作的修改记录：谁、何时、改了什么、改前改后 */
         post: operations["list_audit_log"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_customer_sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 列出本门店的顾客来源 */
+        post: operations["list_customer_sources"];
         delete?: never;
         options?: never;
         head?: never;
@@ -344,6 +497,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/merge_customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 不可撤销地合并重复顾客及其关联记录 */
+        post: operations["merge_customers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/reactivate_staff": {
         parameters: {
             query?: never;
@@ -378,6 +548,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/revoke_safety_label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 撤销安全提醒，保留记录 */
+        post: operations["revoke_safety_label"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/search_customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按手机号、后四位或姓名查找顾客 */
+        post: operations["search_customers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/set_staff_login": {
         parameters: {
             query?: never;
@@ -406,6 +610,40 @@ export interface paths {
         put?: never;
         /** 设置员工的角色 */
         post: operations["set_staff_roles"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/update_customer_profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 修改顾客姓名、性别、来源与备注 */
+        post: operations["update_customer_profile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/update_customer_source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 修改或停用顾客来源 */
+        post: operations["update_customer_source"];
         delete?: never;
         options?: never;
         head?: never;
@@ -488,6 +726,20 @@ export interface components {
             id: string;
             name: string;
         };
+        AddSafetyLabelInput: {
+            customer_id: string;
+            /** @enum {string} */
+            kind: "allergy" | "scalp_sensitive" | "recent_chemical";
+            note?: string;
+            /** Format: date */
+            observed_on: string;
+            /** @enum {string} */
+            source: "customer_said" | "staff_observed";
+        };
+        AssignCustomerResponsibleInput: {
+            customer_ids: string[];
+            staff_id?: string;
+        };
         ChangeMyPasswordInput: {
             new_password: string;
             old_password: string;
@@ -502,6 +754,21 @@ export interface components {
             key: string;
             /** @description 新的值，形式见 get_settings 的 kind；null 表示恢复系统默认做法 */
             value: unknown;
+        };
+        CreateCustomerInput: {
+            /** @enum {string} */
+            gender?: "male" | "female";
+            name?: string;
+            note?: string;
+            phone?: string;
+            source_id?: string;
+        };
+        CreateCustomerResult: {
+            customer: components["schemas"]["Customer"];
+            existed: boolean;
+        };
+        CreateCustomerSourceInput: {
+            name: string;
         };
         CreateLevelInput: {
             name: string;
@@ -525,6 +792,52 @@ export interface components {
             position_id?: string;
             /** @description 角色，见 list_roles */
             role_ids: string[];
+        };
+        Customer: {
+            active_safety_labels: components["schemas"]["SafetyLabel"][];
+            /** Format: date-time */
+            created_at: string;
+            gender: string | null;
+            id: string;
+            merged_into: string;
+            name: string | null;
+            note: string | null;
+            phone: string | null;
+            phone_masked: boolean;
+            responsible: components["schemas"]["CustomerRef"];
+            source: components["schemas"]["CustomerRef"];
+            unidentified: boolean;
+        };
+        CustomerAssignmentResult: {
+            items: components["schemas"]["Customer"][];
+        };
+        CustomerHandoverResult: {
+            /** Format: int64 */
+            count: number;
+            customer_ids: string[];
+            to_staff_id: string;
+        };
+        CustomerIDInput: {
+            id: string;
+        };
+        CustomerList: {
+            items: components["schemas"]["Customer"][];
+        };
+        CustomerPhoneInput: {
+            id: string;
+            phone: string;
+        };
+        CustomerRef: {
+            id: string;
+            name: string;
+        };
+        CustomerSource: {
+            active: boolean;
+            id: string;
+            name: string;
+        };
+        CustomerSourceList: {
+            items: components["schemas"]["CustomerSource"][];
         };
         Def: {
             label: string;
@@ -606,6 +919,10 @@ export interface components {
              */
             window_days?: number;
         };
+        HandOverCustomersInput: {
+            from_staff_id: string;
+            to_staff_id: string;
+        };
         Level: {
             active: boolean;
             id: string;
@@ -615,9 +932,10 @@ export interface components {
             items: components["schemas"]["Level"][];
         };
         ListAuditLogInput: {
-            /** @description 只看这个角色或员工的修改，不填为全部 */
+            /** @description 只看这个目标的修改，不填为全部 */
             target_id?: string;
         };
+        ListCustomerSourcesInput: Record<string, never>;
         ListInput: Record<string, never>;
         ListSettingChangesInput: {
             /** @description 只看这一项设置的修改，不填为全部 */
@@ -641,6 +959,14 @@ export interface components {
             permissions: components["schemas"]["GrantSpec"][];
             staff: components["schemas"]["Staff"];
         };
+        MergeCustomersInput: {
+            keep_id: string;
+            merged_id: string;
+        };
+        MergeCustomersResult: {
+            keep: components["schemas"]["Customer"];
+            merged: components["schemas"]["Customer"];
+        };
         OK: {
             ok: boolean;
         };
@@ -663,6 +989,10 @@ export interface components {
             /** @description 新的门店名称 */
             name: string;
         };
+        RevokeSafetyLabelInput: {
+            customer_id: string;
+            id: string;
+        };
         Role: {
             id: string;
             /** @description 老板角色拥有全部权限，不能修改 */
@@ -684,12 +1014,31 @@ export interface components {
         RoleOptionList: {
             roles: components["schemas"]["RoleOption"][];
         };
+        SafetyLabel: {
+            /** Format: date-time */
+            created_at: string;
+            id: string;
+            kind: string;
+            note: string | null;
+            observed_on: string;
+            recorded_by: string;
+            source: string;
+        };
         ScheduledValue: {
             /** Format: date */
             effective_from: string;
             /** @description 从这一天起恢复系统默认做法 */
             is_default: boolean;
             value: unknown;
+        };
+        SearchCustomersInput: {
+            include_unidentified?: boolean;
+            /** Format: int32 */
+            limit?: number;
+            /** Format: int32 */
+            offset?: number;
+            query?: string;
+            responsible_staff_id?: string;
         };
         SetStaffLoginInput: {
             /** @description 登录账号，全系统唯一 */
@@ -783,6 +1132,19 @@ export interface components {
             /** @description 门店名称 */
             name: string;
         };
+        UpdateCustomerProfileInput: {
+            /** @enum {string} */
+            gender?: "male" | "female";
+            id: string;
+            name?: string;
+            note?: string;
+            source_id?: string;
+        };
+        UpdateCustomerSourceInput: {
+            active: boolean;
+            id: string;
+            name: string;
+        };
         UpdateLevelInput: {
             active: boolean;
             id: string;
@@ -853,6 +1215,138 @@ export interface operations {
             };
         };
     };
+    add_customer_phone: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerPhoneInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Customer"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    add_safety_label: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddSafetyLabelInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Customer"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    assign_customer_responsible: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignCustomerResponsibleInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerAssignmentResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    change_customer_phone: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerPhoneInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Customer"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     change_my_password: {
         parameters: {
             query?: never;
@@ -906,6 +1400,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SettingChange"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    create_customer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCustomerInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateCustomerResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    create_customer_source: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCustomerSourceInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerSource"];
                 };
             };
             /** @description Error */
@@ -1117,6 +1677,39 @@ export interface operations {
             };
         };
     };
+    get_customer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerIDInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Customer"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     get_me: {
         parameters: {
             query?: never;
@@ -1216,6 +1809,39 @@ export interface operations {
             };
         };
     };
+    hand_over_customers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HandOverCustomersInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerHandoverResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     list_audit_log: {
         parameters: {
             query?: never;
@@ -1236,6 +1862,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LogList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_customer_sources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListCustomerSourcesInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerSourceList"];
                 };
             };
             /** @description Error */
@@ -1480,6 +2139,39 @@ export interface operations {
             };
         };
     };
+    merge_customers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeCustomersInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeCustomersResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     reactivate_staff: {
         parameters: {
             query?: never;
@@ -1546,6 +2238,72 @@ export interface operations {
             };
         };
     };
+    revoke_safety_label: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevokeSafetyLabelInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Customer"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    search_customers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchCustomersInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     set_staff_login: {
         parameters: {
             query?: never;
@@ -1599,6 +2357,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Staff"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    update_customer_profile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCustomerProfileInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Customer"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    update_customer_source: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCustomerSourceInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerSource"];
                 };
             };
             /** @description Error */
