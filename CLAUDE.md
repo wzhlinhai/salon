@@ -12,12 +12,7 @@ Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `
 
 Single-context: one root `GLOSSARY.md` plus `docs/adr/`. See `docs/agents/domain.md`.
 
-## Codebase
-
-- Before adding a business table, business operation, permission, or store setting: read `backend/README.md` (tenant isolation, operation layer, login and permissions).
-- Before adding an admin page: read `admin/README.md`.
-- Running the app locally or end-to-end tests: `scripts/dev.sh up|down|reset|status`, then `npm run e2e` in `admin/`.
-- Checking that a test guards a protection: `backend/scripts/mutcheck.sh`.
+@AGENTS.md
 
 ## Claude-Orchestrated Codex Workflow
 
@@ -32,14 +27,14 @@ Single-context: one root `GLOSSARY.md` plus `docs/adr/`. See `docs/agents/domain
 ### Workflow
 
 1. Claude inspects code, tests, configuration, and git status.
-2. Claude prepares a scoped implementation brief.
+2. Claude prepares a scoped implementation brief, naming the `CODING_STANDARDS.md` rules the task touches. Briefs, review prompts, and PR bodies go in `.dev/codex/<task>/` (gitignored).
 3. After authorization, Codex implements the changes.
-4. Claude independently reviews the complete diff.
-5. A fresh, read-only Codex session performs secondary review.
+4. Claude independently reviews the complete diff against the brief and `CODING_STANDARDS.md`, rule by rule.
+5. A fresh, read-only Codex session performs secondary review against the same.
 6. Claude verifies every finding and decides what needs fixing.
 7. Codex applies confirmed fixes; Claude reviews them again.
-8. Codex runs the project's applicable verification commands (see Codebase above and `backend/README.md`).
-9. Claude checks actual results and performs final acceptance.
+8. Codex runs the project's applicable verification commands (see `AGENTS.md` and `backend/README.md`).
+9. Claude re-runs those commands outside the sandbox, checks actual results, and performs final acceptance.
 
 ### Constraints
 
