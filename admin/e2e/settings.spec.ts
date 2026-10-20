@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { login, owner } from './helpers'
+import { hire, login, owner } from './helpers'
 
 // #27：老板修改设置并指定生效日期，页面显示已安排的修改和修改记录。
 test('老板安排明天起的营业日结束时间，并在修改记录里看到', async ({ page }) => {
@@ -19,4 +19,13 @@ test('老板安排明天起的营业日结束时间，并在修改记录里看�
   await expect(latest).toContainText('营业日结束时间')
   await expect(latest).toContainText('02:00')
   await expect(latest).toContainText(tomorrow)
+})
+
+test('店长能看到设置和系统默认做法，但不能修改', async ({ page }) => {
+  const manager = await hire('店长')
+  await login(page, manager.account, manager.password)
+  await page.goto('/settings')
+  const card = page.locator('[data-setting=business_hours]')
+  await expect(card).toContainText('营业时段')
+  await expect(card.getByRole('button', { name: '修改' })).toHaveCount(0)
 })

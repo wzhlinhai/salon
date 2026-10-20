@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'settings.manage' })
-
+// 所有员工都能查看设置和系统默认做法；修改需要门店设置权限，以后端检查为准。
 type Setting = components['schemas']['Setting']
 type SettingChange = components['schemas']['SettingChange']
 interface TimeRange { open: string; close: string }
@@ -79,15 +78,15 @@ async function save(reset: boolean) {
           <div class="text-sm text-muted">{{ s.hint }}</div>
           <div class="flex items-center gap-2">
             <span class="text-lg">{{ show(s.kind, s.value) }}</span>
-            <UBadge v-if="!s.configured" color="neutral" variant="subtle">系统默认</UBadge>
+            <UBadge v-if="s.is_default" color="neutral" variant="subtle">系统默认</UBadge>
             <span v-else class="text-xs text-muted">{{ s.effective_from }} 起</span>
           </div>
           <div v-for="u in s.upcoming" :key="u.effective_from" class="text-sm">
             <UBadge color="warning" variant="subtle">已安排</UBadge>
-            {{ u.effective_from }} 起改为 {{ show(s.kind, u.value) }}{{ u.configured ? '' : '（系统默认）' }}
+            {{ u.effective_from }} 起改为 {{ show(s.kind, u.value) }}{{ u.is_default ? '（系统默认）' : '' }}
           </div>
         </div>
-        <UButton variant="outline" @click="openEditor(s)">修改</UButton>
+        <UButton v-if="can('settings.manage')" variant="outline" @click="openEditor(s)">修改</UButton>
       </div>
     </UCard>
 

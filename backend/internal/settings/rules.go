@@ -36,11 +36,11 @@ type Rules struct {
 	values map[string]json.RawMessage
 }
 
-// rulesFrom 用 configured 中的值覆盖系统默认做法。
-func rulesFrom(configured map[string]json.RawMessage) Rules {
+// rulesFrom 用 values 中的值覆盖系统默认做法。values 中不在目录里的项被忽略。
+func rulesFrom(values map[string]json.RawMessage) Rules {
 	r := Rules{values: make(map[string]json.RawMessage, len(Catalogue))}
 	for _, d := range Catalogue {
-		if v, ok := configured[d.Key]; ok {
+		if v, ok := values[d.Key]; ok {
 			r.values[d.Key] = v
 		} else {
 			r.values[d.Key] = defaultJSON(d)
@@ -96,19 +96,25 @@ func effectiveRows(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, day
 	return out, nil
 }
 
+// configured 返回 key 在这一天设置的值；没有设置或恢复了默认时返回 false。
+func configured(rows map[string]effectiveRow, key string) (effectiveRow, bool) {
+	row, ok := rows[key]
+	return row, ok && !row.isDefault
+}
+
 // Effective 返回门店在营业日 day 生效的设置。
 func Effective(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, day time.Time) (Rules, error) {
 	rows, err := effectiveRows(ctx, q, storeID, day)
 	if err != nil {
 		return Rules{}, err
 	}
-	configured := map[string]json.RawMessage{}
-	for key, row := range rows {
-		if _, known := Lookup(key); known && !row.isDefault {
-			configured[key] = row.value
+	values := map[string]json.RawMessage{}
+	for _, d := range Catalogue {
+		if row, ok := configured(rows, d.Key); ok {
+			values[d.Key] = row.value
 		}
 	}
-	return rulesFrom(configured), nil
+	return rulesFrom(values), nil
 }
 
 // BusinessDate 返回时刻 t 属于哪一个营业日。

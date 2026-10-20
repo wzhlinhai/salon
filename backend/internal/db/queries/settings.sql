@@ -18,7 +18,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING *;
 
 -- name: ListSettingChanges :many
-SELECT c.*, s.name AS changed_by_name
+SELECT sqlc.embed(c), s.name AS changed_by_name
 FROM setting_changes c JOIN staff s ON s.id = c.changed_by
 WHERE c.store_id = @store_id AND (sqlc.narg(key)::text IS NULL OR c.key = sqlc.narg(key))
 ORDER BY c.changed_at DESC, c.id DESC;
@@ -37,4 +37,8 @@ SELECT id FROM settings_snapshots WHERE store_id = @store_id AND digest = md5(CA
 LIMIT 1;
 
 -- name: GetSettingsSnapshot :one
-SELECT * FROM settings_snapshots WHERE id = $1;
+SELECT * FROM settings_snapshots WHERE id = $1 AND store_id = $2;
+
+-- name: LockSettingKey :exec
+-- 在事务结束前锁住门店的一项设置，同一项设置的修改排队进行。
+SELECT pg_advisory_xact_lock(hashtextextended(CAST(sqlc.arg(store_id)::uuid AS text) || '/' || sqlc.arg(key)::text, 0));

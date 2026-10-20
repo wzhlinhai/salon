@@ -2,6 +2,7 @@ package settings_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"reflect"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/wzhlinhai/salon/backend/internal/db"
@@ -95,12 +97,12 @@ func TestUnconfiguredSettingsShowSystemDefault(t *testing.T) {
 		t.Run(ch.Name, func(t *testing.T) {
 			r := ch.Call(t, stylist, "get_settings", map[string]any{})
 			end := setting(t, r, "business_day_end")
-			if end["value"] != "00:00" || end["default"] != "00:00" || end["configured"] != false {
+			if end["value"] != "00:00" || end["default"] != "00:00" || end["is_default"] != true {
 				t.Fatalf("business_day_end = %v, want default 00:00 unconfigured", end)
 			}
 			hours := setting(t, r, "business_hours")
 			want := map[string]any{"open": "09:00", "close": "22:00"}
-			if !reflect.DeepEqual(hours["value"], want) || hours["configured"] != false {
+			if !reflect.DeepEqual(hours["value"], want) || hours["is_default"] != true {
 				t.Fatalf("business_hours = %v, want default %v unconfigured", hours, want)
 			}
 		})
@@ -129,7 +131,7 @@ func TestChangeTakesEffectOnlyFromItsEffectiveDate(t *testing.T) {
 	for _, ch := range s.app.Channels() {
 		t.Run(ch.Name, func(t *testing.T) {
 			before := setting(t, ch.Call(t, s.owner, "get_settings", map[string]any{"date": day(6)}), "business_day_end")
-			if before["value"] != "00:00" || before["configured"] != false {
+			if before["value"] != "00:00" || before["is_default"] != true {
 				t.Fatalf("day before effective date: %v, want default 00:00", before)
 			}
 			upcoming := before["upcoming"].([]any)
@@ -137,7 +139,7 @@ func TestChangeTakesEffectOnlyFromItsEffectiveDate(t *testing.T) {
 				t.Fatalf("upcoming = %v, want 02:00 from %s", upcoming, day(7))
 			}
 			on := setting(t, ch.Call(t, s.owner, "get_settings", map[string]any{"date": day(7)}), "business_day_end")
-			if on["value"] != "02:00" || on["configured"] != true || on["effective_from"] != day(7) {
+			if on["value"] != "02:00" || on["is_default"] != false || on["effective_from"] != day(7) {
 				t.Fatalf("on effective date: %v, want configured 02:00 from %s", on, day(7))
 			}
 		})
@@ -171,7 +173,7 @@ func TestBusinessDateFollowsDayEndEffectiveThatDay(t *testing.T) {
 		// 生效后：营业日在次日 2 点结束，凌晨 1:30 算前一天。
 		{at(8, "01:30"), day(7)},
 		{at(8, "02:00"), day(8)},
-		// 第 7 天凌晨属于第 6 个营业日，按第 6 天的设置。
+		// 第 7 天凌晨按第 6 个营业日的设置判断（0 点结束），算第 7 天。
 		{at(7, "01:30"), day(7)},
 	}
 	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
@@ -206,11 +208,10 @@ func TestSnapshotKeepsRulesInForceWhenTaken(t *testing.T) {
 	}
 
 	// 下单之后，把今天起执行的设置改掉。
-	s.change(s.owner, "business_day_end", "02:00", day(0), http.StatusOK)
 	s.change(s.owner, "business_hours", map[string]any{"open": "10:00", "close": "21:00"}, day(0), http.StatusOK)
 
 	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
-		rules, err := settings.LoadSnapshot(ctx, q, before)
+		rules, err := settings.LoadSnapshot(ctx, q, s.res.StoreID, before)
 		if err != nil {
 			return err
 		}
@@ -227,11 +228,11 @@ func TestSnapshotKeepsRulesInForceWhenTaken(t *testing.T) {
 		if after == before {
 			t.Errorf("snapshot after the change reused %s, want a new one", before)
 		}
-		if rules, err = settings.LoadSnapshot(ctx, q, after); err != nil {
+		if rules, err = settings.LoadSnapshot(ctx, q, s.res.StoreID, after); err != nil {
 			return err
 		}
-		if got := rules.BusinessDayEnd(); got != "02:00" {
-			t.Errorf("new snapshot business day end = %s, want 02:00", got)
+		if got := rules.BusinessHours(); got != (settings.TimeRange{Open: "10:00", Close: "21:00"}) {
+			t.Errorf("new snapshot business hours = %v, want 10:00-21:00", got)
 		}
 		return nil
 	})
@@ -280,11 +281,11 @@ func TestEveryChangeIsInTheLog(t *testing.T) {
 				}
 			}
 			pending := setting(t, ch.Call(t, s.owner, "get_settings", map[string]any{"date": day(1)}), "business_day_end")["upcoming"].([]any)
-			if len(pending) != 1 || pending[0].(map[string]any)["configured"] != false || pending[0].(map[string]any)["value"] != "00:00" {
+			if len(pending) != 1 || pending[0].(map[string]any)["is_default"] != true || pending[0].(map[string]any)["value"] != "00:00" {
 				t.Fatalf("upcoming on day 1 = %v, want reset to default from day 5", pending)
 			}
 			reset := setting(t, ch.Call(t, s.owner, "get_settings", map[string]any{"date": day(5)}), "business_day_end")
-			if reset["value"] != "00:00" || reset["configured"] != false || reset["effective_from"] != nil {
+			if reset["value"] != "00:00" || reset["is_default"] != true || reset["effective_from"] != nil {
 				t.Fatalf("after reset: %v, want system default", reset)
 			}
 			all := ch.Call(t, manager, "list_setting_changes", map[string]any{})
@@ -313,7 +314,9 @@ func TestInvalidChangesAreRejected(t *testing.T) {
 		value any
 		from  string
 	}{
-		{"effective before today", "business_day_end", "02:00", day(-1)},
+		{"effective before today", "business_hours", map[string]any{"open": "10:00", "close": "21:00"}, day(-1)},
+		// 当天改营业日结束时间，会改变今天已经发生的业务属于哪一天。
+		{"day end effective today", "business_day_end", "02:00", day(0)},
 		{"unknown setting", "no_such_setting", "02:00", day(1)},
 		{"not a time", "business_day_end", "0:30", day(1)},
 		{"day end at noon", "business_day_end", "12:00", day(1)},
@@ -331,8 +334,9 @@ func TestInvalidChangesAreRejected(t *testing.T) {
 	if n := s.changeCount(); n != 0 {
 		t.Fatalf("%d changes recorded after rejected calls, want 0", n)
 	}
-	// 今天生效是允许的。
-	s.change(s.owner, "business_day_end", "02:00", day(0), http.StatusOK)
+	// 其他设置可以今天生效，营业日结束时间可以明天生效。
+	s.change(s.owner, "business_hours", map[string]any{"open": "10:00", "close": "21:00"}, day(0), http.StatusOK)
+	s.change(s.owner, "business_day_end", "02:00", day(1), http.StatusOK)
 }
 
 func TestPermissionDeniedOnBothChannels(t *testing.T) {
@@ -403,5 +407,69 @@ func TestChangesAndSnapshotsCannotBeAlteredOrDeleted(t *testing.T) {
 				t.Fatalf("err = %v, want permission denied", err)
 			}
 		})
+	}
+}
+
+func TestSnapshotOfAnotherStoreIsNotFound(t *testing.T) {
+	s := open(t)
+	var other, snap uuid.UUID
+	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
+		st, err := q.CreateStore(ctx, dbgen.CreateStoreParams{TenantID: s.res.TenantID, Name: "二店"})
+		if err != nil {
+			return err
+		}
+		other = st.ID
+		snap, err = settings.TakeSnapshot(ctx, q, s.res.TenantID, other, time.Now())
+		return err
+	})
+	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
+		if _, err := settings.LoadSnapshot(ctx, q, s.res.StoreID, snap); !errors.Is(err, ops.ErrNotFound) {
+			t.Fatalf("loading another store's snapshot: err = %v, want not found", err)
+		}
+		return nil
+	})
+}
+
+func TestConcurrentChangesToOneSettingKeepTheTrail(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	for _, stmt := range []string{"SET LOCAL ROLE salon_app", "SELECT set_config('app.tenant_id', '" + s.res.TenantID.String() + "', true)"} {
+		if _, err := tx.Exec(ctx, stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 一次修改正在进行：已锁住这项设置、写下修改，尚未提交。
+	q := dbgen.New(tx)
+	if err := q.LockSettingKey(ctx, dbgen.LockSettingKeyParams{StoreID: s.res.StoreID, Key: "business_day_end"}); err != nil {
+		t.Fatal(err)
+	}
+	first := dbgen.AddSettingChangeParams{
+		TenantID: s.res.TenantID, StoreID: s.res.StoreID, Key: "business_day_end",
+		Value: []byte(`"02:00"`), OldValue: []byte(`"00:00"`), OldIsDefault: true,
+		EffectiveFrom: pgtype.Date{Time: settings.Date(time.Now()).AddDate(0, 0, 1), Valid: true}, ChangedBy: s.owner.StaffID,
+	}
+	if _, err := q.AddSettingChange(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan optest.Result, 1)
+	go func() {
+		done <- s.app.HTTP(t, &s.owner, "change_setting", map[string]any{"key": "business_day_end", "value": "03:00", "effective_from": day(1)})
+	}()
+	select {
+	case r := <-done:
+		t.Fatalf("second change finished with %d while the first was in progress; want it to wait", r.Status)
+	case <-time.After(300 * time.Millisecond):
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if r := <-done; r.Status != http.StatusOK || r.Body["old_value"] != "02:00" || r.Body["old_is_default"] != false {
+		t.Fatalf("second change = %d %v, want its old value to be the first change's 02:00", r.Status, r.Body)
 	}
 }

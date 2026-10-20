@@ -647,10 +647,10 @@ export interface components {
             roles: components["schemas"]["RoleOption"][];
         };
         ScheduledValue: {
-            /** @description false 表示从这一天起恢复系统默认做法 */
-            configured: boolean;
             /** Format: date */
             effective_from: string;
+            /** @description 从这一天起恢复系统默认做法 */
+            is_default: boolean;
             value: unknown;
         };
         SetStaffLoginInput: {
@@ -666,13 +666,13 @@ export interface components {
             staff_id: string;
         };
         Setting: {
-            /** @description false 表示这一天用的是系统默认做法 */
-            configured: boolean;
             /** @description 系统默认做法 */
             default: unknown;
             /** Format: date */
             effective_from?: string;
             hint: string;
+            /** @description 这一天用的是系统默认做法 */
+            is_default: boolean;
             key: string;
             /**
              * @description 值的形式：time 为 "HH:MM"；time_range 为 {"open": "HH:MM", "close": "HH:MM"}

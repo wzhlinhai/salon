@@ -32,14 +32,15 @@ func TakeSnapshot(ctx context.Context, q *dbgen.Queries, tenantID, storeID uuid.
 	id, err := q.SaveSettingsSnapshot(ctx, params)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// 另一个事务同时保存了同样的快照，它提交后这条语句才能看到。
+		// 依赖 db.InTenant 的 READ COMMITTED：每条语句取新的快照。
 		id, err = q.SaveSettingsSnapshot(ctx, params)
 	}
 	return id, err
 }
 
-// LoadSnapshot 读回快照中的设置。快照之后才加入目录的设置项按系统默认做法。
-func LoadSnapshot(ctx context.Context, q *dbgen.Queries, id uuid.UUID) (Rules, error) {
-	row, err := q.GetSettingsSnapshot(ctx, id)
+// LoadSnapshot 读回门店 storeID 的快照中的设置。快照之后才加入目录的设置项按系统默认做法。
+func LoadSnapshot(ctx context.Context, q *dbgen.Queries, storeID, id uuid.UUID) (Rules, error) {
+	row, err := q.GetSettingsSnapshot(ctx, dbgen.GetSettingsSnapshotParams{ID: id, StoreID: storeID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Rules{}, ops.ErrNotFound
 	}

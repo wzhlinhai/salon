@@ -105,11 +105,16 @@ func (q *Queries) EffectiveSettings(ctx context.Context, arg EffectiveSettingsPa
 }
 
 const getSettingsSnapshot = `-- name: GetSettingsSnapshot :one
-SELECT id, tenant_id, store_id, rules, digest, created_at FROM settings_snapshots WHERE id = $1
+SELECT id, tenant_id, store_id, rules, digest, created_at FROM settings_snapshots WHERE id = $1 AND store_id = $2
 `
 
-func (q *Queries) GetSettingsSnapshot(ctx context.Context, id uuid.UUID) (SettingsSnapshot, error) {
-	row := q.db.QueryRow(ctx, getSettingsSnapshot, id)
+type GetSettingsSnapshotParams struct {
+	ID      uuid.UUID
+	StoreID uuid.UUID
+}
+
+func (q *Queries) GetSettingsSnapshot(ctx context.Context, arg GetSettingsSnapshotParams) (SettingsSnapshot, error) {
+	row := q.db.QueryRow(ctx, getSettingsSnapshot, arg.ID, arg.StoreID)
 	var i SettingsSnapshot
 	err := row.Scan(
 		&i.ID,
@@ -135,17 +140,7 @@ type ListSettingChangesParams struct {
 }
 
 type ListSettingChangesRow struct {
-	ID            uuid.UUID
-	TenantID      uuid.UUID
-	StoreID       uuid.UUID
-	Key           string
-	Value         []byte
-	IsDefault     bool
-	OldValue      []byte
-	OldIsDefault  bool
-	EffectiveFrom pgtype.Date
-	ChangedBy     uuid.UUID
-	ChangedAt     pgtype.Timestamptz
+	SettingChange SettingChange
 	ChangedByName string
 }
 
@@ -159,17 +154,17 @@ func (q *Queries) ListSettingChanges(ctx context.Context, arg ListSettingChanges
 	for rows.Next() {
 		var i ListSettingChangesRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.TenantID,
-			&i.StoreID,
-			&i.Key,
-			&i.Value,
-			&i.IsDefault,
-			&i.OldValue,
-			&i.OldIsDefault,
-			&i.EffectiveFrom,
-			&i.ChangedBy,
-			&i.ChangedAt,
+			&i.SettingChange.ID,
+			&i.SettingChange.TenantID,
+			&i.SettingChange.StoreID,
+			&i.SettingChange.Key,
+			&i.SettingChange.Value,
+			&i.SettingChange.IsDefault,
+			&i.SettingChange.OldValue,
+			&i.SettingChange.OldIsDefault,
+			&i.SettingChange.EffectiveFrom,
+			&i.SettingChange.ChangedBy,
+			&i.SettingChange.ChangedAt,
 			&i.ChangedByName,
 		); err != nil {
 			return nil, err
@@ -180,6 +175,21 @@ func (q *Queries) ListSettingChanges(ctx context.Context, arg ListSettingChanges
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockSettingKey = `-- name: LockSettingKey :exec
+SELECT pg_advisory_xact_lock(hashtextextended(CAST($1::uuid AS text) || '/' || $2::text, 0))
+`
+
+type LockSettingKeyParams struct {
+	StoreID uuid.UUID
+	Key     string
+}
+
+// 在事务结束前锁住门店的一项设置，同一项设置的修改排队进行。
+func (q *Queries) LockSettingKey(ctx context.Context, arg LockSettingKeyParams) error {
+	_, err := q.db.Exec(ctx, lockSettingKey, arg.StoreID, arg.Key)
+	return err
 }
 
 const saveSettingsSnapshot = `-- name: SaveSettingsSnapshot :one

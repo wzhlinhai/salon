@@ -25,7 +25,9 @@ type TimeRange struct {
 
 // Def 描述一项门店设置。
 type Def struct {
-	Key   string
+	// Key 是设置项的标识，保存在修改记录和快照里，不能改名。
+	Key string
+	// Label 和 Hint 是面向人的名称和说明。
 	Label string
 	Hint  string
 	Kind  Kind
@@ -33,8 +35,11 @@ type Def struct {
 	Default any
 	// check 校验 JSON 值，返回面向人的错误说明。
 	check func(raw json.RawMessage) error
+	// fromTomorrow：不能当天生效。用于划分营业日的设置，当天改会改变今天已经发生的业务属于哪一天。
+	fromTomorrow bool
 }
 
+// 设置项的 Key。
 const (
 	KeyBusinessHours  = "business_hours"
 	KeyBusinessDayEnd = "business_day_end"
@@ -71,6 +76,7 @@ var Catalogue = []Def{
 			}
 			return nil
 		},
+		fromTomorrow: true,
 	},
 }
 

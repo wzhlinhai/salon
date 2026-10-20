@@ -15,14 +15,13 @@ import (
 
 // Setting 是一项门店设置在某个营业日的状态。
 type Setting struct {
-	Key   string `json:"key"`
-	Label string `json:"label"`
-	Hint  string `json:"hint"`
-	Kind  Kind   `json:"kind" enum:"time,time_range" doc:"值的形式：time 为 \"HH:MM\"；time_range 为 {\"open\": \"HH:MM\", \"close\": \"HH:MM\"}"`
-	// Value 是这一天执行的值；没有设置时等于 Default。
-	Value      any  `json:"value" doc:"这一天执行的值"`
-	Default    any  `json:"default" doc:"系统默认做法"`
-	Configured bool `json:"configured" doc:"false 表示这一天用的是系统默认做法"`
+	Key       string `json:"key"`
+	Label     string `json:"label"`
+	Hint      string `json:"hint"`
+	Kind      Kind   `json:"kind" enum:"time,time_range" doc:"值的形式：time 为 \"HH:MM\"；time_range 为 {\"open\": \"HH:MM\", \"close\": \"HH:MM\"}"`
+	Value     any    `json:"value" doc:"这一天执行的值"`
+	Default   any    `json:"default" doc:"系统默认做法"`
+	IsDefault bool   `json:"is_default" doc:"这一天用的是系统默认做法"`
 	// EffectiveFrom 是这一天执行的值从哪一天开始生效；用系统默认做法时为空。
 	EffectiveFrom *string `json:"effective_from,omitempty" format:"date"`
 	// Upcoming 是这一天之后已经安排好、尚未生效的修改。
@@ -33,7 +32,7 @@ type Setting struct {
 type ScheduledValue struct {
 	EffectiveFrom string `json:"effective_from" format:"date"`
 	Value         any    `json:"value"`
-	Configured    bool   `json:"configured" doc:"false 表示从这一天起恢复系统默认做法"`
+	IsDefault     bool   `json:"is_default" doc:"从这一天起恢复系统默认做法"`
 }
 
 // SettingList 是 get_settings 的返回值。
@@ -80,7 +79,8 @@ type SettingChangeList struct {
 	Changes []SettingChange `json:"changes"`
 }
 
-func registerOps(r *ops.Registry) {
+// Register 声明门店设置的操作。
+func Register(r *ops.Registry) {
 	ops.Register(r, ops.Operation[GetSettingsInput, SettingList]{
 		Name: "get_settings", Summary: "查看门店设置在某个营业日执行的值、系统默认做法和已安排的修改", Kind: ops.Read,
 		Permission: ops.LoggedIn, AI: ops.AIDirect,
@@ -109,19 +109,12 @@ func registerOps(r *ops.Registry) {
 			}
 			out := &SettingChangeList{Changes: make([]SettingChange, 0, len(rows))}
 			for _, row := range rows {
-				out.Changes = append(out.Changes, changeView(dbgen.SettingChange{
-					ID: row.ID, Key: row.Key, Value: row.Value, IsDefault: row.IsDefault,
-					OldValue: row.OldValue, OldIsDefault: row.OldIsDefault, EffectiveFrom: row.EffectiveFrom,
-					ChangedBy: row.ChangedBy, ChangedAt: row.ChangedAt,
-				}, row.ChangedByName))
+				out.Changes = append(out.Changes, changeView(row.SettingChange, row.ChangedByName))
 			}
 			return out, nil
 		},
 	})
 }
-
-// Register 声明门店设置的操作。
-func Register(r *ops.Registry) { registerOps(r) }
 
 func dayOrToday(ctx context.Context, env ops.Env, s string) (time.Time, error) {
 	if s == "" {
@@ -141,10 +134,10 @@ func listSettings(ctx context.Context, env ops.Env, day time.Time) (*SettingList
 	}
 	out := &SettingList{BusinessDate: day.Format(DateLayout), Settings: make([]Setting, 0, len(Catalogue))}
 	for _, d := range Catalogue {
-		st := Setting{Key: d.Key, Label: d.Label, Hint: d.Hint, Kind: d.Kind, Value: d.Default, Default: d.Default, Upcoming: []ScheduledValue{}}
-		if row, ok := rows[d.Key]; ok && !row.isDefault {
-			st.Value = raw(row.value)
-			st.Configured = true
+		st := Setting{Key: d.Key, Label: d.Label, Hint: d.Hint, Kind: d.Kind, Value: d.Default, Default: d.Default, IsDefault: true, Upcoming: []ScheduledValue{}}
+		if row, ok := configured(rows, d.Key); ok {
+			st.Value = row.value
+			st.IsDefault = false
 			st.EffectiveFrom = new(row.effectiveFrom.Format(DateLayout))
 		}
 		out.Settings = append(out.Settings, st)
@@ -156,9 +149,9 @@ func listSettings(ctx context.Context, env ops.Env, day time.Time) (*SettingList
 	for _, u := range upcoming {
 		for i := range out.Settings {
 			if st := &out.Settings[i]; st.Key == u.Key {
-				v := ScheduledValue{EffectiveFrom: u.EffectiveFrom.Time.Format(DateLayout), Value: st.Default}
+				v := ScheduledValue{EffectiveFrom: u.EffectiveFrom.Time.Format(DateLayout), Value: st.Default, IsDefault: true}
 				if !u.IsDefault {
-					v.Value, v.Configured = raw(u.Value), true
+					v.Value, v.IsDefault = json.RawMessage(u.Value), false
 				}
 				st.Upcoming = append(st.Upcoming, v)
 			}
@@ -184,6 +177,9 @@ func changeSetting(ctx context.Context, env ops.Env, in *ChangeSettingInput) (*S
 		// 修改只影响之后发生的业务（ADR-0002）。
 		return nil, ops.Rule("生效日期不能早于今天（" + today.Format(DateLayout) + "）")
 	}
+	if d.fromTomorrow && !from.After(today) {
+		return nil, ops.Rule(d.Label + "最早从明天（" + today.AddDate(0, 0, 1).Format(DateLayout) + "）开始执行")
+	}
 	value, isDefault := defaultJSON(d), in.Value == nil
 	if !isDefault {
 		if value, err = json.Marshal(in.Value); err != nil {
@@ -193,13 +189,16 @@ func changeSetting(ctx context.Context, env ops.Env, in *ChangeSettingInput) (*S
 			return nil, ops.Rule(err.Error())
 		}
 	}
-	// 改前的值：生效日期那天原本执行的值。
+	// 改前的值：生效日期那天原本执行的值。同一项设置的修改排队进行，改前值才接得上前一次的改后值。
+	if err := env.Q.LockSettingKey(ctx, dbgen.LockSettingKeyParams{StoreID: env.Caller.StoreID, Key: d.Key}); err != nil {
+		return nil, err
+	}
 	rows, err := effectiveRows(ctx, env.Q, env.Caller.StoreID, from)
 	if err != nil {
 		return nil, err
 	}
 	old, oldIsDefault := defaultJSON(d), true
-	if row, ok := rows[d.Key]; ok && !row.isDefault {
+	if row, ok := configured(rows, d.Key); ok {
 		old, oldIsDefault = row.value, false
 	}
 	row, err := env.Q.AddSettingChange(ctx, dbgen.AddSettingChangeParams{
@@ -225,10 +224,8 @@ func changeView(row dbgen.SettingChange, changedBy string) SettingChange {
 	}
 	return SettingChange{
 		ID: row.ID, Key: row.Key, Label: label,
-		OldValue: raw(row.OldValue), OldIsDefault: row.OldIsDefault, Value: raw(row.Value), IsDefault: row.IsDefault,
+		OldValue: json.RawMessage(row.OldValue), OldIsDefault: row.OldIsDefault, Value: json.RawMessage(row.Value), IsDefault: row.IsDefault,
 		EffectiveFrom: row.EffectiveFrom.Time.Format(DateLayout),
 		ChangedBy:     staff.Ref{ID: row.ChangedBy, Name: changedBy}, ChangedAt: row.ChangedAt.Time,
 	}
 }
-
-func raw(b []byte) json.RawMessage { return json.RawMessage(b) }
