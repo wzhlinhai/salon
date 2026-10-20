@@ -497,6 +497,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_staff_options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 列出本店员工名称和在职状态，用于选择负责人 */
+        post: operations["list_staff_options"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/merge_customers": {
         parameters: {
             query?: never;
@@ -1124,6 +1141,14 @@ export interface components {
         };
         StaffList: {
             staff: components["schemas"]["Staff"][];
+        };
+        StaffOption: {
+            active: boolean;
+            id: string;
+            name: string;
+        };
+        StaffOptionList: {
+            staff: components["schemas"]["StaffOption"][];
         };
         Store: {
             /** Format: date-time */
@@ -2126,6 +2151,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_staff_options: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListStaffInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffOptionList"];
                 };
             };
             /** @description Error */

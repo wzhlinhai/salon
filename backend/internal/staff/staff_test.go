@@ -469,3 +469,43 @@ func TestAICannotExecuteStaffAndRoleWrites(t *testing.T) {
 	}
 	s.MustLogin("boss", optest.OwnerPassword)
 }
+
+func TestStaffOptionsAvailableWithoutStaffManagement(t *testing.T) {
+	s := open(t)
+	inactive, _ := s.Hire("已离职", "002", "inactive")
+	stylistID, token := s.Hire("发型师", "003", "stylist", s.Role("发型师"))
+	s.call(s.Owner, "deactivate_staff", map[string]any{"staff_id": inactive}, http.StatusOK)
+	caller, ok := s.CallerFor(t, token)
+	if !ok {
+		t.Fatal("发型师登录失败")
+	}
+	if caller.Has(perm.StaffManage) {
+		t.Fatal("发型师不应有员工管理权限")
+	}
+	for _, ch := range s.Channels() {
+		t.Run(ch.Name, func(t *testing.T) {
+			r := ch.Call(t, caller, "list_staff_options", map[string]any{})
+			if r.Status != http.StatusOK {
+				t.Fatalf("list_staff_options = %d: %v", r.Status, r.Body)
+			}
+			rows := r.Body["staff"].([]any)
+			if len(rows) != 3 {
+				t.Fatalf("staff = %v, want 3", rows)
+			}
+			expected := map[string]map[string]any{
+				s.Res.OwnerID.String(): {"id": s.Res.OwnerID.String(), "name": "王老板", "active": true},
+				stylistID.String():     {"id": stylistID.String(), "name": "发型师", "active": true},
+				inactive.String():      {"id": inactive.String(), "name": "已离职", "active": false},
+			}
+			for _, row := range rows {
+				m := row.(map[string]any)
+				if !reflect.DeepEqual(m, expected[m["id"].(string)]) {
+					t.Fatalf("unexpected fields or values: %v", m)
+				}
+			}
+			if rows[2].(map[string]any)["id"] != inactive.String() {
+				t.Fatalf("inactive staff must be last: %v", rows)
+			}
+		})
+	}
+}

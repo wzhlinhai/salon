@@ -279,6 +279,20 @@ func TestCustomerHandover(t *testing.T) {
 	assertEqual(t, result["count"], float64(2))
 	for _, id := range []any{a["id"], b["id"]} {
 		assertEqual(t, s.get(id)["responsible"].(map[string]any)["id"], to.String())
+		for _, ch := range s.Channels() {
+			r := ch.Call(t, s.MustCaller(s.Owner), "list_audit_log", map[string]any{"target_id": id})
+			assertEqual(t, r.Status, 200)
+			entries := r.Body["entries"].([]any)
+			latest := entries[0].(map[string]any)
+			assertEqual(t, latest["action"], "hand_over_customers")
+			assertEqual(t, latest["target_id"], id)
+			before := latest["before"].(map[string]any)
+			after := latest["after"].(map[string]any)
+			assertEqual(t, before["id"], id)
+			assertEqual(t, before["responsible"].(map[string]any)["id"], from.String())
+			assertEqual(t, after, s.get(id))
+			assertEqual(t, after["responsible"].(map[string]any)["id"], to.String())
+		}
 	}
 	assertEqual(t, s.get(m["id"])["responsible"].(map[string]any)["id"], from.String())
 	logs := s.call("list_audit_log", map[string]any{"target_id": from}, 200)["entries"].([]any)
