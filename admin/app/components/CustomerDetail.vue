@@ -51,6 +51,7 @@ async function load() {
     api.POST('/api/ops/get_customer', { body: { id } }),
     can('audit_log.view') ? api.POST('/api/ops/list_audit_log', { body: { target_id: id } }) : null
   ])
+  if (id !== props.id) return
   if (res.data) {
     customer.value = res.data
   } else {

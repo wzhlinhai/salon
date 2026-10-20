@@ -22,9 +22,9 @@ func TestAuditLogMasksNestedPhones(t *testing.T) {
 	s.call("hand_over_customers", map[string]any{"from_staff_id": from, "to_staff_id": to}, 200)
 	_, token := s.Hire("日志查看员工", "004", "auditor")
 	reader := s.MustCaller(token)
-	reader.Permissions = map[ops.Permission]ops.Grant{perm.AuditLogView: {}}
+	reader.Permissions = map[ops.Permission]ops.Grant{perm.AuditLogView: {}, perm.CustomerView: {Scope: ops.ScopeStore}}
 	full := reader
-	full.Permissions = map[ops.Permission]ops.Grant{perm.AuditLogView: {}, perm.CustomerFullPhone: {}}
+	full.Permissions = map[ops.Permission]ops.Grant{perm.AuditLogView: {}, perm.CustomerFullPhone: {}, perm.CustomerView: {Scope: ops.ScopeStore}}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	env := ops.Env{Caller: s.MustCaller(s.Owner), Q: dbgen.New(tx)}
 	nested := map[string]any{"objects": []any{map[string]any{"deep": map[string]any{"phone": "13800131234"}}}, "phone": "123", "note": "不含号码", "number": json.Number("9007199254740993"), "phone_number": "保持原样"}
@@ -53,12 +53,7 @@ func TestAuditLogMasksNestedPhones(t *testing.T) {
 					e := entry.(map[string]any)
 					if e["action"] == "hand_over_customers" && e["target_id"] == from.String() {
 						foundHandover = true
-						phone := e["before"].([]any)[0].(map[string]any)["phone"]
-						want := "138****1234"
-						if c.Has(perm.CustomerFullPhone) {
-							want = "13800131234"
-						}
-						assertEqual(t, phone, want)
+						assertEqual(t, e["before"], map[string]any{"customer_ids": []any{a["id"]}})
 					}
 					if e["action"] == "nested_fixture" {
 						foundNested = true

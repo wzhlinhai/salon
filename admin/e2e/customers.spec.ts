@@ -278,3 +278,51 @@ test('老板管理顾客来源，发型师只读且新建时不列停用来源',
   await page.getByLabel('顾客来源', { exact: true }).click()
   await expect(page.getByRole('option', { name, exact: true })).toHaveCount(0)
 })
+
+test('切换顾客后丢弃迟到的详情，编辑仍预填当前顾客', async ({ page }) => {
+  const manager = await hire('店长')
+  const token = await apiLogin(manager.account, manager.password)
+  const suffix = Date.now()
+  const a = (await api(token, 'create_customer', { name: `竞态甲${suffix}`, phone: phone() })).customer
+  const b = (await api(token, 'create_customer', { name: `竞态乙${suffix}`, phone: phone() })).customer
+  let releaseA!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    releaseA = resolve
+  })
+  let startedA!: () => void
+  const started = new Promise<void>((resolve) => {
+    startedA = resolve
+  })
+  await page.route('**/api/ops/get_customer', async (route) => {
+    if (route.request().postDataJSON().id === a.id) {
+      startedA()
+      await blocked
+    }
+    await route.continue()
+  })
+  await page.route('**/api/ops/list_audit_log', async (route) => {
+    if (route.request().postDataJSON().target_id === a.id) {
+      await blocked
+    }
+    await route.continue()
+  })
+  await login(page, manager.account, manager.password)
+  const startedLog = page.waitForRequest(r => r.url().endsWith('/api/ops/list_audit_log') && r.postDataJSON().target_id === a.id)
+  await page.goto(`/customers?id=${a.id}`)
+  await Promise.all([started, startedLog])
+  await page.evaluate((id) => {
+    window.history.pushState({}, '', `/customers?id=${id}`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }, b.id)
+  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  await expect(detail.getByRole('heading', { name: b.name, exact: true })).toBeVisible()
+  const lateResponse = page.waitForResponse(r => r.url().endsWith('/api/ops/get_customer') && r.request().postDataJSON().id === a.id)
+  const lateLogResponse = page.waitForResponse(r => r.url().endsWith('/api/ops/list_audit_log') && r.request().postDataJSON().target_id === a.id)
+  releaseA()
+  await Promise.all([lateResponse, lateLogResponse].map(async response => (await response).finished()))
+  await page.waitForTimeout(500)
+  await expect(detail).toContainText(b.name)
+  await expect(detail).not.toContainText(a.name)
+  await page.getByRole('button', { name: '修改资料', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '修改顾客资料', exact: true }).getByLabel('姓名', { exact: true })).toHaveValue(b.name)
+})
