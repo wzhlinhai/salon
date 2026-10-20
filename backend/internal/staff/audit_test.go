@@ -11,8 +11,175 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
+	"github.com/wzhlinhai/salon/backend/internal/optest"
 )
+
+func TestConcurrentStaffUpdatesKeepAuditBefore(t *testing.T) {
+	for _, tc := range []struct {
+		action string
+		args   map[string]any
+	}{
+		{"update_staff", map[string]any{"name": "请求改名", "number": "002"}},
+		{"set_staff_login", map[string]any{"login_account": "audit-renamed", "password": "audit-new-password"}},
+		{"deactivate_staff", nil},
+		{"reactivate_staff", nil},
+		{"set_staff_roles", nil},
+	} {
+		t.Run(tc.action, func(t *testing.T) {
+			s := open(t)
+			staffID, _ := s.Hire("原名", "002", "audit-staff")
+			if tc.action == "reactivate_staff" {
+				s.call(s.Owner, "deactivate_staff", map[string]any{"staff_id": staffID}, http.StatusOK)
+			}
+			args := map[string]any{"staff_id": staffID}
+			for key, value := range tc.args {
+				args[key] = value
+			}
+			if tc.action == "set_staff_roles" {
+				args["role_ids"] = []uuid.UUID{s.Role("发型师")}
+			}
+			ctx := context.Background()
+			tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+			q := dbgen.New(tx)
+			if _, err := q.LockStaff(ctx, staffID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := q.UpdateStaffProfile(ctx, dbgen.UpdateStaffProfileParams{ID: staffID, Name: "事务改名", Number: "002"}); err != nil {
+				t.Fatal(err)
+			}
+
+			done := make(chan optest.Result, 1)
+			go func() {
+				done <- s.HTTPWithToken(t, s.Owner, tc.action, args)
+			}()
+			dbtest.WaitForLockWait(t, s.Pool)
+			select {
+			case r := <-done:
+				t.Fatalf("%s finished with %d while the staff row was locked; want it to wait", tc.action, r.Status)
+			default:
+			}
+			if err := tx.Commit(ctx); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case r := <-done:
+				if r.Status != http.StatusOK {
+					t.Fatalf("%s = %d %v, want 200", tc.action, r.Status, r.Body)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("HTTP request did not finish within 10 seconds after commit")
+			}
+			entries := s.call(s.Owner, "list_audit_log", map[string]any{"target_id": staffID}, http.StatusOK).Body["entries"].([]any)
+			if len(entries) == 0 {
+				t.Fatal("missing staff audit log")
+			}
+			latest := entries[0].(map[string]any)
+			if latest["action"] != tc.action || latest["before"].(map[string]any)["name"] != "事务改名" {
+				t.Fatalf("latest audit entry = %v, want %s with before.name 事务改名", latest, tc.action)
+			}
+		})
+	}
+}
+
+func TestConcurrentRoleUpdatesKeepAuditBefore(t *testing.T) {
+	s := open(t)
+	role := s.call(s.Owner, "create_role", map[string]any{"name": "原名", "permissions": []any{}}, http.StatusOK).Body
+	roleID := uuid.MustParse(role["id"].(string))
+	ctx := context.Background()
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	q := dbgen.New(tx)
+	if _, err := q.LockRole(ctx, dbgen.LockRoleParams{ID: roleID, StoreID: s.Res.StoreID}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := q.RenameRole(ctx, dbgen.RenameRoleParams{ID: roleID, Name: "事务改名"}); err != nil || n != 1 {
+		t.Fatalf("RenameRole = %d, %v, want 1, nil", n, err)
+	}
+
+	done := make(chan optest.Result, 1)
+	go func() {
+		done <- s.HTTPWithToken(t, s.Owner, "update_role", map[string]any{"role_id": roleID, "name": "请求改名", "permissions": []any{}})
+	}()
+	dbtest.WaitForLockWait(t, s.Pool)
+	select {
+	case r := <-done:
+		t.Fatalf("update_role finished with %d while the role row was locked; want it to wait", r.Status)
+	default:
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case r := <-done:
+		if r.Status != http.StatusOK {
+			t.Fatalf("update_role = %d %v, want 200", r.Status, r.Body)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("HTTP request did not finish within 10 seconds after commit")
+	}
+	entries := s.call(s.Owner, "list_audit_log", map[string]any{"target_id": roleID}, http.StatusOK).Body["entries"].([]any)
+	if len(entries) == 0 {
+		t.Fatal("missing role audit log")
+	}
+	latest := entries[0].(map[string]any)
+	if latest["action"] != "update_role" || latest["before"].(map[string]any)["name"] != "事务改名" {
+		t.Fatalf("latest audit entry = %v, want update_role with before.name 事务改名", latest)
+	}
+}
+
+func TestConcurrentRoleAssignmentAndDeletionKeepAuditHolders(t *testing.T) {
+	s := open(t)
+	role := s.call(s.Owner, "create_role", map[string]any{"name": "待删除角色", "permissions": []any{}}, http.StatusOK).Body
+	roleID := uuid.MustParse(role["id"].(string))
+	staffID, _ := s.Hire("新持有人", "002", "audit-holder")
+	ctx := context.Background()
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	q := dbgen.New(tx)
+	if _, err := q.LockRole(ctx, dbgen.LockRoleParams{ID: roleID, StoreID: s.Res.StoreID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.AddStaffRole(ctx, dbgen.AddStaffRoleParams{
+		TenantID: s.Res.TenantID, StoreID: s.Res.StoreID, StaffID: staffID, RoleID: roleID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan optest.Result, 1)
+	go func() {
+		done <- s.HTTPWithToken(t, s.Owner, "delete_role", map[string]any{"role_id": roleID})
+	}()
+	dbtest.WaitForLockWait(t, s.Pool)
+	select {
+	case r := <-done:
+		t.Fatalf("delete_role finished with %d while the role row was locked; want it to wait", r.Status)
+	default:
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case r := <-done:
+		if r.Status != http.StatusOK {
+			t.Fatalf("delete_role = %d %v, want 200", r.Status, r.Body)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("HTTP request did not finish within 10 seconds after commit")
+	}
+	entries := s.call(s.Owner, "list_audit_log", map[string]any{"target_id": roleID}, http.StatusOK).Body["entries"].([]any)
+	if len(entries) == 0 {
+		t.Fatal("missing role audit log")
+	}
+	latest := entries[0].(map[string]any)
+	if latest["action"] != "delete_role" {
+		t.Fatalf("latest audit entry = %v, want delete_role", latest)
+	}
+	holders := latest["before"].(map[string]any)["holders"]
+	want := []any{map[string]any{"id": staffID.String(), "name": "新持有人"}}
+	if !reflect.DeepEqual(holders, want) {
+		t.Fatalf("before.holders = %v, want %v", holders, want)
+	}
+}
 
 func TestStaffAndRoleAuditLog(t *testing.T) {
 	s := open(t)

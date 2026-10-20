@@ -44,7 +44,7 @@ func start() {
 				WithOccurrence(2).WithStartupTimeout(60*time.Second)),
 	)
 	if err != nil {
-		startErr = fmt.Errorf("start postgres container: %w", err)
+		startErr = fmt.Errorf("启动 PostgreSQL 测试容器失败：确认 Docker 已运行（WSL 下打开 Docker Desktop 并启用 WSL 集成）：%w", err)
 		return
 	}
 	adminDSN, startErr = c.ConnectionString(ctx, "sslmode=disable")
@@ -128,4 +128,27 @@ func AppTx(t testing.TB, pool *pgxpool.Pool, tenantID uuid.UUID) pgx.Tx {
 		t.Fatal(err)
 	}
 	return tx
+}
+
+// WaitForLockWait 等待当前数据库出现等待锁的请求，超过五秒则测试失败。
+func WaitForLockWait(t testing.TB, pool *pgxpool.Pool) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		var waiting int
+		if err := pool.QueryRow(ctx, "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'").Scan(&waiting); err != nil {
+			t.Fatalf("waiting for a database lock wait: %v", err)
+		}
+		if waiting > 0 {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("no database lock wait observed within 5 seconds")
+		case <-ticker.C:
+		}
+	}
 }
