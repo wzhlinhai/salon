@@ -123,13 +123,6 @@ func registerRoles(r *ops.Registry) {
 		Name: "update_role", Summary: "修改角色的名称和权限", Kind: ops.Write,
 		Permission: perm.RoleManage, AI: ops.AINone,
 		Handle: func(ctx context.Context, env ops.Env, in *UpdateRoleInput) (*Role, error) {
-			// 改前快照与修改串行，日志的改前才接得上前一次的改后。
-			if _, err := env.Q.LockRole(ctx, dbgen.LockRoleParams{ID: in.RoleID, StoreID: env.Caller.StoreID}); err != nil {
-				if errors.Is(err, pgx.ErrNoRows) {
-					return nil, ops.ErrNotFound
-				}
-				return nil, err
-			}
 			info, err := editableRole(ctx, env, in.RoleID)
 			if err != nil {
 				return nil, err
@@ -161,13 +154,6 @@ func registerRoles(r *ops.Registry) {
 		Name: "delete_role", Summary: "删除角色；拥有该角色的员工失去这个角色", Kind: ops.Write,
 		Permission: perm.RoleManage, AI: ops.AINone,
 		Handle: func(ctx context.Context, env ops.Env, in *RoleIDInput) (*OK, error) {
-			// 改前快照与修改串行，日志的改前才接得上前一次的改后。
-			if _, err := env.Q.LockRole(ctx, dbgen.LockRoleParams{ID: in.RoleID, StoreID: env.Caller.StoreID}); err != nil {
-				if errors.Is(err, pgx.ErrNoRows) {
-					return nil, ops.ErrNotFound
-				}
-				return nil, err
-			}
 			info, err := editableRole(ctx, env, in.RoleID)
 			if err != nil {
 				return nil, err
@@ -198,8 +184,15 @@ func registerRoles(r *ops.Registry) {
 	})
 }
 
-// editableRole 返回可以由调用者修改的角色：不是老板角色，且现有权限不超过调用者。
+// editableRole 先锁住该角色的行，让改前快照与修改串行，日志的改前才接得上前一次的改后。
+// 再返回可以由调用者修改的角色：不是老板角色，且现有权限不超过调用者。
 func editableRole(ctx context.Context, env ops.Env, id uuid.UUID) (*roleInfo, error) {
+	if _, err := env.Q.LockRole(ctx, dbgen.LockRoleParams{ID: id, StoreID: env.Caller.StoreID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ops.ErrNotFound
+		}
+		return nil, err
+	}
 	infos, err := loadRoles(ctx, env, []uuid.UUID{id})
 	if err != nil {
 		return nil, err
