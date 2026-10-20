@@ -21,6 +21,44 @@ type AuditLog struct {
 	At       pgtype.Timestamptz
 }
 
+type Customer struct {
+	ID                 uuid.UUID
+	TenantID           uuid.UUID
+	StoreID            uuid.UUID
+	Name               *string
+	Phone              *string
+	Gender             *string
+	SourceID           *uuid.UUID
+	ResponsibleStaffID *uuid.UUID
+	Note               *string
+	MergedInto         *uuid.UUID
+	CreatedBy          uuid.UUID
+	CreatedAt          pgtype.Timestamptz
+}
+
+type CustomerSafetyLabel struct {
+	ID         uuid.UUID
+	TenantID   uuid.UUID
+	StoreID    uuid.UUID
+	CustomerID uuid.UUID
+	Kind       string
+	Source     string
+	Note       *string
+	ObservedOn pgtype.Date
+	RecordedBy uuid.UUID
+	CreatedAt  pgtype.Timestamptz
+	RevokedAt  pgtype.Timestamptz
+	RevokedBy  *uuid.UUID
+}
+
+type CustomerSource struct {
+	ID       uuid.UUID
+	TenantID uuid.UUID
+	StoreID  uuid.UUID
+	Name     string
+	Active   bool
+}
+
 type Level struct {
 	ID        uuid.UUID
 	TenantID  uuid.UUID

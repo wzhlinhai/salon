@@ -1,0 +1,83 @@
+package customers
+
+import (
+	"context"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
+	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/perm"
+	"github.com/wzhlinhai/salon/backend/internal/settings"
+)
+
+// AddSafetyLabelInput 是记录安全提醒的参数。
+type AddSafetyLabelInput struct {
+	CustomerID uuid.UUID `json:"customer_id"`
+	Kind       string    `json:"kind" enum:"allergy,scalp_sensitive,recent_chemical"`
+	Source     string    `json:"source" enum:"customer_said,staff_observed"`
+	Note       *string   `json:"note,omitempty"`
+	ObservedOn string    `json:"observed_on" format:"date"`
+}
+
+// RevokeSafetyLabelInput 指定要撤销的安全提醒。
+type RevokeSafetyLabelInput struct {
+	CustomerID uuid.UUID `json:"customer_id"`
+	ID         uuid.UUID `json:"id"`
+}
+
+func registerSafety(r *ops.Registry) {
+	ops.Register(r, ops.Operation[AddSafetyLabelInput, Customer]{
+		Name: "add_safety_label", Summary: "记录顾客安全提醒及观察营业日", Kind: ops.Write,
+		Permission: perm.CustomerSafetyLabel, AI: ops.AIDraft,
+		Handle: func(ctx context.Context, env ops.Env, in *AddSafetyLabelInput) (*Customer, error) {
+			row, err := lock(ctx, env, in.CustomerID)
+			if err != nil {
+				return nil, err
+			}
+			before, err := view(ctx, env, row)
+			if err != nil {
+				return nil, err
+			}
+			day, err := time.Parse(time.DateOnly, in.ObservedOn)
+			if err != nil {
+				return nil, ops.Rule("观察日期格式不正确")
+			}
+			today, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
+			if err != nil {
+				return nil, err
+			}
+			if day.After(today) {
+				return nil, ops.Rule("观察日期不能晚于今天的营业日")
+			}
+			if err := env.Q.AddSafetyLabel(ctx, dbgen.AddSafetyLabelParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CustomerID: row.ID, Kind: in.Kind, Source: in.Source, Note: in.Note, ObservedOn: pgtype.Date{Time: day, Valid: true}, RecordedBy: env.Caller.StaffID}); err != nil {
+				return nil, err
+			}
+			return finish(ctx, env, "add_safety_label", before, row)
+		},
+	})
+	ops.Register(r, ops.Operation[RevokeSafetyLabelInput, Customer]{
+		Name: "revoke_safety_label", Summary: "撤销安全提醒，保留记录", Kind: ops.Write,
+		Permission: perm.CustomerSafetyLabel, AI: ops.AIDraft,
+		Handle: func(ctx context.Context, env ops.Env, in *RevokeSafetyLabelInput) (*Customer, error) {
+			row, err := lock(ctx, env, in.CustomerID)
+			if err != nil {
+				return nil, err
+			}
+			before, err := view(ctx, env, row)
+			if err != nil {
+				return nil, err
+			}
+			n, err := env.Q.RevokeSafetyLabel(ctx, dbgen.RevokeSafetyLabelParams{ID: in.ID, CustomerID: row.ID, RevokedBy: &env.Caller.StaffID})
+			if err != nil {
+				return nil, err
+			}
+			if n == 0 {
+				return nil, ops.Rule("安全标签不存在或已撤销")
+			}
+			return finish(ctx, env, "revoke_safety_label", before, row)
+		},
+	})
+}
