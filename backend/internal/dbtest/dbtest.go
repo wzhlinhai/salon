@@ -110,3 +110,22 @@ func NewTenant(t testing.TB, pool *pgxpool.Pool, name string) (tenantID, storeID
 	}
 	return tenantID, storeID
 }
+
+// AppTx 开一个与 db.InTenant 相同的事务（salon_app 角色、租户 tenantID 的上下文），由测试决定何时提交。
+// 用于 sqlc 查询之外的写法，或在事务进行中做断言（例如持锁时另一个请求要等待）。测试结束时未提交的事务回滚。
+func AppTx(t testing.TB, pool *pgxpool.Pool, tenantID uuid.UUID) pgx.Tx {
+	t.Helper()
+	ctx := context.Background()
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback(ctx) })
+	if _, err := tx.Exec(ctx, "SET LOCAL ROLE salon_app"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, "SELECT set_config('app.tenant_id', $1, true)", tenantID.String()); err != nil {
+		t.Fatal(err)
+	}
+	return tx
+}

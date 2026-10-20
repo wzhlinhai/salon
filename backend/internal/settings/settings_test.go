@@ -10,9 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/wzhlinhai/salon/backend/internal/db"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
@@ -20,59 +18,23 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/optest"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
-	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 
 type shop struct {
+	*optest.Shop
 	t     *testing.T
-	pool  *pgxpool.Pool
-	app   *optest.App
-	res   staff.BootstrapResult
-	owner ops.Caller
+	owner ops.Caller // 老板本人的调用者
 }
 
 func open(t *testing.T) *shop {
-	t.Helper()
-	pool := dbtest.NewPool(t)
-	res, err := staff.Bootstrap(context.Background(), pool, staff.BootstrapInput{
-		TenantName: "本店", StoreName: "本店", OwnerName: "王老板", OwnerNumber: "001",
-		OwnerAccount: "boss", OwnerPassword: "owner-password",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := &shop{t: t, pool: pool, app: optest.New(t, pool), res: res}
-	s.owner = s.callerOf("boss", "owner-password")
-	return s
-}
-
-// callerOf 登录并返回该员工本人的调用者，HTTP 和 AI 两条路径都用它。
-func (s *shop) callerOf(account, password string) ops.Caller {
-	s.t.Helper()
-	code, token := s.app.Login(s.t, account, password)
-	if code != http.StatusOK {
-		s.t.Fatalf("login %s: %d", account, code)
-	}
-	c, ok := s.app.CallerFor(s.t, token)
-	if !ok {
-		s.t.Fatalf("authenticate %s", account)
-	}
-	return c
+	sh := optest.OpenShop(t)
+	return &shop{Shop: sh, t: t, owner: sh.MustCaller(sh.Owner)}
 }
 
 // hire 由老板建一名有指定角色的员工，返回其调用者。
 func (s *shop) hire(name, number, account, role string) ops.Caller {
-	s.t.Helper()
-	r := s.app.HTTP(s.t, &s.owner, "create_staff", map[string]any{"name": name, "number": number, "role_ids": []uuid.UUID{s.res.Roles[role]}})
-	if r.Status != http.StatusOK {
-		s.t.Fatalf("create_staff: %d %v", r.Status, r.Body)
-	}
-	password := "password-" + account
-	r = s.app.HTTP(s.t, &s.owner, "set_staff_login", map[string]any{"staff_id": r.Body["id"], "login_account": account, "password": password})
-	if r.Status != http.StatusOK {
-		s.t.Fatalf("set_staff_login: %d %v", r.Status, r.Body)
-	}
-	return s.callerOf(account, password)
+	_, token := s.Hire(name, number, account, s.Role(role))
+	return s.MustCaller(token)
 }
 
 // setting 从 get_settings 的结果里取出一项。
@@ -93,7 +55,7 @@ func setting(t *testing.T, r optest.Result, key string) map[string]any {
 func TestUnconfiguredSettingsShowSystemDefault(t *testing.T) {
 	s := open(t)
 	stylist := s.hire("小王", "002", "stylist", "发型师")
-	for _, ch := range s.app.Channels() {
+	for _, ch := range s.Channels() {
 		t.Run(ch.Name, func(t *testing.T) {
 			r := ch.Call(t, stylist, "get_settings", map[string]any{})
 			end := setting(t, r, "business_day_end")
@@ -117,7 +79,7 @@ func day(n int) string {
 // change 由 caller 通过 HTTP 修改一项设置；want 不为 0 时检查状态码。
 func (s *shop) change(caller ops.Caller, key string, value any, from string, want int) optest.Result {
 	s.t.Helper()
-	r := s.app.HTTP(s.t, &caller, "change_setting", map[string]any{"key": key, "value": value, "effective_from": from})
+	r := s.HTTP(s.t, &caller, "change_setting", map[string]any{"key": key, "value": value, "effective_from": from})
 	if want != 0 && r.Status != want {
 		s.t.Fatalf("change_setting %s=%v from %s: got %d %v, want %d", key, value, from, r.Status, r.Body, want)
 	}
@@ -128,7 +90,7 @@ func TestChangeTakesEffectOnlyFromItsEffectiveDate(t *testing.T) {
 	s := open(t)
 	s.change(s.owner, "business_day_end", "02:00", day(7), http.StatusOK)
 
-	for _, ch := range s.app.Channels() {
+	for _, ch := range s.Channels() {
 		t.Run(ch.Name, func(t *testing.T) {
 			before := setting(t, ch.Call(t, s.owner, "get_settings", map[string]any{"date": day(6)}), "business_day_end")
 			if before["value"] != "00:00" || before["is_default"] != true {
@@ -150,7 +112,7 @@ func TestChangeTakesEffectOnlyFromItsEffectiveDate(t *testing.T) {
 func (s *shop) inTenant(fn func(ctx context.Context, q *dbgen.Queries) error) {
 	s.t.Helper()
 	ctx := context.Background()
-	if err := db.InTenant(ctx, s.pool, s.res.TenantID, func(q *dbgen.Queries) error { return fn(ctx, q) }); err != nil {
+	if err := db.InTenant(ctx, s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error { return fn(ctx, q) }); err != nil {
 		s.t.Fatal(err)
 	}
 }
@@ -178,7 +140,7 @@ func TestBusinessDateFollowsDayEndEffectiveThatDay(t *testing.T) {
 	}
 	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
 		for _, c := range cases {
-			got, err := settings.BusinessDate(ctx, q, s.res.StoreID, c.t)
+			got, err := settings.BusinessDate(ctx, q, s.Res.StoreID, c.t)
 			if err != nil {
 				return err
 			}
@@ -197,10 +159,10 @@ func TestSnapshotKeepsRulesInForceWhenTaken(t *testing.T) {
 	var before, again uuid.UUID
 	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
 		var err error
-		if before, err = settings.TakeSnapshot(ctx, q, s.res.TenantID, s.res.StoreID, time.Now()); err != nil {
+		if before, err = settings.TakeSnapshot(ctx, q, s.Res.TenantID, s.Res.StoreID, time.Now()); err != nil {
 			return err
 		}
-		again, err = settings.TakeSnapshot(ctx, q, s.res.TenantID, s.res.StoreID, time.Now())
+		again, err = settings.TakeSnapshot(ctx, q, s.Res.TenantID, s.Res.StoreID, time.Now())
 		return err
 	})
 	if again != before {
@@ -211,7 +173,7 @@ func TestSnapshotKeepsRulesInForceWhenTaken(t *testing.T) {
 	s.change(s.owner, "business_hours", map[string]any{"open": "10:00", "close": "21:00"}, day(0), http.StatusOK)
 
 	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
-		rules, err := settings.LoadSnapshot(ctx, q, s.res.StoreID, before)
+		rules, err := settings.LoadSnapshot(ctx, q, s.Res.StoreID, before)
 		if err != nil {
 			return err
 		}
@@ -221,14 +183,14 @@ func TestSnapshotKeepsRulesInForceWhenTaken(t *testing.T) {
 		if got := rules.BusinessHours(); got != (settings.TimeRange{Open: "09:00", Close: "22:00"}) {
 			t.Errorf("snapshot business hours = %v, want 09:00-22:00 as when taken", got)
 		}
-		after, err := settings.TakeSnapshot(ctx, q, s.res.TenantID, s.res.StoreID, time.Now())
+		after, err := settings.TakeSnapshot(ctx, q, s.Res.TenantID, s.Res.StoreID, time.Now())
 		if err != nil {
 			return err
 		}
 		if after == before {
 			t.Errorf("snapshot after the change reused %s, want a new one", before)
 		}
-		if rules, err = settings.LoadSnapshot(ctx, q, s.res.StoreID, after); err != nil {
+		if rules, err = settings.LoadSnapshot(ctx, q, s.Res.StoreID, after); err != nil {
 			return err
 		}
 		if got := rules.BusinessHours(); got != (settings.TimeRange{Open: "10:00", Close: "21:00"}) {
@@ -247,7 +209,7 @@ func TestEveryChangeIsInTheLog(t *testing.T) {
 	s.change(s.owner, "business_hours", map[string]any{"open": "10:00", "close": "21:00"}, day(1), http.StatusOK)
 	manager := s.hire("张店长", "002", "manager", "店长")
 
-	for _, ch := range s.app.Channels() {
+	for _, ch := range s.Channels() {
 		t.Run(ch.Name, func(t *testing.T) {
 			r := ch.Call(t, manager, "list_setting_changes", map[string]any{"key": "business_day_end"})
 			if r.Status != http.StatusOK {
@@ -299,7 +261,7 @@ func TestEveryChangeIsInTheLog(t *testing.T) {
 // changeCount 返回修改记录的条数。
 func (s *shop) changeCount() int {
 	s.t.Helper()
-	r := s.app.HTTP(s.t, &s.owner, "list_setting_changes", map[string]any{})
+	r := s.HTTP(s.t, &s.owner, "list_setting_changes", map[string]any{})
 	if r.Status != http.StatusOK {
 		s.t.Fatalf("list_setting_changes: %d %v", r.Status, r.Body)
 	}
@@ -353,7 +315,7 @@ func TestPermissionDeniedOnBothChannels(t *testing.T) {
 		{"change without settings.manage", manager, "change_setting", change},
 		{"log without audit_log.view", stylist, "list_setting_changes", map[string]any{}},
 	}
-	for _, ch := range s.app.Channels() {
+	for _, ch := range s.Channels() {
 		for _, c := range cases {
 			t.Run(ch.Name+"/"+c.name, func(t *testing.T) {
 				if r := ch.Call(t, c.caller, c.op, c.args); r.Status != http.StatusForbidden {
@@ -369,7 +331,7 @@ func TestPermissionDeniedOnBothChannels(t *testing.T) {
 
 func TestAICannotChangeSettingsDirectly(t *testing.T) {
 	s := open(t)
-	r := s.app.AI(t, s.owner, "change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": day(1)})
+	r := s.AI(t, s.owner, "change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": day(1)})
 	if r.Status != http.StatusConflict {
 		t.Fatalf("got %d %v %v, want draft required", r.Status, r.Body, r.Err)
 	}
@@ -382,7 +344,7 @@ func TestChangesAndSnapshotsCannotBeAlteredOrDeleted(t *testing.T) {
 	s := open(t)
 	s.change(s.owner, "business_day_end", "02:00", day(1), http.StatusOK)
 	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
-		_, err := settings.TakeSnapshot(ctx, q, s.res.TenantID, s.res.StoreID, time.Now())
+		_, err := settings.TakeSnapshot(ctx, q, s.Res.TenantID, s.Res.StoreID, time.Now())
 		return err
 	})
 	for _, stmt := range []string{
@@ -392,17 +354,7 @@ func TestChangesAndSnapshotsCannotBeAlteredOrDeleted(t *testing.T) {
 		"DELETE FROM settings_snapshots",
 	} {
 		t.Run(stmt, func(t *testing.T) {
-			ctx := context.Background()
-			err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-				if _, err := tx.Exec(ctx, "SET LOCAL ROLE salon_app"); err != nil {
-					return err
-				}
-				if _, err := tx.Exec(ctx, "SELECT set_config('app.tenant_id', $1, true)", s.res.TenantID.String()); err != nil {
-					return err
-				}
-				_, err := tx.Exec(ctx, stmt)
-				return err
-			})
+			_, err := dbtest.AppTx(t, s.Pool, s.Res.TenantID).Exec(context.Background(), stmt)
 			if err == nil || !strings.Contains(err.Error(), "permission denied") {
 				t.Fatalf("err = %v, want permission denied", err)
 			}
@@ -414,16 +366,16 @@ func TestSnapshotOfAnotherStoreIsNotFound(t *testing.T) {
 	s := open(t)
 	var other, snap uuid.UUID
 	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
-		st, err := q.CreateStore(ctx, dbgen.CreateStoreParams{TenantID: s.res.TenantID, Name: "二店"})
+		st, err := q.CreateStore(ctx, dbgen.CreateStoreParams{TenantID: s.Res.TenantID, Name: "二店"})
 		if err != nil {
 			return err
 		}
 		other = st.ID
-		snap, err = settings.TakeSnapshot(ctx, q, s.res.TenantID, other, time.Now())
+		snap, err = settings.TakeSnapshot(ctx, q, s.Res.TenantID, other, time.Now())
 		return err
 	})
 	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
-		if _, err := settings.LoadSnapshot(ctx, q, s.res.StoreID, snap); !errors.Is(err, ops.ErrNotFound) {
+		if _, err := settings.LoadSnapshot(ctx, q, s.Res.StoreID, snap); !errors.Is(err, ops.ErrNotFound) {
 			t.Fatalf("loading another store's snapshot: err = %v, want not found", err)
 		}
 		return nil
@@ -433,23 +385,14 @@ func TestSnapshotOfAnotherStoreIsNotFound(t *testing.T) {
 func TestConcurrentChangesToOneSettingKeepTheTrail(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	for _, stmt := range []string{"SET LOCAL ROLE salon_app", "SELECT set_config('app.tenant_id', '" + s.res.TenantID.String() + "', true)"} {
-		if _, err := tx.Exec(ctx, stmt); err != nil {
-			t.Fatal(err)
-		}
-	}
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	// 一次修改正在进行：已锁住这项设置、写下修改，尚未提交。
 	q := dbgen.New(tx)
-	if err := q.LockSettingKey(ctx, dbgen.LockSettingKeyParams{StoreID: s.res.StoreID, Key: "business_day_end"}); err != nil {
+	if err := q.LockSettingKey(ctx, dbgen.LockSettingKeyParams{StoreID: s.Res.StoreID, Key: "business_day_end"}); err != nil {
 		t.Fatal(err)
 	}
 	first := dbgen.AddSettingChangeParams{
-		TenantID: s.res.TenantID, StoreID: s.res.StoreID, Key: "business_day_end",
+		TenantID: s.Res.TenantID, StoreID: s.Res.StoreID, Key: "business_day_end",
 		Value: []byte(`"02:00"`), OldValue: []byte(`"00:00"`), OldIsDefault: true,
 		EffectiveFrom: pgtype.Date{Time: settings.Date(time.Now()).AddDate(0, 0, 1), Valid: true}, ChangedBy: s.owner.StaffID,
 	}
@@ -459,7 +402,7 @@ func TestConcurrentChangesToOneSettingKeepTheTrail(t *testing.T) {
 
 	done := make(chan optest.Result, 1)
 	go func() {
-		done <- s.app.HTTP(t, &s.owner, "change_setting", map[string]any{"key": "business_day_end", "value": "03:00", "effective_from": day(1)})
+		done <- s.HTTP(t, &s.owner, "change_setting", map[string]any{"key": "business_day_end", "value": "03:00", "effective_from": day(1)})
 	}()
 	select {
 	case r := <-done:

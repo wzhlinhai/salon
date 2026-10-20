@@ -5,6 +5,7 @@
 #
 # <文件> 相对当前目录；go test 参数里的包路径相对 backend/。
 # 原文必须在文件中恰好出现一次；替换后要测的包必须能构建（参数里不要再传 -run）。
+# 改的是 internal/db/queries 下的查询时，改坏后重新运行 sqlc 生成代码，结束时连生成的代码一起还原。
 # 结束时无论成功失败都还原文件。
 # 退出码：0 有测试失败（被发现）；1 测试全部通过（没被发现）；
 #         2 用法、匹配或构建错误；3 测试失败但没有 --- FAIL 行（超时、panic 等，需人工查看）。
@@ -18,7 +19,14 @@ cd "$(dirname "$0")/.."
 
 backup=$(mktemp)
 cp "$file" "$backup"
-trap 'cp "$backup" "$file"; rm -f "$backup"' EXIT
+regen=false
+case "$file" in "$PWD"/internal/db/queries/*) regen=true ;; esac
+restore() {
+  cp "$backup" "$file"
+  rm -f "$backup"
+  if $regen; then go tool sqlc generate; fi
+}
+trap restore EXIT
 
 python3 - "$file" "$old" "$new" <<'PY' || exit 2
 import sys
@@ -32,7 +40,12 @@ with open(path, "w", newline="") as f:
     f.write(src.replace(old, new))
 PY
 
-# 只编译、不运行测试，确认改坏后的代码仍能构建。对 SQL 等嵌入文件同样适用。
+if $regen && ! go tool sqlc generate; then
+  echo "mutcheck: sqlc generate failed on the mutated query" >&2
+  exit 2
+fi
+
+# 只编译、不运行测试，确认改坏后的代码仍能构建（例如查询的参数没变）。
 if ! build=$(go test -count=1 -run '^$' "$@" 2>&1); then
   echo "mutcheck: mutated code does not build:" >&2
   head -5 <<<"$build" >&2

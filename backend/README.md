@@ -11,7 +11,7 @@ go test ./...                                  # 每个测试包启动一个全�
 go tool sqlc generate                          # 修改 internal/db/queries 或迁移后重新生成
 go run ./cmd/salon openapi > openapi.json      # 输出 OpenAPI 文档，不需要数据库
 golangci-lint run ./...                        # CI 同样运行，配置见 .golangci.yml
-scripts/mutcheck.sh <文件> <原文> <替换> [包]   # 临时改坏一处，确认有测试失败，然后还原
+scripts/mutcheck.sh <文件> <原文> <替换> [包]   # 临时改坏一处，确认有测试失败，然后还原；改查询 SQL 时自动重新生成
 DATABASE_URL=postgres://... go run ./cmd/salon migrate up
 DATABASE_URL=postgres://... BOOTSTRAP_PASSWORD=... go run ./cmd/salon bootstrap \
   -tenant 本店 -store 本店 -owner-name 姓名 -owner-number 001 -owner-account boss

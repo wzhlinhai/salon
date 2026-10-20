@@ -2,6 +2,10 @@ package db_test
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -10,8 +14,22 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 )
 
-// latest 是最新的迁移版本。
-const latest int64 = 4
+// latest 是最新的迁移版本：migrations 目录里最大的文件编号。
+var latest = func() int64 {
+	files, err := filepath.Glob("migrations/*.sql")
+	if err != nil || len(files) == 0 {
+		panic(fmt.Sprintf("no migrations found: %v", err))
+	}
+	var v int64
+	for _, f := range files {
+		n, err := strconv.ParseInt(strings.SplitN(filepath.Base(f), "_", 2)[0], 10, 64)
+		if err != nil {
+			panic(fmt.Sprintf("migration %s: %v", f, err))
+		}
+		v = max(v, n)
+	}
+	return v
+}()
 
 func tableExists(t *testing.T, pool *pgxpool.Pool, name string) bool {
 	t.Helper()
