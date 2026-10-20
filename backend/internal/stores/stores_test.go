@@ -16,7 +16,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/optest"
-	"github.com/wzhlinhai/salon/backend/internal/stores"
+	"github.com/wzhlinhai/salon/backend/internal/perm"
 )
 
 type env struct {
@@ -25,9 +25,8 @@ type env struct {
 	store     uuid.UUID
 	db        *pgxpool.Pool
 	storeName func() string // 读取当前门店名称
-	manager   ops.Caller    // 有查看和管理权限
-	viewer    ops.Caller    // 只有查看权限
-	nobody    ops.Caller    // 没有权限
+	manager   ops.Caller    // 有门店设置权限
+	viewer    ops.Caller    // 已登录，没有任何权限
 }
 
 func setup(t *testing.T) env {
@@ -35,10 +34,14 @@ func setup(t *testing.T) env {
 	pool := dbtest.NewPool(t)
 	tenant, store := dbtest.NewTenant(t, pool, "本店")
 	caller := func(perms ...ops.Permission) ops.Caller {
-		return ops.Caller{TenantID: tenant, StoreID: store, StaffID: uuid.New(), Permissions: perms}
+		m := map[ops.Permission]ops.Grant{}
+		for _, p := range perms {
+			m[p] = ops.Grant{}
+		}
+		return ops.Caller{TenantID: tenant, StoreID: store, StaffID: uuid.New(), Permissions: m}
 	}
 	return env{
-		app:    optest.New(pool),
+		app:    optest.New(t, pool),
 		tenant: tenant,
 		store:  store,
 		db:     pool,
@@ -54,9 +57,8 @@ func setup(t *testing.T) env {
 			}
 			return name
 		},
-		manager: caller(stores.PermView, stores.PermManage),
-		viewer:  caller(stores.PermView),
-		nobody:  caller(),
+		manager: caller(perm.SettingsManage),
+		viewer:  caller(),
 	}
 }
 
@@ -80,8 +82,7 @@ func TestPermissionDeniedOnBothChannels(t *testing.T) {
 		op     string
 		args   any
 	}{
-		{"read without store.view", e.nobody, "get_store", map[string]any{}},
-		{"write without store.manage", e.viewer, "rename_store", map[string]any{"name": "新名字"}},
+		{"write without settings.manage", e.viewer, "rename_store", map[string]any{"name": "新名字"}},
 	}
 	for _, ch := range e.app.Channels() {
 		for _, c := range cases {
@@ -177,8 +178,8 @@ func TestOperationsAppearInOpenAPI(t *testing.T) {
 	e := setup(t)
 	paths := openAPI(t, e.app)["paths"].(map[string]any)
 	want := map[string][2]string{
-		"get_store":    {"store.view", "direct"},
-		"rename_store": {"store.manage", "draft"},
+		"get_store":    {"logged_in", "direct"},
+		"rename_store": {"settings.manage", "draft"},
 	}
 	for name, w := range want {
 		item, ok := paths[ops.PathPrefix+name].(map[string]any)
@@ -227,13 +228,12 @@ func TestToolsFollowCallerPermissions(t *testing.T) {
 		}
 		return m
 	}
-	if got := names(e.nobody); len(got) != 0 {
-		t.Errorf("no permissions: tools = %v, want none", got)
+	if got := names(e.viewer); got["rename_store"] {
+		t.Errorf("viewer: tools = %v, want no rename_store", got)
+	} else if _, ok := got["get_store"]; !ok {
+		t.Errorf("viewer: tools = %v, want get_store", got)
 	}
-	if got := names(e.viewer); !reflect.DeepEqual(got, map[string]bool{"get_store": false}) {
-		t.Errorf("viewer: tools = %v, want only get_store", got)
-	}
-	if got := names(e.manager); !reflect.DeepEqual(got, map[string]bool{"get_store": false, "rename_store": true}) {
-		t.Errorf("manager: tools = %v, want get_store and draft rename_store", got)
+	if draft, ok := names(e.manager)["rename_store"]; !ok || !draft {
+		t.Errorf("manager: tools = %v, want draft rename_store", names(e.manager))
 	}
 }

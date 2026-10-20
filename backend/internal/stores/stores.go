@@ -11,11 +11,7 @@ import (
 
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
-)
-
-const (
-	PermView   ops.Permission = "store.view"
-	PermManage ops.Permission = "store.manage"
+	"github.com/wzhlinhai/salon/backend/internal/perm"
 )
 
 // Store 是返回给调用者的门店信息。
@@ -37,7 +33,7 @@ func Register(r *ops.Registry) {
 		Name:       "get_store",
 		Summary:    "查看当前门店的信息",
 		Kind:       ops.Read,
-		Permission: PermView,
+		Permission: ops.LoggedIn,
 		AI:         ops.AIDirect,
 		Handle: func(ctx context.Context, env ops.Env, _ *GetStoreInput) (*Store, error) {
 			return currentStore(ctx, env)
@@ -47,7 +43,7 @@ func Register(r *ops.Registry) {
 		Name:       "rename_store",
 		Summary:    "修改当前门店的名称",
 		Kind:       ops.Write,
-		Permission: PermManage,
+		Permission: perm.SettingsManage,
 		AI:         ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *RenameStoreInput) (*Store, error) {
 			n, err := env.Q.RenameStore(ctx, dbgen.RenameStoreParams{ID: env.Caller.StoreID, Name: in.Name})

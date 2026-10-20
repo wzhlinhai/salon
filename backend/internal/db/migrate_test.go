@@ -10,6 +10,9 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 )
 
+// latest 是最新的迁移版本。
+const latest int64 = 3
+
 func tableExists(t *testing.T, pool *pgxpool.Pool, name string) bool {
 	t.Helper()
 	var ok bool
@@ -37,17 +40,17 @@ func TestMigrationsUpDownUp(t *testing.T) {
 	if err := db.MigrateUp(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
-	if v := version(t, pool); v != 2 {
-		t.Fatalf("version after up = %d, want 2", v)
+	if v := version(t, pool); v != latest {
+		t.Fatalf("version after up = %d, want %d", v, latest)
 	}
-	for _, table := range []string{"tenants", "stores"} {
+	for _, table := range []string{"tenants", "stores", "staff", "roles"} {
 		if !tableExists(t, pool, table) {
 			t.Fatalf("table %s missing after up", table)
 		}
 	}
 
 	// 逐步回滚到 0。
-	for want := int64(1); want >= 0; want-- {
+	for want := latest - 1; want >= 0; want-- {
 		if err := db.MigrateDown(ctx, pool); err != nil {
 			t.Fatal(err)
 		}
@@ -55,7 +58,7 @@ func TestMigrationsUpDownUp(t *testing.T) {
 			t.Fatalf("version after down = %d, want %d", v, want)
 		}
 	}
-	for _, table := range []string{"tenants", "stores"} {
+	for _, table := range []string{"tenants", "stores", "staff", "roles"} {
 		if tableExists(t, pool, table) {
 			t.Fatalf("table %s still exists after rollback", table)
 		}
@@ -65,8 +68,8 @@ func TestMigrationsUpDownUp(t *testing.T) {
 	if err := db.MigrateUp(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
-	if v := version(t, pool); v != 2 {
-		t.Fatalf("version after re-up = %d, want 2", v)
+	if v := version(t, pool); v != latest {
+		t.Fatalf("version after re-up = %d, want %d", v, latest)
 	}
 }
 
