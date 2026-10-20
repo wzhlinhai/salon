@@ -235,3 +235,50 @@ func TestTenantContextDoesNotLeakAcrossTransactions(t *testing.T) {
 		t.Fatalf("after transaction: role = %q, app.tenant_id = %q; want both reset", role, tenant)
 	}
 }
+
+// 带门店字段的业务表（以员工表为例）同样按租户隔离；
+// 复合外键 (tenant_id, store_id) 保证不能把记录挂到别的租户的门店下。
+func TestBusinessTableIsTenantIsolated(t *testing.T) {
+	f := newFixture(t)
+	var staffB uuid.UUID
+	if err := inTenant(t, f, f.tenantB, func(ctx context.Context, q *dbgen.Queries) error {
+		st, err := q.CreateStaff(ctx, dbgen.CreateStaffParams{TenantID: f.tenantB, StoreID: f.storeB, Name: "B 的员工", Number: "001"})
+		staffB = st.ID
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	err := inTenant(t, f, f.tenantA, func(ctx context.Context, q *dbgen.Queries) error {
+		if _, err := q.GetStaff(ctx, staffB); !errors.Is(err, pgx.ErrNoRows) {
+			t.Errorf("read tenant B staff: err = %v, want no rows", err)
+		}
+		if list, err := q.ListStaff(ctx, f.storeB); err != nil || len(list) != 0 {
+			t.Errorf("list tenant B store staff: %d rows, err %v; want none", len(list), err)
+		}
+		if _, err := q.UpdateStaffProfile(ctx, dbgen.UpdateStaffProfileParams{ID: staffB, Name: "被改名", Number: "001"}); !errors.Is(err, pgx.ErrNoRows) {
+			t.Errorf("update tenant B staff: err = %v, want no rows", err)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = inTenant(t, f, f.tenantA, func(ctx context.Context, q *dbgen.Queries) error {
+		_, err := q.CreateStaff(ctx, dbgen.CreateStaffParams{TenantID: f.tenantB, StoreID: f.storeB, Name: "越权", Number: "002"})
+		return err
+	})
+	if !isRLSViolation(err) {
+		t.Fatalf("insert staff into tenant B: err = %v, want row-level security violation", err)
+	}
+
+	err = inTenant(t, f, f.tenantA, func(ctx context.Context, q *dbgen.Queries) error {
+		_, err := q.CreateStaff(ctx, dbgen.CreateStaffParams{TenantID: f.tenantA, StoreID: f.storeB, Name: "挂错门店", Number: "003"})
+		return err
+	})
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23503" {
+		t.Fatalf("insert tenant A staff under tenant B store: err = %v, want foreign key violation", err)
+	}
+}

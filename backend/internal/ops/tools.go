@@ -16,7 +16,7 @@ type Tool struct {
 	Description string
 	// Parameters 是参数的 JSON Schema，取自同一操作 HTTP 请求体的 OpenAPI schema，引用已展开。
 	Parameters map[string]any
-	// Draft 为 true 时，调用只产生草稿，由人确认后执行。
+	// Draft 为 true 时是写操作，AI 只能起草，由人确认后执行（ADR-0004）。草稿实现前调用会被拒绝。
 	Draft bool
 }
 
@@ -34,7 +34,8 @@ func (r *Registry) Tools(caller Caller) []Tool {
 		}
 		desc := e.summary
 		if e.ai == AIDraft {
-			desc += "（调用后生成草稿，由有权限的人确认后才执行）"
+			// 草稿（P0-29）实现前，调用会被拒绝。如实告诉模型，让它请员工到页面上操作。
+			desc += "（这是写操作，目前还不能由 AI 执行：调用会被拒绝，请让员工在页面上完成）"
 		}
 		tools = append(tools, Tool{
 			Name:        e.name,

@@ -35,7 +35,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 
-const usage = "usage: salon serve | salon openapi | salon migrate up|down|status | salon bootstrap -tenant ... -store ... -owner-name ... -owner-number ... -owner-account ..."
+const usage = "usage: salon serve | salon openapi | salon migrate up|down|status | salon bootstrap -tenant <名称> -store <名称> -owner-name <姓名> -owner-number <编号> -owner-account <账号>"
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

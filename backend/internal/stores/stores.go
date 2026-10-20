@@ -21,8 +21,10 @@ type Store struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// GetStoreInput 是 get_store 的参数（无）。
 type GetStoreInput struct{}
 
+// RenameStoreInput 是 rename_store 的参数。
 type RenameStoreInput struct {
 	Name string `json:"name" minLength:"1" maxLength:"100" doc:"新的门店名称"`
 }
@@ -46,12 +48,9 @@ func Register(r *ops.Registry) {
 		Permission: perm.SettingsManage,
 		AI:         ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *RenameStoreInput) (*Store, error) {
-			n, err := env.Q.RenameStore(ctx, dbgen.RenameStoreParams{ID: env.Caller.StoreID, Name: in.Name})
-			if err != nil {
+			// 门店不存在时改动 0 行，随后 currentStore 返回 ErrNotFound。
+			if _, err := env.Q.RenameStore(ctx, dbgen.RenameStoreParams{ID: env.Caller.StoreID, Name: in.Name}); err != nil {
 				return nil, err
-			}
-			if n == 0 {
-				return nil, ops.ErrNotFound
 			}
 			return currentStore(ctx, env)
 		},

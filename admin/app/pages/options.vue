@@ -3,7 +3,7 @@ import type { components } from '~/utils/api'
 
 definePageMeta({ permission: 'staff.manage' })
 
-type Option = components['schemas']['Option']
+type LevelOrPosition = components['schemas']['Level'] | components['schemas']['Position']
 const api = useApi()
 const toast = useToast()
 
@@ -12,7 +12,7 @@ const kinds = [
   { key: 'position', title: '岗位', hint: '例如大工、助理，用于计算提成', list: '/api/ops/list_positions', create: '/api/ops/create_position', update: '/api/ops/update_position' }
 ] as const
 
-const items = reactive<Record<string, Option[]>>({ level: [], position: [] })
+const items = reactive<Record<string, LevelOrPosition[]>>({ level: [], position: [] })
 const draft = reactive<Record<string, string>>({ level: '', position: '' })
 
 async function load() {
@@ -34,7 +34,7 @@ async function add(k: typeof kinds[number]) {
   report(error, data)
 }
 
-async function save(k: typeof kinds[number], o: Option) {
+async function save(k: typeof kinds[number], o: LevelOrPosition) {
   const { data, error } = await api.POST(k.update, { body: { id: o.id, name: o.name, active: o.active } })
   report(error, data)
 }

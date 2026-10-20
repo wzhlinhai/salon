@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - name: go vet
+        run: go vet ./...
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+          working-directory: backend
+      - name: sqlc generated code is up to date
+        run: go tool sqlc diff
+      - name: go test
+        run: go test ./...
+
+  admin:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+      - run: npm ci
+      - name: API types are up to date
+        run: |
+          npm run generate:api
+          git diff --exit-code -- app/utils/api.d.ts || {
+            echo "app/utils/api.d.ts is stale: run 'npm run generate:api' in admin/ and commit it"; exit 1; }
+      - run: npm run typecheck
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: [backend, admin]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+      - run: npm ci
+        working-directory: admin
+      - run: npx playwright install --with-deps chromium
+        working-directory: admin
+      - run: scripts/dev.sh up
+        env:
+          # CI 上 nuxt dev 首次编译较慢。
+          DEV_WAIT_SECONDS: 180
+      - run: npm run e2e
+        working-directory: admin
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-results
+          path: |
+            admin/test-results
+            .dev/*.log

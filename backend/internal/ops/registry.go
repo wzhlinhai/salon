@@ -146,25 +146,36 @@ func (r *Registry) Permissions() []Permission {
 	return out
 }
 
-func httpError(err error) error {
-	var v huma.StatusError
+// StatusOf 把操作返回的错误对应到 HTTP 状态码。HTTP 接口按它返回；AI 路径的测试也按它比较两条路径的结果。
+func StatusOf(err error) int {
+	var toolErr *ToolError
 	var rule *RuleError
 	switch {
-	case errors.As(err, &v):
-		return v
-	case errors.As(err, &rule):
-		return huma.Error409Conflict(rule.Message)
+	case errors.As(err, &toolErr):
+		return http.StatusUnprocessableEntity
+	case errors.As(err, &rule), errors.Is(err, ErrDraftRequired):
+		return http.StatusConflict
 	case errors.Is(err, ErrUnauthenticated):
-		return huma.Error401Unauthorized(err.Error())
+		return http.StatusUnauthorized
 	case errors.Is(err, ErrForbidden):
-		return huma.Error403Forbidden(err.Error())
+		return http.StatusForbidden
 	case errors.Is(err, ErrNotFound), errors.Is(err, ErrUnknownOperation):
-		return huma.Error404NotFound(err.Error())
-	case errors.Is(err, ErrDraftRequired):
-		return huma.Error409Conflict(err.Error())
+		return http.StatusNotFound
 	}
-	slog.Error("operation failed", "err", err)
-	return huma.Error500InternalServerError("internal error")
+	return http.StatusInternalServerError
+}
+
+func httpError(err error) error {
+	var v huma.StatusError
+	if errors.As(err, &v) {
+		return v
+	}
+	status := StatusOf(err)
+	if status == http.StatusInternalServerError {
+		slog.Error("operation failed", "err", err)
+		return huma.Error500InternalServerError("internal error")
+	}
+	return huma.NewError(status, err.Error())
 }
 
 func aiModeName(m AIMode) string {

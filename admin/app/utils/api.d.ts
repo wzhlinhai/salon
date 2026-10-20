@@ -420,7 +420,10 @@ export interface components {
             new_password: string;
             old_password: string;
         };
-        CreateOptionInput: {
+        CreateLevelInput: {
+            name: string;
+        };
+        CreatePositionInput: {
             name: string;
         };
         CreateRoleInput: {
@@ -503,6 +506,14 @@ export interface components {
              */
             window_days?: number;
         };
+        Level: {
+            active: boolean;
+            id: string;
+            name: string;
+        };
+        LevelList: {
+            items: components["schemas"]["Level"][];
+        };
         ListInput: Record<string, never>;
         ListStaffInput: Record<string, never>;
         LoginInputBody: {
@@ -522,16 +533,16 @@ export interface components {
         OK: {
             ok: boolean;
         };
-        Option: {
+        PermissionList: {
+            permissions: components["schemas"]["Def"][];
+        };
+        Position: {
             active: boolean;
             id: string;
             name: string;
         };
-        OptionList: {
-            items: components["schemas"]["Option"][];
-        };
-        PermissionList: {
-            permissions: components["schemas"]["Def"][];
+        PositionList: {
+            items: components["schemas"]["Position"][];
         };
         Ref: {
             id: string;
@@ -605,7 +616,12 @@ export interface components {
             /** @description 门店名称 */
             name: string;
         };
-        UpdateOptionInput: {
+        UpdateLevelInput: {
+            active: boolean;
+            id: string;
+            name: string;
+        };
+        UpdatePositionInput: {
             active: boolean;
             id: string;
             name: string;
@@ -712,7 +728,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateOptionInput"];
+                "application/json": components["schemas"]["CreateLevelInput"];
             };
         };
         responses: {
@@ -722,7 +738,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Option"];
+                    "application/json": components["schemas"]["Level"];
                 };
             };
             /** @description Error */
@@ -745,7 +761,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateOptionInput"];
+                "application/json": components["schemas"]["CreatePositionInput"];
             };
         };
         responses: {
@@ -755,7 +771,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Option"];
+                    "application/json": components["schemas"]["Position"];
                 };
             };
             /** @description Error */
@@ -986,7 +1002,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OptionList"];
+                    "application/json": components["schemas"]["LevelList"];
                 };
             };
             /** @description Error */
@@ -1052,7 +1068,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OptionList"];
+                    "application/json": components["schemas"]["PositionList"];
                 };
             };
             /** @description Error */
@@ -1306,7 +1322,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UpdateOptionInput"];
+                "application/json": components["schemas"]["UpdateLevelInput"];
             };
         };
         responses: {
@@ -1316,7 +1332,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Option"];
+                    "application/json": components["schemas"]["Level"];
                 };
             };
             /** @description Error */
@@ -1339,7 +1355,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UpdateOptionInput"];
+                "application/json": components["schemas"]["UpdatePositionInput"];
             };
         };
         responses: {
@@ -1349,7 +1365,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Option"];
+                    "application/json": components["schemas"]["Position"];
                 };
             };
             /** @description Error */

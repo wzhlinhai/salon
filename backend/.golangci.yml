@@ -1,0 +1,3 @@
+version: "2"
+# 默认的 linter：errcheck、govet、ineffassign、staticcheck、unused。
+# 忽略错误时写成 `_ = x.Close()`，让读者看到这是有意的。
