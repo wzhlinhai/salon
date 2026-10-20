@@ -294,7 +294,7 @@ func TestConcurrentOwnerRemovalKeepsOneOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	for _, q := range []string{"SET LOCAL ROLE salon_app", "SELECT set_config('app.tenant_id', '" + s.res.TenantID.String() + "', true)"} {
 		if _, err := tx.Exec(ctx, q); err != nil {
 			t.Fatal(err)

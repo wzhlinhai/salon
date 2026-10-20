@@ -15,7 +15,8 @@ import (
 //go:embed migrations/*.sql
 var migrations embed.FS
 
-func newProvider(pool *pgxpool.Pool) (*goose.Provider, func() error, error) {
+// newProvider 返回迁移 provider 和关闭它所用连接的函数。关闭失败不影响迁移结果，因此忽略。
+func newProvider(pool *pgxpool.Pool) (*goose.Provider, func(), error) {
 	dir, err := fs.Sub(migrations, "migrations")
 	if err != nil {
 		return nil, nil, err
@@ -24,10 +25,10 @@ func newProvider(pool *pgxpool.Pool) (*goose.Provider, func() error, error) {
 	p, err := goose.NewProvider(goose.DialectPostgres, sqlDB, dir,
 		goose.WithDisableGlobalRegistry(true))
 	if err != nil {
-		sqlDB.Close()
+		_ = sqlDB.Close()
 		return nil, nil, fmt.Errorf("create migration provider: %w", err)
 	}
-	return p, sqlDB.Close, nil
+	return p, func() { _ = sqlDB.Close() }, nil
 }
 
 // MigrateUp 执行全部未执行的迁移。

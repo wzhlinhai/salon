@@ -21,7 +21,6 @@ import (
 
 type env struct {
 	app       *optest.App
-	tenant    uuid.UUID
 	store     uuid.UUID
 	db        *pgxpool.Pool
 	storeName func() string // 读取当前门店名称
@@ -41,10 +40,9 @@ func setup(t *testing.T) env {
 		return ops.Caller{TenantID: tenant, StoreID: store, StaffID: uuid.New(), Permissions: m}
 	}
 	return env{
-		app:    optest.New(t, pool),
-		tenant: tenant,
-		store:  store,
-		db:     pool,
+		app:   optest.New(t, pool),
+		store: store,
+		db:    pool,
 		storeName: func() string {
 			var name string
 			err := db.InTenant(context.Background(), pool, tenant, func(q *dbgen.Queries) error {
@@ -157,6 +155,15 @@ func TestOtherTenantsStoreIsNotFound(t *testing.T) {
 				t.Fatalf("got %d %v %v, want 404", r.Status, r.Body, r.Err)
 			}
 		})
+	}
+}
+
+func TestRenameMissingStoreIsNotFound(t *testing.T) {
+	e := setup(t)
+	missing := e.manager
+	missing.StoreID = uuid.New()
+	if r := e.app.HTTP(t, &missing, "rename_store", map[string]any{"name": "新名字"}); r.Status != http.StatusNotFound {
+		t.Fatalf("got %d %v, want 404", r.Status, r.Body)
 	}
 }
 

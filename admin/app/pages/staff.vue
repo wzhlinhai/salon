@@ -9,8 +9,8 @@ const toast = useToast()
 
 const staff = ref<Staff[]>([])
 const roles = ref<components['schemas']['RoleOption'][]>([])
-const levels = ref<components['schemas']['Option'][]>([])
-const positions = ref<components['schemas']['Option'][]>([])
+const levels = ref<components['schemas']['Level'][]>([])
+const positions = ref<components['schemas']['Position'][]>([])
 
 const NONE = 'none'
 
@@ -29,7 +29,7 @@ async function load() {
 onMounted(load)
 
 const roleItems = computed(() => roles.value.map(r => ({ label: r.name, value: r.id })))
-const optionItems = (list: components['schemas']['Option'][]) => [
+const optionItems = (list: (components['schemas']['Level'] | components['schemas']['Position'])[]) => [
   { label: '不设', value: NONE },
   ...list.filter(o => o.active).map(o => ({ label: o.name, value: o.id }))
 ]

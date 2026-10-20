@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -144,28 +143,13 @@ func (a *App) AI(t testing.TB, caller ops.Caller, op string, args any) Result {
 	}
 	out, err := a.Registry.CallTool(context.Background(), caller, op, raw)
 	if err != nil {
-		return Result{Status: statusOf(err), Err: err}
+		return Result{Status: ops.StatusOf(err), Err: err}
 	}
 	var m map[string]any
 	if err := json.Unmarshal(out, &m); err != nil {
 		t.Fatal(err)
 	}
 	return Result{Status: http.StatusOK, Body: m}
-}
-
-func statusOf(err error) int {
-	var te *ops.ToolError
-	switch {
-	case errors.As(err, &te):
-		return http.StatusUnprocessableEntity
-	case errors.Is(err, ops.ErrForbidden):
-		return http.StatusForbidden
-	case errors.Is(err, ops.ErrNotFound), errors.Is(err, ops.ErrUnknownOperation):
-		return http.StatusNotFound
-	case errors.Is(err, ops.ErrDraftRequired), errors.As(err, new(*ops.RuleError)):
-		return http.StatusConflict
-	}
-	return http.StatusInternalServerError
 }
 
 // Channel 是一条调用路径，供表格测试对两条路径跑同一组用例。
