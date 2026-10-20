@@ -50,7 +50,34 @@ type SetStaffRolesInput struct {
 	RoleIDs []uuid.UUID `json:"role_ids" doc:"员工的全部角色；权限取各角色的并集"`
 }
 
+// StaffOption 是供选择负责人的员工名称及在职状态。
+type StaffOption struct {
+	ID     uuid.UUID `json:"id"`
+	Name   string    `json:"name"`
+	Active bool      `json:"active"`
+}
+
+// StaffOptionList 是本店员工的选择列表，在职员工在前。
+type StaffOptionList struct {
+	Staff []StaffOption `json:"staff"`
+}
+
 func registerStaff(r *ops.Registry) {
+	ops.Register(r, ops.Operation[ListStaffInput, StaffOptionList]{
+		Name: "list_staff_options", Summary: "列出本店员工名称和在职状态，用于选择负责人", Kind: ops.Read,
+		Permission: ops.LoggedIn, AI: ops.AIDirect,
+		Handle: func(ctx context.Context, env ops.Env, _ *ListStaffInput) (*StaffOptionList, error) {
+			rows, err := env.Q.ListStaff(ctx, env.Caller.StoreID)
+			if err != nil {
+				return nil, err
+			}
+			out := &StaffOptionList{Staff: make([]StaffOption, 0, len(rows))}
+			for _, row := range rows {
+				out.Staff = append(out.Staff, StaffOption{ID: row.ID, Name: row.Name, Active: row.Active})
+			}
+			return out, nil
+		},
+	})
 	ops.Register(r, ops.Operation[ListStaffInput, StaffList]{
 		Name: "list_staff", Summary: "列出本店员工，包括已停用的", Kind: ops.Read,
 		Permission: perm.StaffManage, AI: ops.AIDirect,

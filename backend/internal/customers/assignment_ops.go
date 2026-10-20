@@ -102,6 +102,13 @@ func registerAssignments(r *ops.Registry) {
 				if err := save(ctx, env, row); err != nil {
 					return nil, err
 				}
+				after, err := view(ctx, env, row)
+				if err != nil {
+					return nil, err
+				}
+				if err := audit.Record(ctx, env, "hand_over_customers", row.ID, c, after); err != nil {
+					return nil, err
+				}
 				out.CustomerIDs = append(out.CustomerIDs, row.ID)
 			}
 			if err := audit.Record(ctx, env, "hand_over_customers", in.FromStaffID, before, out); err != nil {

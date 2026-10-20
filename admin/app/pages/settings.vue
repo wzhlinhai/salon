@@ -62,6 +62,41 @@ async function save(reset: boolean) {
     toast.add({ title: errorText(error), color: 'error' })
   }
 }
+
+// 顾客来源
+const sources = ref<components['schemas']['CustomerSource'][]>([])
+const sourceName = ref('')
+
+async function loadSources() {
+  const { data, error } = await api.POST('/api/ops/list_customer_sources', { body: {} })
+  if (data) {
+    sources.value = data.items
+  } else {
+    toast.add({ title: errorText(error), color: 'error' })
+  }
+}
+
+async function addSource() {
+  const { data, error } = await api.POST('/api/ops/create_customer_source', {
+    body: { name: sourceName.value }
+  })
+  if (data) {
+    sourceName.value = ''
+  } else {
+    toast.add({ title: errorText(error), color: 'error' })
+  }
+  loadSources()
+}
+
+async function saveSource(source: components['schemas']['CustomerSource']) {
+  const { data, error } = await api.POST('/api/ops/update_customer_source', { body: source })
+  if (!data) {
+    toast.add({ title: errorText(error), color: 'error' })
+  }
+  loadSources()
+}
+
+onMounted(loadSources)
 </script>
 
 <template>
@@ -87,6 +122,28 @@ async function save(reset: boolean) {
           </div>
         </div>
         <UButton v-if="can('settings.manage')" variant="outline" @click="openEditor(s)">修改</UButton>
+      </div>
+    </UCard>
+
+    <UCard data-setting="customer_sources">
+      <template #header>
+        <div class="font-medium">顾客来源</div>
+      </template>
+      <div class="space-y-2">
+        <div v-for="source in sources" :key="source.id" class="flex items-center gap-2">
+          <template v-if="can('settings.manage')">
+            <UInput v-model="source.name" :aria-label="`顾客来源 ${source.name}`" class="flex-1" @change="saveSource(source)" />
+            <USwitch v-model="source.active" :label="source.active ? '启用' : '停用'" @update:model-value="saveSource(source)" />
+          </template>
+          <template v-else>
+            <span>{{ source.name }}</span>
+            <UBadge :color="source.active ? 'success' : 'neutral'" variant="subtle">{{ source.active ? '启用' : '停用' }}</UBadge>
+          </template>
+        </div>
+        <form v-if="can('settings.manage')" class="flex gap-2 pt-2" @submit.prevent="addSource">
+          <UInput v-model="sourceName" aria-label="新顾客来源" placeholder="新顾客来源" class="flex-1" />
+          <UButton type="submit" icon="i-lucide-plus">添加</UButton>
+        </form>
       </div>
     </UCard>
 

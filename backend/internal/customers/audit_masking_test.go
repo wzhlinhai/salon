@@ -51,7 +51,7 @@ func TestAuditLogMasksNestedPhones(t *testing.T) {
 				foundHandover, foundNested := false, false
 				for _, entry := range r.Body["entries"].([]any) {
 					e := entry.(map[string]any)
-					if e["action"] == "hand_over_customers" {
+					if e["action"] == "hand_over_customers" && e["target_id"] == from.String() {
 						foundHandover = true
 						phone := e["before"].([]any)[0].(map[string]any)["phone"]
 						want := "138****1234"
