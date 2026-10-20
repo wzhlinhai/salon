@@ -6,6 +6,9 @@ RETURNING *;
 -- name: GetStaff :one
 SELECT * FROM staff WHERE id = $1;
 
+-- name: LockStaff :one
+SELECT * FROM staff WHERE id = $1 FOR UPDATE;
+
 -- name: ListStaff :many
 SELECT * FROM staff WHERE store_id = $1 ORDER BY active DESC, number, id;
 

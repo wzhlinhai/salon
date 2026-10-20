@@ -5,6 +5,9 @@ RETURNING *;
 -- name: GetRole :one
 SELECT * FROM roles WHERE id = $1;
 
+-- name: LockRole :one
+SELECT id FROM roles WHERE id = $1 AND store_id = $2 FOR UPDATE;
+
 -- name: ListRoles :many
 SELECT * FROM roles WHERE store_id = $1 ORDER BY is_owner DESC, created_at, id;
 
@@ -45,3 +48,8 @@ SELECT count(*) FROM staff s
 JOIN staff_roles sr ON sr.staff_id = s.id
 JOIN roles r ON r.id = sr.role_id
 WHERE r.store_id = $1 AND r.is_owner AND s.active;
+
+-- name: ListRoleHolders :many
+SELECT s.id, s.name FROM staff s JOIN staff_roles sr ON sr.staff_id = s.id
+WHERE sr.store_id = $1 AND sr.role_id = $2
+ORDER BY s.id;

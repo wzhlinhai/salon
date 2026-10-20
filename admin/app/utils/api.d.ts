@@ -208,6 +208,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_audit_log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看员工与角色的修改记录：谁、何时、改了什么、改前改后 */
+        post: operations["list_audit_log"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_levels": {
         parameters: {
             query?: never;
@@ -467,6 +484,10 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        Actor: {
+            id: string;
+            name: string;
+        };
         ChangeMyPasswordInput: {
             new_password: string;
             old_password: string;
@@ -510,6 +531,16 @@ export interface components {
             name: string;
             scoped: boolean;
             windowed: boolean;
+        };
+        Entry: {
+            action: string;
+            actor: components["schemas"]["Actor"];
+            after: unknown;
+            /** Format: date-time */
+            at: string;
+            before: unknown;
+            id: string;
+            target_id: string;
         };
         ErrorDetail: {
             /** @description Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
@@ -583,12 +614,19 @@ export interface components {
         LevelList: {
             items: components["schemas"]["Level"][];
         };
+        ListAuditLogInput: {
+            /** @description 只看这个角色或员工的修改，不填为全部 */
+            target_id?: string;
+        };
         ListInput: Record<string, never>;
         ListSettingChangesInput: {
             /** @description 只看这一项设置的修改，不填为全部 */
             key?: string;
         };
         ListStaffInput: Record<string, never>;
+        LogList: {
+            entries: components["schemas"]["Entry"][];
+        };
         LoginInputBody: {
             account: string;
             password: string;
@@ -1165,6 +1203,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Store"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_audit_log: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListAuditLogInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogList"];
                 };
             };
             /** @description Error */

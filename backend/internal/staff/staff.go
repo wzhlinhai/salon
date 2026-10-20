@@ -184,6 +184,15 @@ func getStaffRow(ctx context.Context, env ops.Env, id uuid.UUID) (dbgen.Staff, e
 	return st, err
 }
 
+// lockStaffRow 让改前快照与修改串行，日志的改前才接得上前一次的改后。
+func lockStaffRow(ctx context.Context, env ops.Env, id uuid.UUID) (dbgen.Staff, error) {
+	st, err := env.Q.LockStaff(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && st.StoreID != env.Caller.StoreID) {
+		return dbgen.Staff{}, ops.ErrNotFound
+	}
+	return st, err
+}
+
 // uniqueViolation 把唯一约束冲突转成面向人的业务错误。
 func uniqueViolation(err error) error {
 	var pgErr *pgconn.PgError

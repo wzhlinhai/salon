@@ -2,10 +2,13 @@ package staff
 
 import (
 	"context"
+	"errors"
 	"sort"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
+	"github.com/wzhlinhai/salon/backend/internal/audit"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
@@ -106,13 +109,27 @@ func registerRoles(r *ops.Registry) {
 			if err := writeGrants(ctx, env, row.ID, grants); err != nil {
 				return nil, err
 			}
-			return roleByID(ctx, env, row.ID)
+			after, err := roleByID(ctx, env, row.ID)
+			if err != nil {
+				return nil, err
+			}
+			if err := audit.Record(ctx, env, "create_role", row.ID, nil, after); err != nil {
+				return nil, err
+			}
+			return after, nil
 		},
 	})
 	ops.Register(r, ops.Operation[UpdateRoleInput, Role]{
 		Name: "update_role", Summary: "修改角色的名称和权限", Kind: ops.Write,
 		Permission: perm.RoleManage, AI: ops.AINone,
 		Handle: func(ctx context.Context, env ops.Env, in *UpdateRoleInput) (*Role, error) {
+			// 改前快照与修改串行，日志的改前才接得上前一次的改后。
+			if _, err := env.Q.LockRole(ctx, dbgen.LockRoleParams{ID: in.RoleID, StoreID: env.Caller.StoreID}); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return nil, ops.ErrNotFound
+				}
+				return nil, err
+			}
 			info, err := editableRole(ctx, env, in.RoleID)
 			if err != nil {
 				return nil, err
@@ -130,18 +147,50 @@ func registerRoles(r *ops.Registry) {
 			if err := writeGrants(ctx, env, info.row.ID, grants); err != nil {
 				return nil, err
 			}
-			return roleByID(ctx, env, info.row.ID)
+			after, err := roleByID(ctx, env, info.row.ID)
+			if err != nil {
+				return nil, err
+			}
+			if err := audit.Record(ctx, env, "update_role", info.row.ID, roleView(info), after); err != nil {
+				return nil, err
+			}
+			return after, nil
 		},
 	})
 	ops.Register(r, ops.Operation[RoleIDInput, OK]{
 		Name: "delete_role", Summary: "删除角色；拥有该角色的员工失去这个角色", Kind: ops.Write,
 		Permission: perm.RoleManage, AI: ops.AINone,
 		Handle: func(ctx context.Context, env ops.Env, in *RoleIDInput) (*OK, error) {
+			// 改前快照与修改串行，日志的改前才接得上前一次的改后。
+			if _, err := env.Q.LockRole(ctx, dbgen.LockRoleParams{ID: in.RoleID, StoreID: env.Caller.StoreID}); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return nil, ops.ErrNotFound
+				}
+				return nil, err
+			}
 			info, err := editableRole(ctx, env, in.RoleID)
 			if err != nil {
 				return nil, err
 			}
-			if _, err := env.Q.DeleteRole(ctx, info.row.ID); err != nil {
+			rows, err := env.Q.ListRoleHolders(ctx, dbgen.ListRoleHoldersParams{StoreID: env.Caller.StoreID, RoleID: info.row.ID})
+			if err != nil {
+				return nil, err
+			}
+			before := struct {
+				Role    Role  `json:"role"`
+				Holders []Ref `json:"holders"`
+			}{Role: roleView(info), Holders: make([]Ref, 0, len(rows))}
+			for _, row := range rows {
+				before.Holders = append(before.Holders, Ref{ID: row.ID, Name: row.Name})
+			}
+			n, err := env.Q.DeleteRole(ctx, info.row.ID)
+			if err != nil {
+				return nil, err
+			}
+			if n == 0 {
+				return nil, ops.ErrNotFound
+			}
+			if err := audit.Record(ctx, env, "delete_role", info.row.ID, before, nil); err != nil {
 				return nil, err
 			}
 			return &OK{OK: true}, nil

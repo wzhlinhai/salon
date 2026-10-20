@@ -9,6 +9,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AuditLog struct {
+	ID       uuid.UUID
+	TenantID uuid.UUID
+	StoreID  uuid.UUID
+	Action   string
+	TargetID uuid.UUID
+	Before   []byte
+	After    []byte
+	ActorID  uuid.UUID
+	At       pgtype.Timestamptz
+}
+
 type Level struct {
 	ID        uuid.UUID
 	TenantID  uuid.UUID
