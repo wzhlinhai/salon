@@ -11,7 +11,7 @@ import (
 )
 
 // latest 是最新的迁移版本。
-const latest int64 = 3
+const latest int64 = 4
 
 func tableExists(t *testing.T, pool *pgxpool.Pool, name string) bool {
 	t.Helper()

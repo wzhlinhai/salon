@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/change_setting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 修改一项门店设置，从指定的营业日开始执行；之前的业务和已下的单不受影响 */
+        post: operations["change_setting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/create_level": {
         parameters: {
             query?: never;
@@ -157,6 +174,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/get_settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看门店设置在某个营业日执行的值、系统默认做法和已安排的修改 */
+        post: operations["get_settings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/get_store": {
         parameters: {
             query?: never;
@@ -253,6 +287,23 @@ export interface paths {
         put?: never;
         /** 列出本店的角色及各自的权限 */
         post: operations["list_roles"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_setting_changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看门店设置的修改记录：谁、何时、改前改后、从哪天生效 */
+        post: operations["list_setting_changes"];
         delete?: never;
         options?: never;
         head?: never;
@@ -420,6 +471,17 @@ export interface components {
             new_password: string;
             old_password: string;
         };
+        ChangeSettingInput: {
+            /**
+             * Format: date
+             * @description 从哪一个营业日开始执行，不能早于今天
+             */
+            effective_from: string;
+            /** @description 设置项，见 get_settings */
+            key: string;
+            /** @description 新的值，形式见 get_settings 的 kind；null 表示恢复系统默认做法 */
+            value: unknown;
+        };
         CreateLevelInput: {
             name: string;
         };
@@ -491,6 +553,13 @@ export interface components {
             type: string;
         };
         GetMeInput: Record<string, never>;
+        GetSettingsInput: {
+            /**
+             * Format: date
+             * @description 查看哪一个营业日执行的设置，不填为今天
+             */
+            date?: string;
+        };
         GetStoreInput: Record<string, never>;
         GrantSpec: {
             /** @description 权限名，见 list_permissions */
@@ -515,6 +584,10 @@ export interface components {
             items: components["schemas"]["Level"][];
         };
         ListInput: Record<string, never>;
+        ListSettingChangesInput: {
+            /** @description 只看这一项设置的修改，不填为全部 */
+            key?: string;
+        };
         ListStaffInput: Record<string, never>;
         LoginInputBody: {
             account: string;
@@ -573,6 +646,13 @@ export interface components {
         RoleOptionList: {
             roles: components["schemas"]["RoleOption"][];
         };
+        ScheduledValue: {
+            /** Format: date */
+            effective_from: string;
+            /** @description 从这一天起恢复系统默认做法 */
+            is_default: boolean;
+            value: unknown;
+        };
         SetStaffLoginInput: {
             /** @description 登录账号，全系统唯一 */
             login_account: string;
@@ -584,6 +664,55 @@ export interface components {
             /** @description 员工的全部角色；权限取各角色的并集 */
             role_ids: string[];
             staff_id: string;
+        };
+        Setting: {
+            /** @description 系统默认做法 */
+            default: unknown;
+            /** Format: date */
+            effective_from?: string;
+            hint: string;
+            /** @description 这一天用的是系统默认做法 */
+            is_default: boolean;
+            key: string;
+            /**
+             * @description 值的形式：time 为 "HH:MM"；time_range 为 {"open": "HH:MM", "close": "HH:MM"}
+             * @enum {string}
+             */
+            kind: "time" | "time_range";
+            label: string;
+            upcoming: components["schemas"]["ScheduledValue"][];
+            /** @description 这一天执行的值 */
+            value: unknown;
+        };
+        SettingChange: {
+            /** Format: date-time */
+            changed_at: string;
+            /** @description 修改人 */
+            changed_by: components["schemas"]["Ref"];
+            /** Format: date */
+            effective_from: string;
+            id: string;
+            /** @description 这次修改是恢复系统默认做法 */
+            is_default: boolean;
+            key: string;
+            label: string;
+            /** @description 修改前用的是系统默认做法 */
+            old_is_default: boolean;
+            /** @description 修改前在生效日期那天执行的值 */
+            old_value: unknown;
+            /** @description 修改后的值 */
+            value: unknown;
+        };
+        SettingChangeList: {
+            changes: components["schemas"]["SettingChange"][];
+        };
+        SettingList: {
+            /**
+             * Format: date
+             * @description 查看的营业日
+             */
+            business_date: string;
+            settings: components["schemas"]["Setting"][];
         };
         Staff: {
             /** @description 是否在职 */
@@ -706,6 +835,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OK"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    change_setting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeSettingInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingChange"];
                 };
             };
             /** @description Error */
@@ -950,6 +1112,39 @@ export interface operations {
             };
         };
     };
+    get_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GetSettingsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     get_store: {
         parameters: {
             query?: never;
@@ -1135,6 +1330,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RoleList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_setting_changes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListSettingChangesInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingChangeList"];
                 };
             };
             /** @description Error */

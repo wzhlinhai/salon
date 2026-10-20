@@ -45,6 +45,29 @@ type RolePermission struct {
 	WindowDays *int32
 }
 
+type SettingChange struct {
+	ID            uuid.UUID
+	TenantID      uuid.UUID
+	StoreID       uuid.UUID
+	Key           string
+	Value         []byte
+	IsDefault     bool
+	OldValue      []byte
+	OldIsDefault  bool
+	EffectiveFrom pgtype.Date
+	ChangedBy     uuid.UUID
+	ChangedAt     pgtype.Timestamptz
+}
+
+type SettingsSnapshot struct {
+	ID        uuid.UUID
+	TenantID  uuid.UUID
+	StoreID   uuid.UUID
+	Rules     []byte
+	Digest    string
+	CreatedAt pgtype.Timestamptz
+}
+
 type Staff struct {
 	ID            uuid.UUID
 	TenantID      uuid.UUID
