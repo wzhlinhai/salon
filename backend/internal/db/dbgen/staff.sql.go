@@ -130,6 +130,30 @@ func (q *Queries) ListStaff(ctx context.Context, storeID uuid.UUID) ([]Staff, er
 	return items, nil
 }
 
+const lockStaff = `-- name: LockStaff :one
+SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at FROM staff WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) LockStaff(ctx context.Context, id uuid.UUID) (Staff, error) {
+	row := q.db.QueryRow(ctx, lockStaff, id)
+	var i Staff
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Name,
+		&i.Number,
+		&i.LevelID,
+		&i.PositionID,
+		&i.LoginAccount,
+		&i.PasswordHash,
+		&i.Active,
+		&i.DeactivatedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const reactivateStaff = `-- name: ReactivateStaff :execrows
 UPDATE staff SET active = true, deactivated_at = NULL WHERE id = $1 AND NOT active
 `

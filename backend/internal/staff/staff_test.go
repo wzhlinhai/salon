@@ -444,6 +444,7 @@ func TestAICannotExecuteStaffAndRoleWrites(t *testing.T) {
 		{"create_staff", map[string]any{"name": "AI", "number": "099", "role_ids": []any{}}, http.StatusConflict},
 		{"update_staff", map[string]any{"staff_id": id, "name": "AI 改名", "number": "002"}, http.StatusConflict},
 		{"deactivate_staff", map[string]any{"staff_id": id}, http.StatusConflict},
+		{"reactivate_staff", map[string]any{"staff_id": id}, http.StatusConflict},
 		{"set_staff_roles", map[string]any{"staff_id": id, "role_ids": []any{s.Role("店长")}}, http.StatusConflict},
 		{"create_level", map[string]any{"name": "AI 级别"}, http.StatusConflict},
 		{"set_staff_login", map[string]any{"staff_id": id, "login_account": "ai-account", "password": "ai-password"}, http.StatusNotFound},
@@ -454,6 +455,7 @@ func TestAICannotExecuteStaffAndRoleWrites(t *testing.T) {
 	}
 	before := s.call(s.Owner, "list_staff", map[string]any{}, http.StatusOK).Body
 	rolesBefore := s.call(s.Owner, "list_roles", map[string]any{}, http.StatusOK).Body
+	auditBefore := s.call(s.Owner, "list_audit_log", map[string]any{}, http.StatusOK).Body
 	for _, c := range cases {
 		if r := s.ai(s.Owner, c.op, c.args); r.Status != c.want {
 			t.Errorf("ai %s = %d (%v), want %d", c.op, r.Status, r.Err, c.want)
@@ -461,7 +463,8 @@ func TestAICannotExecuteStaffAndRoleWrites(t *testing.T) {
 	}
 	after := s.call(s.Owner, "list_staff", map[string]any{}, http.StatusOK).Body
 	rolesAfter := s.call(s.Owner, "list_roles", map[string]any{}, http.StatusOK).Body
-	if !reflect.DeepEqual(before, after) || !reflect.DeepEqual(rolesBefore, rolesAfter) {
+	auditAfter := s.call(s.Owner, "list_audit_log", map[string]any{}, http.StatusOK).Body
+	if !reflect.DeepEqual(before, after) || !reflect.DeepEqual(rolesBefore, rolesAfter) || !reflect.DeepEqual(auditBefore, auditAfter) {
 		t.Fatalf("AI calls changed data")
 	}
 	s.MustLogin("boss", optest.OwnerPassword)

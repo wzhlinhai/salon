@@ -180,6 +180,42 @@ func (q *Queries) ListAllStaffRoles(ctx context.Context, storeID uuid.UUID) ([]L
 	return items, nil
 }
 
+const listRoleHolders = `-- name: ListRoleHolders :many
+SELECT s.id, s.name FROM staff s JOIN staff_roles sr ON sr.staff_id = s.id
+WHERE sr.store_id = $1 AND sr.role_id = $2
+ORDER BY s.id
+`
+
+type ListRoleHoldersParams struct {
+	StoreID uuid.UUID
+	RoleID  uuid.UUID
+}
+
+type ListRoleHoldersRow struct {
+	ID   uuid.UUID
+	Name string
+}
+
+func (q *Queries) ListRoleHolders(ctx context.Context, arg ListRoleHoldersParams) ([]ListRoleHoldersRow, error) {
+	rows, err := q.db.Query(ctx, listRoleHolders, arg.StoreID, arg.RoleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRoleHoldersRow
+	for rows.Next() {
+		var i ListRoleHoldersRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRolePermissions = `-- name: ListRolePermissions :many
 SELECT tenant_id, store_id, role_id, permission, scope, window_days FROM role_permissions WHERE role_id = ANY($1::uuid[]) ORDER BY role_id, permission
 `
@@ -280,6 +316,22 @@ SELECT id FROM roles WHERE store_id = $1 AND is_owner FOR UPDATE
 
 func (q *Queries) LockOwnerRole(ctx context.Context, storeID uuid.UUID) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, lockOwnerRole, storeID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const lockRole = `-- name: LockRole :one
+SELECT id FROM roles WHERE id = $1 AND store_id = $2 FOR UPDATE
+`
+
+type LockRoleParams struct {
+	ID      uuid.UUID
+	StoreID uuid.UUID
+}
+
+func (q *Queries) LockRole(ctx context.Context, arg LockRoleParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockRole, arg.ID, arg.StoreID)
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
