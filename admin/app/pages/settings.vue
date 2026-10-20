@@ -4,7 +4,7 @@ import type { components } from '~/utils/api'
 // 所有员工都能查看设置和系统默认做法；修改需要门店设置权限，以后端检查为准。
 type Setting = components['schemas']['Setting']
 type SettingChange = components['schemas']['SettingChange']
-interface TimeRange { open: string; close: string }
+interface TimeRange { open: string, close: string }
 
 const api = useApi()
 const toast = useToast()
@@ -23,6 +23,7 @@ async function load() {
     changes.value = log.data?.changes ?? []
   }
 }
+
 onMounted(load)
 
 function show(kind: Setting['kind'] | undefined, value: unknown): string {
@@ -32,6 +33,7 @@ function show(kind: Setting['kind'] | undefined, value: unknown): string {
   }
   return String(value)
 }
+
 const kindOf = (key: string) => settings.value.find(s => s.key === key)?.kind
 
 // 编辑中的设置。值按形式分开存，保存时再组装。

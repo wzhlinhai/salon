@@ -6,6 +6,7 @@ Nuxt 4 + Nuxt UI（ADR-0007）。纯前端渲染，所有数据通过后端的�
 npm install
 npm run generate:api   # 从后端生成 OpenAPI 文档和 TypeScript 类型（需要 Go）
 npm run dev            # http://localhost:3000，/api 代理到 127.0.0.1:8080
+npm run lint           # 检查代码格式
 npm run typecheck
 ```
 

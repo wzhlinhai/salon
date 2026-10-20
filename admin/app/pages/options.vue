@@ -21,6 +21,7 @@ async function load() {
     items[k.key] = data?.items ?? []
   }
 }
+
 onMounted(load)
 
 function report(error: unknown, ok: unknown) {
