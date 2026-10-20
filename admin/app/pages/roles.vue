@@ -20,6 +20,7 @@ async function load() {
   roles.value = r.data?.roles ?? []
   catalogue.value = p.data?.permissions ?? []
 }
+
 onMounted(load)
 
 // 自己没有的权限不能授予别人（ADR-0009），在页面上直接禁用；后端同样会拒绝。
@@ -29,7 +30,7 @@ function mine(name: string) {
 
 const label = (name: string) => catalogue.value.find(d => d.name === name)?.label ?? name
 
-interface Row { on: boolean; scope: 'self' | 'store'; days: string }
+interface Row { on: boolean, scope: 'self' | 'store', days: string }
 const open = ref(false)
 const editing = ref<Role | null>(null)
 const name = ref('')

@@ -18,7 +18,7 @@ export async function apiLogin(account: string, password: string): Promise<strin
 export async function api<T = any>(token: string, op: string, body: object): Promise<T> {
   const r = await fetch(`${base}/api/ops/${op}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify(body)
   })
   if (!r.ok) throw new Error(`${op}: ${r.status} ${await r.text()}`)
@@ -26,9 +26,9 @@ export async function api<T = any>(token: string, op: string, body: object): Pro
 }
 
 // 由老板建一名有登录账号的员工。账号带时间戳，测试可以对同一个库反复运行。
-export async function hire(roleName: string): Promise<{ account: string; password: string }> {
+export async function hire(roleName: string): Promise<{ account: string, password: string }> {
   const token = await apiLogin(owner.account, owner.password)
-  const { roles } = await api<{ roles: { id: string; name: string }[] }>(token, 'list_role_options', {})
+  const { roles } = await api<{ roles: { id: string, name: string }[] }>(token, 'list_role_options', {})
   const role = roles.find(r => r.name === roleName)
   if (!role) throw new Error(`no role ${roleName}`)
   const suffix = Date.now().toString(36)

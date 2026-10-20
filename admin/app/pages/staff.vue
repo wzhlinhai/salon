@@ -26,6 +26,7 @@ async function load() {
   levels.value = l.data?.items ?? []
   positions.value = p.data?.items ?? []
 }
+
 onMounted(load)
 
 const roleItems = computed(() => roles.value.map(r => ({ label: r.name, value: r.id })))

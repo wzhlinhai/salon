@@ -52,6 +52,7 @@ jobs:
           npm run generate:api
           git diff --exit-code -- app/utils/api.d.ts || {
             echo "app/utils/api.d.ts is stale: run 'npm run generate:api' in admin/ and commit it"; exit 1; }
+      - run: npm run lint
       - run: npm run typecheck
 
   e2e:

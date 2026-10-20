@@ -42,7 +42,7 @@ export function useApi() {
 // 后端错误的说明文字（RFC 9457 problem details 的 detail 字段）。
 export function errorText(error: unknown): string {
   if (error && typeof error === 'object') {
-    const e = error as { detail?: string; errors?: { message?: string }[] }
+    const e = error as { detail?: string, errors?: { message?: string }[] }
     if (e.errors?.length) return e.errors.map(x => x.message).join('；')
     if (e.detail) return e.detail
   }
