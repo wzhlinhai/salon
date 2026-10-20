@@ -15,6 +15,7 @@ import (
 
 	"github.com/wzhlinhai/salon/backend/internal/auth"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/settings"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
 	"github.com/wzhlinhai/salon/backend/internal/stores"
 )
@@ -60,6 +61,7 @@ func New(pool *pgxpool.Pool, cfg Config) (*echo.Echo, *ops.Registry) {
 	reg := ops.NewRegistry(pool, api)
 	stores.Register(reg)
 	staff.Register(reg)
+	settings.Register(reg)
 	return e, reg
 }
 
