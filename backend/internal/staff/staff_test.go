@@ -3,6 +3,7 @@ package staff_test
 import (
 	"context"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -427,4 +428,105 @@ func TestLevelsAndPositions(t *testing.T) {
 	s.call(s.owner, "create_staff", map[string]any{
 		"name": "小王", "number": "003", "level_id": uuid.New(), "role_ids": []any{},
 	}, http.StatusConflict)
+}
+
+func TestCannotChangeRolesOfStaffWithMorePermissions(t *testing.T) {
+	s := open(t)
+	roles := s.call(s.owner, "list_roles", map[string]any{}, http.StatusOK).Body["roles"].([]any)
+	var managerPerms []any
+	for _, r := range roles {
+		if m := r.(map[string]any); m["name"] == "店长" {
+			managerPerms = m["permissions"].([]any)
+		}
+	}
+	senior := s.call(s.owner, "create_role", map[string]any{"name": "高级店长",
+		"permissions": append(managerPerms, map[string]any{"permission": "role.manage"})}, http.StatusOK)
+	superior, _ := s.hire("赵总", "002", "zhao", uuid.MustParse(senior.Body["id"].(string)))
+	_, manager := s.hire("张店长", "003", "manager", s.role("店长"))
+
+	// 店长能授予"前台"，但对方权限比自己大，不能改对方的角色。
+	s.call(manager, "set_staff_roles", map[string]any{"staff_id": superior, "role_ids": []any{s.role("前台")}}, http.StatusForbidden)
+	s.call(manager, "set_staff_roles", map[string]any{"staff_id": superior,
+		"role_ids": []any{senior.Body["id"], s.role("前台")}}, http.StatusForbidden)
+}
+
+func TestInactiveLevelCannotBeAssignedButCanBeKept(t *testing.T) {
+	s := open(t)
+	lvl := s.call(s.owner, "create_level", map[string]any{"name": "首席"}, http.StatusOK)
+	id := s.call(s.owner, "create_staff", map[string]any{
+		"name": "小李", "number": "002", "level_id": lvl.Body["id"], "role_ids": []any{},
+	}, http.StatusOK).Body["id"]
+	s.call(s.owner, "update_level", map[string]any{"id": lvl.Body["id"], "name": "首席", "active": false}, http.StatusOK)
+
+	// 已有的停用级别可以保留，改别的字段不受影响。
+	s.call(s.owner, "update_staff", map[string]any{"staff_id": id, "name": "小李改名", "number": "002", "level_id": lvl.Body["id"]}, http.StatusOK)
+	// 不能再分配给其他员工。
+	s.call(s.owner, "create_staff", map[string]any{
+		"name": "小王", "number": "003", "level_id": lvl.Body["id"], "role_ids": []any{},
+	}, http.StatusConflict)
+}
+
+func TestRoleListsRequirePermission(t *testing.T) {
+	s := open(t)
+	_, stylist := s.hire("小李", "002", "xiaoli", s.role("发型师"))
+	_, manager := s.hire("张店长", "003", "manager", s.role("店长"))
+	cases := []struct {
+		token, op string
+		want      int
+	}{
+		{stylist, "list_roles", http.StatusForbidden},
+		{stylist, "list_role_options", http.StatusForbidden},
+		{manager, "list_roles", http.StatusForbidden},
+		{manager, "list_role_options", http.StatusOK},
+		{s.owner, "list_roles", http.StatusOK},
+		{s.owner, "list_role_options", http.StatusOK},
+	}
+	for _, c := range cases {
+		if r := s.call(c.token, c.op, map[string]any{}, 0); r.Status != c.want {
+			t.Errorf("%s by token %.8s… = %d, want %d", c.op, c.token, r.Status, c.want)
+		}
+		if r := s.ai(c.token, c.op, map[string]any{}); r.Status != c.want {
+			t.Errorf("ai %s = %d, want %d", c.op, r.Status, c.want)
+		}
+	}
+	opts := s.call(manager, "list_role_options", map[string]any{}, http.StatusOK).Body["roles"].([]any)
+	if _, has := opts[0].(map[string]any)["permissions"]; has {
+		t.Fatalf("list_role_options exposes permissions: %v", opts[0])
+	}
+}
+
+// 员工和角色的写操作在 AI 路径上走不到业务规则：草稿类在草稿功能（P0-29）实现前一律拒绝，
+// 不开放的操作对 AI 不存在。即使发起人是老板也一样，数据不变。
+func TestAICannotExecuteStaffAndRoleWrites(t *testing.T) {
+	s := open(t)
+	id, _ := s.hire("小李", "002", "xiaoli")
+	cases := []struct {
+		op   string
+		args map[string]any
+		want int
+	}{
+		{"create_staff", map[string]any{"name": "AI", "number": "099", "role_ids": []any{}}, http.StatusConflict},
+		{"update_staff", map[string]any{"staff_id": id, "name": "AI 改名", "number": "002"}, http.StatusConflict},
+		{"deactivate_staff", map[string]any{"staff_id": id}, http.StatusConflict},
+		{"set_staff_roles", map[string]any{"staff_id": id, "role_ids": []any{s.role("店长")}}, http.StatusConflict},
+		{"create_level", map[string]any{"name": "AI 级别"}, http.StatusConflict},
+		{"set_staff_login", map[string]any{"staff_id": id, "login_account": "ai-account", "password": "ai-password"}, http.StatusNotFound},
+		{"create_role", map[string]any{"name": "AI 角色", "permissions": []any{}}, http.StatusNotFound},
+		{"update_role", map[string]any{"role_id": s.role("前台"), "name": "AI", "permissions": []any{}}, http.StatusNotFound},
+		{"delete_role", map[string]any{"role_id": s.role("前台")}, http.StatusNotFound},
+		{"change_my_password", map[string]any{"old_password": ownerPassword, "new_password": "ai-password"}, http.StatusNotFound},
+	}
+	before := s.call(s.owner, "list_staff", map[string]any{}, http.StatusOK).Body
+	rolesBefore := s.call(s.owner, "list_roles", map[string]any{}, http.StatusOK).Body
+	for _, c := range cases {
+		if r := s.ai(s.owner, c.op, c.args); r.Status != c.want {
+			t.Errorf("ai %s = %d (%v), want %d", c.op, r.Status, r.Err, c.want)
+		}
+	}
+	after := s.call(s.owner, "list_staff", map[string]any{}, http.StatusOK).Body
+	rolesAfter := s.call(s.owner, "list_roles", map[string]any{}, http.StatusOK).Body
+	if !reflect.DeepEqual(before, after) || !reflect.DeepEqual(rolesBefore, rolesAfter) {
+		t.Fatalf("AI calls changed data")
+	}
+	s.login("boss", ownerPassword)
 }

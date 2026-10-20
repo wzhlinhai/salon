@@ -66,7 +66,7 @@ func registerStaff(r *ops.Registry) {
 		Name: "create_staff", Summary: "新建员工档案", Kind: ops.Write,
 		Permission: perm.StaffManage, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *CreateStaffInput) (*Staff, error) {
-			if err := checkLevelPosition(ctx, env, in.LevelID, in.PositionID); err != nil {
+			if err := checkLevelPosition(ctx, env, in.LevelID, in.PositionID, nil); err != nil {
 				return nil, err
 			}
 			st, err := env.Q.CreateStaff(ctx, dbgen.CreateStaffParams{
@@ -86,16 +86,17 @@ func registerStaff(r *ops.Registry) {
 		Name: "update_staff", Summary: "修改员工的姓名、编号、级别、岗位", Kind: ops.Write,
 		Permission: perm.StaffManage, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *UpdateStaffInput) (*Staff, error) {
-			if _, err := getStaffRow(ctx, env, in.StaffID); err != nil {
+			current, err := getStaffRow(ctx, env, in.StaffID)
+			if err != nil {
 				return nil, err
 			}
 			if err := ensureCanManage(ctx, env, in.StaffID); err != nil {
 				return nil, err
 			}
-			if err := checkLevelPosition(ctx, env, in.LevelID, in.PositionID); err != nil {
+			if err := checkLevelPosition(ctx, env, in.LevelID, in.PositionID, &current); err != nil {
 				return nil, err
 			}
-			_, err := env.Q.UpdateStaffProfile(ctx, dbgen.UpdateStaffProfileParams{
+			_, err = env.Q.UpdateStaffProfile(ctx, dbgen.UpdateStaffProfileParams{
 				ID: in.StaffID, Name: in.Name, Number: in.Number, LevelID: in.LevelID, PositionID: in.PositionID,
 			})
 			if err != nil {
@@ -179,6 +180,9 @@ func registerStaff(r *ops.Registry) {
 			if _, err := getStaffRow(ctx, env, in.StaffID); err != nil {
 				return nil, err
 			}
+			if err := ensureCanManage(ctx, env, in.StaffID); err != nil {
+				return nil, err
+			}
 			if err := lockOwners(ctx, env); err != nil {
 				return nil, err
 			}
@@ -246,23 +250,27 @@ func dedupe(ids []uuid.UUID) []uuid.UUID {
 	return out
 }
 
-func checkLevelPosition(ctx context.Context, env ops.Env, level, position *uuid.UUID) error {
-	if level != nil {
+// checkLevelPosition 检查级别和岗位属于本门店且处于启用状态。员工已有的级别或岗位即使已停用也可以保留。
+func checkLevelPosition(ctx context.Context, env ops.Env, level, position *uuid.UUID, current *dbgen.Staff) error {
+	keeps := func(id *uuid.UUID, cur func(dbgen.Staff) *uuid.UUID) bool {
+		return current != nil && cur(*current) != nil && *cur(*current) == *id
+	}
+	if level != nil && !keeps(level, func(s dbgen.Staff) *uuid.UUID { return s.LevelID }) {
 		levels, err := env.Q.ListLevels(ctx, env.Caller.StoreID)
 		if err != nil {
 			return err
 		}
-		if !slices.ContainsFunc(levels, func(l dbgen.Level) bool { return l.ID == *level }) {
-			return ops.Rule("没有这个级别")
+		if !slices.ContainsFunc(levels, func(l dbgen.Level) bool { return l.ID == *level && l.Active }) {
+			return ops.Rule("没有这个级别，或者它已停用")
 		}
 	}
-	if position != nil {
+	if position != nil && !keeps(position, func(s dbgen.Staff) *uuid.UUID { return s.PositionID }) {
 		positions, err := env.Q.ListPositions(ctx, env.Caller.StoreID)
 		if err != nil {
 			return err
 		}
-		if !slices.ContainsFunc(positions, func(p dbgen.Position) bool { return p.ID == *position }) {
-			return ops.Rule("没有这个岗位")
+		if !slices.ContainsFunc(positions, func(p dbgen.Position) bool { return p.ID == *position && p.Active }) {
+			return ops.Rule("没有这个岗位，或者它已停用")
 		}
 	}
 	return nil

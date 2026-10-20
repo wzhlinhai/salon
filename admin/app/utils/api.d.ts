@@ -225,6 +225,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_role_options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 列出本店的角色名称，用于给员工分配角色 */
+        post: operations["list_role_options"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_roles": {
         parameters: {
             query?: never;
@@ -536,6 +553,14 @@ export interface components {
         };
         RoleList: {
             roles: components["schemas"]["Role"][];
+        };
+        RoleOption: {
+            id: string;
+            is_owner: boolean;
+            name: string;
+        };
+        RoleOptionList: {
+            roles: components["schemas"]["RoleOption"][];
         };
         SetStaffLoginInput: {
             /** @description 登录账号，全系统唯一 */
@@ -1028,6 +1053,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OptionList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_role_options: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleOptionList"];
                 };
             };
             /** @description Error */

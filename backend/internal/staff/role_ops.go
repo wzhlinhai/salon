@@ -19,6 +19,17 @@ type RoleList struct {
 	Roles []Role `json:"roles"`
 }
 
+// RoleOption 是角色的名称，不含权限配置。
+type RoleOption struct {
+	ID      uuid.UUID `json:"id"`
+	Name    string    `json:"name"`
+	IsOwner bool      `json:"is_owner"`
+}
+
+type RoleOptionList struct {
+	Roles []RoleOption `json:"roles"`
+}
+
 type ListInput struct{}
 
 type CreateRoleInput struct {
@@ -44,9 +55,24 @@ func registerRoles(r *ops.Registry) {
 			return &PermissionList{Permissions: perm.Catalogue}, nil
 		},
 	})
+	ops.Register(r, ops.Operation[ListInput, RoleOptionList]{
+		Name: "list_role_options", Summary: "列出本店的角色名称，用于给员工分配角色", Kind: ops.Read,
+		Permission: perm.StaffManage, AI: ops.AIDirect,
+		Handle: func(ctx context.Context, env ops.Env, _ *ListInput) (*RoleOptionList, error) {
+			rows, err := env.Q.ListRoles(ctx, env.Caller.StoreID)
+			if err != nil {
+				return nil, err
+			}
+			out := &RoleOptionList{Roles: make([]RoleOption, 0, len(rows))}
+			for _, row := range rows {
+				out.Roles = append(out.Roles, RoleOption{ID: row.ID, Name: row.Name, IsOwner: row.IsOwner})
+			}
+			return out, nil
+		},
+	})
 	ops.Register(r, ops.Operation[ListInput, RoleList]{
 		Name: "list_roles", Summary: "列出本店的角色及各自的权限", Kind: ops.Read,
-		Permission: ops.LoggedIn, AI: ops.AIDirect,
+		Permission: perm.RoleManage, AI: ops.AIDirect,
 		Handle: func(ctx context.Context, env ops.Env, _ *ListInput) (*RoleList, error) {
 			infos, err := loadRoles(ctx, env, nil)
 			if err != nil {

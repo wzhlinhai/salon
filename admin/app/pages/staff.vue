@@ -8,7 +8,7 @@ const api = useApi()
 const toast = useToast()
 
 const staff = ref<Staff[]>([])
-const roles = ref<components['schemas']['Role'][]>([])
+const roles = ref<components['schemas']['RoleOption'][]>([])
 const levels = ref<components['schemas']['Option'][]>([])
 const positions = ref<components['schemas']['Option'][]>([])
 
@@ -17,7 +17,7 @@ const NONE = 'none'
 async function load() {
   const [s, r, l, p] = await Promise.all([
     api.POST('/api/ops/list_staff', { body: {} }),
-    api.POST('/api/ops/list_roles', { body: {} }),
+    api.POST('/api/ops/list_role_options', { body: {} }),
     api.POST('/api/ops/list_levels', { body: {} }),
     api.POST('/api/ops/list_positions', { body: {} })
   ])
