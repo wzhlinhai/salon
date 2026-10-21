@@ -157,6 +157,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/create_item": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 新建项目，设置标准价、级别价、手工费和项目岗位 */
+        post: operations["create_item"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/create_level": {
         parameters: {
             query?: never;
@@ -378,6 +395,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 列出本店项目及标准价、级别价和项目岗位 */
+        post: operations["list_items"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_levels": {
         parameters: {
             query?: never;
@@ -531,6 +565,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/quote_item_price": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查询指定员工做项目时适用的价格，优先级别价，否则标准价 */
+        post: operations["quote_item_price"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/reactivate_staff": {
         parameters: {
             query?: never;
@@ -667,6 +718,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/update_item": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 修改项目价格规则、项目岗位或停用项目 */
+        post: operations["update_item"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/update_level": {
         parameters: {
             query?: never;
@@ -786,6 +854,15 @@ export interface components {
         };
         CreateCustomerSourceInput: {
             name: string;
+        };
+        CreateItemInput: {
+            discountable: boolean;
+            labor_fee_amount: string | null;
+            labor_fee_percent: string | null;
+            level_prices: components["schemas"]["LevelPrice"][];
+            name: string;
+            positions: components["schemas"]["ItemPositionInput"][];
+            price: string;
         };
         CreateLevelInput: {
             name: string;
@@ -940,6 +1017,36 @@ export interface components {
             from_staff_id: string;
             to_staff_id: string;
         };
+        Item: {
+            active: boolean;
+            /** Format: date-time */
+            created_at: string;
+            discountable: boolean;
+            id: string;
+            labor_fee_amount: string | null;
+            labor_fee_percent: string | null;
+            level_prices: components["schemas"]["LevelPrice"][];
+            name: string;
+            positions: components["schemas"]["ItemPosition"][];
+            price: string;
+        };
+        ItemList: {
+            items: components["schemas"]["Item"][];
+        };
+        ItemPosition: {
+            position_id: string;
+            required: boolean;
+            /** Format: int32 */
+            slot: number;
+        };
+        ItemPositionInput: {
+            position_id: string;
+            required: boolean;
+        };
+        ItemPrice: {
+            level_id?: string;
+            price: string;
+        };
         Level: {
             active: boolean;
             id: string;
@@ -947,6 +1054,10 @@ export interface components {
         };
         LevelList: {
             items: components["schemas"]["Level"][];
+        };
+        LevelPrice: {
+            level_id: string;
+            price: string;
         };
         ListAuditLogInput: {
             /** @description 上一页最后一条的 ID，只看比它更早的；不填为最新一页 */
@@ -958,6 +1069,7 @@ export interface components {
         };
         ListCustomerSourcesInput: Record<string, never>;
         ListInput: Record<string, never>;
+        ListItemsInput: Record<string, never>;
         ListSettingChangesInput: {
             /** @description 上一页最后一条的 ID，只看比它更早的；不填为最新一页 */
             before_id?: string;
@@ -1005,6 +1117,10 @@ export interface components {
         };
         PositionList: {
             items: components["schemas"]["Position"][];
+        };
+        QuoteItemPriceInput: {
+            item_id: string;
+            staff_id: string;
         };
         Ref: {
             id: string;
@@ -1177,6 +1293,17 @@ export interface components {
             active: boolean;
             id: string;
             name: string;
+        };
+        UpdateItemInput: {
+            active: boolean;
+            discountable: boolean;
+            id: string;
+            labor_fee_amount: string | null;
+            labor_fee_percent: string | null;
+            level_prices: components["schemas"]["LevelPrice"][];
+            name: string;
+            positions: components["schemas"]["ItemPositionInput"][];
+            price: string;
         };
         UpdateLevelInput: {
             active: boolean;
@@ -1499,6 +1626,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CustomerSource"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    create_item: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateItemInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Item"];
                 };
             };
             /** @description Error */
@@ -1941,6 +2101,39 @@ export interface operations {
             };
         };
     };
+    list_items: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListItemsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     list_levels: {
         parameters: {
             query?: never;
@@ -2238,6 +2431,39 @@ export interface operations {
             };
         };
     };
+    quote_item_price: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuoteItemPriceInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemPrice"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     reactivate_staff: {
         parameters: {
             query?: never;
@@ -2489,6 +2715,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CustomerSource"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    update_item: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateItemInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Item"];
                 };
             };
             /** @description Error */

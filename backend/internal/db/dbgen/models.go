@@ -7,6 +7,7 @@ package dbgen
 import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/wzhlinhai/salon/backend/internal/money"
 )
 
 type AuditLog struct {
@@ -57,6 +58,36 @@ type CustomerSource struct {
 	StoreID  uuid.UUID
 	Name     string
 	Active   bool
+}
+
+type Item struct {
+	ID              uuid.UUID
+	TenantID        uuid.UUID
+	StoreID         uuid.UUID
+	Name            string
+	Price           money.Amount
+	Discountable    bool
+	LaborFeeAmount  *money.Amount
+	LaborFeePercent *money.Percent
+	Active          bool
+	CreatedAt       pgtype.Timestamptz
+}
+
+type ItemLevelPrice struct {
+	TenantID uuid.UUID
+	StoreID  uuid.UUID
+	ItemID   uuid.UUID
+	LevelID  uuid.UUID
+	Price    money.Amount
+}
+
+type ItemPosition struct {
+	TenantID   uuid.UUID
+	StoreID    uuid.UUID
+	ItemID     uuid.UUID
+	Slot       int16
+	PositionID uuid.UUID
+	Required   bool
 }
 
 type Level struct {

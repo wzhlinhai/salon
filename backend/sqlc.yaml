@@ -18,3 +18,21 @@ sql:
               import: github.com/google/uuid
               type: UUID
               pointer: true
+          - column: items.price
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: items.labor_fee_amount
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+              pointer: true
+          - column: items.labor_fee_percent
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Percent
+              pointer: true
+          - column: item_level_prices.price
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
