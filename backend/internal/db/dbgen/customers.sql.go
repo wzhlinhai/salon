@@ -469,7 +469,7 @@ func (q *Queries) SearchCustomers(ctx context.Context, arg SearchCustomersParams
 }
 
 const shareCustomerStaff = `-- name: ShareCustomerStaff :one
-SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at FROM staff WHERE id = $1 FOR SHARE
+SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until FROM staff WHERE id = $1 FOR SHARE
 `
 
 // 共享锁阻止并发停用，同时兼容审计和顾客外键检查的 KEY SHARE 锁。
@@ -489,6 +489,9 @@ func (q *Queries) ShareCustomerStaff(ctx context.Context, id uuid.UUID) (Staff, 
 		&i.Active,
 		&i.DeactivatedAt,
 		&i.CreatedAt,
+		&i.TokenVersion,
+		&i.FailedLogins,
+		&i.LockedUntil,
 	)
 	return i, err
 }

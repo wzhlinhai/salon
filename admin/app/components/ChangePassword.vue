@@ -1,13 +1,15 @@
 <script setup lang="ts">
 const form = reactive({ old_password: '', new_password: '' })
 const toast = useToast()
+const { me } = useMe()
 
 async function submit() {
   const { data, error } = await useApi().POST('/api/ops/change_my_password', { body: form })
   if (data) {
-    toast.add({ title: '密码已修改', color: 'success' })
-    form.old_password = ''
-    form.new_password = ''
+    toast.add({ title: '密码已修改，请重新登录', color: 'success' })
+    setToken(null)
+    me.value = null
+    await navigateTo('/login')
   } else {
     toast.add({ title: errorText(error), color: 'error' })
   }

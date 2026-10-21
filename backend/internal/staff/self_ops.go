@@ -49,6 +49,9 @@ func registerSelf(r *ops.Registry) {
 		Name: "change_my_password", Summary: "修改我自己的登录密码", Kind: ops.Write,
 		Permission: ops.LoggedIn, AI: ops.AINone,
 		Handle: func(ctx context.Context, env ops.Env, in *ChangeMyPasswordInput) (*OK, error) {
+			if _, err := env.Q.LockStaffNoKey(ctx, env.Caller.StaffID); err != nil {
+				return nil, err
+			}
 			ok, err := auth.VerifyPassword(ctx, env.Q, env.Caller.StaffID, in.OldPassword)
 			if err != nil {
 				return nil, err
