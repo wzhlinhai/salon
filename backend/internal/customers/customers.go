@@ -117,7 +117,7 @@ func rowError(err error) error {
 	return err
 }
 
-// lock 锁住并检查调用者可查看且尚未合并的顾客。
+// lock 锁住并检查调用者可查看且尚未合并的顾客；只改普通列（手机号仅有部分唯一索引），用 NO KEY UPDATE。
 func lock(ctx context.Context, env ops.Env, id uuid.UUID) (dbgen.Customer, error) {
 	row, err := env.Q.LockCustomer(ctx, id)
 	if err != nil {
@@ -176,7 +176,7 @@ func checkSource(ctx context.Context, env ops.Env, id, current *uuid.UUID) error
 	if id == nil || (current != nil && *current == *id) {
 		return nil
 	}
-	s, err := env.Q.LockCustomerSource(ctx, *id)
+	s, err := env.Q.ShareCustomerSource(ctx, *id)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !s.Active) {
 		return ops.Rule("没有这个顾客来源，或者它已停用")
 	}

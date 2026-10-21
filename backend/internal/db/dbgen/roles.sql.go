@@ -311,7 +311,7 @@ func (q *Queries) ListStaffRoles(ctx context.Context, staffID uuid.UUID) ([]Role
 }
 
 const lockOwnerRole = `-- name: LockOwnerRole :one
-SELECT id FROM roles WHERE store_id = $1 AND is_owner FOR UPDATE
+SELECT id FROM roles WHERE store_id = $1 AND is_owner FOR NO KEY UPDATE
 `
 
 func (q *Queries) LockOwnerRole(ctx context.Context, storeID uuid.UUID) (uuid.UUID, error) {

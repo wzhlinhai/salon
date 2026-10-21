@@ -18,7 +18,7 @@ UPDATE roles SET name = $2 WHERE id = $1 AND NOT is_owner;
 DELETE FROM roles WHERE id = $1 AND NOT is_owner;
 
 -- name: LockOwnerRole :one
-SELECT id FROM roles WHERE store_id = $1 AND is_owner FOR UPDATE;
+SELECT id FROM roles WHERE store_id = $1 AND is_owner FOR NO KEY UPDATE;
 
 -- name: ListRolePermissions :many
 SELECT * FROM role_permissions WHERE role_id = ANY(@role_ids::uuid[]) ORDER BY role_id, permission;
