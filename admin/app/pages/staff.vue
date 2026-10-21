@@ -14,17 +14,17 @@ const positions = ref<components['schemas']['Position'][]>([])
 
 const NONE = 'none'
 
-let loadRequest = 0
+const loadGuard = useRequestGuard()
 
 async function load() {
-  const request = ++loadRequest
+  const request = loadGuard.next()
   const [s, r, l, p] = await Promise.all([
     api.POST('/api/ops/list_staff', { body: {} }),
     api.POST('/api/ops/list_role_options', { body: {} }),
     api.POST('/api/ops/list_levels', { body: {} }),
     api.POST('/api/ops/list_positions', { body: {} })
   ])
-  if (request !== loadRequest) return
+  if (!request()) return
   staff.value = s.data?.staff ?? []
   roles.value = r.data?.roles ?? []
   levels.value = l.data?.items ?? []
@@ -50,22 +50,24 @@ const columns = [
   { id: 'actions', header: '' }
 ]
 
-function done(error: unknown, ok: unknown, message: string) {
+function done(error: unknown, ok: unknown, message: string, current: () => boolean = () => true) {
   if (ok) {
-    toast.add({ title: message, color: 'success' })
+    if (current()) toast.add({ title: message, color: 'success' })
     load()
-    return true
+    return current()
   }
   toast.add({ title: errorText(error), color: 'error' })
   return false
 }
 
 // 新建、修改档案
+const profileGuard = useRequestGuard()
 const profileOpen = ref(false)
 const editing = ref<Staff | null>(null)
 const profile = reactive({ name: '', number: '', level: NONE, position: NONE, role_ids: [] as string[] })
 
 function openProfile(s: Staff | null) {
+  profileGuard.next()
   editing.value = s
   Object.assign(profile, {
     name: s?.name ?? '',
@@ -78,6 +80,7 @@ function openProfile(s: Staff | null) {
 }
 
 async function saveProfile() {
+  const current = profileGuard.hold()
   const common = {
     name: profile.name,
     number: profile.number,
@@ -87,41 +90,47 @@ async function saveProfile() {
   const res = editing.value
     ? await api.POST('/api/ops/update_staff', { body: { ...common, staff_id: editing.value.id } })
     : await api.POST('/api/ops/create_staff', { body: { ...common, role_ids: profile.role_ids } })
-  if (done(res.error, res.data, '已保存')) profileOpen.value = false
+  if (done(res.error, res.data, '已保存', current)) profileOpen.value = false
 }
 
 // 角色
+const rolesGuard = useRequestGuard()
 const rolesOpen = ref(false)
 const roleTarget = ref<Staff | null>(null)
 const roleSelection = ref<string[]>([])
 
 function openRoles(s: Staff) {
+  rolesGuard.next()
   roleTarget.value = s
   roleSelection.value = s.roles.map(r => r.id)
   rolesOpen.value = true
 }
 
 async function saveRoles() {
+  const current = rolesGuard.hold()
   const res = await api.POST('/api/ops/set_staff_roles', {
     body: { staff_id: roleTarget.value!.id, role_ids: roleSelection.value }
   })
-  if (done(res.error, res.data, '角色已更新')) rolesOpen.value = false
+  if (done(res.error, res.data, '角色已更新', current)) rolesOpen.value = false
 }
 
 // 登录账号
+const loginGuard = useRequestGuard()
 const loginOpen = ref(false)
 const loginTarget = ref<Staff | null>(null)
 const login = reactive({ login_account: '', password: '' })
 
 function openLogin(s: Staff) {
+  loginGuard.next()
   loginTarget.value = s
   Object.assign(login, { login_account: s.login_account ?? '', password: '' })
   loginOpen.value = true
 }
 
 async function saveLogin() {
+  const current = loginGuard.hold()
   const res = await api.POST('/api/ops/set_staff_login', { body: { ...login, staff_id: loginTarget.value!.id } })
-  if (done(res.error, res.data, '登录账号已设置')) loginOpen.value = false
+  if (done(res.error, res.data, '登录账号已设置', current)) loginOpen.value = false
 }
 
 async function setActive(s: Staff, active: boolean) {

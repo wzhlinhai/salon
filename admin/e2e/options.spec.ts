@@ -51,3 +51,33 @@ test('级别岗位页迟到的旧列表不覆盖第二次保存', async ({ page 
   await page.waitForTimeout(500)
   await expect(secondRow.getByRole('textbox')).toHaveValue(second)
 })
+
+test('添加级别的旧响应不清空下一条输入', async ({ page }) => {
+  await login(page, owner.account, owner.password)
+  await page.goto('/options')
+  let release!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let started!: () => void
+  const pending = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  await page.route('**/api/ops/create_level', async (route) => {
+    const response = await route.fetch()
+    started()
+    await blocked
+    await route.fulfill({ response })
+  })
+  const input = page.getByPlaceholder('新级别', { exact: true })
+  const name = `添加竞态${Date.now()}`
+  await input.fill(name)
+  await input.press('Enter')
+  await pending
+  await input.fill(`${name}下一条`)
+  const response = page.waitForResponse(r => r.url().endsWith('/api/ops/create_level'))
+  release()
+  await (await response).finished()
+  await expect(page.locator(`input[value="${name}"]`)).toHaveValue(name)
+  await expect(input).toHaveValue(`${name}下一条`)
+})

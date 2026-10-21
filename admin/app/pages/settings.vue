@@ -15,13 +15,13 @@ const changes = useCursorList(async (beforeId) => {
   const { data, error } = await api.POST('/api/ops/list_setting_changes', { body: { before_id: beforeId } })
   return { data: data?.changes, error }
 })
-let settingsRequest = 0
+const settingsGuard = useRequestGuard()
 
 async function load() {
-  const request = ++settingsRequest
+  const request = settingsGuard.next()
   if (can('audit_log.view')) changes.reload()
   const { data } = await api.POST('/api/ops/get_settings', { body: {} })
-  if (request !== settingsRequest) return
+  if (!request()) return
   today.value = data?.business_date ?? ''
   settings.value = data?.settings ?? []
 }
@@ -39,10 +39,12 @@ function show(kind: Setting['kind'] | undefined, value: unknown): string {
 const kindOf = (key: string) => settings.value.find(s => s.key === key)?.kind
 
 // 编辑中的设置。值按形式分开存，保存时再组装。
+const editorGuard = useRequestGuard()
 const editing = ref<Setting | null>(null)
 const form = reactive({ time: '', open: '', close: '', from: '' })
 
 function openEditor(s: Setting) {
+  editorGuard.next()
   editing.value = s
   if (s.kind === 'time_range') {
     const r = s.value as TimeRange
@@ -55,9 +57,15 @@ function openEditor(s: Setting) {
 }
 
 async function save(reset: boolean) {
+  const current = editorGuard.hold()
   const s = editing.value!
   const value = reset ? null : s.kind === 'time_range' ? { open: form.open, close: form.close } : form.time
   const { data, error } = await api.POST('/api/ops/change_setting', { body: { key: s.key, value, effective_from: form.from } })
+  if (!current()) {
+    if (data) load()
+    else toast.add({ title: errorText(error), color: 'error' })
+    return
+  }
   if (data) {
     toast.add({ title: `已保存，${data.effective_from} 起执行`, color: 'success' })
     editing.value = null
@@ -70,12 +78,12 @@ async function save(reset: boolean) {
 // 顾客来源
 const sources = ref<components['schemas']['CustomerSource'][]>([])
 const sourceName = ref('')
-let sourcesRequest = 0
+const sourcesGuard = useRequestGuard()
 
 async function loadSources() {
-  const request = ++sourcesRequest
+  const request = sourcesGuard.next()
   const { data, error } = await api.POST('/api/ops/list_customer_sources', { body: {} })
-  if (request !== sourcesRequest) return
+  if (!request()) return
   if (data) {
     sources.value = data.items
   } else {

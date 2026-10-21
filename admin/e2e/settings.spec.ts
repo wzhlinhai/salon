@@ -122,3 +122,41 @@ test('设置页顾客来源迟到的旧列表不覆盖第二次保存', async ({
   await page.waitForTimeout(500)
   await expect(card.getByRole('textbox', { name: `顾客来源 ${second}`, exact: true })).toHaveValue(second)
 })
+
+test('设置旧保存只刷新列表，不关闭另一个设置窗口', async ({ page }) => {
+  await login(page, owner.account, owner.password)
+  await page.goto('/settings')
+  const card = page.locator('[data-setting=business_day_end]')
+  await card.getByRole('button', { name: '修改', exact: true }).click()
+  const tomorrow = await page.locator('input[type=date]').getAttribute('min')
+    .then(d => new Date(Date.parse(d! + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10))
+  let release!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let started!: () => void
+  const pending = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  await page.route('**/api/ops/change_setting', async (route) => {
+    const response = await route.fetch()
+    started()
+    await blocked
+    await route.fulfill({ response })
+  })
+  await page.getByLabel('时间', { exact: true }).fill('03:45')
+  await page.getByLabel('生效日期', { exact: true }).fill(tomorrow)
+  await page.getByRole('button', { name: '保存', exact: true }).click()
+  await pending
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await page.locator('[data-setting=business_hours]').getByRole('button', { name: '修改', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '修改营业时段', exact: true })
+  await expect(dialog.getByLabel('开门', { exact: true })).toBeVisible()
+  const open = await dialog.getByLabel('开门', { exact: true }).inputValue()
+  release()
+  await expect(card).toContainText(`${tomorrow} 起改为 03:45`)
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByLabel('开门', { exact: true })).toHaveValue(open)
+  await expect(page.getByText(`已保存，${tomorrow} 起执行`, { exact: true })).toHaveCount(0)
+})

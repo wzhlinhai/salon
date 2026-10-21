@@ -46,3 +46,40 @@ test('角色页迟到的旧列表不覆盖第二次保存', async ({ page }) => 
   await page.waitForTimeout(500)
   await expect(page.getByText(second, { exact: true })).toBeVisible()
 })
+
+test('角色旧保存只刷新列表，不关闭另一个角色窗口', async ({ page }) => {
+  await login(page, owner.account, owner.password)
+  await page.goto('/roles')
+  await expect(page.getByText('内置 · 全部权限', { exact: true })).toBeVisible()
+  let release!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let started!: () => void
+  const pending = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  await page.route('**/api/ops/create_role', async (route) => {
+    const response = await route.fetch()
+    started()
+    await blocked
+    await route.fulfill({ response })
+  })
+  await page.getByRole('button', { name: '新建角色', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '新建角色', exact: true })
+  const name = `角色保存竞态${Date.now()}`
+  await dialog.getByLabel('角色名称', { exact: true }).fill(name)
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  await pending
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  const card = page.getByText('前台', { exact: true }).locator('..').locator('..')
+  await card.getByRole('button', { name: '编辑', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: '编辑角色', exact: true })
+  await expect(editor.getByLabel('角色名称', { exact: true })).toHaveValue('前台')
+  release()
+  await expect(page.getByText(name, { exact: true })).toBeVisible()
+  await expect(editor).toBeVisible()
+  await expect(editor.getByLabel('角色名称', { exact: true })).toHaveValue('前台')
+  await expect(page.getByText('已保存', { exact: true })).toHaveCount(0)
+})

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { env } from './env'
-import { hire, login } from './helpers'
+import { api, apiLogin, hire, login, owner } from './helpers'
 
 test('修改密码后清除登录状态并重新登录', async ({ page }) => {
   const employee = await hire('前台')
@@ -51,9 +51,57 @@ test('登录断网后按钮恢复并可重新登录', async ({ page }) => {
   await page.getByLabel('密码', { exact: true }).fill(employee.password)
   const button = page.getByRole('button', { name: '登录', exact: true })
   await button.click()
-  await expect(page.getByText('操作失败', { exact: true })).toBeVisible()
+  await expect(page.getByText('网络连接失败，请重试', { exact: true })).toBeVisible()
   await expect(button).toBeEnabled()
   await button.click()
   await expect(page.getByText(/你好/)).toBeVisible()
   expect(pageErrors).toEqual([])
+})
+
+test('换账号后迟到的 get_me 不覆盖当前身份', async ({ page }) => {
+  const employee = await hire('前台')
+  const tokenB = await apiLogin(employee.account, employee.password)
+  const identityB = await api(tokenB, 'get_me', {})
+  await login(page, owner.account, owner.password)
+  let release!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let started!: () => void
+  const pending = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  let first = true
+  await page.route('**/api/ops/get_me', async (route) => {
+    if (first) {
+      first = false
+      const response = await route.fetch()
+      started()
+      await blocked
+      await route.fulfill({ response })
+    } else {
+      await route.continue()
+    }
+  })
+  // 页面没有重新读取身份的按钮，直接调用开发服务器导出的现有 composable；不刷新文档，保留在途 A 请求。
+  const oldLoad = page.evaluate(async () => {
+    const modulePath = '/_nuxt/composables/useMe.ts'
+    const { useMe } = await import(modulePath)
+    const app = (window as unknown as { useNuxtApp: () => { runWithContext: <T>(fn: () => T) => T } }).useNuxtApp()
+    return app.runWithContext(() => useMe().load())
+  })
+  await pending
+  await page.evaluate(async (token) => {
+    localStorage.setItem('salon_token', token)
+    const modulePath = '/_nuxt/composables/useMe.ts'
+    const { useMe } = await import(modulePath)
+    const app = (window as unknown as { useNuxtApp: () => { runWithContext: <T>(fn: () => T) => T } }).useNuxtApp()
+    await app.runWithContext(() => useMe().load())
+  }, tokenB)
+  await expect(page.getByRole('heading', { name: `你好，${identityB.staff.name}`, exact: true })).toBeVisible()
+  const response = page.waitForResponse(r => r.url().endsWith('/api/ops/get_me'))
+  release()
+  await (await response).finished()
+  expect((await oldLoad).staff.id).toBe(identityB.staff.id)
+  await expect(page.getByRole('heading', { name: `你好，${identityB.staff.name}`, exact: true })).toBeVisible()
 })

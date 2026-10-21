@@ -15,13 +15,13 @@ const kinds = [
 const items = reactive<Record<string, LevelOrPosition[]>>({ level: [], position: [] })
 const draft = reactive<Record<string, string>>({ level: '', position: '' })
 
-let loadRequest = 0
+const loadGuard = useRequestGuard()
 
 async function load() {
-  const request = ++loadRequest
+  const request = loadGuard.next()
   for (const k of kinds) {
     const { data } = await api.POST(k.list, { body: {} })
-    if (request !== loadRequest) return
+    if (!request()) return
     items[k.key] = data?.items ?? []
   }
 }
@@ -34,8 +34,9 @@ function report(error: unknown, ok: unknown) {
 }
 
 async function add(k: typeof kinds[number]) {
-  const { data, error } = await api.POST(k.create, { body: { name: draft[k.key] ?? '' } })
-  if (data) draft[k.key] = ''
+  const name = draft[k.key] ?? ''
+  const { data, error } = await api.POST(k.create, { body: { name } })
+  if (data && draft[k.key] === name) draft[k.key] = ''
   report(error, data)
 }
 

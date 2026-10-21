@@ -9,10 +9,10 @@ export function useCursorList<T extends { id: string }>(
   const hasMore = ref(false)
   const loading = ref(false)
   const toast = useToast()
-  let generation = 0
+  const pageGuard = useRequestGuard()
 
   function clear() {
-    generation++
+    pageGuard.invalidate()
     items.value = []
     hasMore.value = false
     loading.value = false
@@ -20,44 +20,38 @@ export function useCursorList<T extends { id: string }>(
 
   async function reload() {
     clear()
-    const current = generation
+    const current = pageGuard.next()
     loading.value = true
     try {
       const { data, error } = await fetchPage()
-      if (current !== generation) return
+      if (!current()) return
       if (error) {
         toast.add({ title: errorText(error), color: 'error' })
         return
       }
       items.value = data ?? []
       hasMore.value = items.value.length === LOG_PAGE_SIZE
-    } catch (error) {
-      if (current !== generation) return
-      toast.add({ title: errorText(error), color: 'error' })
     } finally {
-      if (current === generation) loading.value = false
+      if (current()) loading.value = false
     }
   }
 
   async function loadMore() {
     const last = items.value.at(-1)
     if (!last || loading.value) return
-    const current = generation
+    const current = pageGuard.hold()
     loading.value = true
     try {
       const { data, error } = await fetchPage(last.id)
-      if (current !== generation) return
+      if (!current()) return
       if (error) {
         toast.add({ title: errorText(error), color: 'error' })
         return
       }
       items.value.push(...(data ?? []))
       hasMore.value = data?.length === LOG_PAGE_SIZE
-    } catch (error) {
-      if (current !== generation) return
-      toast.add({ title: errorText(error), color: 'error' })
     } finally {
-      if (current === generation) loading.value = false
+      if (current()) loading.value = false
     }
   }
 

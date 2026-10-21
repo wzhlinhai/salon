@@ -19,6 +19,13 @@ const auth: Middleware = {
     if (token) request.headers.set('Authorization', `Bearer ${token}`)
     return request
   },
+  // 将断网异常转成普通错误响应，让过期写操作也能走现有的失败提示分支。
+  onError() {
+    return new Response(JSON.stringify({ detail: '网络连接失败，请重试' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/problem+json' }
+    })
+  },
   async onResponse({ response }) {
     if (response.status === 401 && !response.url.endsWith('/api/auth/login')) {
       setToken(null)

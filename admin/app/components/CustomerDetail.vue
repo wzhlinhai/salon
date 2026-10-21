@@ -29,6 +29,7 @@ const profile = reactive({
   source: NONE,
   note: ''
 })
+const customerGuard = useRequestGuard()
 const savingIds = ref(new Set<string>())
 const saving = computed(() => savingIds.value.has(props.id))
 const genderItems = [
@@ -44,16 +45,16 @@ const sourceItems = computed(() => [
     .filter(s => s.active || s.id === customer.value?.source?.id)
     .map(s => ({ label: s.name + (s.active ? '' : '（已停用）'), value: s.id }))
 ])
-let detailRequest = 0
+const detailGuard = useRequestGuard()
 
 async function load() {
   const id = props.id
-  const request = ++detailRequest
+  const request = detailGuard.next()
   loadError.value = ''
   if (can('audit_log.view')) logs.reload()
   else logs.clear()
   const res = await api.POST('/api/ops/get_customer', { body: { id } })
-  if (id !== props.id || request !== detailRequest) return
+  if (id !== props.id || !request()) return
   if (res.data) {
     customer.value = res.data
   } else {
@@ -72,11 +73,15 @@ async function act<R>(
 ): Promise<boolean> {
   const id = props.id
   if (savingIds.value.has(id)) return false
+  const current = customerGuard.hold()
   savingIds.value.add(id)
   try {
     const { data, error } = await request(id)
     if (data) emit('changed')
-    if (id !== props.id) return false
+    if (id !== props.id || !current()) {
+      if (!data) toast.add({ title: errorText(error), color: 'error' })
+      return false
+    }
     toast.add({ title: data ? message : errorText(error), color: data ? 'success' : 'error' })
     if (data) onDone(data)
     return !!data
@@ -196,7 +201,7 @@ const keepID = ref('')
 const mergeConfirm = ref(false)
 const searching = ref(false)
 let timer: ReturnType<typeof setTimeout> | undefined
-let searchRequest = 0
+const searchGuard = useRequestGuard()
 
 function openMerge() {
   mergeQuery.value = ''
@@ -211,7 +216,7 @@ function openMerge() {
 
 async function searchMerge() {
   clearTimeout(timer)
-  const current = ++searchRequest
+  const current = searchGuard.next()
   searching.value = true
   try {
     const res = await api.POST('/api/ops/search_customers', {
@@ -222,18 +227,15 @@ async function searchMerge() {
         offset: mergeOffset.value
       }
     })
-    if (current !== searchRequest) return
+    if (!current()) return
     if (res.data) {
       candidates.value = res.data.items.filter(c => c.id !== props.id)
       mergeHasNext.value = res.data.items.length === 50
     } else {
       toast.add({ title: errorText(res.error), color: 'error' })
     }
-  } catch (e) {
-    if (current !== searchRequest) return
-    toast.add({ title: errorText(e), color: 'error' })
   } finally {
-    if (current === searchRequest) searching.value = false
+    if (current()) searching.value = false
   }
 }
 
@@ -253,7 +255,7 @@ function selectCandidate(c: Customer) {
 }
 
 watch(mergeQuery, () => {
-  searchRequest++
+  searchGuard.invalidate()
   clearTimeout(timer)
   candidates.value = []
   other.value = null
@@ -317,6 +319,7 @@ function snapshot(value: unknown): string {
 
 // 读取档案及营业日，切换顾客时关闭编辑入口
 watch(() => props.id, () => {
+  customerGuard.next()
   customer.value = null
   editing.value = false
   phoneOpen.value = false
@@ -326,14 +329,18 @@ watch(() => props.id, () => {
   revokeTarget.value = null
   other.value = null
   candidates.value = []
-  searchRequest++
+  searchGuard.invalidate()
   clearTimeout(timer)
   load()
 })
 
+const businessDateGuard = useRequestGuard()
+
 onMounted(async () => {
+  const current = businessDateGuard.next()
   load()
   const res = await api.POST('/api/ops/get_settings', { body: {} })
+  if (!current()) return
   if (res.data) {
     today.value = res.data.business_date
   } else {
@@ -342,7 +349,6 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  searchRequest++
   clearTimeout(timer)
 })
 </script>
