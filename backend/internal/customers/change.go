@@ -81,7 +81,7 @@ func change(ctx context.Context, env ops.Env, action string, sel selection, edit
 		return nil, err
 	}
 	for i, c := range after {
-		if err := audit.Record(ctx, env, action, rows[i].ID, before[i], c); err != nil {
+		if err := audit.Record(ctx, env, action, audit.CustomerTarget(rows[i].ID), before[i], c); err != nil {
 			return nil, err
 		}
 		mask(env, c)
@@ -106,7 +106,7 @@ func created(ctx context.Context, env ops.Env, action string, row dbgen.Customer
 	if err != nil {
 		return nil, err
 	}
-	if err := audit.Record(ctx, env, action, row.ID, nil, c); err != nil {
+	if err := audit.Record(ctx, env, action, audit.CustomerTarget(row.ID), nil, c); err != nil {
 		return nil, err
 	}
 	return mask(env, c), nil

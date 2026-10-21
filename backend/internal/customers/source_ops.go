@@ -33,7 +33,7 @@ func registerSources(r *ops.Registry) {
 				return nil, rowError(err)
 			}
 			out := sourceView(row)
-			if err := audit.Record(ctx, env, "create_customer_source", row.ID, nil, out); err != nil {
+			if err := audit.Record(ctx, env, "create_customer_source", audit.CustomerSourceTarget(row.ID), nil, out); err != nil {
 				return nil, err
 			}
 			return &out, nil
@@ -56,7 +56,7 @@ func registerSources(r *ops.Registry) {
 				return nil, rowError(err)
 			}
 			out := sourceView(row)
-			if err := audit.Record(ctx, env, "update_customer_source", row.ID, before, out); err != nil {
+			if err := audit.Record(ctx, env, "update_customer_source", audit.CustomerSourceTarget(row.ID), before, out); err != nil {
 				return nil, err
 			}
 			return &out, nil

@@ -103,7 +103,7 @@ func registerAssignments(r *ops.Registry) {
 				CustomerCount int       `json:"customer_count"`
 				ToStaffID     uuid.UUID `json:"to_staff_id"`
 			}{ToStaffID: in.ToStaffID}
-			if err := audit.Record(ctx, env, "hand_over_customers", in.FromStaffID, before, after); err != nil {
+			if err := audit.Record(ctx, env, "hand_over_customers", audit.StaffTarget(in.FromStaffID), before, after); err != nil {
 				return nil, err
 			}
 			return out, nil

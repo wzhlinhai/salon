@@ -1,13 +1,13 @@
 -- name: AddAuditLog :exec
-INSERT INTO audit_log (tenant_id, store_id, action, target_id, before, after, actor_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7);
+INSERT INTO audit_log (tenant_id, store_id, action, target_id, before, after, actor_id, target_kind, customer_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
 
 -- name: ListAuditLog :many
 SELECT sqlc.embed(a), s.name AS actor_name
 FROM audit_log a JOIN staff s ON s.id = a.actor_id
-LEFT JOIN customers c ON c.id = a.target_id
+LEFT JOIN customers c ON c.id = a.customer_id
 WHERE a.store_id = @store_id AND (sqlc.narg(target_id)::uuid IS NULL OR a.target_id = sqlc.narg(target_id))
-    AND (c.id IS NULL OR (sqlc.arg(customer_view)::boolean AND (sqlc.narg(customer_self_id)::uuid IS NULL OR c.responsible_staff_id = sqlc.narg(customer_self_id))))
+    AND (a.customer_id IS NULL OR (sqlc.arg(customer_view)::boolean AND (sqlc.narg(customer_self_id)::uuid IS NULL OR c.responsible_staff_id = sqlc.narg(customer_self_id))))
     AND (sqlc.narg(before_id)::uuid IS NULL OR (a.at, a.id) < (SELECT b.at, b.id FROM audit_log b WHERE b.id = sqlc.narg(before_id) AND b.store_id = @store_id))
 ORDER BY a.at DESC, a.id DESC
 LIMIT sqlc.arg(row_limit);

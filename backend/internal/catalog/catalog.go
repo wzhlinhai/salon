@@ -204,7 +204,7 @@ func createItem(ctx context.Context, env ops.Env, in *CreateItemInput) (*Item, e
 	if err != nil {
 		return nil, err
 	}
-	if err := audit.Record(ctx, env, "create_item", row.ID, nil, after); err != nil {
+	if err := audit.Record(ctx, env, "create_item", audit.ItemTarget(row.ID), nil, after); err != nil {
 		return nil, err
 	}
 	return after, nil
@@ -236,7 +236,7 @@ func updateItem(ctx context.Context, env ops.Env, in *UpdateItemInput) (*Item, e
 	if err != nil {
 		return nil, err
 	}
-	if err := audit.Record(ctx, env, "update_item", in.ID, before, after); err != nil {
+	if err := audit.Record(ctx, env, "update_item", audit.ItemTarget(in.ID), before, after); err != nil {
 		return nil, err
 	}
 	return after, nil

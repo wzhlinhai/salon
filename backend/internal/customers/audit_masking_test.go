@@ -28,7 +28,7 @@ func TestAuditLogMasksNestedPhones(t *testing.T) {
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	env := ops.Env{Caller: s.MustCaller(s.Owner), Q: dbgen.New(tx)}
 	nested := map[string]any{"objects": []any{map[string]any{"deep": map[string]any{"phone": "13800131234"}}}, "phone": "123", "note": "不含号码", "number": json.Number("9007199254740993")}
-	if err := audit.Record(context.Background(), env, "nested_fixture", aID(a), nested, nested); err != nil {
+	if err := audit.Record(context.Background(), env, "nested_fixture", audit.CustomerTarget(aID(a)), nested, nested); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(context.Background()); err != nil {

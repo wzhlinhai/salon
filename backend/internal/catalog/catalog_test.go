@@ -85,17 +85,20 @@ func TestRoundTripAndAudit(t *testing.T) {
 		t.Fatal(after)
 	}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	rows, err := tx.Query(context.Background(), "SELECT action, before, after FROM audit_log WHERE target_id=$1 ORDER BY at", created["id"])
+	rows, err := tx.Query(context.Background(), "SELECT action, target_kind, before, after FROM audit_log WHERE target_id=$1 ORDER BY at", created["id"])
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer rows.Close()
 	count := 0
 	for rows.Next() {
-		var action string
+		var action, kind string
 		var beforeRaw, afterRaw []byte
-		if err := rows.Scan(&action, &beforeRaw, &afterRaw); err != nil {
+		if err := rows.Scan(&action, &kind, &beforeRaw, &afterRaw); err != nil {
 			t.Fatal(err)
+		}
+		if kind != "item" {
+			t.Fatalf("action %s kind = %s, want item", action, kind)
 		}
 		var before, afterView map[string]any
 		if err := json.Unmarshal(afterRaw, &afterView); err != nil {

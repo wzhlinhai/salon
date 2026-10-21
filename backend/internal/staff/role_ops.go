@@ -124,7 +124,7 @@ func registerRoles(r *ops.Registry) {
 			if err != nil {
 				return nil, err
 			}
-			if err := audit.Record(ctx, env, "create_role", row.ID, nil, after); err != nil {
+			if err := audit.Record(ctx, env, "create_role", audit.RoleTarget(row.ID), nil, after); err != nil {
 				return nil, err
 			}
 			return after, nil
@@ -178,7 +178,7 @@ func registerRoles(r *ops.Registry) {
 			if err != nil {
 				return nil, err
 			}
-			if err := audit.Record(ctx, env, "update_role", info.row.ID, roleView(info), after); err != nil {
+			if err := audit.Record(ctx, env, "update_role", audit.RoleTarget(info.row.ID), roleView(info), after); err != nil {
 				return nil, err
 			}
 			return after, nil
@@ -210,7 +210,7 @@ func registerRoles(r *ops.Registry) {
 			if n == 0 {
 				return nil, ops.ErrNotFound
 			}
-			if err := audit.Record(ctx, env, "delete_role", info.row.ID, before, nil); err != nil {
+			if err := audit.Record(ctx, env, "delete_role", audit.RoleTarget(info.row.ID), before, nil); err != nil {
 				return nil, err
 			}
 			return &OK{OK: true}, nil

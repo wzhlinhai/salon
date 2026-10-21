@@ -231,6 +231,13 @@ func TestStaffAndRoleAuditLog(t *testing.T) {
 	for i, item := range entries {
 		e := item.(map[string]any)
 		want := expected[len(expected)-1-i]
+		kind := "staff"
+		if want.target == roleID {
+			kind = "role"
+		}
+		if e["target_kind"] != kind {
+			t.Errorf("action %s kind = %v, want %s", want.action, e["target_kind"], kind)
+		}
 		if e["action"] != want.action || e["target_id"] != want.target || !reflect.DeepEqual(e["before"], want.before) || !reflect.DeepEqual(e["after"], want.after) {
 			t.Errorf("entry %d = %v, want %+v", i, e, want)
 		}
@@ -324,7 +331,7 @@ func TestAuditLogIsStoreAndTenantIsolated(t *testing.T) {
 			if _, err := s.Pool.Exec(ctx, "INSERT INTO staff (id, tenant_id, store_id, name, number) VALUES ($1, $2, $3, $4, $5)", actor, fixture.tenant, fixture.store, "其他门店员工", "001"); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := s.Pool.Exec(ctx, "INSERT INTO audit_log (tenant_id, store_id, action, target_id, actor_id, after) VALUES ($1, $2, 'create_staff', $3, $4, '{}'::jsonb)", fixture.tenant, fixture.store, target, actor); err != nil {
+			if _, err := s.Pool.Exec(ctx, "INSERT INTO audit_log (tenant_id, store_id, action, target_id, actor_id, target_kind, after) VALUES ($1, $2, 'create_staff', $3, $4, 'staff', '{}'::jsonb)", fixture.tenant, fixture.store, target, actor); err != nil {
 				t.Fatal(err)
 			}
 			// 外店的日志不能混入本店列表，指定它的目标也不能读到。

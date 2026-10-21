@@ -64,7 +64,7 @@ func TestCustomerStaffLocksAllowAuditForeignKey(t *testing.T) {
 			if _, err := tx.Exec(ctx, "UPDATE customers SET name='事务改名' WHERE id=$1", aID(c)); err != nil {
 				t.Fatal(err)
 			}
-			if err := audit.Record(ctx, ops.Env{Caller: s.MustCaller(s.Owner), Q: q}, "update_customer_profile", aID(c), c, map[string]any{"name": "事务改名"}); err != nil {
+			if err := audit.Record(ctx, ops.Env{Caller: s.MustCaller(s.Owner), Q: q}, "update_customer_profile", audit.CustomerTarget(aID(c)), c, map[string]any{"name": "事务改名"}); err != nil {
 				t.Fatalf("audit must coexist with staff share lock: %v", err)
 			}
 			if err := tx.Commit(ctx); err != nil {
@@ -200,7 +200,7 @@ func TestMergeAndPhoneChangeKeepAuditBefore(t *testing.T) {
 		t.Fatal(err)
 	}
 	after := map[string]any{"name": "合并后姓名", "phone": "13900131234"}
-	if err := audit.Record(ctx, ops.Env{Caller: s.MustCaller(s.Owner), Q: q}, "merge_customers", row.ID, keep, after); err != nil {
+	if err := audit.Record(ctx, ops.Env{Caller: s.MustCaller(s.Owner), Q: q}, "merge_customers", audit.CustomerTarget(row.ID), keep, after); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(ctx); err != nil {

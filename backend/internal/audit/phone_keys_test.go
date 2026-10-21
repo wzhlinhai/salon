@@ -117,7 +117,7 @@ func TestRecordRejectsPhoneKeysBeforeDatabase(t *testing.T) {
 					t.Fatalf("Record reached the database before rejecting phone keys: %v", p)
 				}
 			}()
-			err := Record(context.Background(), ops.Env{}, "test", uuid.Nil, tt.before, tt.after)
+			err := Record(context.Background(), ops.Env{}, "test", StaffTarget(uuid.Nil), tt.before, tt.after)
 			if err == nil || !strings.Contains(err.Error(), `CustomerPhone is logged as "customer_phone"`) {
 				t.Fatalf("Record() = %v, want phone key error", err)
 			}
