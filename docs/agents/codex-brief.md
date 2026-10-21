@@ -23,6 +23,9 @@ node <codex-delegate>/scripts/relay.mjs --brief .dev/codex/<task>/brief.txt \
 <report> write to .dev/codex/<task>/report.md, then summarise it in the final message </report>
 ```
 
+- When the brief deletes a variable, check, or `finally` block, name what it protected and what protects it afterwards. A deleted request counter or cleanup is a silent regression otherwise.
+- Before writing "existing tests pass unchanged", grep the tests for assertions and fixtures that pin the behaviour this task changes. List the ones the brief allows Codex to change; otherwise Codex stops mid-task to ask.
+
 ## Gates
 
 Codex runs every applicable gate and fixes failures before reporting. Each output goes to a log file under `.dev/codex/<task>/`; read the exit code, never pipe a long-running command through a filter.
@@ -38,6 +41,7 @@ Codex runs every applicable gate and fixes failures before reporting. Each outpu
   The command exits with the reset or e2e status, not `down`'s.
 
 - A mutcheck counts as caught only when the failing test names are the tests guarding that protection. A failure caused by the environment (Docker, browser, port) is not a catch: report it as not run.
+- A mutation that moves code (not just deletes it) is easy to get wrong on the command line: build the original and replacement text with a script from the file, and check the log says "caught by". "does not build" or "NOT caught" is not a pass.
 - A protection in the admin UI (no `mutcheck.sh` there): temporarily remove it, run the guarding e2e in the same one-command form, restore it, report both results.
 
 ## Report
