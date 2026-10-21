@@ -184,23 +184,6 @@ func getStaffRow(ctx context.Context, env ops.Env, id uuid.UUID) (dbgen.Staff, e
 	return st, err
 }
 
-// lockStaffRow 让改前快照与修改串行；可能改唯一约束列时用 UPDATE，否则用 NO KEY UPDATE。
-func lockStaffRow(ctx context.Context, env ops.Env, id uuid.UUID, changesUnique bool) (dbgen.Staff, error) {
-	var st dbgen.Staff
-	var err error
-	if changesUnique {
-		st, err = env.Q.LockStaff(ctx, id)
-	} else {
-		var row dbgen.LockStaffNoKeyRow
-		row, err = env.Q.LockStaffNoKey(ctx, id)
-		st = row.Staff
-	}
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && st.StoreID != env.Caller.StoreID) {
-		return dbgen.Staff{}, ops.ErrNotFound
-	}
-	return st, err
-}
-
 // uniqueViolation 把唯一约束冲突转成面向人的业务错误。
 func uniqueViolation(err error) error {
 	var pgErr *pgconn.PgError

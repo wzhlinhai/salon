@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/wzhlinhai/salon/backend/internal/audit"
 	"github.com/wzhlinhai/salon/backend/internal/auth"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
@@ -107,182 +106,79 @@ func registerStaff(r *ops.Registry) {
 			if err := setRoles(ctx, env, st.ID, in.RoleIDs); err != nil {
 				return nil, err
 			}
-			after, err := view(ctx, env, st.ID)
-			if err != nil {
-				return nil, err
-			}
-			if err := audit.Record(ctx, env, "create_staff", st.ID, nil, after); err != nil {
-				return nil, err
-			}
-			return after, nil
+			return created(ctx, env, "create_staff", st.ID)
 		},
 	})
 	ops.Register(r, ops.Operation[UpdateStaffInput, Staff]{
 		Name: "update_staff", Summary: "修改员工的姓名、编号、级别、岗位", Kind: ops.Write,
 		Permission: perm.StaffManage, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *UpdateStaffInput) (*Staff, error) {
-			current, err := lockStaffRow(ctx, env, in.StaffID, true)
-			if err != nil {
-				return nil, err
-			}
-			if err := ensureCanManage(ctx, env, in.StaffID); err != nil {
-				return nil, err
-			}
-			before, err := view(ctx, env, in.StaffID)
-			if err != nil {
-				return nil, err
-			}
-			if err := checkLevelPosition(ctx, env, in.LevelID, in.PositionID, &current); err != nil {
-				return nil, err
-			}
-			_, err = env.Q.UpdateStaffProfile(ctx, dbgen.UpdateStaffProfileParams{
-				ID: in.StaffID, Name: in.Name, Number: in.Number, LevelID: in.LevelID, PositionID: in.PositionID,
+			return change(ctx, env, "update_staff", in.StaffID, uniqueColumns, func(current dbgen.Staff) error {
+				if err := checkLevelPosition(ctx, env, in.LevelID, in.PositionID, &current); err != nil {
+					return err
+				}
+				_, err := env.Q.UpdateStaffProfile(ctx, dbgen.UpdateStaffProfileParams{
+					ID: in.StaffID, Name: in.Name, Number: in.Number, LevelID: in.LevelID, PositionID: in.PositionID,
+				})
+				return uniqueViolation(err)
 			})
-			if err != nil {
-				return nil, uniqueViolation(err)
-			}
-			after, err := view(ctx, env, in.StaffID)
-			if err != nil {
-				return nil, err
-			}
-			if err := audit.Record(ctx, env, "update_staff", in.StaffID, before, after); err != nil {
-				return nil, err
-			}
-			return after, nil
 		},
 	})
 	ops.Register(r, ops.Operation[SetStaffLoginInput, Staff]{
 		Name: "set_staff_login", Summary: "设置员工的登录账号和密码", Kind: ops.Write,
 		Permission: perm.StaffManage, AI: ops.AINone,
 		Handle: func(ctx context.Context, env ops.Env, in *SetStaffLoginInput) (*Staff, error) {
-			if _, err := lockStaffRow(ctx, env, in.StaffID, true); err != nil {
-				return nil, err
-			}
-			if err := ensureCanManage(ctx, env, in.StaffID); err != nil {
-				return nil, err
-			}
-			before, err := view(ctx, env, in.StaffID)
-			if err != nil {
-				return nil, err
-			}
-			hash, err := auth.HashPassword(in.Password)
-			if err != nil {
-				return nil, err
-			}
-			if _, err := env.Q.SetStaffLogin(ctx, dbgen.SetStaffLoginParams{
-				ID: in.StaffID, LoginAccount: &in.LoginAccount, PasswordHash: &hash,
-			}); err != nil {
-				return nil, uniqueViolation(err)
-			}
-			after, err := view(ctx, env, in.StaffID)
-			if err != nil {
-				return nil, err
-			}
-			if err := audit.Record(ctx, env, "set_staff_login", in.StaffID, before, after); err != nil {
-				return nil, err
-			}
-			return after, nil
+			return change(ctx, env, "set_staff_login", in.StaffID, uniqueColumns, func(_ dbgen.Staff) error {
+				hash, err := auth.HashPassword(in.Password)
+				if err != nil {
+					return err
+				}
+				_, err = env.Q.SetStaffLogin(ctx, dbgen.SetStaffLoginParams{
+					ID: in.StaffID, LoginAccount: &in.LoginAccount, PasswordHash: &hash,
+				})
+				return uniqueViolation(err)
+			})
 		},
 	})
 	ops.Register(r, ops.Operation[StaffIDInput, Staff]{
 		Name: "deactivate_staff", Summary: "员工离职：停用，不删除；停用后不能登录，历史单据仍显示姓名", Kind: ops.Write,
 		Permission: perm.StaffManage, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *StaffIDInput) (*Staff, error) {
-			if _, err := lockStaffRow(ctx, env, in.StaffID, false); err != nil {
-				return nil, err
-			}
-			if err := ensureCanManage(ctx, env, in.StaffID); err != nil {
-				return nil, err
-			}
-			before, err := view(ctx, env, in.StaffID)
-			if err != nil {
-				return nil, err
-			}
-			if err := lockOwners(ctx, env); err != nil {
-				return nil, err
-			}
-			n, err := env.Q.DeactivateStaff(ctx, in.StaffID)
-			if err != nil {
-				return nil, err
-			}
-			if n == 0 {
-				return nil, ops.Rule("员工已经是停用状态")
-			}
-			if err := ensureOwnerRemains(ctx, env); err != nil {
-				return nil, err
-			}
-			after, err := view(ctx, env, in.StaffID)
-			if err != nil {
-				return nil, err
-			}
-			if err := audit.Record(ctx, env, "deactivate_staff", in.StaffID, before, after); err != nil {
-				return nil, err
-			}
-			return after, nil
+			return change(ctx, env, "deactivate_staff", in.StaffID, plainColumns, func(_ dbgen.Staff) error {
+				n, err := env.Q.DeactivateStaff(ctx, in.StaffID)
+				if err != nil {
+					return err
+				}
+				if n == 0 {
+					return ops.Rule("员工已经是停用状态")
+				}
+				return nil
+			})
 		},
 	})
 	ops.Register(r, ops.Operation[StaffIDInput, Staff]{
 		Name: "reactivate_staff", Summary: "恢复已停用的员工", Kind: ops.Write,
 		Permission: perm.StaffManage, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *StaffIDInput) (*Staff, error) {
-			if _, err := lockStaffRow(ctx, env, in.StaffID, false); err != nil {
-				return nil, err
-			}
-			if err := ensureCanManage(ctx, env, in.StaffID); err != nil {
-				return nil, err
-			}
-			before, err := view(ctx, env, in.StaffID)
-			if err != nil {
-				return nil, err
-			}
-			n, err := env.Q.ReactivateStaff(ctx, in.StaffID)
-			if err != nil {
-				return nil, err
-			}
-			if n == 0 {
-				return nil, ops.Rule("员工已经在职")
-			}
-			after, err := view(ctx, env, in.StaffID)
-			if err != nil {
-				return nil, err
-			}
-			if err := audit.Record(ctx, env, "reactivate_staff", in.StaffID, before, after); err != nil {
-				return nil, err
-			}
-			return after, nil
+			return change(ctx, env, "reactivate_staff", in.StaffID, plainColumns, func(_ dbgen.Staff) error {
+				n, err := env.Q.ReactivateStaff(ctx, in.StaffID)
+				if err != nil {
+					return err
+				}
+				if n == 0 {
+					return ops.Rule("员工已经在职")
+				}
+				return nil
+			})
 		},
 	})
 	ops.Register(r, ops.Operation[SetStaffRolesInput, Staff]{
 		Name: "set_staff_roles", Summary: "设置员工的角色", Kind: ops.Write,
 		Permission: perm.StaffManage, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *SetStaffRolesInput) (*Staff, error) {
-			if _, err := lockStaffRow(ctx, env, in.StaffID, false); err != nil {
-				return nil, err
-			}
-			if err := ensureCanManage(ctx, env, in.StaffID); err != nil {
-				return nil, err
-			}
-			before, err := view(ctx, env, in.StaffID)
-			if err != nil {
-				return nil, err
-			}
-			if err := lockOwners(ctx, env); err != nil {
-				return nil, err
-			}
-			if err := setRoles(ctx, env, in.StaffID, in.RoleIDs); err != nil {
-				return nil, err
-			}
-			if err := ensureOwnerRemains(ctx, env); err != nil {
-				return nil, err
-			}
-			after, err := view(ctx, env, in.StaffID)
-			if err != nil {
-				return nil, err
-			}
-			if err := audit.Record(ctx, env, "set_staff_roles", in.StaffID, before, after); err != nil {
-				return nil, err
-			}
-			return after, nil
+			return change(ctx, env, "set_staff_roles", in.StaffID, plainColumns, func(_ dbgen.Staff) error {
+				return setRoles(ctx, env, in.StaffID, in.RoleIDs)
+			})
 		},
 	})
 }

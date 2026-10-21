@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/optest"
 )
@@ -76,5 +77,32 @@ func TestOwnerQueueLockAllowsKeyShare(t *testing.T) {
 	go func() {
 		done <- s.HTTPWithToken(t, s.Owner, "deactivate_staff", map[string]any{"staff_id": id})
 	}()
+	waitLockResult(t, done)
+}
+
+func TestOwnerQueueWaitDoesNotLockStaff(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	tx1 := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	if _, err := dbgen.New(tx1).LockOwnerRole(ctx, s.Res.StoreID); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan optest.Result, 1)
+	go func() {
+		done <- s.HTTPWithToken(t, s.Owner, "update_staff", map[string]any{
+			"staff_id": s.Res.OwnerID, "name": "老板新名", "number": "001",
+		})
+	}()
+	dbtest.WaitForLockWait(t, s.Pool)
+	tx2 := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	if _, err := tx2.Exec(ctx, "SELECT id FROM staff WHERE id=$1 FOR KEY SHARE NOWAIT", s.Res.OwnerID); err != nil {
+		t.Fatalf("owner queue wait must leave staff available for KEY SHARE: %v", err)
+	}
+	if err := tx2.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx1.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
 	waitLockResult(t, done)
 }
