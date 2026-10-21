@@ -320,6 +320,7 @@ test('切换顾客后丢弃迟到的详情，编辑仍预填当前顾客', async
   const lateLogResponse = page.waitForResponse(r => r.url().endsWith('/api/ops/list_audit_log') && r.request().postDataJSON().target_id === a.id)
   releaseA()
   await Promise.all([lateResponse, lateLogResponse].map(async response => (await response).finished()))
+  // eslint-disable-next-line no-restricted-syntax -- 旧详情被丢弃后没有可观察的状态变化，响应接收完成也不能确认组件回调已执行。
   await page.waitForTimeout(500)
   await expect(detail).toContainText(b.name)
   await expect(detail).not.toContainText(a.name)
@@ -492,6 +493,7 @@ test('切换顾客后丢弃迟到的加载更多日志', async ({ page }) => {
   const response = page.waitForResponse(r => r.url().endsWith('/api/ops/list_audit_log') && r.request().postDataJSON().before_id)
   release()
   await (await response).finished()
+  // eslint-disable-next-line no-restricted-syntax -- 当前顾客没有加载更多按钮，旧请求结束也不会改变其 loading 状态，无法观察回调完成。
   await page.waitForTimeout(500)
   await expect(detail.locator('tbody tr')).toHaveCount(1)
   await expect(detail.locator('table')).not.toContainText(a.name)

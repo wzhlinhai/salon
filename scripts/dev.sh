@@ -65,7 +65,10 @@ check_wait_process() {
 check_port() { # 名字 端口
   local name=$1 port=$2 listeners pids pid pgid expected=""
   if command -v ss >/dev/null; then
-    listeners=$(ss -H -ltnp "sport = :$port")
+    if ! listeners=$(ss -H -ltnp "sport = :$port"); then
+      log "$name: cannot check port $port: ss failed"
+      return 1
+    fi
     [ -n "$listeners" ] || return 0
     pids=$(printf '%s\n' "$listeners" | grep -oE 'pid=[0-9]+' | cut -d= -f2 || true)
     # 看不到占用者的行不能当作属于本服务（例如其他用户的监听进程）。
@@ -80,7 +83,12 @@ check_port() { # 名字 端口
     fi
     listeners="port $port is occupied (owner unavailable)"
   fi
-  if proc_running "$name"; then expected=$(cat "$STATE/$name.pid"); fi
+  if proc_running "$name"; then
+    if ! expected=$(cat "$STATE/$name.pid"); then
+      log "$name: cannot check port $port: cannot read pid file"
+      return 1
+    fi
+  fi
   if [ -n "$expected" ] && [ -n "$pids" ]; then
     for pid in $pids; do
       pgid=$(ps -o pgid= -p "$pid" | tr -d ' ' || true)
@@ -153,8 +161,10 @@ stop_proc() {
 }
 
 up() {
-  check_port backend "${BACKEND_ADDR##*:}"
-  check_port admin "$ADMIN_PORT"
+  local port_status=0
+  check_port backend "${BACKEND_ADDR##*:}" || port_status=1
+  check_port admin "$ADMIN_PORT" || port_status=1
+  [ "$port_status" = "0" ] || return 1
   start_db
   (cd "$ROOT/backend" && go build -o "$STATE/salon" ./cmd/salon)
   "$STATE/salon" migrate up
