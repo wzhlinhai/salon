@@ -27,7 +27,7 @@ Single-context: one root `GLOSSARY.md` plus `docs/adr/`. See `docs/agents/domain
 ### Workflow
 
 1. Claude inspects code, tests, configuration, and git status.
-2. Claude prepares a scoped implementation brief, naming the `CODING_STANDARDS.md` rules the task touches. Briefs, review prompts, and PR bodies go in `.dev/codex/<task>/` (gitignored).
+2. Claude prepares a scoped implementation brief, naming the `CODING_STANDARDS.md` rules the task touches. Briefs, review prompts, PR bodies, relay output (`--out-dir .dev/codex/<task>/runs`), and Codex's reports go in `.dev/codex/<task>/` (gitignored); `/tmp` does not survive a reboot.
 3. After authorization, Codex implements the changes.
 4. Claude independently reviews the complete diff against the brief and `CODING_STANDARDS.md`, rule by rule.
 5. A fresh, read-only Codex session performs secondary review against the same.
@@ -45,3 +45,4 @@ Single-context: one root `GLOSSARY.md` plus `docs/adr/`. See `docs/agents/domain
 - Do not introduce unnecessary architecture or abstractions.
 - Do not commit, push, deploy, or perform destructive actions without explicit authorization.
 - Never claim success without real verification evidence.
+- When a rule in `CODING_STANDARDS.md` is added or changed, check existing code against it; open an issue for whatever the same PR does not fix.
