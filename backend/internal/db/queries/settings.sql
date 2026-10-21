@@ -21,7 +21,9 @@ RETURNING *;
 SELECT sqlc.embed(c), s.name AS changed_by_name
 FROM setting_changes c JOIN staff s ON s.id = c.changed_by
 WHERE c.store_id = @store_id AND (sqlc.narg(key)::text IS NULL OR c.key = sqlc.narg(key))
-ORDER BY c.changed_at DESC, c.id DESC;
+    AND (sqlc.narg(before_id)::uuid IS NULL OR (c.changed_at, c.id) < (SELECT b.changed_at, b.id FROM setting_changes b WHERE b.id = sqlc.narg(before_id) AND b.store_id = @store_id))
+ORDER BY c.changed_at DESC, c.id DESC
+LIMIT sqlc.arg(row_limit);
 
 -- name: SaveSettingsSnapshot :one
 -- 内容相同的快照已存在时返回已有的那一行。并发保存同样内容时，后到的语句看不到先到的行，返回 0 行，由调用方重试。

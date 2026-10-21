@@ -949,14 +949,22 @@ export interface components {
             items: components["schemas"]["Level"][];
         };
         ListAuditLogInput: {
+            /** @description 上一页最后一条的 ID，只看比它更早的；不填为最新一页 */
+            before_id?: string;
+            /** Format: int32 */
+            limit?: number;
             /** @description 只看这个目标的修改，不填为全部 */
             target_id?: string;
         };
         ListCustomerSourcesInput: Record<string, never>;
         ListInput: Record<string, never>;
         ListSettingChangesInput: {
+            /** @description 上一页最后一条的 ID，只看比它更早的；不填为最新一页 */
+            before_id?: string;
             /** @description 只看这一项设置的修改，不填为全部 */
             key?: string;
+            /** Format: int32 */
+            limit?: number;
         };
         ListStaffInput: Record<string, never>;
         LogList: {

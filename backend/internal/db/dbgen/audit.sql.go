@@ -45,7 +45,9 @@ FROM audit_log a JOIN staff s ON s.id = a.actor_id
 LEFT JOIN customers c ON c.id = a.target_id
 WHERE a.store_id = $1 AND ($2::uuid IS NULL OR a.target_id = $2)
     AND (c.id IS NULL OR ($3::boolean AND ($4::uuid IS NULL OR c.responsible_staff_id = $4)))
+    AND ($5::uuid IS NULL OR (a.at, a.id) < (SELECT b.at, b.id FROM audit_log b WHERE b.id = $5 AND b.store_id = $1))
 ORDER BY a.at DESC, a.id DESC
+LIMIT $6
 `
 
 type ListAuditLogParams struct {
@@ -53,6 +55,8 @@ type ListAuditLogParams struct {
 	TargetID       *uuid.UUID
 	CustomerView   bool
 	CustomerSelfID *uuid.UUID
+	BeforeID       *uuid.UUID
+	RowLimit       int32
 }
 
 type ListAuditLogRow struct {
@@ -66,6 +70,8 @@ func (q *Queries) ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]L
 		arg.TargetID,
 		arg.CustomerView,
 		arg.CustomerSelfID,
+		arg.BeforeID,
+		arg.RowLimit,
 	)
 	if err != nil {
 		return nil, err

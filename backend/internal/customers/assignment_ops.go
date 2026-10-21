@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/wzhlinhai/salon/backend/internal/audit"
+	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
 )
@@ -49,21 +50,33 @@ func registerAssignments(r *ops.Registry) {
 			ids := slices.Clone(in.CustomerIDs)
 			slices.SortFunc(ids, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
 			out := &CustomerAssignmentResult{Items: []Customer{}}
+			rows := make([]dbgen.Customer, 0, len(ids))
 			for _, id := range ids {
 				row, err := lock(ctx, env, id)
 				if err != nil {
 					return nil, err
 				}
-				before, err := view(ctx, env, row)
-				if err != nil {
+				rows = append(rows, row)
+			}
+			before, err := views(ctx, env, rows)
+			if err != nil {
+				return nil, err
+			}
+			for i := range rows {
+				rows[i].ResponsibleStaffID = in.StaffID
+				if err := save(ctx, env, rows[i]); err != nil {
+					return nil, rowError(err)
+				}
+			}
+			after, err := views(ctx, env, rows)
+			if err != nil {
+				return nil, err
+			}
+			for i, c := range after {
+				if err := audit.Record(ctx, env, "assign_customer_responsible", rows[i].ID, before[i], c); err != nil {
 					return nil, err
 				}
-				row.ResponsibleStaffID = in.StaffID
-				c, err := finish(ctx, env, "assign_customer_responsible", before, row)
-				if err != nil {
-					return nil, err
-				}
-				out.Items = append(out.Items, *c)
+				out.Items = append(out.Items, *mask(env, c))
 			}
 			return out, nil
 		},
@@ -94,24 +107,26 @@ func registerAssignments(r *ops.Registry) {
 				CustomerIDs []uuid.UUID `json:"customer_ids"`
 			}{CustomerIDs: []uuid.UUID{}}
 			out := &CustomerHandoverResult{Count: len(rows), ToStaffID: in.ToStaffID, CustomerIDs: []uuid.UUID{}}
-			for _, row := range rows {
-				c, err := view(ctx, env, row)
-				if err != nil {
+			prior, err := views(ctx, env, rows)
+			if err != nil {
+				return nil, err
+			}
+			for i := range rows {
+				before.CustomerIDs = append(before.CustomerIDs, rows[i].ID)
+				rows[i].ResponsibleStaffID = &in.ToStaffID
+				if err := save(ctx, env, rows[i]); err != nil {
 					return nil, err
 				}
-				before.CustomerIDs = append(before.CustomerIDs, row.ID)
-				row.ResponsibleStaffID = &in.ToStaffID
-				if err := save(ctx, env, row); err != nil {
+				out.CustomerIDs = append(out.CustomerIDs, rows[i].ID)
+			}
+			after, err := views(ctx, env, rows)
+			if err != nil {
+				return nil, err
+			}
+			for i, c := range after {
+				if err := audit.Record(ctx, env, "hand_over_customers", rows[i].ID, prior[i], c); err != nil {
 					return nil, err
 				}
-				after, err := view(ctx, env, row)
-				if err != nil {
-					return nil, err
-				}
-				if err := audit.Record(ctx, env, "hand_over_customers", row.ID, c, after); err != nil {
-					return nil, err
-				}
-				out.CustomerIDs = append(out.CustomerIDs, row.ID)
 			}
 			if err := audit.Record(ctx, env, "hand_over_customers", in.FromStaffID, before, out); err != nil {
 				return nil, err

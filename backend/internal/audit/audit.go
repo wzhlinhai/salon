@@ -56,6 +56,8 @@ type Entry struct {
 
 // ListAuditLogInput 是 list_audit_log 的参数。
 type ListAuditLogInput struct {
+	Limit    int32      `json:"limit,omitempty" minimum:"0" maximum:"200"`
+	BeforeID *uuid.UUID `json:"before_id,omitempty" doc:"上一页最后一条的 ID，只看比它更早的；不填为最新一页"`
 	TargetID *uuid.UUID `json:"target_id,omitempty" doc:"只看这个目标的修改，不填为全部"`
 }
 
@@ -71,8 +73,12 @@ func Register(r *ops.Registry) {
 		Permission: perm.AuditLogView, AI: ops.AIDirect,
 		Handle: func(ctx context.Context, env ops.Env, in *ListAuditLogInput) (*LogList, error) {
 			customerView, self := env.Caller.ScopeFilter(perm.CustomerView)
+			limit := in.Limit
+			if limit == 0 {
+				limit = 50
+			}
 			rows, err := env.Q.ListAuditLog(ctx, dbgen.ListAuditLogParams{
-				StoreID: env.Caller.StoreID, TargetID: in.TargetID,
+				StoreID: env.Caller.StoreID, TargetID: in.TargetID, BeforeID: in.BeforeID, RowLimit: limit,
 				CustomerView: customerView, CustomerSelfID: self,
 			})
 			if err != nil {

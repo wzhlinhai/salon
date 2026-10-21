@@ -162,23 +162,6 @@ func (q *Queries) GetCustomer(ctx context.Context, id uuid.UUID) (Customer, erro
 	return i, err
 }
 
-const getCustomerSource = `-- name: GetCustomerSource :one
-SELECT id, tenant_id, store_id, name, active FROM customer_sources WHERE id = $1
-`
-
-func (q *Queries) GetCustomerSource(ctx context.Context, id uuid.UUID) (CustomerSource, error) {
-	row := q.db.QueryRow(ctx, getCustomerSource, id)
-	var i CustomerSource
-	err := row.Scan(
-		&i.ID,
-		&i.TenantID,
-		&i.StoreID,
-		&i.Name,
-		&i.Active,
-	)
-	return i, err
-}
-
 const listCustomerSources = `-- name: ListCustomerSources :many
 SELECT id, tenant_id, store_id, name, active FROM customer_sources WHERE store_id = $1 ORDER BY name, id
 `
@@ -209,14 +192,14 @@ func (q *Queries) ListCustomerSources(ctx context.Context, storeID uuid.UUID) ([
 	return items, nil
 }
 
-const listSafetyLabels = `-- name: ListSafetyLabels :many
+const listCustomerViewSafetyLabels = `-- name: ListCustomerViewSafetyLabels :many
 SELECT id, tenant_id, store_id, customer_id, kind, source, note, observed_on, recorded_by, created_at, revoked_at, revoked_by FROM customer_safety_labels
-WHERE customer_id = $1 AND revoked_at IS NULL
+WHERE customer_id = ANY($1::uuid[]) AND revoked_at IS NULL
 ORDER BY observed_on DESC, created_at DESC
 `
 
-func (q *Queries) ListSafetyLabels(ctx context.Context, customerID uuid.UUID) ([]CustomerSafetyLabel, error) {
-	rows, err := q.db.Query(ctx, listSafetyLabels, customerID)
+func (q *Queries) ListCustomerViewSafetyLabels(ctx context.Context, ids []uuid.UUID) ([]CustomerSafetyLabel, error) {
+	rows, err := q.db.Query(ctx, listCustomerViewSafetyLabels, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -238,6 +221,64 @@ func (q *Queries) ListSafetyLabels(ctx context.Context, customerID uuid.UUID) ([
 			&i.RevokedAt,
 			&i.RevokedBy,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCustomerViewSources = `-- name: ListCustomerViewSources :many
+SELECT id, name FROM customer_sources WHERE id = ANY($1::uuid[])
+`
+
+type ListCustomerViewSourcesRow struct {
+	ID   uuid.UUID
+	Name string
+}
+
+func (q *Queries) ListCustomerViewSources(ctx context.Context, ids []uuid.UUID) ([]ListCustomerViewSourcesRow, error) {
+	rows, err := q.db.Query(ctx, listCustomerViewSources, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCustomerViewSourcesRow
+	for rows.Next() {
+		var i ListCustomerViewSourcesRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCustomerViewStaff = `-- name: ListCustomerViewStaff :many
+SELECT id, name FROM staff WHERE id = ANY($1::uuid[])
+`
+
+type ListCustomerViewStaffRow struct {
+	ID   uuid.UUID
+	Name string
+}
+
+func (q *Queries) ListCustomerViewStaff(ctx context.Context, ids []uuid.UUID) ([]ListCustomerViewStaffRow, error) {
+	rows, err := q.db.Query(ctx, listCustomerViewStaff, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCustomerViewStaffRow
+	for rows.Next() {
+		var i ListCustomerViewStaffRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

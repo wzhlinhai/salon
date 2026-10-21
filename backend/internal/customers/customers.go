@@ -66,27 +66,68 @@ func sourceView(s dbgen.CustomerSource) CustomerSource {
 
 // view 构造包含来源、负责人和有效安全标签的顾客视图。
 func view(ctx context.Context, env ops.Env, row dbgen.Customer) (*Customer, error) {
-	out := &Customer{ID: row.ID, Name: row.Name, Phone: row.Phone, Gender: row.Gender, Note: row.Note, Unidentified: row.Phone == nil, MergedInto: row.MergedInto, CreatedAt: row.CreatedAt.Time, ActiveSafetyLabels: []SafetyLabel{}}
-	if row.SourceID != nil {
-		s, err := env.Q.GetCustomerSource(ctx, *row.SourceID)
-		if err != nil {
-			return nil, err
-		}
-		out.Source = &CustomerRef{ID: s.ID, Name: s.Name}
-	}
-	if row.ResponsibleStaffID != nil {
-		s, err := env.Q.GetStaff(ctx, *row.ResponsibleStaffID)
-		if err != nil {
-			return nil, err
-		}
-		out.Responsible = &CustomerRef{ID: s.ID, Name: s.Name}
-	}
-	labels, err := env.Q.ListSafetyLabels(ctx, row.ID)
+	items, err := views(ctx, env, []dbgen.Customer{row})
 	if err != nil {
 		return nil, err
 	}
+	return items[0], nil
+}
+
+// views 批量构造顾客视图，保持输入顺序；空列表不查询。
+func views(ctx context.Context, env ops.Env, rows []dbgen.Customer) ([]*Customer, error) {
+	out := make([]*Customer, 0, len(rows))
+	if len(rows) == 0 {
+		return out, nil
+	}
+	sourceIDs, staffIDs, customerIDs := []uuid.UUID{}, []uuid.UUID{}, []uuid.UUID{}
+	for _, row := range rows {
+		customerIDs = append(customerIDs, row.ID)
+		if row.SourceID != nil {
+			sourceIDs = append(sourceIDs, *row.SourceID)
+		}
+		if row.ResponsibleStaffID != nil {
+			staffIDs = append(staffIDs, *row.ResponsibleStaffID)
+		}
+	}
+	sources, staff := map[uuid.UUID]*CustomerRef{}, map[uuid.UUID]*CustomerRef{}
+	if len(sourceIDs) > 0 {
+		refs, err := env.Q.ListCustomerViewSources(ctx, sourceIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, ref := range refs {
+			sources[ref.ID] = &CustomerRef{ID: ref.ID, Name: ref.Name}
+		}
+	}
+	if len(staffIDs) > 0 {
+		refs, err := env.Q.ListCustomerViewStaff(ctx, staffIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, ref := range refs {
+			staff[ref.ID] = &CustomerRef{ID: ref.ID, Name: ref.Name}
+		}
+	}
+	labels, err := env.Q.ListCustomerViewSafetyLabels(ctx, customerIDs)
+	if err != nil {
+		return nil, err
+	}
+	byCustomer := map[uuid.UUID][]SafetyLabel{}
 	for _, l := range labels {
-		out.ActiveSafetyLabels = append(out.ActiveSafetyLabels, SafetyLabel{ID: l.ID, Kind: l.Kind, Source: l.Source, Note: l.Note, ObservedOn: l.ObservedOn.Time.Format(time.DateOnly), RecordedBy: l.RecordedBy, CreatedAt: l.CreatedAt.Time})
+		byCustomer[l.CustomerID] = append(byCustomer[l.CustomerID], SafetyLabel{ID: l.ID, Kind: l.Kind, Source: l.Source, Note: l.Note, ObservedOn: l.ObservedOn.Time.Format(time.DateOnly), RecordedBy: l.RecordedBy, CreatedAt: l.CreatedAt.Time})
+	}
+	for _, row := range rows {
+		c := &Customer{ID: row.ID, Name: row.Name, Phone: row.Phone, Gender: row.Gender, Note: row.Note, Unidentified: row.Phone == nil, MergedInto: row.MergedInto, CreatedAt: row.CreatedAt.Time, ActiveSafetyLabels: []SafetyLabel{}}
+		if row.SourceID != nil {
+			c.Source = sources[*row.SourceID]
+		}
+		if row.ResponsibleStaffID != nil {
+			c.Responsible = staff[*row.ResponsibleStaffID]
+		}
+		if labels := byCustomer[row.ID]; labels != nil {
+			c.ActiveSafetyLabels = labels
+		}
+		out = append(out, c)
 	}
 	return out, nil
 }
