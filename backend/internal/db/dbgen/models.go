@@ -11,15 +11,17 @@ import (
 )
 
 type AuditLog struct {
-	ID       uuid.UUID
-	TenantID uuid.UUID
-	StoreID  uuid.UUID
-	Action   string
-	TargetID uuid.UUID
-	Before   []byte
-	After    []byte
-	ActorID  uuid.UUID
-	At       pgtype.Timestamptz
+	ID         uuid.UUID
+	TenantID   uuid.UUID
+	StoreID    uuid.UUID
+	Action     string
+	TargetID   uuid.UUID
+	Before     []byte
+	After      []byte
+	ActorID    uuid.UUID
+	At         pgtype.Timestamptz
+	TargetKind string
+	CustomerID *uuid.UUID
 }
 
 type Customer struct {

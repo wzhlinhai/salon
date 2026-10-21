@@ -46,12 +46,12 @@ func TestLogCursorPagination(t *testing.T) {
 				logID = uuid.New()
 				logAt = at.Add(time.Millisecond)
 			}
-			if _, err := tx.Exec(ctx, "INSERT INTO audit_log (id,tenant_id,store_id,action,target_id,actor_id,at) VALUES ($1,$2,$3,'pagination',$4,$5,$6)", logID, s.Res.TenantID, s.Res.StoreID, target, s.Res.OwnerID, logAt); err != nil {
+			if _, err := tx.Exec(ctx, "INSERT INTO audit_log (id,tenant_id,store_id,action,target_id,actor_id,at,target_kind,customer_id) VALUES ($1,$2,$3,'pagination',$4,$5,$6,'customer',$4)", logID, s.Res.TenantID, s.Res.StoreID, target, s.Res.OwnerID, logAt); err != nil {
 				t.Fatal(err)
 			}
 		}
 	}
-	if _, err := tx.Exec(ctx, "INSERT INTO audit_log (id,tenant_id,store_id,action,target_id,actor_id,at) VALUES ($1,$2,$3,'other',$4,$4,'2027-01-01')", otherCursor, s.Res.TenantID, otherStore, s.Res.OwnerID); err != nil {
+	if _, err := tx.Exec(ctx, "INSERT INTO audit_log (id,tenant_id,store_id,action,target_id,actor_id,at,target_kind,customer_id) VALUES ($1,$2,$3,'other',$4,$4,'2027-01-01','staff',NULL)", otherCursor, s.Res.TenantID, otherStore, s.Res.OwnerID); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(ctx); err != nil {

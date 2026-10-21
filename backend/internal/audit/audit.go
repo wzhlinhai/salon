@@ -18,8 +18,30 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/privacy"
 )
 
+// Target 是日志目标的种类、标识及其关联顾客。
+type Target struct {
+	kind       string
+	id         uuid.UUID
+	customerID *uuid.UUID
+}
+
+// CustomerTarget 创建顾客日志目标。
+func CustomerTarget(id uuid.UUID) Target { return Target{kind: "customer", id: id, customerID: &id} }
+
+// StaffTarget 创建员工日志目标。
+func StaffTarget(id uuid.UUID) Target { return Target{kind: "staff", id: id} }
+
+// RoleTarget 创建角色日志目标。
+func RoleTarget(id uuid.UUID) Target { return Target{kind: "role", id: id} }
+
+// CustomerSourceTarget 创建顾客来源日志目标。
+func CustomerSourceTarget(id uuid.UUID) Target { return Target{kind: "customer_source", id: id} }
+
+// ItemTarget 创建项目日志目标。
+func ItemTarget(id uuid.UUID) Target { return Target{kind: "item", id: id} }
+
 // Record 在业务操作的同一事务中追加日志；nil 表示新建前或删除后不存在；手机号必须用键名 phone。
-func Record(ctx context.Context, env ops.Env, action string, targetID uuid.UUID, before, after any) error {
+func Record(ctx context.Context, env ops.Env, action string, target Target, before, after any) error {
 	if err := checkPhoneKeys(before); err != nil {
 		return err
 	}
@@ -42,7 +64,7 @@ func Record(ctx context.Context, env ops.Env, action string, targetID uuid.UUID,
 	}
 	return env.Q.AddAuditLog(ctx, dbgen.AddAuditLogParams{
 		TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID,
-		Action: action, TargetID: targetID, Before: oldJSON, After: newJSON, ActorID: env.Caller.StaffID,
+		Action: action, TargetID: target.id, TargetKind: target.kind, CustomerID: target.customerID, Before: oldJSON, After: newJSON, ActorID: env.Caller.StaffID,
 	})
 }
 
@@ -129,13 +151,14 @@ type Actor struct {
 
 // Entry 是一次操作的记录，改前改后按调用者权限打码手机号。
 type Entry struct {
-	ID       uuid.UUID       `json:"id"`
-	Action   string          `json:"action"`
-	TargetID uuid.UUID       `json:"target_id"`
-	Before   json.RawMessage `json:"before"`
-	After    json.RawMessage `json:"after"`
-	Actor    Actor           `json:"actor"`
-	At       time.Time       `json:"at"`
+	ID         uuid.UUID       `json:"id"`
+	Action     string          `json:"action"`
+	TargetID   uuid.UUID       `json:"target_id"`
+	TargetKind string          `json:"target_kind"`
+	Before     json.RawMessage `json:"before"`
+	After      json.RawMessage `json:"after"`
+	Actor      Actor           `json:"actor"`
+	At         time.Time       `json:"at"`
 }
 
 // ListAuditLogInput 是 list_audit_log 的参数。
@@ -181,7 +204,7 @@ func Register(r *ops.Registry) {
 						return nil, err
 					}
 				}
-				out.Entries = append(out.Entries, Entry{ID: a.ID, Action: a.Action, TargetID: a.TargetID, Before: a.Before, After: a.After, Actor: Actor{ID: a.ActorID, Name: row.ActorName}, At: a.At.Time})
+				out.Entries = append(out.Entries, Entry{ID: a.ID, Action: a.Action, TargetID: a.TargetID, TargetKind: a.TargetKind, Before: a.Before, After: a.After, Actor: Actor{ID: a.ActorID, Name: row.ActorName}, At: a.At.Time})
 			}
 			return out, nil
 		},

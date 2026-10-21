@@ -948,6 +948,7 @@ export interface components {
             before: unknown;
             id: string;
             target_id: string;
+            target_kind: string;
         };
         ErrorDetail: {
             /** @description Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */

@@ -58,7 +58,7 @@ func change(ctx context.Context, env ops.Env, action string, id uuid.UUID, lock 
 	if err != nil {
 		return nil, err
 	}
-	if err := audit.Record(ctx, env, action, id, before, after); err != nil {
+	if err := audit.Record(ctx, env, action, audit.StaffTarget(id), before, after); err != nil {
 		return nil, err
 	}
 	return after, nil
@@ -70,7 +70,7 @@ func created(ctx context.Context, env ops.Env, action string, id uuid.UUID) (*St
 	if err != nil {
 		return nil, err
 	}
-	if err := audit.Record(ctx, env, action, id, nil, after); err != nil {
+	if err := audit.Record(ctx, env, action, audit.StaffTarget(id), nil, after); err != nil {
 		return nil, err
 	}
 	return after, nil

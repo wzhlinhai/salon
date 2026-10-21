@@ -207,7 +207,7 @@ func TestLoginLockAllowsAuditActorForeignKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := insert.Exec(ctx,
-		"INSERT INTO audit_log (tenant_id, store_id, action, target_id, actor_id) VALUES ($1, $2, 'change_my_password', $3, $3)",
+		"INSERT INTO audit_log (tenant_id, store_id, action, target_id, actor_id, target_kind) VALUES ($1, $2, 'change_my_password', $3, $3, 'staff')",
 		s.Res.TenantID, s.Res.StoreID, id); err != nil {
 		t.Fatalf("insert audit actor while login holds lock: %v", err)
 	}
