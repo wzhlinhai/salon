@@ -11,6 +11,7 @@ node <codex-delegate>/scripts/relay.mjs --brief .dev/codex/<task>/brief.txt \
 
 - `--network-access` on every implementation dispatch and every `--session <threadId>` resume; a resume also needs `--sandbox workspace-write` beside it. Without it the sandbox has no Docker and no browser, so `go test`, `mutcheck.sh` and e2e all fail on the environment.
 - Read-only reviews use `--read-only --ignore-user-config` instead.
+- While a read-only review is running, do not run mutchecks or other edits in the same worktree: the reviewer reads whatever is on disk, and a temporary mutation shows up as a finding.
 - Before dispatching, run `scripts/dev.sh down` and confirm ports 8080 and 3000 are free (`ss -ltnp | grep -E ':8080 |:3000 '`). The sandbox cannot see processes started outside it: a sandboxed `dev.sh down` deletes their pid files without stopping them, leaving orphans that block the next `dev.sh up`.
 
 ## Brief skeleton
@@ -41,7 +42,7 @@ Codex runs every applicable gate and fixes failures before reporting. Each outpu
   The command exits with the reset or e2e status, not `down`'s.
 
 - A mutcheck counts as caught only when the failing test names are the tests guarding that protection. A failure caused by the environment (Docker, browser, port) is not a catch: report it as not run.
-- A mutation that moves code (not just deletes it) is easy to get wrong on the command line: build the original and replacement text with a script from the file, and check the log says "caught by". "does not build" or "NOT caught" is not a pass.
+- A mutation that moves code (not just deletes it) is easy to get wrong on the command line: build the original and replacement text with a script from the file, and check the log says "caught by". "does not build" or "NOT caught" is not a pass. Run every mutcheck on the final code: one recorded before a later edit (for example, before deleting a query it calls) may no longer build.
 - A protection in the admin UI (no `mutcheck.sh` there): temporarily remove it, run the guarding e2e in the same one-command form, restore it, report both results.
 
 ## Report
