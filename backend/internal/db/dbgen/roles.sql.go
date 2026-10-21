@@ -124,6 +124,21 @@ func (q *Queries) DeleteRolePermissions(ctx context.Context, roleID uuid.UUID) e
 	return err
 }
 
+const deleteStaffRole = `-- name: DeleteStaffRole :exec
+DELETE FROM staff_roles WHERE staff_id = $1 AND role_id = $2
+`
+
+type DeleteStaffRoleParams struct {
+	StaffID uuid.UUID
+	RoleID  uuid.UUID
+}
+
+// DeleteStaffRole 只删除员工被收回的一个角色。
+func (q *Queries) DeleteStaffRole(ctx context.Context, arg DeleteStaffRoleParams) error {
+	_, err := q.db.Exec(ctx, deleteStaffRole, arg.StaffID, arg.RoleID)
+	return err
+}
+
 const deleteStaffRoles = `-- name: DeleteStaffRoles :exec
 DELETE FROM staff_roles WHERE staff_id = $1
 `
