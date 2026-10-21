@@ -15,9 +15,13 @@ const kinds = [
 const items = reactive<Record<string, LevelOrPosition[]>>({ level: [], position: [] })
 const draft = reactive<Record<string, string>>({ level: '', position: '' })
 
+let loadRequest = 0
+
 async function load() {
+  const request = ++loadRequest
   for (const k of kinds) {
     const { data } = await api.POST(k.list, { body: {} })
+    if (request !== loadRequest) return
     items[k.key] = data?.items ?? []
   }
 }

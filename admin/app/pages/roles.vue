@@ -12,11 +12,15 @@ const { me } = useMe()
 const roles = ref<Role[]>([])
 const catalogue = ref<Def[]>([])
 
+let loadRequest = 0
+
 async function load() {
+  const request = ++loadRequest
   const [r, p] = await Promise.all([
     api.POST('/api/ops/list_roles', { body: {} }),
     api.POST('/api/ops/list_permissions', { body: {} })
   ])
+  if (request !== loadRequest) return
   roles.value = r.data?.roles ?? []
   catalogue.value = p.data?.permissions ?? []
 }

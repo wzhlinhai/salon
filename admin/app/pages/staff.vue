@@ -14,13 +14,17 @@ const positions = ref<components['schemas']['Position'][]>([])
 
 const NONE = 'none'
 
+let loadRequest = 0
+
 async function load() {
+  const request = ++loadRequest
   const [s, r, l, p] = await Promise.all([
     api.POST('/api/ops/list_staff', { body: {} }),
     api.POST('/api/ops/list_role_options', { body: {} }),
     api.POST('/api/ops/list_levels', { body: {} }),
     api.POST('/api/ops/list_positions', { body: {} })
   ])
+  if (request !== loadRequest) return
   staff.value = s.data?.staff ?? []
   roles.value = r.data?.roles ?? []
   levels.value = l.data?.items ?? []

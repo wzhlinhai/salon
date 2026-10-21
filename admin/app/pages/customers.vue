@@ -51,23 +51,30 @@ const columns = computed(() => [
 async function load() {
   const current = ++request
   loading.value = true
-  const res = await api.POST('/api/ops/search_customers', {
-    body: {
-      query: query.value,
-      include_unidentified: includeUnidentified.value,
-      responsible_staff_id: responsible.value === NONE ? undefined : responsible.value,
-      limit: 50,
-      offset: offset.value
+  try {
+    const res = await api.POST('/api/ops/search_customers', {
+      body: {
+        query: query.value,
+        include_unidentified: includeUnidentified.value,
+        responsible_staff_id: responsible.value === NONE ? undefined : responsible.value,
+        limit: 50,
+        offset: offset.value
+      }
+    })
+    if (current !== request) return
+    if (res.data) {
+      items.value = res.data.items
+      selected.value = []
+    } else {
+      items.value = []
+      toast.add({ title: errorText(res.error), color: 'error' })
     }
-  })
-  if (current !== request) return
-  loading.value = false
-  if (res.data) {
-    items.value = res.data.items
-    selected.value = []
-  } else {
+  } catch (e) {
+    if (current !== request) return
     items.value = []
-    toast.add({ title: errorText(res.error), color: 'error' })
+    toast.add({ title: errorText(e), color: 'error' })
+  } finally {
+    if (current === request) loading.value = false
   }
 }
 
