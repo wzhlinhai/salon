@@ -536,7 +536,7 @@ test('顾客日志加载更多断网后可重试', async ({ page }) => {
   await expect(rows).toHaveCount(50)
   const more = detail.getByRole('button', { name: '加载更多', exact: true })
   await more.click()
-  await expect(page.getByText('操作失败', { exact: true })).toBeVisible()
+  await expect(page.getByText('网络连接失败，请重试', { exact: true })).toBeVisible()
   await expect(more).toBeEnabled()
   await expect(rows).toHaveCount(50)
   await more.click()
@@ -610,7 +610,7 @@ test('顾客列表断网后结束加载并可重新搜索', async ({ page }) => 
     }
   })
   await page.getByLabel('搜索顾客', { exact: true }).press('Enter')
-  await expect(page.getByText('操作失败', { exact: true })).toBeVisible()
+  await expect(page.getByText('网络连接失败，请重试', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0)
   await expect(page.locator('thead')).not.toHaveClass(/animate/)
   await expect(page.getByLabel('搜索顾客', { exact: true })).toBeEnabled()
@@ -640,7 +640,7 @@ test('合并搜索断网后结束搜索并可重试', async ({ page }) => {
   page.on('pageerror', error => pageErrors.push(error.message))
   await detail.getByRole('button', { name: '合并重复顾客', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '合并重复顾客', exact: true })
-  await expect(page.getByText('操作失败', { exact: true })).toBeVisible()
+  await expect(page.getByText('网络连接失败，请重试', { exact: true })).toBeVisible()
   await expect(dialog.locator('.animate-spin')).toHaveCount(0)
   await expect(dialog.getByText('未找到其他顾客', { exact: true })).toBeVisible()
   const input = dialog.getByLabel('搜索另一位顾客', { exact: true })
@@ -649,4 +649,216 @@ test('合并搜索断网后结束搜索并可重试', async ({ page }) => {
   await input.press('Enter')
   await expect(dialog.locator(`[data-customer-id="${candidate.id}"]`)).toBeVisible()
   expect(pageErrors).toEqual([])
+})
+
+for (const duringDebounce of [false, true]) {
+  test(`搜索关键词变化${duringDebounce ? '防抖期间立即作废旧响应' : '后旧响应不覆盖第二次结果'}`, async ({ page }) => {
+    const token = await apiLogin(owner.account, owner.password)
+    const suffix = Date.now()
+    const a = (await api(token, 'create_customer', { name: `搜索甲${suffix}`, phone: phone() })).customer
+    const b = (await api(token, 'create_customer', { name: `搜索乙${suffix}`, phone: phone() })).customer
+    await login(page, owner.account, owner.password)
+    await page.goto('/customers')
+    await search(page, '没有这位顾客')
+    await expect(page.locator('tbody tr').filter({ has: page.getByRole('button') })).toHaveCount(0)
+    let release!: () => void
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let started!: () => void
+    const pending = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    await page.route('**/api/ops/search_customers', async (route) => {
+      if (route.request().postDataJSON().query === a.name) {
+        const response = await route.fetch()
+        started()
+        await blocked
+        await route.fulfill({ response })
+      } else {
+        await route.continue()
+      }
+    })
+    const input = page.getByLabel('搜索顾客', { exact: true })
+    await input.fill(a.name)
+    await input.press('Enter')
+    await pending
+    if (duringDebounce) await page.clock.pauseAt(new Date())
+    await input.fill(b.name)
+    if (!duringDebounce) await expect(page.getByRole('button', { name: b.name, exact: true })).toBeVisible()
+    const response = page.waitForResponse(r => r.url().endsWith('/api/ops/search_customers') && r.request().postDataJSON().query === a.name)
+    release()
+    await (await response).finished()
+    // eslint-disable-next-line no-restricted-syntax -- 丢弃旧搜索没有状态变化，等待页面处理旧响应；防抖期间冻结浏览器时钟以确保第二次请求尚未开始。
+    await page.waitForTimeout(500)
+    await expect(page.getByRole('button', { name: a.name, exact: true })).toHaveCount(0)
+    if (duringDebounce) await page.clock.runFor(300)
+    await expect(page.getByRole('button', { name: b.name, exact: true })).toBeVisible()
+  })
+}
+
+for (const fails of [false, true]) {
+  test(`切回同一顾客后旧保存${fails ? '失败仍提示错误' : '成功只刷新列表'}且新窗口不关`, async ({ page }) => {
+    const token = await apiLogin(owner.account, owner.password)
+    const a = (await api(token, 'create_customer', { name: `保存回切甲${Date.now()}`, phone: phone() })).customer
+    const b = (await api(token, 'create_customer', { name: `保存回切乙${Date.now()}`, phone: phone() })).customer
+    await login(page, owner.account, owner.password)
+    await page.goto(`/customers?id=${a.id}`)
+    const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+    await expect(detail.getByRole('heading', { name: a.name, exact: true })).toBeVisible()
+    let release!: () => void
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let started!: () => void
+    const pending = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    await page.route('**/api/ops/update_customer_profile', async (route) => {
+      started()
+      await blocked
+      if (fails) await route.fulfill({ status: 409, json: { detail: '旧保存冲突' } })
+      else await route.continue()
+    })
+    await detail.getByRole('button', { name: '修改资料', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: '修改顾客资料', exact: true })
+    await dialog.getByLabel('姓名', { exact: true }).fill(`${a.name}改`)
+    await dialog.getByRole('button', { name: '保存', exact: true }).click()
+    await pending
+    for (const customer of [b, a]) {
+      await page.evaluate((id) => {
+        window.history.pushState({}, '', `/customers?id=${id}`)
+        window.dispatchEvent(new PopStateEvent('popstate'))
+      }, customer.id)
+      await expect(detail.getByRole('heading', { name: customer.name, exact: true })).toBeVisible()
+    }
+    await detail.getByRole('button', { name: '修改资料', exact: true }).click()
+    await expect(dialog.getByLabel('姓名', { exact: true })).toHaveValue(a.name)
+    const response = page.waitForResponse(r => r.url().endsWith('/api/ops/update_customer_profile'))
+    release()
+    await (await response).finished()
+    if (fails) await expect(page.getByText('旧保存冲突', { exact: true })).toBeVisible()
+    else await expect(page.locator('main tbody').getByText(`${a.name}改`, { exact: true })).toHaveCount(1)
+    await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeEnabled()
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByLabel('姓名', { exact: true })).toHaveValue(a.name)
+    await expect(page.getByText('资料已保存', { exact: true })).toHaveCount(0)
+  })
+}
+
+for (const op of ['get_customer', 'list_audit_log', 'get_settings']) {
+  test(`关闭顾客详情后丢弃迟到的${op}错误`, async ({ page }) => {
+    const token = await apiLogin(owner.account, owner.password)
+    const { customer } = await api(token, 'create_customer', { name: `卸载顾客${Date.now()}`, phone: phone() })
+    await login(page, owner.account, owner.password)
+    let release!: () => void
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let started!: () => void
+    const pending = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    await page.route(`**/api/ops/${op}`, async (route) => {
+      started()
+      await blocked
+      await route.fulfill({ status: 500, json: { detail: '迟到的详情错误' } })
+    })
+    await page.goto(`/customers?id=${customer.id}`)
+    await pending
+    const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+    await detail.getByRole('button', { name: 'Close', exact: true }).click()
+    await expect(detail).toHaveCount(0)
+    const response = page.waitForResponse(r => r.url().endsWith(`/api/ops/${op}`))
+    release()
+    await (await response).finished()
+    // eslint-disable-next-line no-restricted-syntax -- 组件已卸载，丢弃错误没有页面状态变化，等待迟到响应的回调执行。
+    await page.waitForTimeout(500)
+    expect(await page.getByText('迟到的详情错误', { exact: true }).count()).toBe(0)
+  })
+}
+
+test('关闭顾客详情后旧保存成功不再加载详情或提示', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const { customer } = await api(token, 'create_customer', { name: `卸载保存${Date.now()}`, phone: phone() })
+  await login(page, owner.account, owner.password)
+  await page.goto(`/customers?id=${customer.id}`)
+  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  await detail.getByRole('button', { name: '修改资料', exact: true }).click()
+  let release!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let started!: () => void
+  const pending = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  await page.route('**/api/ops/update_customer_profile', async (route) => {
+    started()
+    await blocked
+    await route.continue()
+  })
+  const dialog = page.getByRole('dialog', { name: '修改顾客资料', exact: true })
+  await dialog.getByLabel('姓名', { exact: true }).fill(`${customer.name}改`)
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  await pending
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await detail.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(detail).toHaveCount(0)
+  let callbacks = 0
+  await page.route('**/api/ops/get_customer', async (route) => {
+    callbacks++
+    await route.continue()
+  })
+  const response = page.waitForResponse(r => r.url().endsWith('/api/ops/update_customer_profile'))
+  release()
+  await (await response).finished()
+  // eslint-disable-next-line no-restricted-syntax -- 已卸载组件的 emit 无效，等待旧保存回调执行后检查没有后续详情加载或成功提示。
+  await page.waitForTimeout(500)
+  expect(callbacks).toBe(0)
+  await expect(page.getByText('资料已保存', { exact: true })).toHaveCount(0)
+  expect((await api(token, 'get_customer', { id: customer.id })).name).toBe(`${customer.name}改`)
+})
+
+test('切回同一顾客后旧保存断网仍提示错误且新窗口不关', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const a = (await api(token, 'create_customer', { name: `断网回切甲${Date.now()}`, phone: phone() })).customer
+  const b = (await api(token, 'create_customer', { name: `断网回切乙${Date.now()}`, phone: phone() })).customer
+  await login(page, owner.account, owner.password)
+  await page.goto(`/customers?id=${a.id}`)
+  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  await expect(detail.getByRole('heading', { name: a.name, exact: true })).toBeVisible()
+  let release!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let started!: () => void
+  const pending = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  await page.route('**/api/ops/update_customer_profile', async (route) => {
+    started()
+    await blocked
+    await route.abort()
+  })
+  await detail.getByRole('button', { name: '修改资料', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '修改顾客资料', exact: true })
+  await dialog.getByLabel('姓名', { exact: true }).fill(`${a.name}改`)
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  await pending
+  for (const customer of [b, a]) {
+    await page.evaluate((id) => {
+      window.history.pushState({}, '', `/customers?id=${id}`)
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    }, customer.id)
+    await expect(detail.getByRole('heading', { name: customer.name, exact: true })).toBeVisible()
+  }
+  await detail.getByRole('button', { name: '修改资料', exact: true }).click()
+  await expect(dialog.getByLabel('姓名', { exact: true })).toHaveValue(a.name)
+  release()
+  await expect(page.getByText('网络连接失败，请重试', { exact: true })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeEnabled()
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByLabel('姓名', { exact: true })).toHaveValue(a.name)
 })

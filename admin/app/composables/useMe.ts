@@ -7,7 +7,9 @@ export function useMe() {
   const me = useState<Me | null>('me', () => null)
 
   async function load() {
+    const token = getToken()
     const { data } = await useApi().POST('/api/ops/get_me', { body: {} })
+    if (getToken() !== token) return me.value
     me.value = data ?? null
     return me.value
   }

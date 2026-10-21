@@ -12,15 +12,15 @@ const { me } = useMe()
 const roles = ref<Role[]>([])
 const catalogue = ref<Def[]>([])
 
-let loadRequest = 0
+const loadGuard = useRequestGuard()
 
 async function load() {
-  const request = ++loadRequest
+  const request = loadGuard.next()
   const [r, p] = await Promise.all([
     api.POST('/api/ops/list_roles', { body: {} }),
     api.POST('/api/ops/list_permissions', { body: {} })
   ])
-  if (request !== loadRequest) return
+  if (!request()) return
   roles.value = r.data?.roles ?? []
   catalogue.value = p.data?.permissions ?? []
 }
@@ -35,12 +35,14 @@ function mine(name: string) {
 const label = (name: string) => catalogue.value.find(d => d.name === name)?.label ?? name
 
 interface Row { on: boolean, scope: 'self' | 'store', days: string }
+const editorGuard = useRequestGuard()
 const open = ref(false)
 const editing = ref<Role | null>(null)
 const name = ref('')
 const rows = reactive<Record<string, Row>>({})
 
 function openEditor(role: Role | null) {
+  editorGuard.next()
   editing.value = role
   name.value = role?.name ?? ''
   for (const d of catalogue.value) {
@@ -55,6 +57,7 @@ function openEditor(role: Role | null) {
 }
 
 async function save() {
+  const current = editorGuard.hold()
   const permissions = catalogue.value
     .filter(d => rows[d.name]?.on)
     .map((d) => {
@@ -68,6 +71,11 @@ async function save() {
   const res = editing.value
     ? await api.POST('/api/ops/update_role', { body: { role_id: editing.value.id, name: name.value, permissions } })
     : await api.POST('/api/ops/create_role', { body: { name: name.value, permissions } })
+  if (!current()) {
+    if (res.data) load()
+    else toast.add({ title: errorText(res.error), color: 'error' })
+    return
+  }
   if (res.data) {
     toast.add({ title: '已保存', color: 'success' })
     open.value = false

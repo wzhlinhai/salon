@@ -22,7 +22,7 @@ const responsible = ref(NONE)
 const offset = ref(0)
 const selected = ref<string[]>([])
 const loading = ref(false)
-let request = 0
+const searchGuard = useRequestGuard()
 let timer: ReturnType<typeof setTimeout> | undefined
 const staffItems = computed(() => staff.value.map(s => ({
   label: s.name + (s.active ? '' : '（已停用）'),
@@ -49,7 +49,7 @@ const columns = computed(() => [
 ])
 
 async function load() {
-  const current = ++request
+  const current = searchGuard.next()
   loading.value = true
   try {
     const res = await api.POST('/api/ops/search_customers', {
@@ -61,7 +61,7 @@ async function load() {
         offset: offset.value
       }
     })
-    if (current !== request) return
+    if (!current()) return
     if (res.data) {
       items.value = res.data.items
       selected.value = []
@@ -69,12 +69,8 @@ async function load() {
       items.value = []
       toast.add({ title: errorText(res.error), color: 'error' })
     }
-  } catch (e) {
-    if (current !== request) return
-    items.value = []
-    toast.add({ title: errorText(e), color: 'error' })
   } finally {
-    if (current === request) loading.value = false
+    if (current()) loading.value = false
   }
 }
 
@@ -119,6 +115,7 @@ function done(error: unknown, ok: unknown, message: string) {
 }
 
 watch(query, () => {
+  searchGuard.invalidate()
   clearTimeout(timer)
   timer = setTimeout(search, 300)
 })
@@ -127,7 +124,6 @@ watch([includeUnidentified, responsible], search)
 
 onBeforeUnmount(() => {
   clearTimeout(timer)
-  request++
 })
 
 onMounted(async () => {

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { login, owner } from './helpers'
+import { api, apiLogin, login, owner } from './helpers'
 
 test('员工页迟到的旧列表不覆盖第二次保存', async ({ page }) => {
   await login(page, owner.account, owner.password)
@@ -47,3 +47,53 @@ test('员工页迟到的旧列表不覆盖第二次保存', async ({ page }) => 
   await page.waitForTimeout(500)
   await expect(page.getByRole('cell', { name: second, exact: true })).toBeVisible()
 })
+
+for (const kind of ['档案', '角色', '账号']) {
+  test(`员工${kind}旧保存只刷新列表，不关闭另一个员工窗口`, async ({ page }) => {
+    const token = await apiLogin(owner.account, owner.password)
+    const suffix = Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+    const a = await api(token, 'create_staff', { name: `员工甲${suffix}`, number: `甲${suffix}`, role_ids: [] })
+    const b = await api(token, 'create_staff', { name: `员工乙${suffix}`, number: `乙${suffix}`, role_ids: [] })
+    await login(page, owner.account, owner.password)
+    await page.goto('/staff')
+    let release!: () => void
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let started!: () => void
+    const pending = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    const op = kind === '档案' ? 'update_staff' : kind === '角色' ? 'set_staff_roles' : 'set_staff_login'
+    await page.route(`**/api/ops/${op}`, async (route) => {
+      const response = await route.fetch()
+      expect(response.ok()).toBe(true)
+      // 回包前再改变甲的编号，列表刷新必须读到这个值。
+      await api(token, 'update_staff', { staff_id: a.id, name: kind === '档案' ? `${a.name}改` : a.name, number: `刷新${suffix}` })
+      started()
+      await blocked
+      await route.fulfill({ response })
+    })
+    const rowA = page.getByRole('row').filter({ has: page.getByRole('cell', { name: a.name, exact: true }) })
+    await rowA.getByRole('button', { name: kind, exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    if (kind === '档案') await dialog.getByLabel('姓名', { exact: true }).fill(`${a.name}改`)
+    if (kind === '账号') {
+      await dialog.getByLabel('账号', { exact: true }).fill(`guard-${suffix}`)
+      await dialog.getByLabel('新密码（至少 8 位）', { exact: true }).fill('guard-password')
+    }
+    await dialog.getByRole('button', { name: '保存', exact: true }).click()
+    await pending
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+    await expect(dialog).toHaveCount(0)
+    await page.getByRole('row').filter({ has: page.getByRole('cell', { name: b.name, exact: true }) }).getByRole('button', { name: kind, exact: true }).click()
+    if (kind === '档案') await expect(dialog.getByLabel('姓名', { exact: true })).toHaveValue(b.name)
+    else await expect(dialog).toContainText(b.name)
+    release()
+    await expect(page.locator('main tbody')).toContainText(`刷新${suffix}`)
+    await expect(dialog).toBeVisible()
+    if (kind === '档案') await expect(dialog.getByLabel('姓名', { exact: true })).toHaveValue(b.name)
+    else await expect(dialog).toContainText(b.name)
+    await expect(page.getByText(kind === '档案' ? '已保存' : kind === '角色' ? '角色已更新' : '登录账号已设置', { exact: true })).toHaveCount(0)
+  })
+}
