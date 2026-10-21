@@ -115,12 +115,18 @@ func (q *Queries) DeleteRole(ctx context.Context, id uuid.UUID) (int64, error) {
 	return result.RowsAffected(), nil
 }
 
-const deleteRolePermissions = `-- name: DeleteRolePermissions :exec
-DELETE FROM role_permissions WHERE role_id = $1
+const deleteRolePermission = `-- name: DeleteRolePermission :exec
+DELETE FROM role_permissions WHERE role_id = $1 AND permission = $2
 `
 
-func (q *Queries) DeleteRolePermissions(ctx context.Context, roleID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteRolePermissions, roleID)
+type DeleteRolePermissionParams struct {
+	RoleID     uuid.UUID
+	Permission string
+}
+
+// DeleteRolePermission 只删除角色被收回的一项权限。
+func (q *Queries) DeleteRolePermission(ctx context.Context, arg DeleteRolePermissionParams) error {
+	_, err := q.db.Exec(ctx, deleteRolePermission, arg.RoleID, arg.Permission)
 	return err
 }
 
@@ -367,4 +373,26 @@ func (q *Queries) RenameRole(ctx context.Context, arg RenameRoleParams) (int64, 
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const updateRolePermission = `-- name: UpdateRolePermission :exec
+UPDATE role_permissions SET scope = $3, window_days = $4 WHERE role_id = $1 AND permission = $2
+`
+
+type UpdateRolePermissionParams struct {
+	RoleID     uuid.UUID
+	Permission string
+	Scope      *string
+	WindowDays *int32
+}
+
+// UpdateRolePermission 只修改角色已有权限的数据范围和时间窗口。
+func (q *Queries) UpdateRolePermission(ctx context.Context, arg UpdateRolePermissionParams) error {
+	_, err := q.db.Exec(ctx, updateRolePermission,
+		arg.RoleID,
+		arg.Permission,
+		arg.Scope,
+		arg.WindowDays,
+	)
+	return err
 }

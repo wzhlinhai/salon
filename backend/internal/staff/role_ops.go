@@ -134,10 +134,33 @@ func registerRoles(r *ops.Registry) {
 			if _, err := env.Q.RenameRole(ctx, dbgen.RenameRoleParams{ID: info.row.ID, Name: in.Name}); err != nil {
 				return nil, uniqueViolation(err)
 			}
-			if err := env.Q.DeleteRolePermissions(ctx, info.row.ID); err != nil {
-				return nil, err
+			for p := range info.grants {
+				if _, ok := grants[p]; !ok {
+					if err := env.Q.DeleteRolePermission(ctx, dbgen.DeleteRolePermissionParams{RoleID: info.row.ID, Permission: string(p)}); err != nil {
+						return nil, err
+					}
+				}
 			}
-			if err := writeGrants(ctx, env, info.row.ID, grants); err != nil {
+			added := map[ops.Permission]ops.Grant{}
+			for p, g := range grants {
+				old, ok := info.grants[p]
+				if !ok {
+					added[p] = g
+				} else if g.Scope != old.Scope || (g.WindowDays == nil) != (old.WindowDays == nil) ||
+					(g.WindowDays != nil && old.WindowDays != nil && *g.WindowDays != *old.WindowDays) {
+					params := dbgen.UpdateRolePermissionParams{
+						RoleID: info.row.ID, Permission: string(p), Scope: specFromGrant(p, g).Scope,
+					}
+					if g.WindowDays != nil {
+						n := int32(*g.WindowDays)
+						params.WindowDays = &n
+					}
+					if err := env.Q.UpdateRolePermission(ctx, params); err != nil {
+						return nil, err
+					}
+				}
+			}
+			if err := writeGrants(ctx, env, info.row.ID, added); err != nil {
 				return nil, err
 			}
 			after, err := roleByID(ctx, env, info.row.ID)

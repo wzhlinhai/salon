@@ -23,8 +23,13 @@ SELECT id FROM roles WHERE store_id = $1 AND is_owner FOR NO KEY UPDATE;
 -- name: ListRolePermissions :many
 SELECT * FROM role_permissions WHERE role_id = ANY(@role_ids::uuid[]) ORDER BY role_id, permission;
 
--- name: DeleteRolePermissions :exec
-DELETE FROM role_permissions WHERE role_id = $1;
+-- DeleteRolePermission 只删除角色被收回的一项权限。
+-- name: DeleteRolePermission :exec
+DELETE FROM role_permissions WHERE role_id = $1 AND permission = $2;
+
+-- UpdateRolePermission 只修改角色已有权限的数据范围和时间窗口。
+-- name: UpdateRolePermission :exec
+UPDATE role_permissions SET scope = $3, window_days = $4 WHERE role_id = $1 AND permission = $2;
 
 -- name: AddRolePermission :exec
 INSERT INTO role_permissions (tenant_id, store_id, role_id, permission, scope, window_days)

@@ -3,6 +3,7 @@ package staff_test
 import (
 	"context"
 	"net/http"
+	"reflect"
 	"testing"
 	"time"
 
@@ -185,5 +186,87 @@ func TestSetStaffRolesReturnsNotFoundWhenAddedRoleIsDeleted(t *testing.T) {
 	}
 	if len(roleIDs) != 1 || roleIDs[0] != keptID {
 		t.Fatalf("staff roles = %v, want unchanged role %s", roleIDs, keptID)
+	}
+}
+
+func TestUpdateRoleDoesNotRewriteKeptPermission(t *testing.T) {
+	s := open(t)
+	kept := map[string]any{"permission": "order.edit", "scope": "self", "window_days": 3}
+	changed := map[string]any{"permission": "customer.view", "scope": "self"}
+	role := s.call(s.Owner, "create_role", map[string]any{
+		"name": "原角色", "permissions": []any{kept, changed},
+	}, http.StatusOK).Body
+	roleID := uuid.MustParse(role["id"].(string))
+	ctx := context.Background()
+	tx1 := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	var lockedPermission string
+	if err := tx1.QueryRow(ctx, "SELECT permission FROM role_permissions WHERE role_id=$1 AND permission=$2 FOR UPDATE", roleID, "order.edit").Scan(&lockedPermission); err != nil {
+		t.Fatal(err)
+	}
+	before, err := dbgen.New(tx1).ListRolePermissions(ctx, []uuid.UUID{roleID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed = map[string]any{"permission": "customer.view", "scope": "store"}
+	added := map[string]any{"permission": "audit_log.view"}
+	done := make(chan optest.Result, 1)
+	go func() {
+		done <- s.HTTPWithToken(t, s.Owner, "update_role", map[string]any{
+			"role_id": roleID, "name": "改名角色", "permissions": []any{kept, changed, added},
+		})
+	}()
+	select {
+	case r := <-done:
+		if r.Status != http.StatusOK || r.Body["name"] != "改名角色" {
+			t.Fatalf("update_role = %d %v, want 200 and renamed role", r.Status, r.Body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("update_role timed out while the kept role_permissions row was locked")
+	}
+	rows, err := dbgen.New(tx1).ListRolePermissions(ctx, []uuid.UUID{roleID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []dbgen.RolePermission{
+		{TenantID: s.Res.TenantID, StoreID: s.Res.StoreID, RoleID: roleID, Permission: "audit_log.view"},
+		{TenantID: s.Res.TenantID, StoreID: s.Res.StoreID, RoleID: roleID, Permission: "customer.view", Scope: new("store")},
+		before[1],
+	}
+	if !reflect.DeepEqual(rows, want) {
+		t.Fatalf("role permissions = %v, want %v", rows, want)
+	}
+	if err := tx1.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUpdateRolePermissionChanges(t *testing.T) {
+	s := open(t)
+	kept := map[string]any{"permission": "audit_log.view"}
+	initial := []any{map[string]any{"permission": "order.edit", "scope": "self", "window_days": 3.0}, kept}
+	role := s.call(s.Owner, "create_role", map[string]any{"name": "原角色", "permissions": initial}, http.StatusOK).Body
+	for _, tc := range []struct {
+		name        string
+		permissions []any
+	}{
+		{"只改名", initial},
+		{"只改范围", []any{map[string]any{"permission": "order.edit", "scope": "store", "window_days": 3.0}, kept}},
+		{"只改天数", []any{map[string]any{"permission": "order.edit", "scope": "store", "window_days": 0.0}, kept}},
+		{"不限天数", []any{map[string]any{"permission": "order.edit", "scope": "store"}, kept}},
+		{"恢复天数", initial},
+		{"收回权限", []any{kept}},
+	} {
+		s.call(s.Owner, "update_role", map[string]any{"role_id": role["id"], "name": tc.name, "permissions": tc.permissions}, http.StatusOK)
+		roles := s.call(s.Owner, "list_roles", map[string]any{}, http.StatusOK).Body["roles"].([]any)
+		var got map[string]any
+		for _, item := range roles {
+			if r := item.(map[string]any); r["id"] == role["id"] {
+				got = r
+			}
+		}
+
+		if got["name"] != tc.name || !reflect.DeepEqual(got["permissions"], tc.permissions) {
+			t.Fatalf("%s: role = %v, want name %s and permissions %v", tc.name, got, tc.name, tc.permissions)
+		}
 	}
 }
