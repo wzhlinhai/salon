@@ -40,6 +40,10 @@ SELECT sr.staff_id, sr.role_id FROM staff_roles sr WHERE sr.store_id = $1;
 -- name: AddStaffRole :exec
 INSERT INTO staff_roles (tenant_id, store_id, staff_id, role_id) VALUES ($1, $2, $3, $4);
 
+-- DeleteStaffRole 只删除员工被收回的一个角色。
+-- name: DeleteStaffRole :exec
+DELETE FROM staff_roles WHERE staff_id = $1 AND role_id = $2;
+
 -- name: DeleteStaffRoles :exec
 DELETE FROM staff_roles WHERE staff_id = $1;
 

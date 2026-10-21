@@ -2,9 +2,11 @@ package staff
 
 import (
 	"context"
+	"errors"
 	"slices"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/wzhlinhai/salon/backend/internal/auth"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
@@ -190,17 +192,18 @@ func setRoles(ctx context.Context, env ops.Env, staffID uuid.UUID, ids []uuid.UU
 	if err != nil {
 		return err
 	}
-	var changed []uuid.UUID
+	var added, removed []uuid.UUID
 	for _, id := range ids {
 		if !slices.ContainsFunc(current, func(r dbgen.Role) bool { return r.ID == id }) {
-			changed = append(changed, id)
+			added = append(added, id)
 		}
 	}
 	for _, r := range current {
 		if !slices.Contains(ids, r.ID) {
-			changed = append(changed, r.ID)
+			removed = append(removed, r.ID)
 		}
 	}
+	changed := append(slices.Clone(added), removed...)
 	if len(changed) == 0 {
 		return nil
 	}
@@ -213,13 +216,19 @@ func setRoles(ctx context.Context, env ops.Env, staffID uuid.UUID, ids []uuid.UU
 			return ops.ErrForbidden
 		}
 	}
-	if err := env.Q.DeleteStaffRoles(ctx, staffID); err != nil {
-		return err
+	for _, id := range removed {
+		if err := env.Q.DeleteStaffRole(ctx, dbgen.DeleteStaffRoleParams{StaffID: staffID, RoleID: id}); err != nil {
+			return err
+		}
 	}
-	for _, id := range ids {
+	for _, id := range added {
 		if err := env.Q.AddStaffRole(ctx, dbgen.AddStaffRoleParams{
 			TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, StaffID: staffID, RoleID: id,
 		}); err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23503" && pgErr.ConstraintName == "staff_roles_tenant_id_role_id_fkey" {
+				return ops.ErrNotFound
+			}
 			return err
 		}
 	}

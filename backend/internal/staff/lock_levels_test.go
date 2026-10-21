@@ -2,8 +2,11 @@ package staff_test
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
@@ -105,4 +108,82 @@ func TestOwnerQueueWaitDoesNotLockStaff(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitLockResult(t, done)
+}
+
+func TestSetStaffRolesDoesNotRewriteKeptRole(t *testing.T) {
+	s := open(t)
+	roleID, addedID := s.Role("发型师"), s.Role("前台")
+	staffID, _ := s.Hire("员工", "002", "kept-role", roleID)
+	ctx := context.Background()
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	var lockedRole uuid.UUID
+	if err := tx.QueryRow(ctx, "SELECT role_id FROM staff_roles WHERE staff_id=$1 AND role_id=$2 FOR UPDATE", staffID, roleID).Scan(&lockedRole); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan optest.Result, 1)
+	go func() {
+		done <- s.HTTPWithToken(t, s.Owner, "set_staff_roles", map[string]any{
+			"staff_id": staffID, "role_ids": []uuid.UUID{roleID, addedID},
+		})
+	}()
+	select {
+	case r := <-done:
+		if r.Status != http.StatusOK {
+			t.Fatalf("set_staff_roles = %d %v, want 200", r.Status, r.Body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("set_staff_roles timed out while the kept staff_roles row was locked")
+	}
+	roles, err := dbgen.New(tx).ListStaffRoles(ctx, staffID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(roles) != 2 || roles[0].ID != roleID || roles[1].ID != addedID {
+		t.Fatalf("staff roles = %v, want %s and %s", roles, roleID, addedID)
+	}
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSetStaffRolesReturnsNotFoundWhenAddedRoleIsDeleted(t *testing.T) {
+	s := open(t)
+	roleID, keptID := s.Role("发型师"), s.Role("前台")
+	staffID, _ := s.Hire("员工", "002", "deleted-role", keptID)
+	ctx := context.Background()
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	if _, err := dbgen.New(tx).LockRole(ctx, dbgen.LockRoleParams{ID: roleID, StoreID: s.Res.StoreID}); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan optest.Result, 1)
+	go func() {
+		done <- s.HTTPWithToken(t, s.Owner, "set_staff_roles", map[string]any{
+			"staff_id": staffID, "role_ids": []uuid.UUID{roleID},
+		})
+	}()
+	dbtest.WaitForLockWait(t, s.Pool)
+	if result, err := tx.Exec(ctx, "DELETE FROM roles WHERE id=$1", roleID); err != nil || result.RowsAffected() != 1 {
+		t.Fatalf("delete role = %v, %v, want one deleted row", result, err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case r := <-done:
+		if r.Status != http.StatusNotFound {
+			t.Fatalf("set_staff_roles = %d %v, want 404", r.Status, r.Body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("set_staff_roles timed out after role deletion committed")
+	}
+	check := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	var roleIDs []uuid.UUID
+	if err := check.QueryRow(ctx, "SELECT array_agg(role_id ORDER BY role_id) FROM staff_roles WHERE staff_id=$1", staffID).Scan(&roleIDs); err != nil {
+		t.Fatal(err)
+	}
+	if len(roleIDs) != 1 || roleIDs[0] != keptID {
+		t.Fatalf("staff roles = %v, want unchanged role %s", roleIDs, keptID)
+	}
 }
