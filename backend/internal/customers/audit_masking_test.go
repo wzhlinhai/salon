@@ -53,7 +53,8 @@ func TestAuditLogMasksNestedPhones(t *testing.T) {
 					e := entry.(map[string]any)
 					if e["action"] == "hand_over_customers" && e["target_id"] == from.String() {
 						foundHandover = true
-						assertEqual(t, e["before"], map[string]any{"customer_ids": []any{a["id"]}})
+						assertEqual(t, e["before"], map[string]any{"customer_count": float64(1)})
+						assertEqual(t, e["after"], map[string]any{"customer_count": float64(0), "to_staff_id": to.String()})
 					}
 					if e["action"] == "nested_fixture" {
 						foundNested = true

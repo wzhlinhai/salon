@@ -2,8 +2,11 @@ package customers_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/wzhlinhai/salon/backend/internal/audit"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
@@ -137,6 +140,38 @@ func TestConcurrentCustomerCreation(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertEqual(t, count, 1)
+}
+
+func TestMergeCustomersLocksByIDOrder(t *testing.T) {
+	s := open(t)
+	low := aID(s.create(map[string]any{}))
+	high := aID(s.create(map[string]any{}))
+	if low.String() > high.String() {
+		low, high = high, low
+	}
+	ctx := context.Background()
+	tx1 := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	if _, err := dbgen.New(tx1).LockCustomer(ctx, high); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan optest.Result, 1)
+	go func() {
+		done <- s.HTTPWithToken(t, s.Owner, "merge_customers", map[string]any{"keep_id": low, "merged_id": high})
+	}()
+	dbtest.WaitForLockWait(t, s.Pool)
+	tx2 := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	_, err := tx2.Exec(ctx, "SELECT id FROM customers WHERE id=$1 FOR NO KEY UPDATE NOWAIT", low)
+	var pg *pgconn.PgError
+	if !errors.As(err, &pg) || pg.Code != "55P03" {
+		t.Fatalf("low must be locked before waiting for high: got %v, want PostgreSQL 55P03", err)
+	}
+	if err := tx2.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx1.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	waitResult(t, done, 200)
 }
 
 func TestMergeAndPhoneChangeKeepAuditBefore(t *testing.T) {

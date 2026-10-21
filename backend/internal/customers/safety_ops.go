@@ -33,51 +33,39 @@ func registerSafety(r *ops.Registry) {
 		Name: "add_safety_label", Summary: "记录顾客安全提醒及观察营业日", Kind: ops.Write,
 		Permission: perm.CustomerSafetyLabel, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *AddSafetyLabelInput) (*Customer, error) {
-			row, err := lock(ctx, env, in.CustomerID)
-			if err != nil {
-				return nil, err
-			}
-			before, err := view(ctx, env, row)
-			if err != nil {
-				return nil, err
-			}
-			day, err := time.Parse(time.DateOnly, in.ObservedOn)
-			if err != nil {
-				return nil, ops.Rule("观察日期格式不正确")
-			}
-			today, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
-			if err != nil {
-				return nil, err
-			}
-			if day.After(today) {
-				return nil, ops.Rule("观察日期不能晚于今天的营业日")
-			}
-			if err := env.Q.AddSafetyLabel(ctx, dbgen.AddSafetyLabelParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CustomerID: row.ID, Kind: in.Kind, Source: in.Source, Note: in.Note, ObservedOn: pgtype.Date{Time: day, Valid: true}, RecordedBy: env.Caller.StaffID}); err != nil {
-				return nil, err
-			}
-			return finish(ctx, env, "add_safety_label", before, row)
+			return changeOne(ctx, env, "add_safety_label", in.CustomerID, func(row *dbgen.Customer) error {
+				day, err := time.Parse(time.DateOnly, in.ObservedOn)
+				if err != nil {
+					return ops.Rule("观察日期格式不正确")
+				}
+				today, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
+				if err != nil {
+					return err
+				}
+				if day.After(today) {
+					return ops.Rule("观察日期不能晚于今天的营业日")
+				}
+				if err := env.Q.AddSafetyLabel(ctx, dbgen.AddSafetyLabelParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CustomerID: row.ID, Kind: in.Kind, Source: in.Source, Note: in.Note, ObservedOn: pgtype.Date{Time: day, Valid: true}, RecordedBy: env.Caller.StaffID}); err != nil {
+					return err
+				}
+				return nil
+			})
 		},
 	})
 	ops.Register(r, ops.Operation[RevokeSafetyLabelInput, Customer]{
 		Name: "revoke_safety_label", Summary: "撤销安全提醒，保留记录", Kind: ops.Write,
 		Permission: perm.CustomerSafetyLabel, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *RevokeSafetyLabelInput) (*Customer, error) {
-			row, err := lock(ctx, env, in.CustomerID)
-			if err != nil {
-				return nil, err
-			}
-			before, err := view(ctx, env, row)
-			if err != nil {
-				return nil, err
-			}
-			n, err := env.Q.RevokeSafetyLabel(ctx, dbgen.RevokeSafetyLabelParams{ID: in.ID, CustomerID: row.ID, RevokedBy: &env.Caller.StaffID})
-			if err != nil {
-				return nil, err
-			}
-			if n == 0 {
-				return nil, ops.Rule("安全标签不存在或已撤销")
-			}
-			return finish(ctx, env, "revoke_safety_label", before, row)
+			return changeOne(ctx, env, "revoke_safety_label", in.CustomerID, func(row *dbgen.Customer) error {
+				n, err := env.Q.RevokeSafetyLabel(ctx, dbgen.RevokeSafetyLabelParams{ID: in.ID, CustomerID: row.ID, RevokedBy: &env.Caller.StaffID})
+				if err != nil {
+					return err
+				}
+				if n == 0 {
+					return ops.Rule("安全标签不存在或已撤销")
+				}
+				return nil
+			})
 		},
 	})
 }

@@ -2,12 +2,9 @@ package customers
 
 import (
 	"context"
-	"slices"
-	"strings"
 
 	"github.com/google/uuid"
 
-	"github.com/wzhlinhai/salon/backend/internal/audit"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
@@ -45,74 +42,42 @@ func registerMerge(r *ops.Registry) {
 			if in.KeepID == in.MergedID {
 				return nil, ops.Rule("不能合并同一位顾客")
 			}
-			ids := []uuid.UUID{in.KeepID, in.MergedID}
-			slices.SortFunc(ids, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
-			rows := map[uuid.UUID]dbgen.Customer{}
-			for _, id := range ids {
-				row, err := lock(ctx, env, id)
-				if err != nil {
-					return nil, err
+			items, err := change(ctx, env, "merge_customers", byIDs(in.MergedID, in.KeepID), func(rows []dbgen.Customer) error {
+				merged, keep := &rows[0], &rows[1]
+				if keep.Name == nil || *keep.Name == "" {
+					keep.Name = merged.Name
 				}
-				rows[id] = row
-			}
-			keep, merged := rows[in.KeepID], rows[in.MergedID]
-			beforeKeep, err := view(ctx, env, keep)
-			if err != nil {
-				return nil, err
-			}
-			beforeMerged, err := view(ctx, env, merged)
-			if err != nil {
-				return nil, err
-			}
-			if keep.Name == nil || *keep.Name == "" {
-				keep.Name = merged.Name
-			}
-			if keep.Phone == nil && merged.Phone != nil {
-				if err := env.Q.LockCustomerPhone(ctx, *merged.Phone); err != nil {
-					return nil, err
+				if keep.Phone == nil && merged.Phone != nil {
+					if err := env.Q.LockCustomerPhone(ctx, *merged.Phone); err != nil {
+						return err
+					}
+					keep.Phone = merged.Phone
+					merged.Phone = nil
 				}
-				keep.Phone = merged.Phone
-				merged.Phone = nil
-			}
-			if keep.Gender == nil {
-				keep.Gender = merged.Gender
-			}
-			if keep.SourceID == nil {
-				keep.SourceID = merged.SourceID
-			}
-			if keep.ResponsibleStaffID == nil {
-				keep.ResponsibleStaffID = merged.ResponsibleStaffID
-			}
-			if keep.Note == nil || *keep.Note == "" {
-				keep.Note = merged.Note
-			}
-			merged.MergedInto = &keep.ID
-			if err := save(ctx, env, merged); err != nil {
-				return nil, err
-			}
-			if err := save(ctx, env, keep); err != nil {
-				return nil, err
-			}
-			for _, ref := range customerReferences {
-				if err := ref.move(ctx, env.Q, merged.ID, keep.ID); err != nil {
-					return nil, err
+				if keep.Gender == nil {
+					keep.Gender = merged.Gender
 				}
-			}
-			afterKeep, err := view(ctx, env, keep)
+				if keep.SourceID == nil {
+					keep.SourceID = merged.SourceID
+				}
+				if keep.ResponsibleStaffID == nil {
+					keep.ResponsibleStaffID = merged.ResponsibleStaffID
+				}
+				if keep.Note == nil || *keep.Note == "" {
+					keep.Note = merged.Note
+				}
+				merged.MergedInto = &keep.ID
+				for _, ref := range customerReferences {
+					if err := ref.move(ctx, env.Q, merged.ID, keep.ID); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
 			if err != nil {
 				return nil, err
 			}
-			afterMerged, err := view(ctx, env, merged)
-			if err != nil {
-				return nil, err
-			}
-			if err := audit.Record(ctx, env, "merge_customers", keep.ID, beforeKeep, afterKeep); err != nil {
-				return nil, err
-			}
-			if err := audit.Record(ctx, env, "merge_customers", merged.ID, beforeMerged, afterMerged); err != nil {
-				return nil, err
-			}
-			return &MergeCustomersResult{Keep: *mask(env, afterKeep), Merged: *mask(env, afterMerged)}, nil
+			return &MergeCustomersResult{Keep: *items[1], Merged: *items[0]}, nil
 		},
 	})
 }

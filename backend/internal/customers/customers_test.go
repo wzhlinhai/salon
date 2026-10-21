@@ -298,8 +298,8 @@ func TestCustomerHandover(t *testing.T) {
 	logs := s.call("list_audit_log", map[string]any{"target_id": from}, 200)["entries"].([]any)
 	latest := logs[0].(map[string]any)
 	assertEqual(t, latest["action"], "hand_over_customers")
-	assertEqual(t, latest["before"], map[string]any{"customer_ids": result["customer_ids"]})
-	assertEqual(t, latest["after"], result)
+	assertEqual(t, latest["before"], map[string]any{"customer_count": float64(2)})
+	assertEqual(t, latest["after"], map[string]any{"customer_count": float64(0), "to_staff_id": to.String()})
 	s.call("assign_customer_responsible", map[string]any{"customer_ids": []any{a["id"]}}, 200)
 	assertEqual(t, s.get(a["id"])["responsible"], nil)
 }
@@ -452,6 +452,10 @@ func TestAuditStoresFullPhoneForMaskedCaller(t *testing.T) {
 	assertEqual(t, r.Status, 200)
 	c := r.Body["customer"].(map[string]any)
 	assertEqual(t, c["phone"], "138****1234")
+	r = s.HTTPWithToken(t, token, "update_customer_profile", map[string]any{"id": c["id"], "name": "修改姓名"})
+	assertEqual(t, r.Status, 200)
+	assertEqual(t, r.Body["phone"], "138****1234")
+	assertEqual(t, r.Body["phone_masked"], true)
 	logs := s.call("list_audit_log", map[string]any{"target_id": c["id"]}, 200)["entries"].([]any)
 	raw, err := json.Marshal(logs)
 	if err != nil {

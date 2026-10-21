@@ -12,7 +12,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/wzhlinhai/salon/backend/internal/audit"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
@@ -158,39 +157,9 @@ func rowError(err error) error {
 	return err
 }
 
-// lock 锁住并检查调用者可查看且尚未合并的顾客；只改普通列（手机号仅有部分唯一索引），用 NO KEY UPDATE。
-func lock(ctx context.Context, env ops.Env, id uuid.UUID) (dbgen.Customer, error) {
-	row, err := env.Q.LockCustomer(ctx, id)
-	if err != nil {
-		return row, rowError(err)
-	}
-	if !canView(env.Caller, row) {
-		return row, ops.ErrNotFound
-	}
-	if row.MergedInto != nil {
-		return row, ops.Rule("该顾客已合并到另一位顾客")
-	}
-	return row, nil
-}
-
 // save 保存持锁顾客的资料。
 func save(ctx context.Context, env ops.Env, row dbgen.Customer) error {
 	return env.Q.SaveCustomer(ctx, dbgen.SaveCustomerParams{ID: row.ID, Name: row.Name, Phone: row.Phone, Gender: row.Gender, SourceID: row.SourceID, ResponsibleStaffID: row.ResponsibleStaffID, Note: row.Note, MergedInto: row.MergedInto})
-}
-
-// finish 保存顾客并记录完整审计快照，返回按权限打码的视图。
-func finish(ctx context.Context, env ops.Env, action string, before *Customer, row dbgen.Customer) (*Customer, error) {
-	if err := save(ctx, env, row); err != nil {
-		return nil, rowError(err)
-	}
-	after, err := view(ctx, env, row)
-	if err != nil {
-		return nil, err
-	}
-	if err := audit.Record(ctx, env, action, row.ID, before, after); err != nil {
-		return nil, err
-	}
-	return mask(env, after), nil
 }
 
 var phonePattern = regexp.MustCompile("^1[0-9]{10}$")
