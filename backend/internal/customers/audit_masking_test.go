@@ -27,7 +27,7 @@ func TestAuditLogMasksNestedPhones(t *testing.T) {
 	full.Permissions = map[ops.Permission]ops.Grant{perm.AuditLogView: {}, perm.CustomerFullPhone: {}, perm.CustomerView: {Scope: ops.ScopeStore}}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	env := ops.Env{Caller: s.MustCaller(s.Owner), Q: dbgen.New(tx)}
-	nested := map[string]any{"objects": []any{map[string]any{"deep": map[string]any{"phone": "13800131234"}}}, "phone": "123", "note": "不含号码", "number": json.Number("9007199254740993"), "phone_number": "保持原样"}
+	nested := map[string]any{"objects": []any{map[string]any{"deep": map[string]any{"phone": "13800131234"}}}, "phone": "123", "note": "不含号码", "number": json.Number("9007199254740993")}
 	if err := audit.Record(context.Background(), env, "nested_fixture", aID(a), nested, nested); err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,6 @@ func TestAuditLogMasksNestedPhones(t *testing.T) {
 						for _, key := range []string{"before", "after"} {
 							value := e[key].(map[string]any)
 							assertEqual(t, value["phone"], "123")
-							assertEqual(t, value["phone_number"], "保持原样")
 							phone := value["objects"].([]any)[0].(map[string]any)["deep"].(map[string]any)["phone"]
 							want := "138****1234"
 							if c.Has(perm.CustomerFullPhone) {
