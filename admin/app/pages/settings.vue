@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
-import { LOG_PAGE_SIZE } from '~/utils/paging'
 
 // 所有员工都能查看设置和系统默认做法；修改需要门店设置权限，以后端检查为准。
 type Setting = components['schemas']['Setting']
-type SettingChange = components['schemas']['SettingChange']
 interface TimeRange { open: string, close: string }
 
 const api = useApi()
@@ -13,44 +11,19 @@ const { can } = useMe()
 
 const today = ref('')
 const settings = ref<Setting[]>([])
-const changes = ref<SettingChange[]>([])
+const changes = useCursorList(async (beforeId) => {
+  const { data, error } = await api.POST('/api/ops/list_setting_changes', { body: { before_id: beforeId } })
+  return { data: data?.changes, error }
+})
+let settingsRequest = 0
 
 async function load() {
-  const request = ++logRequest
-  moreChanges.value = false
-  loadingChanges.value = false
+  const request = ++settingsRequest
+  if (can('audit_log.view')) changes.reload()
   const { data } = await api.POST('/api/ops/get_settings', { body: {} })
+  if (request !== settingsRequest) return
   today.value = data?.business_date ?? ''
   settings.value = data?.settings ?? []
-  if (can('audit_log.view')) {
-    const log = await api.POST('/api/ops/list_setting_changes', { body: {} })
-    if (request !== logRequest) return
-    changes.value = log.data?.changes ?? []
-    moreChanges.value = changes.value.length === LOG_PAGE_SIZE
-  }
-}
-
-const moreChanges = ref(false)
-const loadingChanges = ref(false)
-let logRequest = 0
-
-async function loadMoreChanges() {
-  const last = changes.value.at(-1)
-  if (!last || loadingChanges.value) return
-  const request = logRequest
-  loadingChanges.value = true
-  try {
-    const res = await api.POST('/api/ops/list_setting_changes', { body: { before_id: last.id } })
-    if (request !== logRequest) return
-    if (res.error) {
-      toast.add({ title: errorText(res.error), color: 'error' })
-      return
-    }
-    changes.value.push(...res.data.changes)
-    moreChanges.value = res.data.changes.length === LOG_PAGE_SIZE
-  } finally {
-    if (request === logRequest) loadingChanges.value = false
-  }
 }
 
 onMounted(load)
@@ -182,13 +155,13 @@ onMounted(loadSources)
       <template #header>
         <div class="font-medium">修改记录</div>
       </template>
-      <div v-if="!changes.length" class="text-sm text-muted">还没有修改过设置</div>
+      <div v-if="!changes.items.value.length" class="text-sm text-muted">还没有修改过设置</div>
       <table v-else class="w-full text-sm">
         <thead class="text-left text-muted">
           <tr><th class="py-1">时间</th><th>修改人</th><th>设置</th><th>改前</th><th>改后</th><th>生效日期</th></tr>
         </thead>
         <tbody>
-          <tr v-for="c in changes" :key="c.id" class="border-t border-default">
+          <tr v-for="c in changes.items.value" :key="c.id" class="border-t border-default">
             <td class="py-1">{{ new Date(c.changed_at).toLocaleString('zh-CN') }}</td>
             <td>{{ c.changed_by.name }}</td>
             <td>{{ c.label }}</td>
@@ -198,7 +171,7 @@ onMounted(loadSources)
           </tr>
         </tbody>
       </table>
-      <UButton v-if="moreChanges" :loading="loadingChanges" variant="outline" @click="loadMoreChanges">加载更多</UButton>
+      <UButton v-if="changes.hasMore.value" :loading="changes.loading.value" variant="outline" @click="changes.loadMore">加载更多</UButton>
     </UCard>
 
     <UModal :open="!!editing" :title="`修改${editing?.label ?? ''}`" @update:open="v => { if (!v) editing = null }">

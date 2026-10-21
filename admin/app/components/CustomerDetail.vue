@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
-import { LOG_PAGE_SIZE } from '~/utils/paging'
 
 type Customer = components['schemas']['Customer']
 type LabelInput = components['schemas']['AddSafetyLabelInput']
@@ -30,7 +29,8 @@ const profile = reactive({
   source: NONE,
   note: ''
 })
-const saving = ref(false)
+const savingIds = ref(new Set<string>())
+const saving = computed(() => savingIds.value.has(props.id))
 const genderItems = [
   { label: '未填写', value: NONE },
   { label: '男', value: 'male' },
@@ -44,42 +44,45 @@ const sourceItems = computed(() => [
     .filter(s => s.active || s.id === customer.value?.source?.id)
     .map(s => ({ label: s.name + (s.active ? '' : '（已停用）'), value: s.id }))
 ])
+let detailRequest = 0
 
 async function load() {
   const id = props.id
-  const request = ++logRequest
-  moreLogs.value = false
-  loadingLogs.value = false
+  const request = ++detailRequest
   loadError.value = ''
-  const [res, log] = await Promise.all([
-    api.POST('/api/ops/get_customer', { body: { id } }),
-    can('audit_log.view') ? api.POST('/api/ops/list_audit_log', { body: { target_id: id } }) : null
-  ])
-  if (id !== props.id || request !== logRequest) return
+  if (can('audit_log.view')) logs.reload()
+  else logs.clear()
+  const res = await api.POST('/api/ops/get_customer', { body: { id } })
+  if (id !== props.id || request !== detailRequest) return
   if (res.data) {
     customer.value = res.data
   } else {
     loadError.value = errorText(res.error)
     toast.add({ title: loadError.value, color: 'error' })
   }
-  logs.value = log?.data?.entries ?? []
-  moreLogs.value = logs.value.length === LOG_PAGE_SIZE
-  if (log?.error) {
-    toast.add({ title: errorText(log.error), color: 'error' })
-  }
 }
 
-function done(id: string, error: unknown, ok: unknown, message: string) {
-  if (id !== props.id) {
-    if (ok) emit('changed')
-    return false
-  }
-  toast.add({ title: ok ? message : errorText(error), color: ok ? 'success' : 'error' })
-  if (ok) {
+// 按发起时的顾客保存：成功总是刷新列表，仅当前顾客提示并执行后续操作（默认重载详情）。
+async function act<R>(
+  request: (id: string) => Promise<{ data?: R, error?: unknown }>,
+  message: string,
+  onDone: (data: R) => void = () => {
     load()
-    emit('changed')
   }
-  return !!ok
+): Promise<boolean> {
+  const id = props.id
+  if (savingIds.value.has(id)) return false
+  savingIds.value.add(id)
+  try {
+    const { data, error } = await request(id)
+    if (data) emit('changed')
+    if (id !== props.id) return false
+    toast.add({ title: data ? message : errorText(error), color: data ? 'success' : 'error' })
+    if (data) onDone(data)
+    return !!data
+  } finally {
+    savingIds.value.delete(id)
+  }
 }
 
 function edit() {
@@ -94,24 +97,16 @@ function edit() {
 }
 
 async function saveProfile() {
-  if (saving.value) return
-  const id = props.id
-  saving.value = true
-  try {
-    const res = await api.POST('/api/ops/update_customer_profile', {
-      body: {
-        id,
-        name: profile.name || undefined,
-        gender: profile.gender === NONE ? undefined : profile.gender as 'male' | 'female',
-        source_id: profile.source === NONE ? undefined : profile.source,
-        note: profile.note || undefined
-      }
-    })
-    if (done(id, res.error, res.data, '资料已保存')) {
-      editing.value = false
+  if (await act(id => api.POST('/api/ops/update_customer_profile', {
+    body: {
+      id,
+      name: profile.name || undefined,
+      gender: profile.gender === NONE ? undefined : profile.gender as 'male' | 'female',
+      source_id: profile.source === NONE ? undefined : profile.source,
+      note: profile.note || undefined
     }
-  } finally {
-    saving.value = false
+  }), '资料已保存')) {
+    editing.value = false
   }
 }
 
@@ -131,17 +126,9 @@ function openPhone() {
 }
 
 async function savePhone() {
-  if (saving.value) return
-  const id = props.id
-  saving.value = true
-  try {
-    const path = customer.value?.phone ? '/api/ops/change_customer_phone' : '/api/ops/add_customer_phone'
-    const res = await api.POST(path, { body: { id, phone: phone.value } })
-    if (done(id, res.error, res.data, '手机号已保存')) {
-      phoneOpen.value = false
-    }
-  } finally {
-    saving.value = false
+  const path = customer.value?.phone ? '/api/ops/change_customer_phone' : '/api/ops/add_customer_phone'
+  if (await act(id => api.POST(path, { body: { id, phone: phone.value } }), '手机号已保存')) {
+    phoneOpen.value = false
   }
 }
 
@@ -175,18 +162,10 @@ function openLabel() {
 }
 
 async function addLabel() {
-  if (saving.value) return
-  const id = props.id
-  saving.value = true
-  try {
-    const res = await api.POST('/api/ops/add_safety_label', {
-      body: { ...label, customer_id: id, note: label.note || undefined }
-    })
-    if (done(id, res.error, res.data, '安全标签已添加')) {
-      labelOpen.value = false
-    }
-  } finally {
-    saving.value = false
+  if (await act(id => api.POST('/api/ops/add_safety_label', {
+    body: { ...label, customer_id: id, note: label.note || undefined }
+  }), '安全标签已添加')) {
+    labelOpen.value = false
   }
 }
 
@@ -197,18 +176,12 @@ function setRevokeOpen(open: boolean) {
 }
 
 async function revoke() {
-  if (saving.value || !revokeTarget.value) return
-  const id = props.id
-  saving.value = true
-  try {
-    const res = await api.POST('/api/ops/revoke_safety_label', {
-      body: { customer_id: id, id: revokeTarget.value.id }
-    })
-    if (done(id, res.error, res.data, '安全标签已撤销')) {
-      revokeTarget.value = null
-    }
-  } finally {
-    saving.value = false
+  const target = revokeTarget.value
+  if (!target) return
+  if (await act(id => api.POST('/api/ops/revoke_safety_label', {
+    body: { customer_id: id, id: target.id }
+  }), '安全标签已撤销')) {
+    revokeTarget.value = null
   }
 }
 
@@ -283,62 +256,28 @@ watch(mergeQuery, () => {
 })
 
 async function merge() {
-  if (saving.value || !other.value) return
-  const id = props.id
-  saving.value = true
-  try {
-    const res = await api.POST('/api/ops/merge_customers', {
-      body: {
-        keep_id: keepID.value,
-        merged_id: keepID.value === id ? other.value.id : id
-      }
-    })
-    if (id !== props.id) {
-      if (res.data) emit('changed')
-      return
+  const target = other.value
+  if (!target) return
+  await act(id => api.POST('/api/ops/merge_customers', {
+    body: {
+      keep_id: keepID.value,
+      merged_id: keepID.value === id ? target.id : id
     }
-    if (res.data) {
-      toast.add({ title: '顾客已合并', color: 'success' })
-      mergeConfirm.value = false
-      mergeOpen.value = false
-      emit('changed')
-      emit('open', res.data.keep.id)
-      if (res.data.keep.id === props.id) {
-        load()
-      }
-    } else {
-      toast.add({ title: errorText(res.error), color: 'error' })
-    }
-  } finally {
-    saving.value = false
-  }
+  }), '顾客已合并', (data) => {
+    mergeConfirm.value = false
+    mergeOpen.value = false
+    emit('open', data.keep.id)
+    if (data.keep.id === props.id) load()
+  })
 }
 
 // 操作日志
-const logs = ref<components['schemas']['Entry'][]>([])
-const moreLogs = ref(false)
-const loadingLogs = ref(false)
-let logRequest = 0
-
-async function loadMoreLogs() {
-  const last = logs.value.at(-1)
-  if (!last || loadingLogs.value) return
-  const id = props.id
-  const request = logRequest
-  loadingLogs.value = true
-  try {
-    const res = await api.POST('/api/ops/list_audit_log', { body: { target_id: id, before_id: last.id } })
-    if (id !== props.id || request !== logRequest) return
-    if (res.error) {
-      toast.add({ title: errorText(res.error), color: 'error' })
-      return
-    }
-    logs.value.push(...res.data.entries)
-    moreLogs.value = res.data.entries.length === LOG_PAGE_SIZE
-  } finally {
-    if (id === props.id && request === logRequest) loadingLogs.value = false
-  }
-}
+const logs = useCursorList(async (beforeId) => {
+  const { data, error } = await api.POST('/api/ops/list_audit_log', {
+    body: { target_id: props.id, before_id: beforeId }
+  })
+  return { data: data?.entries, error }
+})
 
 const actions: Record<string, string> = {
   create_customer: '新建顾客',
@@ -373,7 +312,6 @@ function snapshot(value: unknown): string {
 // 读取档案及营业日，切换顾客时关闭编辑入口
 watch(() => props.id, () => {
   customer.value = null
-  logs.value = []
   editing.value = false
   phoneOpen.value = false
   labelOpen.value = false
@@ -459,9 +397,9 @@ onBeforeUnmount(() => {
           <template #header>
             <h3 class="font-medium">修改记录</h3>
           </template>
-          <p v-if="!logs.length" class="text-sm text-muted">暂无修改记录</p>
+          <p v-if="!logs.items.value.length" class="text-sm text-muted">暂无修改记录</p>
           <div class="overflow-x-auto">
-            <table v-if="logs.length" class="w-full text-sm">
+            <table v-if="logs.items.value.length" class="w-full text-sm">
               <thead class="text-left text-muted">
                 <tr>
                   <th>时间</th>
@@ -472,7 +410,7 @@ onBeforeUnmount(() => {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="entry in logs" :key="entry.id" class="border-t border-default align-top">
+                <tr v-for="entry in logs.items.value" :key="entry.id" class="border-t border-default align-top">
                   <td class="py-2">{{ new Date(entry.at).toLocaleString('zh-CN') }}</td>
                   <td>{{ entry.actor.name }}</td>
                   <td>{{ actions[entry.action] || entry.action }}</td>
@@ -482,7 +420,7 @@ onBeforeUnmount(() => {
               </tbody>
             </table>
           </div>
-          <UButton v-if="moreLogs" :loading="loadingLogs" variant="outline" @click="loadMoreLogs">加载更多</UButton>
+          <UButton v-if="logs.hasMore.value" :loading="logs.loading.value" variant="outline" @click="logs.loadMore">加载更多</UButton>
         </UCard>
       </div>
       <div v-else-if="loadError" class="space-y-3">

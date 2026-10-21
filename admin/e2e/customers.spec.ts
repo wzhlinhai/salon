@@ -328,6 +328,62 @@ test('切换顾客后丢弃迟到的详情，编辑仍预填当前顾客', async
   await expect(page.getByRole('dialog', { name: '修改顾客资料', exact: true }).getByLabel('姓名', { exact: true })).toHaveValue(b.name)
 })
 
+test('切回同一顾客后丢弃旧详情，编辑预填最新姓名', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const suffix = Date.now()
+  const a = (await api(token, 'create_customer', { name: `回切甲${suffix}`, phone: phone() })).customer
+  const b = (await api(token, 'create_customer', { name: `回切乙${suffix}`, phone: phone() })).customer
+  let releaseA!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    releaseA = resolve
+  })
+  let startedA!: () => void
+  const started = new Promise<void>((resolve) => {
+    startedA = resolve
+  })
+  let firstA = true
+  await page.route('**/api/ops/get_customer', async (route) => {
+    if (route.request().postDataJSON().id === a.id && firstA) {
+      firstA = false
+      const response = await route.fetch()
+      startedA()
+      await blocked
+      await route.fulfill({ response })
+    } else {
+      await route.continue()
+    }
+  })
+  await login(page, owner.account, owner.password)
+  await page.goto(`/customers?id=${a.id}`)
+  await started
+  await page.evaluate((id) => {
+    window.history.pushState({}, '', `/customers?id=${id}`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }, b.id)
+  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  await expect(detail.getByRole('heading', { name: b.name, exact: true })).toBeVisible()
+  await page.evaluate((id) => {
+    window.history.pushState({}, '', `/customers?id=${id}`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }, a.id)
+  await expect(detail.getByRole('heading', { name: a.name, exact: true })).toBeVisible()
+  await detail.getByRole('button', { name: '修改资料', exact: true }).click()
+  const form = page.getByRole('dialog', { name: '修改顾客资料', exact: true })
+  const newName = `${a.name}新姓名`
+  await form.getByLabel('姓名', { exact: true }).fill(newName)
+  await form.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(form).toHaveCount(0)
+  await expect(detail.getByRole('heading', { name: newName, exact: true })).toBeVisible()
+  const lateResponse = page.waitForResponse(r => r.url().endsWith('/api/ops/get_customer') && r.request().postDataJSON().id === a.id)
+  releaseA()
+  await (await lateResponse).finished()
+  // eslint-disable-next-line no-restricted-syntax -- 旧详情被丢弃后没有可观察的状态变化，响应接收完成也不能确认组件回调已执行。
+  await page.waitForTimeout(500)
+  await expect(detail.getByRole('heading', { name: newName, exact: true })).toBeVisible()
+  await detail.getByRole('button', { name: '修改资料', exact: true }).click()
+  await expect(form.getByLabel('姓名', { exact: true })).toHaveValue(newName)
+})
+
 test('切换顾客后迟到的资料保存不关闭当前编辑弹窗或提示成功', async ({ page }) => {
   const manager = await hire('店长')
   const token = await apiLogin(manager.account, manager.password)
@@ -366,7 +422,7 @@ test('切换顾客后迟到的资料保存不关闭当前编辑弹窗或提示�
   await detail.getByRole('button', { name: '修改资料', exact: true }).click()
   await expect(form.getByLabel('姓名', { exact: true })).toHaveValue(b.name)
   const save = form.getByRole('button', { name: '保存', exact: true })
-  await expect(save).toBeDisabled()
+  await expect(save).toBeEnabled()
   const lateResponse = page.waitForResponse(r => r.url().endsWith('/api/ops/update_customer_profile') && r.request().postDataJSON().id === a.id)
   releaseA()
   const response = await lateResponse
@@ -423,7 +479,7 @@ test('切换顾客后迟到的合并不跳转详情或提示成功', async ({ pa
   const form = page.getByRole('dialog', { name: '修改顾客资料', exact: true })
   await expect(form.getByLabel('姓名', { exact: true })).toHaveValue(b.name)
   const save = form.getByRole('button', { name: '保存', exact: true })
-  await expect(save).toBeDisabled()
+  await expect(save).toBeEnabled()
   const lateResponse = page.waitForResponse(r => r.url().endsWith('/api/ops/merge_customers') && r.request().postDataJSON().keep_id === a.id)
   releaseA()
   const response = await lateResponse
@@ -454,6 +510,39 @@ test('顾客日志按游标加载更多，不重不漏', async ({ page }) => {
   await expect(rows).toHaveCount(52)
   await expect(more).toHaveCount(0)
   await expect(rows.filter({ hasText: '新建顾客' })).toHaveCount(1)
+})
+
+test('顾客日志加载更多断网后可重试', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const { customer } = await api(token, 'create_customer', { name: `日志重试${Date.now()}`, phone: phone() })
+  for (let i = 0; i < 50; i++) {
+    await api(token, 'update_customer_profile', { id: customer.id, note: `重试记录${i}` })
+  }
+  let abortMore = true
+  await page.route('**/api/ops/list_audit_log', async (route) => {
+    if (route.request().postDataJSON().before_id && abortMore) {
+      abortMore = false
+      await route.abort()
+    } else {
+      await route.continue()
+    }
+  })
+  const pageErrors: string[] = []
+  page.on('pageerror', error => pageErrors.push(error.message))
+  await login(page, owner.account, owner.password)
+  await page.goto(`/customers?id=${customer.id}`)
+  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  const rows = detail.locator('tbody tr')
+  await expect(rows).toHaveCount(50)
+  const more = detail.getByRole('button', { name: '加载更多', exact: true })
+  await more.click()
+  await expect(page.getByText('操作失败', { exact: true })).toBeVisible()
+  await expect(more).toBeEnabled()
+  await expect(rows).toHaveCount(50)
+  await more.click()
+  await expect(rows).toHaveCount(51)
+  await expect(more).toHaveCount(0)
+  expect(pageErrors).toEqual([])
 })
 
 test('切换顾客后丢弃迟到的加载更多日志', async ({ page }) => {
