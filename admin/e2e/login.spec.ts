@@ -32,3 +32,28 @@ test('锁定账号的登录页显示后端 429 提示', async ({ page, request }
   expect((await response).status()).toBe(429)
   await expect(page.getByText('登录失败次数过多，请 15 分钟后再试', { exact: true })).toBeVisible()
 })
+
+test('登录断网后按钮恢复并可重新登录', async ({ page }) => {
+  const employee = await hire('前台')
+  let abortLogin = true
+  await page.route('**/api/auth/login', async (route) => {
+    if (abortLogin) {
+      abortLogin = false
+      await route.abort()
+    } else {
+      await route.continue()
+    }
+  })
+  const pageErrors: string[] = []
+  page.on('pageerror', error => pageErrors.push(error.message))
+  await page.goto('/login')
+  await page.getByLabel('账号').fill(employee.account)
+  await page.getByLabel('密码', { exact: true }).fill(employee.password)
+  const button = page.getByRole('button', { name: '登录', exact: true })
+  await button.click()
+  await expect(page.getByText('操作失败', { exact: true })).toBeVisible()
+  await expect(button).toBeEnabled()
+  await button.click()
+  await expect(page.getByText(/你好/)).toBeVisible()
+  expect(pageErrors).toEqual([])
+})

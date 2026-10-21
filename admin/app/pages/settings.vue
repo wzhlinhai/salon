@@ -70,9 +70,12 @@ async function save(reset: boolean) {
 // 顾客来源
 const sources = ref<components['schemas']['CustomerSource'][]>([])
 const sourceName = ref('')
+let sourcesRequest = 0
 
 async function loadSources() {
+  const request = ++sourcesRequest
   const { data, error } = await api.POST('/api/ops/list_customer_sources', { body: {} })
+  if (request !== sourcesRequest) return
   if (data) {
     sources.value = data.items
   } else {

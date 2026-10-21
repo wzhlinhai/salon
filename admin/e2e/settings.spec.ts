@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { hire, login, owner } from './helpers'
+import { api, apiLogin, hire, login, owner } from './helpers'
 
 // #27：老板修改设置并指定生效日期，页面显示已安排的修改和修改记录。
 test('老板安排明天起的营业日结束时间，并在修改记录里看到', async ({ page }) => {
@@ -74,4 +74,51 @@ test('设置页迟到的旧 get_settings 不覆盖新结果', async ({ page }) =
   await page.waitForTimeout(500)
   await expect(card).toContainText(`${tomorrow} 起改为 02:15`)
   await expect(card).not.toContainText(`${tomorrow} 起改为 01:15`)
+})
+
+test('设置页顾客来源迟到的旧列表不覆盖第二次保存', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const seed = await api(token, 'create_customer_source', { name: `来源种子${Date.now()}` })
+  await login(page, owner.account, owner.password)
+  await page.goto('/settings')
+  const card = page.locator('[data-setting=customer_sources]')
+  await expect(card.getByRole('textbox', { name: `顾客来源 ${seed.name}`, exact: true })).toHaveValue(seed.name)
+  let releaseOld!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    releaseOld = resolve
+  })
+  let startedOld!: () => void
+  const started = new Promise<void>((resolve) => {
+    startedOld = resolve
+  })
+  let requests = 0
+  await page.route('**/api/ops/list_customer_sources', async (route) => {
+    if (++requests === 1) {
+      const response = await route.fetch()
+      startedOld()
+      await blocked
+      await route.fulfill({ response })
+    } else {
+      await route.continue()
+    }
+  })
+  const first = `第一次${Date.now()}`
+  const second = `${first}第二次`
+
+  async function save(name: string) {
+    await card.getByLabel('新顾客来源', { exact: true }).fill(name)
+    await card.getByRole('button', { name: '添加', exact: true }).click()
+    await expect(card.getByLabel('新顾客来源', { exact: true })).toHaveValue('')
+  }
+
+  await save(first)
+  await started
+  await save(second)
+  await expect(card.getByRole('textbox', { name: `顾客来源 ${second}`, exact: true })).toHaveValue(second)
+  const lateResponse = page.waitForResponse(r => r.url().endsWith('/api/ops/list_customer_sources'))
+  releaseOld()
+  await (await lateResponse).finished()
+  // eslint-disable-next-line no-restricted-syntax -- 旧列表被丢弃后没有可观察的状态变化，响应接收完成也不能确认页面回调已执行。
+  await page.waitForTimeout(500)
+  await expect(card.getByRole('textbox', { name: `顾客来源 ${second}`, exact: true })).toHaveValue(second)
 })

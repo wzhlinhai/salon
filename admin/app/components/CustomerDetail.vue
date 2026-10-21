@@ -213,21 +213,27 @@ async function searchMerge() {
   clearTimeout(timer)
   const current = ++searchRequest
   searching.value = true
-  const res = await api.POST('/api/ops/search_customers', {
-    body: {
-      query: mergeQuery.value,
-      include_unidentified: true,
-      limit: 50,
-      offset: mergeOffset.value
+  try {
+    const res = await api.POST('/api/ops/search_customers', {
+      body: {
+        query: mergeQuery.value,
+        include_unidentified: true,
+        limit: 50,
+        offset: mergeOffset.value
+      }
+    })
+    if (current !== searchRequest) return
+    if (res.data) {
+      candidates.value = res.data.items.filter(c => c.id !== props.id)
+      mergeHasNext.value = res.data.items.length === 50
+    } else {
+      toast.add({ title: errorText(res.error), color: 'error' })
     }
-  })
-  if (current !== searchRequest) return
-  searching.value = false
-  if (res.data) {
-    candidates.value = res.data.items.filter(c => c.id !== props.id)
-    mergeHasNext.value = res.data.items.length === 50
-  } else {
-    toast.add({ title: errorText(res.error), color: 'error' })
+  } catch (e) {
+    if (current !== searchRequest) return
+    toast.add({ title: errorText(e), color: 'error' })
+  } finally {
+    if (current === searchRequest) searching.value = false
   }
 }
 

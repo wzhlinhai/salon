@@ -2,19 +2,29 @@
 const form = reactive({ account: '', password: '' })
 const error = ref('')
 const loading = ref(false)
+let loginRequest = 0
 
 async function submit() {
+  const request = ++loginRequest
   error.value = ''
   loading.value = true
-  const { data, error: err } = await useApi().POST('/api/auth/login', { body: form })
-  loading.value = false
-  if (!data) {
-    error.value = errorText(err)
-    return
+  try {
+    const { data, error: err } = await useApi().POST('/api/auth/login', { body: form })
+    if (request !== loginRequest) return
+    if (!data) {
+      error.value = errorText(err)
+      return
+    }
+    setToken(data.token)
+    await useMe().load()
+    if (request !== loginRequest) return
+    await navigateTo('/')
+  } catch (e) {
+    if (request !== loginRequest) return
+    error.value = errorText(e)
+  } finally {
+    if (request === loginRequest) loading.value = false
   }
-  setToken(data.token)
-  await useMe().load()
-  await navigateTo('/')
 }
 </script>
 

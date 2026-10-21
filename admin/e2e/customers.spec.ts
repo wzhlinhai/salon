@@ -588,3 +588,65 @@ test('切换顾客后丢弃迟到的加载更多日志', async ({ page }) => {
   await expect(detail.locator('table')).not.toContainText(a.name)
   await expect(detail.getByRole('button', { name: '加载更多', exact: true })).toHaveCount(0)
 })
+
+test('顾客列表断网后结束加载并可重新搜索', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const name = `列表重试${Date.now()}`
+  await api(token, 'create_customer', { name, phone: phone() })
+  const pageErrors: string[] = []
+  page.on('pageerror', error => pageErrors.push(error.message))
+  await login(page, owner.account, owner.password)
+  await page.goto('/customers')
+  await search(page, name)
+  await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
+  await expect(page.locator('thead')).not.toHaveClass(/animate/)
+  let abortSearch = true
+  await page.route('**/api/ops/search_customers', async (route) => {
+    if (abortSearch) {
+      abortSearch = false
+      await route.abort()
+    } else {
+      await route.continue()
+    }
+  })
+  await page.getByLabel('搜索顾客', { exact: true }).press('Enter')
+  await expect(page.getByText('操作失败', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0)
+  await expect(page.locator('thead')).not.toHaveClass(/animate/)
+  await expect(page.getByLabel('搜索顾客', { exact: true })).toBeEnabled()
+  await search(page, name)
+  await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
+  expect(pageErrors).toEqual([])
+})
+
+test('合并搜索断网后结束搜索并可重试', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const { customer } = await api(token, 'create_customer', { name: `合并重试${Date.now()}`, phone: phone() })
+  const candidate = (await api(token, 'create_customer', { name: `重试候选${Date.now()}`, phone: phone() })).customer
+  await login(page, owner.account, owner.password)
+  await page.goto(`/customers?id=${customer.id}`)
+  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  await expect(detail.getByRole('heading', { name: customer.name, exact: true })).toBeVisible()
+  let abortSearch = true
+  await page.route('**/api/ops/search_customers', async (route) => {
+    if (abortSearch) {
+      abortSearch = false
+      await route.abort()
+    } else {
+      await route.continue()
+    }
+  })
+  const pageErrors: string[] = []
+  page.on('pageerror', error => pageErrors.push(error.message))
+  await detail.getByRole('button', { name: '合并重复顾客', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '合并重复顾客', exact: true })
+  await expect(page.getByText('操作失败', { exact: true })).toBeVisible()
+  await expect(dialog.locator('.animate-spin')).toHaveCount(0)
+  await expect(dialog.getByText('未找到其他顾客', { exact: true })).toBeVisible()
+  const input = dialog.getByLabel('搜索另一位顾客', { exact: true })
+  await expect(input).toBeEnabled()
+  await input.fill(candidate.name)
+  await input.press('Enter')
+  await expect(dialog.locator(`[data-customer-id="${candidate.id}"]`)).toBeVisible()
+  expect(pageErrors).toEqual([])
+})
