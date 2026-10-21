@@ -13,3 +13,4 @@ npm run typecheck
 - 接口类型 `app/utils/api.d.ts` 由 `npm run generate:api` 生成，不要手改。后端接口有变化时重新生成并提交。
 - 页面用 `definePageMeta({ permission: '...' })` 声明所需权限。导航只显示有权限的页面，直接访问会跳到无权限页。权限以后端检查为准，页面只是隐藏入口。
 - 生产环境用 `NUXT_PUBLIC_API_BASE` 指定后端地址。
+- 列表的“加载更多”（游标分页）用 `useCursorList`，它负责丢弃过期结果；写操作和详情加载照编码规范“管理后台”一节检查发起时的对象。
