@@ -298,6 +298,7 @@ func TestCustomerHandover(t *testing.T) {
 	logs := s.call("list_audit_log", map[string]any{"target_id": from}, 200)["entries"].([]any)
 	latest := logs[0].(map[string]any)
 	assertEqual(t, latest["action"], "hand_over_customers")
+	assertEqual(t, latest["before"], map[string]any{"customer_ids": result["customer_ids"]})
 	assertEqual(t, latest["after"], result)
 	s.call("assign_customer_responsible", map[string]any{"customer_ids": []any{a["id"]}}, 200)
 	assertEqual(t, s.get(a["id"])["responsible"], nil)

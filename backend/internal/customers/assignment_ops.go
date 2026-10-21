@@ -90,14 +90,16 @@ func registerAssignments(r *ops.Registry) {
 			if err != nil {
 				return nil, err
 			}
-			before := []Customer{}
+			before := struct {
+				CustomerIDs []uuid.UUID `json:"customer_ids"`
+			}{CustomerIDs: []uuid.UUID{}}
 			out := &CustomerHandoverResult{Count: len(rows), ToStaffID: in.ToStaffID, CustomerIDs: []uuid.UUID{}}
 			for _, row := range rows {
 				c, err := view(ctx, env, row)
 				if err != nil {
 					return nil, err
 				}
-				before = append(before, *c)
+				before.CustomerIDs = append(before.CustomerIDs, row.ID)
 				row.ResponsibleStaffID = &in.ToStaffID
 				if err := save(ctx, env, row); err != nil {
 					return nil, err

@@ -42,13 +42,17 @@ func (q *Queries) AddAuditLog(ctx context.Context, arg AddAuditLogParams) error 
 const listAuditLog = `-- name: ListAuditLog :many
 SELECT a.id, a.tenant_id, a.store_id, a.action, a.target_id, a.before, a.after, a.actor_id, a.at, s.name AS actor_name
 FROM audit_log a JOIN staff s ON s.id = a.actor_id
+LEFT JOIN customers c ON c.id = a.target_id
 WHERE a.store_id = $1 AND ($2::uuid IS NULL OR a.target_id = $2)
+    AND (c.id IS NULL OR ($3::boolean AND ($4::uuid IS NULL OR c.responsible_staff_id = $4)))
 ORDER BY a.at DESC, a.id DESC
 `
 
 type ListAuditLogParams struct {
-	StoreID  uuid.UUID
-	TargetID *uuid.UUID
+	StoreID        uuid.UUID
+	TargetID       *uuid.UUID
+	CustomerView   bool
+	CustomerSelfID *uuid.UUID
 }
 
 type ListAuditLogRow struct {
@@ -57,7 +61,12 @@ type ListAuditLogRow struct {
 }
 
 func (q *Queries) ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]ListAuditLogRow, error) {
-	rows, err := q.db.Query(ctx, listAuditLog, arg.StoreID, arg.TargetID)
+	rows, err := q.db.Query(ctx, listAuditLog,
+		arg.StoreID,
+		arg.TargetID,
+		arg.CustomerView,
+		arg.CustomerSelfID,
+	)
 	if err != nil {
 		return nil, err
 	}

@@ -70,7 +70,11 @@ func Register(r *ops.Registry) {
 		Name: "list_audit_log", Summary: "查看业务操作的修改记录：谁、何时、改了什么、改前改后", Kind: ops.Read,
 		Permission: perm.AuditLogView, AI: ops.AIDirect,
 		Handle: func(ctx context.Context, env ops.Env, in *ListAuditLogInput) (*LogList, error) {
-			rows, err := env.Q.ListAuditLog(ctx, dbgen.ListAuditLogParams{StoreID: env.Caller.StoreID, TargetID: in.TargetID})
+			customerView, self := env.Caller.ScopeFilter(perm.CustomerView)
+			rows, err := env.Q.ListAuditLog(ctx, dbgen.ListAuditLogParams{
+				StoreID: env.Caller.StoreID, TargetID: in.TargetID,
+				CustomerView: customerView, CustomerSelfID: self,
+			})
 			if err != nil {
 				return nil, err
 			}

@@ -115,6 +115,17 @@ func (c Caller) Has(p Permission) bool {
 // Grant 返回调用者在权限 p 上的限制。
 func (c Caller) Grant(p Permission) Grant { return c.Permissions[p] }
 
+// ScopeFilter 返回调用者在权限 p 上的数据范围过滤：没有该权限时 ok 为 false；范围是本人时 self 为调用者的员工 ID，否则为 nil。
+func (c Caller) ScopeFilter(p Permission) (ok bool, self *uuid.UUID) {
+	if !c.Has(p) {
+		return false, nil
+	}
+	if c.Grant(p).Scope == ScopeSelf {
+		return true, &c.StaffID
+	}
+	return true, nil
+}
+
 type callerKey struct{}
 
 // WithCaller 返回带有调用者的 context。

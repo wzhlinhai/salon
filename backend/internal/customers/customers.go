@@ -194,13 +194,11 @@ func activeStaff(ctx context.Context, env ops.Env, id uuid.UUID) error {
 
 // viewScope 返回顾客查看权限对应的负责人过滤，没有查看权限则按不存在处理。
 func viewScope(caller ops.Caller) (*uuid.UUID, error) {
-	if !caller.Has(perm.CustomerView) {
+	ok, self := caller.ScopeFilter(perm.CustomerView)
+	if !ok {
 		return nil, ops.ErrNotFound
 	}
-	if caller.Grant(perm.CustomerView).Scope == ops.ScopeSelf {
-		return &caller.StaffID, nil
-	}
-	return nil, nil
+	return self, nil
 }
 
 // canView 判断调用者是否有权查看这位顾客，供读取和写入共用。
