@@ -13,6 +13,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/wzhlinhai/salon/backend/internal/db"
@@ -23,6 +24,15 @@ import (
 
 // ErrInvalidLogin：账号不存在、密码错误或员工已停用。三种情况不区分，避免泄露账号是否存在。
 var ErrInvalidLogin = errors.New("invalid account or password")
+
+// ErrLoginLocked 表示账号因连续密码错误而暂时锁定。
+var ErrLoginLocked = errors.New("login locked")
+
+// maxFailedLogins 是触发锁定的连续密码错误次数。
+const maxFailedLogins = 15
+
+// loginLockDuration 是登录失败达到阈值后的锁定时长。
+const loginLockDuration = 15 * time.Minute
 
 // HashPassword 用 argon2id 哈希密码。
 func HashPassword(password string) (string, error) {
@@ -49,22 +59,21 @@ func NewService(pool *pgxpool.Pool, secret []byte, ttl time.Duration) (*Service,
 }
 
 type claims struct {
-	TenantID uuid.UUID `json:"tid"`
+	TenantID     uuid.UUID `json:"tid"`
+	TokenVersion *int32    `json:"ver"`
 	jwt.RegisteredClaims
 }
 
-// Login 校验账号密码，返回登录凭证。凭证里只有员工和租户，不含权限。
+// Login 校验账号密码，返回登录凭证。凭证里包含员工、租户和凭证版本，不含权限。
 func (s *Service) Login(ctx context.Context, account, password string) (string, error) {
 	var staffID, tenantID uuid.UUID
-	var hash *string
-	var active bool
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, "SET LOCAL ROLE salon_app"); err != nil {
 			return err
 		}
 		return tx.QueryRow(ctx,
-			"SELECT staff_id, tenant_id, password_hash, active FROM auth_find_login($1)", account,
-		).Scan(&staffID, &tenantID, &hash, &active)
+			"SELECT staff_id, tenant_id FROM auth_find_login($1)", account,
+		).Scan(&staffID, &tenantID)
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		_, _ = argon2id.ComparePasswordAndHash(password, dummyHash)
@@ -73,20 +82,51 @@ func (s *Service) Login(ctx context.Context, account, password string) (string, 
 	if err != nil {
 		return "", fmt.Errorf("find login: %w", err)
 	}
-	if hash == nil {
-		_, _ = argon2id.ComparePasswordAndHash(password, dummyHash)
-		return "", ErrInvalidLogin
-	}
-	ok, err := argon2id.ComparePasswordAndHash(password, *hash)
+	var st dbgen.Staff
+	var loginErr error
+	err = db.InTenant(ctx, s.pool, tenantID, func(q *dbgen.Queries) error {
+		// 与重设密码、停用及其他登录串行，按锁住后读到的状态校验和写入。
+		login, err := q.LockStaffNoKey(ctx, staffID)
+		if err != nil {
+			return err
+		}
+		st = login.Staff
+		if !st.Active || st.PasswordHash == nil || st.LoginAccount == nil || *st.LoginAccount != account {
+			_, _ = argon2id.ComparePasswordAndHash(password, dummyHash)
+			loginErr = ErrInvalidLogin
+			return nil
+		}
+		if login.Locked {
+			loginErr = ErrLoginLocked
+			return nil
+		}
+		ok, err := argon2id.ComparePasswordAndHash(password, *st.PasswordHash)
+		if err != nil {
+			return fmt.Errorf("compare password: %w", err)
+		}
+		if !ok {
+			loginErr = ErrInvalidLogin
+			return q.RecordFailedLogin(ctx, dbgen.RecordFailedLoginParams{
+				ID: staffID, Threshold: maxFailedLogins,
+				LockDuration: pgtype.Interval{Microseconds: loginLockDuration.Microseconds(), Valid: true},
+			})
+		}
+		if st.FailedLogins != 0 {
+			return q.ResetFailedLogins(ctx, staffID)
+		}
+		return nil
+	})
 	if err != nil {
-		return "", fmt.Errorf("compare password: %w", err)
+		return "", fmt.Errorf("check login: %w", err)
 	}
-	if !ok || !active {
-		return "", ErrInvalidLogin
+	if loginErr != nil {
+		return "", loginErr
 	}
+
 	now := s.now()
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims{
-		TenantID: tenantID,
+		TenantID:     tenantID,
+		TokenVersion: &st.TokenVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   staffID.String(),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -108,7 +148,7 @@ func VerifyPassword(ctx context.Context, q *dbgen.Queries, staffID uuid.UUID, pa
 	return argon2id.ComparePasswordAndHash(password, *st.PasswordHash)
 }
 
-func (s *Service) parse(token string) (staffID, tenantID uuid.UUID, err error) {
+func (s *Service) parse(token string) (staffID, tenantID uuid.UUID, version int32, err error) {
 	var c claims
 	_, err = jwt.ParseWithClaims(token, &c, func(*jwt.Token) (any, error) { return s.secret, nil },
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
@@ -116,13 +156,13 @@ func (s *Service) parse(token string) (staffID, tenantID uuid.UUID, err error) {
 		jwt.WithTimeFunc(s.now),
 	)
 	if err != nil {
-		return uuid.Nil, uuid.Nil, err
+		return uuid.Nil, uuid.Nil, 0, err
 	}
 	staffID, err = uuid.Parse(c.Subject)
-	if err != nil || c.TenantID == uuid.Nil {
-		return uuid.Nil, uuid.Nil, errors.New("invalid token subject")
+	if err != nil || c.TenantID == uuid.Nil || c.TokenVersion == nil {
+		return uuid.Nil, uuid.Nil, 0, errors.New("invalid token subject")
 	}
-	return staffID, c.TenantID, nil
+	return staffID, c.TenantID, *c.TokenVersion, nil
 }
 
 // Authenticate 从请求的 Bearer 凭证识别员工，并从数据库读取其当前权限。
@@ -132,14 +172,25 @@ func (s *Service) Authenticate(r *http.Request) (ops.Caller, bool) {
 	if !ok {
 		return ops.Caller{}, false
 	}
-	staffID, tenantID, err := s.parse(token)
+	staffID, tenantID, version, err := s.parse(token)
 	if err != nil {
 		return ops.Caller{}, false
 	}
 	var caller ops.Caller
 	err = db.InTenant(r.Context(), s.pool, tenantID, func(q *dbgen.Queries) error {
-		var err error
-		caller, ok, err = LoadCaller(r.Context(), q, staffID)
+		st, err := q.GetStaff(r.Context(), staffID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			ok = false
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if st.TokenVersion != version {
+			ok = false
+			return nil
+		}
+		caller, ok, err = loadCaller(r.Context(), q, st)
 		return err
 	})
 	if err != nil || !ok {
@@ -158,11 +209,15 @@ func LoadCaller(ctx context.Context, q *dbgen.Queries, staffID uuid.UUID) (ops.C
 	if err != nil {
 		return ops.Caller{}, false, err
 	}
+	return loadCaller(ctx, q, st)
+}
+
+func loadCaller(ctx context.Context, q *dbgen.Queries, st dbgen.Staff) (ops.Caller, bool, error) {
 	if !st.Active {
 		return ops.Caller{}, false, nil
 	}
 	caller := ops.Caller{TenantID: st.TenantID, StoreID: st.StoreID, StaffID: st.ID}
-	roles, err := q.ListStaffRoles(ctx, staffID)
+	roles, err := q.ListStaffRoles(ctx, st.ID)
 	if err != nil {
 		return ops.Caller{}, false, err
 	}

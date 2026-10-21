@@ -90,6 +90,9 @@ func registerLogin(api huma.API, login LoginFunc) {
 		Summary:     "员工登录",
 	}, func(ctx context.Context, in *loginInput) (*loginOutput, error) {
 		token, err := login(ctx, in.Body.Account, in.Body.Password)
+		if errors.Is(err, auth.ErrLoginLocked) {
+			return nil, huma.Error429TooManyRequests("登录失败次数过多，请 15 分钟后再试")
+		}
 		if errors.Is(err, auth.ErrInvalidLogin) {
 			return nil, huma.Error401Unauthorized("账号或密码不正确")
 		}

@@ -131,6 +131,9 @@ type Staff struct {
 	Active        bool
 	DeactivatedAt pgtype.Timestamptz
 	CreatedAt     pgtype.Timestamptz
+	TokenVersion  int32
+	FailedLogins  int32
+	LockedUntil   pgtype.Timestamptz
 }
 
 type StaffRole struct {

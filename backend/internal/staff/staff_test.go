@@ -124,7 +124,8 @@ func TestDeactivatedStaffCannotLoginButKeepsName(t *testing.T) {
 
 	// 恢复后可以再登录。
 	s.call(s.Owner, "reactivate_staff", map[string]any{"staff_id": id}, http.StatusOK)
-	s.MustLogin("xiaoli", "password-xiaoli")
+	s.call(token, "get_me", map[string]any{}, http.StatusUnauthorized)
+	s.call(s.MustLogin("xiaoli", "password-xiaoli"), "get_me", map[string]any{}, http.StatusOK)
 }
 
 func TestStaffRowsCannotBeDeleted(t *testing.T) {
@@ -341,7 +342,8 @@ func TestChangeMyPassword(t *testing.T) {
 	_, token := s.Hire("小李", "002", "xiaoli")
 	s.call(token, "change_my_password", map[string]any{"old_password": "wrong", "new_password": "new-password"}, http.StatusConflict)
 	s.call(token, "change_my_password", map[string]any{"old_password": "password-xiaoli", "new_password": "new-password"}, http.StatusOK)
-	s.MustLogin("xiaoli", "new-password")
+	s.call(token, "get_me", map[string]any{}, http.StatusUnauthorized)
+	s.call(s.MustLogin("xiaoli", "new-password"), "get_me", map[string]any{}, http.StatusOK)
 }
 
 func TestDuplicateNumberAndAccountRejected(t *testing.T) {

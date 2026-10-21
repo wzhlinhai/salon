@@ -9,12 +9,13 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createStaff = `-- name: CreateStaff :one
 INSERT INTO staff (tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at
+RETURNING id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until
 `
 
 type CreateStaffParams struct {
@@ -53,12 +54,15 @@ func (q *Queries) CreateStaff(ctx context.Context, arg CreateStaffParams) (Staff
 		&i.Active,
 		&i.DeactivatedAt,
 		&i.CreatedAt,
+		&i.TokenVersion,
+		&i.FailedLogins,
+		&i.LockedUntil,
 	)
 	return i, err
 }
 
 const deactivateStaff = `-- name: DeactivateStaff :execrows
-UPDATE staff SET active = false, deactivated_at = now() WHERE id = $1 AND active
+UPDATE staff SET active = false, deactivated_at = now(), token_version = token_version + 1 WHERE id = $1 AND active
 `
 
 func (q *Queries) DeactivateStaff(ctx context.Context, id uuid.UUID) (int64, error) {
@@ -70,7 +74,7 @@ func (q *Queries) DeactivateStaff(ctx context.Context, id uuid.UUID) (int64, err
 }
 
 const getStaff = `-- name: GetStaff :one
-SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at FROM staff WHERE id = $1
+SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until FROM staff WHERE id = $1
 `
 
 func (q *Queries) GetStaff(ctx context.Context, id uuid.UUID) (Staff, error) {
@@ -89,12 +93,15 @@ func (q *Queries) GetStaff(ctx context.Context, id uuid.UUID) (Staff, error) {
 		&i.Active,
 		&i.DeactivatedAt,
 		&i.CreatedAt,
+		&i.TokenVersion,
+		&i.FailedLogins,
+		&i.LockedUntil,
 	)
 	return i, err
 }
 
 const listStaff = `-- name: ListStaff :many
-SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at FROM staff WHERE store_id = $1 ORDER BY active DESC, number, id
+SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until FROM staff WHERE store_id = $1 ORDER BY active DESC, number, id
 `
 
 func (q *Queries) ListStaff(ctx context.Context, storeID uuid.UUID) ([]Staff, error) {
@@ -119,6 +126,9 @@ func (q *Queries) ListStaff(ctx context.Context, storeID uuid.UUID) ([]Staff, er
 			&i.Active,
 			&i.DeactivatedAt,
 			&i.CreatedAt,
+			&i.TokenVersion,
+			&i.FailedLogins,
+			&i.LockedUntil,
 		); err != nil {
 			return nil, err
 		}
@@ -131,7 +141,7 @@ func (q *Queries) ListStaff(ctx context.Context, storeID uuid.UUID) ([]Staff, er
 }
 
 const lockStaff = `-- name: LockStaff :one
-SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at FROM staff WHERE id = $1 FOR UPDATE
+SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until FROM staff WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) LockStaff(ctx context.Context, id uuid.UUID) (Staff, error) {
@@ -150,6 +160,43 @@ func (q *Queries) LockStaff(ctx context.Context, id uuid.UUID) (Staff, error) {
 		&i.Active,
 		&i.DeactivatedAt,
 		&i.CreatedAt,
+		&i.TokenVersion,
+		&i.FailedLogins,
+		&i.LockedUntil,
+	)
+	return i, err
+}
+
+const lockStaffNoKey = `-- name: LockStaffNoKey :one
+SELECT staff.id, staff.tenant_id, staff.store_id, staff.name, staff.number, staff.level_id, staff.position_id, staff.login_account, staff.password_hash, staff.active, staff.deactivated_at, staff.created_at, staff.token_version, staff.failed_logins, staff.locked_until, COALESCE(locked_until > clock_timestamp(), false)::boolean AS locked
+FROM staff WHERE id = $1 FOR NO KEY UPDATE
+`
+
+type LockStaffNoKeyRow struct {
+	Staff  Staff
+	Locked bool
+}
+
+func (q *Queries) LockStaffNoKey(ctx context.Context, id uuid.UUID) (LockStaffNoKeyRow, error) {
+	row := q.db.QueryRow(ctx, lockStaffNoKey, id)
+	var i LockStaffNoKeyRow
+	err := row.Scan(
+		&i.Staff.ID,
+		&i.Staff.TenantID,
+		&i.Staff.StoreID,
+		&i.Staff.Name,
+		&i.Staff.Number,
+		&i.Staff.LevelID,
+		&i.Staff.PositionID,
+		&i.Staff.LoginAccount,
+		&i.Staff.PasswordHash,
+		&i.Staff.Active,
+		&i.Staff.DeactivatedAt,
+		&i.Staff.CreatedAt,
+		&i.Staff.TokenVersion,
+		&i.Staff.FailedLogins,
+		&i.Staff.LockedUntil,
+		&i.Locked,
 	)
 	return i, err
 }
@@ -166,8 +213,35 @@ func (q *Queries) ReactivateStaff(ctx context.Context, id uuid.UUID) (int64, err
 	return result.RowsAffected(), nil
 }
 
+const recordFailedLogin = `-- name: RecordFailedLogin :exec
+UPDATE staff SET
+    failed_logins = CASE WHEN failed_logins + 1 >= $1::integer THEN 0 ELSE failed_logins + 1 END,
+    locked_until = CASE WHEN failed_logins + 1 >= $1::integer THEN clock_timestamp() + $2::interval ELSE locked_until END
+WHERE id = $3
+`
+
+type RecordFailedLoginParams struct {
+	Threshold    int32
+	LockDuration pgtype.Interval
+	ID           uuid.UUID
+}
+
+func (q *Queries) RecordFailedLogin(ctx context.Context, arg RecordFailedLoginParams) error {
+	_, err := q.db.Exec(ctx, recordFailedLogin, arg.Threshold, arg.LockDuration, arg.ID)
+	return err
+}
+
+const resetFailedLogins = `-- name: ResetFailedLogins :exec
+UPDATE staff SET failed_logins = 0 WHERE id = $1
+`
+
+func (q *Queries) ResetFailedLogins(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, resetFailedLogins, id)
+	return err
+}
+
 const setStaffLogin = `-- name: SetStaffLogin :execrows
-UPDATE staff SET login_account = $2, password_hash = $3 WHERE id = $1
+UPDATE staff SET login_account = $2, password_hash = $3, token_version = token_version + 1, failed_logins = 0, locked_until = NULL WHERE id = $1
 `
 
 type SetStaffLoginParams struct {
@@ -185,7 +259,7 @@ func (q *Queries) SetStaffLogin(ctx context.Context, arg SetStaffLoginParams) (i
 }
 
 const setStaffPassword = `-- name: SetStaffPassword :execrows
-UPDATE staff SET password_hash = $2 WHERE id = $1 AND login_account IS NOT NULL
+UPDATE staff SET password_hash = $2, token_version = token_version + 1 WHERE id = $1 AND login_account IS NOT NULL
 `
 
 type SetStaffPasswordParams struct {
@@ -204,7 +278,7 @@ func (q *Queries) SetStaffPassword(ctx context.Context, arg SetStaffPasswordPara
 const updateStaffProfile = `-- name: UpdateStaffProfile :one
 UPDATE staff SET name = $2, number = $3, level_id = $4, position_id = $5
 WHERE id = $1
-RETURNING id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at
+RETURNING id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until
 `
 
 type UpdateStaffProfileParams struct {
@@ -237,6 +311,9 @@ func (q *Queries) UpdateStaffProfile(ctx context.Context, arg UpdateStaffProfile
 		&i.Active,
 		&i.DeactivatedAt,
 		&i.CreatedAt,
+		&i.TokenVersion,
+		&i.FailedLogins,
+		&i.LockedUntil,
 	)
 	return i, err
 }
