@@ -64,7 +64,11 @@ async function load() {
   }
 }
 
-function done(error: unknown, ok: unknown, message: string) {
+function done(id: string, error: unknown, ok: unknown, message: string) {
+  if (id !== props.id) {
+    if (ok) emit('changed')
+    return false
+  }
   toast.add({ title: ok ? message : errorText(error), color: ok ? 'success' : 'error' })
   if (ok) {
     load()
@@ -86,18 +90,19 @@ function edit() {
 
 async function saveProfile() {
   if (saving.value) return
+  const id = props.id
   saving.value = true
   try {
     const res = await api.POST('/api/ops/update_customer_profile', {
       body: {
-        id: props.id,
+        id,
         name: profile.name || undefined,
         gender: profile.gender === NONE ? undefined : profile.gender as 'male' | 'female',
         source_id: profile.source === NONE ? undefined : profile.source,
         note: profile.note || undefined
       }
     })
-    if (done(res.error, res.data, '资料已保存')) {
+    if (done(id, res.error, res.data, '资料已保存')) {
       editing.value = false
     }
   } finally {
@@ -122,11 +127,12 @@ function openPhone() {
 
 async function savePhone() {
   if (saving.value) return
+  const id = props.id
   saving.value = true
   try {
     const path = customer.value?.phone ? '/api/ops/change_customer_phone' : '/api/ops/add_customer_phone'
-    const res = await api.POST(path, { body: { id: props.id, phone: phone.value } })
-    if (done(res.error, res.data, '手机号已保存')) {
+    const res = await api.POST(path, { body: { id, phone: phone.value } })
+    if (done(id, res.error, res.data, '手机号已保存')) {
       phoneOpen.value = false
     }
   } finally {
@@ -165,12 +171,13 @@ function openLabel() {
 
 async function addLabel() {
   if (saving.value) return
+  const id = props.id
   saving.value = true
   try {
     const res = await api.POST('/api/ops/add_safety_label', {
-      body: { ...label, customer_id: props.id, note: label.note || undefined }
+      body: { ...label, customer_id: id, note: label.note || undefined }
     })
-    if (done(res.error, res.data, '安全标签已添加')) {
+    if (done(id, res.error, res.data, '安全标签已添加')) {
       labelOpen.value = false
     }
   } finally {
@@ -186,12 +193,13 @@ function setRevokeOpen(open: boolean) {
 
 async function revoke() {
   if (saving.value || !revokeTarget.value) return
+  const id = props.id
   saving.value = true
   try {
     const res = await api.POST('/api/ops/revoke_safety_label', {
-      body: { customer_id: props.id, id: revokeTarget.value.id }
+      body: { customer_id: id, id: revokeTarget.value.id }
     })
-    if (done(res.error, res.data, '安全标签已撤销')) {
+    if (done(id, res.error, res.data, '安全标签已撤销')) {
       revokeTarget.value = null
     }
   } finally {
@@ -271,14 +279,19 @@ watch(mergeQuery, () => {
 
 async function merge() {
   if (saving.value || !other.value) return
+  const id = props.id
   saving.value = true
   try {
     const res = await api.POST('/api/ops/merge_customers', {
       body: {
         keep_id: keepID.value,
-        merged_id: keepID.value === props.id ? other.value.id : props.id
+        merged_id: keepID.value === id ? other.value.id : id
       }
     })
+    if (id !== props.id) {
+      if (res.data) emit('changed')
+      return
+    }
     if (res.data) {
       toast.add({ title: '顾客已合并', color: 'success' })
       mergeConfirm.value = false

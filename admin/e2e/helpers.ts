@@ -31,7 +31,7 @@ export async function hire(roleName: string): Promise<{ account: string, passwor
   const { roles } = await api<{ roles: { id: string, name: string }[] }>(token, 'list_role_options', {})
   const role = roles.find(r => r.name === roleName)
   if (!role) throw new Error(`no role ${roleName}`)
-  const suffix = Date.now().toString(36)
+  const suffix = Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
   const staff = await api<{ id: string }>(token, 'create_staff', { name: `${roleName}${suffix}`, number: suffix, role_ids: [role.id] })
   const account = `e2e-${suffix}`
   const password = `password-${suffix}`

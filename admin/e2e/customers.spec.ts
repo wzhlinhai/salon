@@ -326,3 +326,112 @@ test('切换顾客后丢弃迟到的详情，编辑仍预填当前顾客', async
   await page.getByRole('button', { name: '修改资料', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '修改顾客资料', exact: true }).getByLabel('姓名', { exact: true })).toHaveValue(b.name)
 })
+
+test('切换顾客后迟到的资料保存不关闭当前编辑弹窗或提示成功', async ({ page }) => {
+  const manager = await hire('店长')
+  const token = await apiLogin(manager.account, manager.password)
+  const suffix = Date.now()
+  const a = (await api(token, 'create_customer', { name: `保存竞态甲${suffix}`, phone: phone() })).customer
+  const b = (await api(token, 'create_customer', { name: `保存竞态乙${suffix}`, phone: phone() })).customer
+  let releaseA!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    releaseA = resolve
+  })
+  let startedA!: () => void
+  const started = new Promise<void>((resolve) => {
+    startedA = resolve
+  })
+  await page.route('**/api/ops/update_customer_profile', async (route) => {
+    if (route.request().postDataJSON().id === a.id) {
+      startedA()
+      await blocked
+    }
+    await route.continue()
+  })
+  await login(page, manager.account, manager.password)
+  await page.goto(`/customers?id=${a.id}`)
+  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  await expect(detail.getByRole('heading', { name: a.name, exact: true })).toBeVisible()
+  await detail.getByRole('button', { name: '修改资料', exact: true }).click()
+  const form = page.getByRole('dialog', { name: '修改顾客资料', exact: true })
+  await form.getByLabel('姓名', { exact: true }).fill(`${a.name}改`)
+  await form.getByRole('button', { name: '保存', exact: true }).click()
+  await started
+  await page.evaluate((id) => {
+    window.history.pushState({}, '', `/customers?id=${id}`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }, b.id)
+  await expect(detail.getByRole('heading', { name: b.name, exact: true })).toBeVisible()
+  await detail.getByRole('button', { name: '修改资料', exact: true }).click()
+  await expect(form.getByLabel('姓名', { exact: true })).toHaveValue(b.name)
+  const save = form.getByRole('button', { name: '保存', exact: true })
+  await expect(save).toBeDisabled()
+  const lateResponse = page.waitForResponse(r => r.url().endsWith('/api/ops/update_customer_profile') && r.request().postDataJSON().id === a.id)
+  releaseA()
+  const response = await lateResponse
+  await response.finished()
+  expect(response.ok()).toBe(true)
+  await expect(save).toBeEnabled()
+  await expect(form).toBeVisible()
+  await expect(form.getByLabel('姓名', { exact: true })).toHaveValue(b.name)
+  await expect(page).toHaveURL(new RegExp(`id=${b.id}`))
+  await expect(page.getByText('资料已保存', { exact: true })).toHaveCount(0)
+  expect((await api(token, 'get_customer', { id: a.id })).name).toBe(`${a.name}改`)
+})
+
+test('切换顾客后迟到的合并不跳转详情或提示成功', async ({ page }) => {
+  const manager = await hire('店长')
+  const token = await apiLogin(manager.account, manager.password)
+  const suffix = Date.now()
+  const a = (await api(token, 'create_customer', { name: `合并竞态甲${suffix}`, phone: phone() })).customer
+  const c = (await api(token, 'create_customer', { name: `合并竞态丙${suffix}`, phone: phone() })).customer
+  const b = (await api(token, 'create_customer', { name: `合并竞态乙${suffix}`, phone: phone() })).customer
+  let releaseA!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    releaseA = resolve
+  })
+  let startedA!: () => void
+  const started = new Promise<void>((resolve) => {
+    startedA = resolve
+  })
+  await page.route('**/api/ops/merge_customers', async (route) => {
+    if (route.request().postDataJSON().keep_id === a.id) {
+      startedA()
+      await blocked
+    }
+    await route.continue()
+  })
+  await login(page, manager.account, manager.password)
+  await page.goto(`/customers?id=${a.id}`)
+  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  await expect(detail.getByRole('heading', { name: a.name, exact: true })).toBeVisible()
+  await detail.getByRole('button', { name: '合并重复顾客', exact: true }).click()
+  const mergeDialog = page.getByRole('dialog', { name: '合并重复顾客', exact: true })
+  await mergeDialog.getByLabel('搜索另一位顾客', { exact: true }).fill(c.name)
+  await mergeDialog.getByLabel('搜索另一位顾客', { exact: true }).press('Enter')
+  await mergeDialog.locator(`[data-customer-id="${c.id}"]`).click()
+  await mergeDialog.getByRole('button', { name: '继续合并', exact: true }).click()
+  await page.getByRole('dialog', { name: '确认合并顾客', exact: true }).getByRole('button', { name: '确认合并', exact: true }).click()
+  await started
+  await page.evaluate((id) => {
+    window.history.pushState({}, '', `/customers?id=${id}`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }, b.id)
+  await expect(detail.getByRole('heading', { name: b.name, exact: true })).toBeVisible()
+  await detail.getByRole('button', { name: '修改资料', exact: true }).click()
+  const form = page.getByRole('dialog', { name: '修改顾客资料', exact: true })
+  await expect(form.getByLabel('姓名', { exact: true })).toHaveValue(b.name)
+  const save = form.getByRole('button', { name: '保存', exact: true })
+  await expect(save).toBeDisabled()
+  const lateResponse = page.waitForResponse(r => r.url().endsWith('/api/ops/merge_customers') && r.request().postDataJSON().keep_id === a.id)
+  releaseA()
+  const response = await lateResponse
+  await response.finished()
+  expect(response.ok()).toBe(true)
+  await expect(save).toBeEnabled()
+  await expect(page).toHaveURL(new RegExp(`id=${b.id}`))
+  await expect(form).toBeVisible()
+  await expect(form.getByLabel('姓名', { exact: true })).toHaveValue(b.name)
+  await expect(page.getByText('顾客已合并', { exact: true })).toHaveCount(0)
+  expect((await api(token, 'get_customer', { id: c.id })).merged_into).toBe(a.id)
+})
