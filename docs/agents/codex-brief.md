@@ -31,15 +31,15 @@ node <codex-delegate>/scripts/relay.mjs --brief .dev/codex/<task>/brief.txt \
 
 Codex runs every applicable gate and fixes failures before reporting. Each output goes to a log file under `.dev/codex/<task>/`; read the exit code, never pipe a long-running command through a filter.
 
-- `backend/`: `gofmt -l .` (no output), `go vet ./...`, `golangci-lint run ./...`, `go tool sqlc generate` then `go tool sqlc diff`, `go test -count=1 ./...`, and the task's `scripts/mutcheck.sh` runs.
+- `backend/`: `gofmt -l .` (no output), `go vet ./...`, `golangci-lint run ./...`, `go tool sqlc generate` then `go tool sqlc diff`, `go test ./...` (no `-count=1`: Go reruns only packages whose code or dependencies changed; `mutcheck.sh` forces a real run itself), and the task's `scripts/mutcheck.sh` runs.
 - `admin/`: `npm run generate:api` then check `app/utils/api.d.ts` changed only if the API did, `npm run lint`, `npm run typecheck`.
-- e2e, as **one** shell command: the sandbox kills background processes when each command ends, so `dev.sh` and the tests must share one command.
+- e2e: the specs covering the pages or components the task changed (`npm run e2e -- e2e/<name>.spec.ts`); the full suite when shared code changed (`useApi`, composables, `helpers.ts`, layouts). As **one** shell command: the sandbox kills background processes when each command ends, so `dev.sh` and the tests must share one command.
 
   ```bash
-  L=.dev/codex/<task>; if scripts/dev.sh reset > $L/reset.log 2>&1; then (cd admin && npm run e2e > ../$L/e2e.log 2>&1); s=$?; echo "e2e exit=$s"; else s=$?; echo "reset failed exit=$s"; fi; scripts/dev.sh down > $L/down.log 2>&1; (exit $s)
+  L=.dev/codex/<task>; if scripts/dev.sh reset > $L/reset.log 2>&1; then (cd admin && npm run e2e -- <specs> > ../$L/e2e.log 2>&1); s=$?; echo "e2e exit=$s"; else s=$?; echo "reset failed exit=$s"; fi; scripts/dev.sh down > $L/down.log 2>&1; (exit $s)
   ```
 
-  The command exits with the reset or e2e status, not `down`'s.
+  The command exits with the reset or e2e status, not `down`'s. Drop `<specs>` to run the full suite.
 
 - A mutcheck counts as caught only when the failing test names are the tests guarding that protection. A failure caused by the environment (Docker, browser, port) is not a catch: report it as not run.
 - A mutation that moves code (not just deletes it) is easy to get wrong on the command line: build the original and replacement text with a script from the file, and check the log says "caught by". "does not build" or "NOT caught" is not a pass. Run every mutcheck on the final code: one recorded before a later edit (for example, before deleting a query it calls) may no longer build.

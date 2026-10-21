@@ -34,7 +34,7 @@ Single-context: one root `GLOSSARY.md` plus `docs/adr/`. See `docs/agents/domain
 6. Claude verifies every finding and decides what needs fixing.
 7. Codex applies confirmed fixes; Claude reviews them again.
 8. Codex runs the project's applicable verification commands (see `AGENTS.md` and `backend/README.md`).
-9. Claude re-runs those commands outside the sandbox, checks actual results, and performs final acceptance.
+9. Claude re-runs, outside the sandbox, what the change touches: the affected backend packages (`go test ./...` without `-count=1`, so Go reruns only packages whose code or dependencies changed), the affected e2e specs (the full suite when shared code such as `useApi` or a composable changed), and every mutcheck and admin protection check. The full suite runs on the PR's CI and counts as the final result: merge only when it is green.
 
 ### Constraints
 

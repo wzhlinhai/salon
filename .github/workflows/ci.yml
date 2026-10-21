@@ -28,7 +28,8 @@ jobs:
       - name: sqlc generated code is up to date
         run: go tool sqlc diff
       - name: go test
-        run: go test ./...
+        # CI 是全量测试的最终结果：恢复的 Go 缓存里存有旧的测试结果，-count=1 强制每个包真跑。
+        run: go test -count=1 ./...
 
   admin:
     runs-on: ubuntu-latest
