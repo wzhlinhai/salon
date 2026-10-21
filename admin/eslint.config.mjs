@@ -22,6 +22,16 @@ export default withNuxt(
     }
   },
   {
+    files: ['e2e/**/*.ts'],
+    rules: {
+      // 固定等待不能确认前端回调已执行，保护失效时测试仍可能通过。
+      'no-restricted-syntax': ['error', {
+        selector: 'CallExpression[callee.property.name="waitForTimeout"]',
+        message: '等一个可观察的同步点（例如按钮从 loading 恢复、请求的 finished()、元素出现），不要固定等待'
+      }]
+    }
+  },
+  {
     files: ['e2e/helpers.ts'],
     rules: {
       // 沿用现有测试请求辅助函数的默认类型，本次只整理格式。

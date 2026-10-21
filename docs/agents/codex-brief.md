@@ -1,0 +1,45 @@
+# Codex brief
+
+How Claude dispatches a task to Codex. Codex sees only the brief: it does not read `CLAUDE.md`, so everything below that Codex must do goes into the brief itself.
+
+## Dispatch
+
+```bash
+node <codex-delegate>/scripts/relay.mjs --brief .dev/codex/<task>/brief.txt \
+  --network-access --cd <repo> --out-dir .dev/codex/<task>/runs > .dev/codex/<task>/relay.log 2>&1
+```
+
+- `--network-access` on every implementation dispatch and every `--session <threadId>` resume; a resume also needs `--sandbox workspace-write` beside it. Without it the sandbox has no Docker and no browser, so `go test`, `mutcheck.sh` and e2e all fail on the environment.
+- Read-only reviews use `--read-only --ignore-user-config` instead.
+- Before dispatching, run `scripts/dev.sh down` and confirm ports 8080 and 3000 are free (`ss -ltnp | grep -E ':8080 |:3000 '`). The sandbox cannot see processes started outside it: a sandboxed `dev.sh down` deletes their pid files without stopping them, leaving orphans that block the next `dev.sh up`.
+
+## Brief skeleton
+
+```xml
+<task>   repo, branch (already checked out), goal; no commit, no push, no branch switch;
+         files to read first; the CODING_STANDARDS.md rules this task touches, quoted </task>
+<change> current state, required behaviour, what to leave untouched; tests and mutchecks per change </change>
+<gates>  the commands below </gates>
+<report> write to .dev/codex/<task>/report.md, then summarise it in the final message </report>
+```
+
+## Gates
+
+Codex runs every applicable gate and fixes failures before reporting. Each output goes to a log file under `.dev/codex/<task>/`; read the exit code, never pipe a long-running command through a filter.
+
+- `backend/`: `gofmt -l .` (no output), `go vet ./...`, `golangci-lint run ./...`, `go tool sqlc generate` then `go tool sqlc diff`, `go test -count=1 ./...`, and the task's `scripts/mutcheck.sh` runs.
+- `admin/`: `npm run generate:api` then check `app/utils/api.d.ts` changed only if the API did, `npm run lint`, `npm run typecheck`.
+- e2e, as **one** shell command: the sandbox kills background processes when each command ends, so `dev.sh` and the tests must share one command.
+
+  ```bash
+  L=.dev/codex/<task>; if scripts/dev.sh reset > $L/reset.log 2>&1; then (cd admin && npm run e2e > ../$L/e2e.log 2>&1); s=$?; echo "e2e exit=$s"; else s=$?; echo "reset failed exit=$s"; fi; scripts/dev.sh down > $L/down.log 2>&1; (exit $s)
+  ```
+
+  The command exits with the reset or e2e status, not `down`'s.
+
+- A mutcheck counts as caught only when the failing test names are the tests guarding that protection. A failure caused by the environment (Docker, browser, port) is not a catch: report it as not run.
+- A protection in the admin UI (no `mutcheck.sh` there): temporarily remove it, run the guarding e2e in the same one-command form, restore it, report both results.
+
+## Report
+
+`.dev/codex/<task>/report.md`, never `/tmp`: files changed; how each change was made and which test guards it; every gate and mutcheck with its real command and result, failures pasted verbatim; any decision that departs from the brief, with the reason.
