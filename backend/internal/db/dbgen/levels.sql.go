@@ -154,6 +154,7 @@ type SharePositionParams struct {
 	StoreID uuid.UUID
 }
 
+// 检查启用状态期间阻止并发停用，兼容员工外键的 KEY SHARE 锁。
 func (q *Queries) SharePosition(ctx context.Context, arg SharePositionParams) (Position, error) {
 	row := q.db.QueryRow(ctx, sharePosition, arg.ID, arg.StoreID)
 	var i Position
