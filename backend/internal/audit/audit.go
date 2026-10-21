@@ -5,6 +5,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"reflect"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,8 +18,14 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/privacy"
 )
 
-// Record 在业务操作的同一事务中追加日志；nil 表示新建前或删除后不存在。
+// Record 在业务操作的同一事务中追加日志；nil 表示新建前或删除后不存在；手机号必须用键名 phone。
 func Record(ctx context.Context, env ops.Env, action string, targetID uuid.UUID, before, after any) error {
+	if err := checkPhoneKeys(before); err != nil {
+		return err
+	}
+	if err := checkPhoneKeys(after); err != nil {
+		return err
+	}
 	var oldJSON, newJSON []byte
 	var err error
 	if before != nil {
@@ -35,6 +44,81 @@ func Record(ctx context.Context, env ops.Env, action string, targetID uuid.UUID,
 		TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID,
 		Action: action, TargetID: targetID, Before: oldJSON, After: newJSON, ActorID: env.Caller.StaffID,
 	})
+}
+
+// checkPhoneKeys 遍历日志值，确保手机号字段使用读取时会打码的 phone 键名。
+func checkPhoneKeys(v any) error {
+	return checkPhoneValue(reflect.ValueOf(v), 0)
+}
+
+// checkPhoneValue 限制嵌套深度并检查动态值，匿名嵌入的结构体继续展开。
+func checkPhoneValue(v reflect.Value, depth int) error {
+	if depth > 64 {
+		return fmt.Errorf("audit: value nested too deeply")
+	}
+	if !v.IsValid() {
+		return nil
+	}
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Interface:
+		if v.IsNil() {
+			return nil
+		}
+		return checkPhoneValue(v.Elem(), depth+1)
+	case reflect.Struct:
+		t := v.Type()
+		for i := range t.NumField() {
+			field := t.Field(i)
+			fieldType := field.Type
+			if fieldType.Kind() == reflect.Pointer {
+				fieldType = fieldType.Elem()
+			}
+			if !field.IsExported() && (!field.Anonymous || fieldType.Kind() != reflect.Struct) {
+				continue
+			}
+			tag := field.Tag.Get("json")
+			if tag == "-" {
+				continue
+			}
+			key, options, _ := strings.Cut(tag, ",")
+			if key == "" {
+				key = field.Name
+			}
+			if strings.Contains(strings.ToLower(field.Name), "phone") && fieldType.Kind() == reflect.String {
+				if key != "phone" {
+					return fmt.Errorf("audit: field %s.%s is logged as %q; phone numbers must use the key \"phone\" so list_audit_log can mask them", t.Name(), field.Name, key)
+				}
+				if strings.Contains(","+options+",", ",string,") {
+					return fmt.Errorf("audit: field %s.%s uses the JSON string option; quoted phone numbers cannot be masked by list_audit_log", t.Name(), field.Name)
+				}
+			}
+			if err := checkPhoneValue(v.Field(i), depth+1); err != nil {
+				return err
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		for i := range v.Len() {
+			if err := checkPhoneValue(v.Index(i), depth+1); err != nil {
+				return err
+			}
+		}
+	case reflect.Map:
+		iter := v.MapRange()
+		for iter.Next() {
+			key, child := iter.Key(), iter.Value()
+			if err := checkPhoneValue(child, depth+1); err != nil {
+				return err
+			}
+			value := child
+			for (value.Kind() == reflect.Interface || value.Kind() == reflect.Pointer) && !value.IsNil() {
+				value = value.Elem()
+			}
+			if key.Kind() == reflect.String && strings.Contains(strings.ToLower(key.String()), "phone") && value.Kind() == reflect.String && key.String() != "phone" {
+				return fmt.Errorf("audit: map key %q contains a phone number; phone numbers must use the key \"phone\" so list_audit_log can mask them", key.String())
+			}
+		}
+	}
+	return nil
 }
 
 // Actor 是操作的发起员工。
