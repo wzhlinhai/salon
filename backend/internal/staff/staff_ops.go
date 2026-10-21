@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/wzhlinhai/salon/backend/internal/auth"
@@ -95,6 +96,9 @@ func registerStaff(r *ops.Registry) {
 		Name: "create_staff", Summary: "新建员工档案", Kind: ops.Write,
 		Permission: perm.StaffManage, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *CreateStaffInput) (*Staff, error) {
+			if err := lockOwners(ctx, env); err != nil {
+				return nil, err
+			}
 			if err := checkLevelPosition(ctx, env, in.LevelID, in.PositionID, nil); err != nil {
 				return nil, err
 			}
@@ -251,21 +255,21 @@ func checkLevelPosition(ctx context.Context, env ops.Env, level, position *uuid.
 		return current != nil && cur(*current) != nil && *cur(*current) == *id
 	}
 	if level != nil && !keeps(level, func(s dbgen.Staff) *uuid.UUID { return s.LevelID }) {
-		levels, err := env.Q.ListLevels(ctx, env.Caller.StoreID)
+		row, err := env.Q.ShareLevel(ctx, dbgen.ShareLevelParams{ID: *level, StoreID: env.Caller.StoreID})
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && !row.Active) {
+			return ops.Rule("没有这个级别，或者它已停用")
+		}
 		if err != nil {
 			return err
-		}
-		if !slices.ContainsFunc(levels, func(l dbgen.Level) bool { return l.ID == *level && l.Active }) {
-			return ops.Rule("没有这个级别，或者它已停用")
 		}
 	}
 	if position != nil && !keeps(position, func(s dbgen.Staff) *uuid.UUID { return s.PositionID }) {
-		positions, err := env.Q.ListPositions(ctx, env.Caller.StoreID)
+		row, err := env.Q.SharePosition(ctx, dbgen.SharePositionParams{ID: *position, StoreID: env.Caller.StoreID})
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && !row.Active) {
+			return ops.Rule("没有这个岗位，或者它已停用")
+		}
 		if err != nil {
 			return err
-		}
-		if !slices.ContainsFunc(positions, func(p dbgen.Position) bool { return p.ID == *position && p.Active }) {
-			return ops.Rule("没有这个岗位，或者它已停用")
 		}
 	}
 	return nil

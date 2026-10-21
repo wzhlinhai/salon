@@ -121,6 +121,53 @@ func (q *Queries) ListPositions(ctx context.Context, storeID uuid.UUID) ([]Posit
 	return items, nil
 }
 
+const shareLevel = `-- name: ShareLevel :one
+SELECT id, tenant_id, store_id, name, active, created_at FROM levels WHERE id = $1 AND store_id = $2 FOR SHARE
+`
+
+type ShareLevelParams struct {
+	ID      uuid.UUID
+	StoreID uuid.UUID
+}
+
+// 检查启用状态期间阻止并发停用，兼容员工外键的 KEY SHARE 锁。
+func (q *Queries) ShareLevel(ctx context.Context, arg ShareLevelParams) (Level, error) {
+	row := q.db.QueryRow(ctx, shareLevel, arg.ID, arg.StoreID)
+	var i Level
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Name,
+		&i.Active,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const sharePosition = `-- name: SharePosition :one
+SELECT id, tenant_id, store_id, name, active, created_at FROM positions WHERE id = $1 AND store_id = $2 FOR SHARE
+`
+
+type SharePositionParams struct {
+	ID      uuid.UUID
+	StoreID uuid.UUID
+}
+
+func (q *Queries) SharePosition(ctx context.Context, arg SharePositionParams) (Position, error) {
+	row := q.db.QueryRow(ctx, sharePosition, arg.ID, arg.StoreID)
+	var i Position
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Name,
+		&i.Active,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const updateLevel = `-- name: UpdateLevel :one
 UPDATE levels SET name = $2, active = $3 WHERE id = $1 RETURNING id, tenant_id, store_id, name, active, created_at
 `

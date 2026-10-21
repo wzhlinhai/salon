@@ -81,13 +81,24 @@ func registerRoles(r *ops.Registry) {
 			if err != nil {
 				return nil, err
 			}
-			rows, err := env.Q.ListRoles(ctx, env.Caller.StoreID)
-			if err != nil {
-				return nil, err
+			// 只使用 loadRoles 读到的集合，避免第二次查询混入尚未加载权限的新角色。
+			ordered := make([]*roleInfo, 0, len(infos))
+			for _, info := range infos {
+				ordered = append(ordered, info)
 			}
-			out := &RoleList{Roles: make([]Role, 0, len(rows))}
-			for _, row := range rows {
-				out.Roles = append(out.Roles, roleView(infos[row.ID]))
+			sort.Slice(ordered, func(i, j int) bool {
+				a, b := ordered[i].row, ordered[j].row
+				if a.IsOwner != b.IsOwner {
+					return a.IsOwner
+				}
+				if !a.CreatedAt.Time.Equal(b.CreatedAt.Time) {
+					return a.CreatedAt.Time.Before(b.CreatedAt.Time)
+				}
+				return a.ID.String() < b.ID.String()
+			})
+			out := &RoleList{Roles: make([]Role, 0, len(ordered))}
+			for _, info := range ordered {
+				out.Roles = append(out.Roles, roleView(info))
 			}
 			return out, nil
 		},
@@ -207,9 +218,12 @@ func registerRoles(r *ops.Registry) {
 	})
 }
 
-// editableRole 先锁住该角色的行，让改前快照与修改串行，日志的改前才接得上前一次的改后。
+// editableRole 先按员工修改的相同顺序锁老板角色排队，再锁目标角色，防止授权检查期间角色权限改变。
 // 再返回可以由调用者修改的角色：不是老板角色，且现有权限不超过调用者。
 func editableRole(ctx context.Context, env ops.Env, id uuid.UUID) (*roleInfo, error) {
+	if err := lockOwners(ctx, env); err != nil {
+		return nil, err
+	}
 	if _, err := env.Q.LockRole(ctx, dbgen.LockRoleParams{ID: id, StoreID: env.Caller.StoreID}); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ops.ErrNotFound

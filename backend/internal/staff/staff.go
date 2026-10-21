@@ -156,7 +156,7 @@ func ensureCanManage(ctx context.Context, env ops.Env, target uuid.UUID) error {
 	return nil
 }
 
-// lockOwners 锁住本门店的老板角色，使检查"至少一名在职老板"的事务依次执行。
+// lockOwners 以本门店老板角色排队，串行员工管理、新建员工和角色修改，保护老板底线及授权检查。
 func lockOwners(ctx context.Context, env ops.Env) error {
 	_, err := env.Q.LockOwnerRole(ctx, env.Caller.StoreID)
 	if errors.Is(err, pgx.ErrNoRows) {
