@@ -435,3 +435,65 @@ test('切换顾客后迟到的合并不跳转详情或提示成功', async ({ pa
   await expect(page.getByText('顾客已合并', { exact: true })).toHaveCount(0)
   expect((await api(token, 'get_customer', { id: c.id })).merged_into).toBe(a.id)
 })
+
+test('顾客日志按游标加载更多，不重不漏', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const { customer } = await api(token, 'create_customer', { name: `日志分页${Date.now()}`, phone: phone() })
+  for (let i = 0; i < 51; i++) {
+    await api(token, 'update_customer_profile', { id: customer.id, note: `分页记录${i}` })
+  }
+  await login(page, owner.account, owner.password)
+  await page.goto(`/customers?id=${customer.id}`)
+  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  const rows = detail.locator('tbody tr')
+  await expect(rows).toHaveCount(50)
+  const more = detail.getByRole('button', { name: '加载更多', exact: true })
+  await expect(more).toBeVisible()
+  await more.click()
+  await expect(rows).toHaveCount(52)
+  await expect(more).toHaveCount(0)
+  await expect(rows.filter({ hasText: '新建顾客' })).toHaveCount(1)
+})
+
+test('切换顾客后丢弃迟到的加载更多日志', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const a = (await api(token, 'create_customer', { name: `日志竞态甲${Date.now()}`, phone: phone() })).customer
+  const b = (await api(token, 'create_customer', { name: `日志竞态乙${Date.now()}`, phone: phone() })).customer
+  for (let i = 0; i < 50; i++) {
+    await api(token, 'update_customer_profile', { id: a.id, note: `旧顾客${i}` })
+  }
+  let release!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let started!: () => void
+  const pending = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  await page.route('**/api/ops/list_audit_log', async (route) => {
+    const body = route.request().postDataJSON()
+    if (body.target_id === a.id && body.before_id) {
+      started()
+      await blocked
+    }
+    await route.continue()
+  })
+  await login(page, owner.account, owner.password)
+  await page.goto(`/customers?id=${a.id}`)
+  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  await detail.getByRole('button', { name: '加载更多', exact: true }).click()
+  await pending
+  await page.evaluate((id) => {
+    window.history.pushState({}, '', `/customers?id=${id}`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }, b.id)
+  await expect(detail.getByRole('heading', { name: b.name, exact: true })).toBeVisible()
+  await expect(detail.locator('tbody tr')).toHaveCount(1)
+  const response = page.waitForResponse(r => r.url().endsWith('/api/ops/list_audit_log') && r.request().postDataJSON().before_id)
+  release()
+  await (await response).finished()
+  await page.waitForTimeout(500)
+  await expect(detail.locator('tbody tr')).toHaveCount(1)
+  await expect(detail.locator('table')).not.toContainText(a.name)
+  await expect(detail.getByRole('button', { name: '加载更多', exact: true })).toHaveCount(0)
+})

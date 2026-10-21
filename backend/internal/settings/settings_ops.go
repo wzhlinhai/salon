@@ -71,7 +71,9 @@ type SettingChange struct {
 
 // ListSettingChangesInput 是 list_setting_changes 的参数。
 type ListSettingChangesInput struct {
-	Key *string `json:"key,omitempty" doc:"只看这一项设置的修改，不填为全部"`
+	Limit    int32      `json:"limit,omitempty" minimum:"0" maximum:"200"`
+	BeforeID *uuid.UUID `json:"before_id,omitempty" doc:"上一页最后一条的 ID，只看比它更早的；不填为最新一页"`
+	Key      *string    `json:"key,omitempty" doc:"只看这一项设置的修改，不填为全部"`
 }
 
 // SettingChangeList 是 list_setting_changes 的返回值，最新的修改在前。
@@ -103,7 +105,11 @@ func Register(r *ops.Registry) {
 		Name: "list_setting_changes", Summary: "查看门店设置的修改记录：谁、何时、改前改后、从哪天生效", Kind: ops.Read,
 		Permission: perm.AuditLogView, AI: ops.AIDirect,
 		Handle: func(ctx context.Context, env ops.Env, in *ListSettingChangesInput) (*SettingChangeList, error) {
-			rows, err := env.Q.ListSettingChanges(ctx, dbgen.ListSettingChangesParams{StoreID: env.Caller.StoreID, Key: in.Key})
+			limit := in.Limit
+			if limit == 0 {
+				limit = 50
+			}
+			rows, err := env.Q.ListSettingChanges(ctx, dbgen.ListSettingChangesParams{StoreID: env.Caller.StoreID, Key: in.Key, BeforeID: in.BeforeID, RowLimit: limit})
 			if err != nil {
 				return nil, err
 			}

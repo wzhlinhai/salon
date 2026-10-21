@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
+import { LOG_PAGE_SIZE } from '~/utils/paging'
 
 type Customer = components['schemas']['Customer']
 type LabelInput = components['schemas']['AddSafetyLabelInput']
@@ -46,12 +47,15 @@ const sourceItems = computed(() => [
 
 async function load() {
   const id = props.id
+  const request = ++logRequest
+  moreLogs.value = false
+  loadingLogs.value = false
   loadError.value = ''
   const [res, log] = await Promise.all([
     api.POST('/api/ops/get_customer', { body: { id } }),
     can('audit_log.view') ? api.POST('/api/ops/list_audit_log', { body: { target_id: id } }) : null
   ])
-  if (id !== props.id) return
+  if (id !== props.id || request !== logRequest) return
   if (res.data) {
     customer.value = res.data
   } else {
@@ -59,6 +63,7 @@ async function load() {
     toast.add({ title: loadError.value, color: 'error' })
   }
   logs.value = log?.data?.entries ?? []
+  moreLogs.value = logs.value.length === LOG_PAGE_SIZE
   if (log?.error) {
     toast.add({ title: errorText(log.error), color: 'error' })
   }
@@ -311,6 +316,30 @@ async function merge() {
 
 // 操作日志
 const logs = ref<components['schemas']['Entry'][]>([])
+const moreLogs = ref(false)
+const loadingLogs = ref(false)
+let logRequest = 0
+
+async function loadMoreLogs() {
+  const last = logs.value.at(-1)
+  if (!last || loadingLogs.value) return
+  const id = props.id
+  const request = logRequest
+  loadingLogs.value = true
+  try {
+    const res = await api.POST('/api/ops/list_audit_log', { body: { target_id: id, before_id: last.id } })
+    if (id !== props.id || request !== logRequest) return
+    if (res.error) {
+      toast.add({ title: errorText(res.error), color: 'error' })
+      return
+    }
+    logs.value.push(...res.data.entries)
+    moreLogs.value = res.data.entries.length === LOG_PAGE_SIZE
+  } finally {
+    if (id === props.id && request === logRequest) loadingLogs.value = false
+  }
+}
+
 const actions: Record<string, string> = {
   create_customer: '新建顾客',
   update_customer_profile: '修改资料',
@@ -453,6 +482,7 @@ onBeforeUnmount(() => {
               </tbody>
             </table>
           </div>
+          <UButton v-if="moreLogs" :loading="loadingLogs" variant="outline" @click="loadMoreLogs">加载更多</UButton>
         </UCard>
       </div>
       <div v-else-if="loadError" class="space-y-3">

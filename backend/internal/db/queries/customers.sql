@@ -3,9 +3,6 @@ INSERT INTO customer_sources (tenant_id, store_id, name)
 VALUES ($1, $2, $3)
 RETURNING *;
 
--- name: GetCustomerSource :one
-SELECT * FROM customer_sources WHERE id = $1;
-
 -- name: LockCustomerSource :one
 SELECT * FROM customer_sources WHERE id = $1 FOR UPDATE;
 
@@ -60,9 +57,15 @@ SELECT * FROM customers
 WHERE responsible_staff_id = $1 AND merged_into IS NULL
 ORDER BY id FOR NO KEY UPDATE;
 
--- name: ListSafetyLabels :many
+-- name: ListCustomerViewSources :many
+SELECT id, name FROM customer_sources WHERE id = ANY(@ids::uuid[]);
+
+-- name: ListCustomerViewStaff :many
+SELECT id, name FROM staff WHERE id = ANY(@ids::uuid[]);
+
+-- name: ListCustomerViewSafetyLabels :many
 SELECT * FROM customer_safety_labels
-WHERE customer_id = $1 AND revoked_at IS NULL
+WHERE customer_id = ANY(@ids::uuid[]) AND revoked_at IS NULL
 ORDER BY observed_on DESC, created_at DESC;
 
 -- name: AddSafetyLabel :exec

@@ -131,12 +131,16 @@ const listSettingChanges = `-- name: ListSettingChanges :many
 SELECT c.id, c.tenant_id, c.store_id, c.key, c.value, c.is_default, c.old_value, c.old_is_default, c.effective_from, c.changed_by, c.changed_at, s.name AS changed_by_name
 FROM setting_changes c JOIN staff s ON s.id = c.changed_by
 WHERE c.store_id = $1 AND ($2::text IS NULL OR c.key = $2)
+    AND ($3::uuid IS NULL OR (c.changed_at, c.id) < (SELECT b.changed_at, b.id FROM setting_changes b WHERE b.id = $3 AND b.store_id = $1))
 ORDER BY c.changed_at DESC, c.id DESC
+LIMIT $4
 `
 
 type ListSettingChangesParams struct {
-	StoreID uuid.UUID
-	Key     *string
+	StoreID  uuid.UUID
+	Key      *string
+	BeforeID *uuid.UUID
+	RowLimit int32
 }
 
 type ListSettingChangesRow struct {
@@ -145,7 +149,12 @@ type ListSettingChangesRow struct {
 }
 
 func (q *Queries) ListSettingChanges(ctx context.Context, arg ListSettingChangesParams) ([]ListSettingChangesRow, error) {
-	rows, err := q.db.Query(ctx, listSettingChanges, arg.StoreID, arg.Key)
+	rows, err := q.db.Query(ctx, listSettingChanges,
+		arg.StoreID,
+		arg.Key,
+		arg.BeforeID,
+		arg.RowLimit,
+	)
 	if err != nil {
 		return nil, err
 	}

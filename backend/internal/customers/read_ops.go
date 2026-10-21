@@ -74,11 +74,11 @@ func Register(r *ops.Registry) {
 				return nil, err
 			}
 			out := &CustomerList{Items: []Customer{}}
-			for _, row := range rows {
-				c, err := view(ctx, env, row)
-				if err != nil {
-					return nil, err
-				}
+			items, err := views(ctx, env, rows)
+			if err != nil {
+				return nil, err
+			}
+			for _, c := range items {
 				out.Items = append(out.Items, *mask(env, c))
 			}
 			return out, nil
