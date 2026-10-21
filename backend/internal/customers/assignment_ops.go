@@ -1,9 +1,9 @@
 package customers
 
 import (
+	"bytes"
 	"context"
 	"slices"
-	"strings"
 
 	"github.com/google/uuid"
 
@@ -48,35 +48,19 @@ func registerAssignments(r *ops.Registry) {
 				}
 			}
 			ids := slices.Clone(in.CustomerIDs)
-			slices.SortFunc(ids, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
+			slices.SortFunc(ids, func(a, b uuid.UUID) int { return bytes.Compare(a[:], b[:]) })
+			items, err := change(ctx, env, "assign_customer_responsible", byIDs(ids...), func(rows []dbgen.Customer) error {
+				for i := range rows {
+					rows[i].ResponsibleStaffID = in.StaffID
+				}
+				return nil
+			})
+			if err != nil {
+				return nil, err
+			}
 			out := &CustomerAssignmentResult{Items: []Customer{}}
-			rows := make([]dbgen.Customer, 0, len(ids))
-			for _, id := range ids {
-				row, err := lock(ctx, env, id)
-				if err != nil {
-					return nil, err
-				}
-				rows = append(rows, row)
-			}
-			before, err := views(ctx, env, rows)
-			if err != nil {
-				return nil, err
-			}
-			for i := range rows {
-				rows[i].ResponsibleStaffID = in.StaffID
-				if err := save(ctx, env, rows[i]); err != nil {
-					return nil, rowError(err)
-				}
-			}
-			after, err := views(ctx, env, rows)
-			if err != nil {
-				return nil, err
-			}
-			for i, c := range after {
-				if err := audit.Record(ctx, env, "assign_customer_responsible", rows[i].ID, before[i], c); err != nil {
-					return nil, err
-				}
-				out.Items = append(out.Items, *mask(env, c))
+			for _, c := range items {
+				out.Items = append(out.Items, *c)
 			}
 			return out, nil
 		},
@@ -89,7 +73,7 @@ func registerAssignments(r *ops.Registry) {
 				return nil, ops.Rule("交接的两名员工不能相同")
 			}
 			ids := []uuid.UUID{in.FromStaffID, in.ToStaffID}
-			slices.SortFunc(ids, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
+			slices.SortFunc(ids, func(a, b uuid.UUID) int { return bytes.Compare(a[:], b[:]) })
 			for _, id := range ids {
 				st, err := env.Q.ShareCustomerStaff(ctx, id)
 				if err != nil {
@@ -99,36 +83,27 @@ func registerAssignments(r *ops.Registry) {
 					return nil, ops.Rule("负责人必须是在职员工")
 				}
 			}
-			rows, err := env.Q.LockResponsibleCustomers(ctx, &in.FromStaffID)
+			items, err := change(ctx, env, "hand_over_customers", responsibleOf(in.FromStaffID), func(rows []dbgen.Customer) error {
+				for i := range rows {
+					rows[i].ResponsibleStaffID = &in.ToStaffID
+				}
+				return nil
+			})
 			if err != nil {
 				return nil, err
+			}
+			out := &CustomerHandoverResult{Count: len(items), ToStaffID: in.ToStaffID, CustomerIDs: []uuid.UUID{}}
+			for _, c := range items {
+				out.CustomerIDs = append(out.CustomerIDs, c.ID)
 			}
 			before := struct {
-				CustomerIDs []uuid.UUID `json:"customer_ids"`
-			}{CustomerIDs: []uuid.UUID{}}
-			out := &CustomerHandoverResult{Count: len(rows), ToStaffID: in.ToStaffID, CustomerIDs: []uuid.UUID{}}
-			prior, err := views(ctx, env, rows)
-			if err != nil {
-				return nil, err
-			}
-			for i := range rows {
-				before.CustomerIDs = append(before.CustomerIDs, rows[i].ID)
-				rows[i].ResponsibleStaffID = &in.ToStaffID
-				if err := save(ctx, env, rows[i]); err != nil {
-					return nil, err
-				}
-				out.CustomerIDs = append(out.CustomerIDs, rows[i].ID)
-			}
-			after, err := views(ctx, env, rows)
-			if err != nil {
-				return nil, err
-			}
-			for i, c := range after {
-				if err := audit.Record(ctx, env, "hand_over_customers", rows[i].ID, prior[i], c); err != nil {
-					return nil, err
-				}
-			}
-			if err := audit.Record(ctx, env, "hand_over_customers", in.FromStaffID, before, out); err != nil {
+				CustomerCount int `json:"customer_count"`
+			}{CustomerCount: len(items)}
+			after := struct {
+				CustomerCount int       `json:"customer_count"`
+				ToStaffID     uuid.UUID `json:"to_staff_id"`
+			}{ToStaffID: in.ToStaffID}
+			if err := audit.Record(ctx, env, "hand_over_customers", in.FromStaffID, before, after); err != nil {
 				return nil, err
 			}
 			return out, nil

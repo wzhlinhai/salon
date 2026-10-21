@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/wzhlinhai/salon/backend/internal/audit"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
@@ -78,36 +77,27 @@ func registerProfiles(r *ops.Registry) {
 			if err != nil {
 				return nil, rowError(err)
 			}
-			c, err := view(ctx, env, row)
+			c, err := created(ctx, env, "create_customer", row)
 			if err != nil {
 				return nil, err
 			}
-			if err := audit.Record(ctx, env, "create_customer", row.ID, nil, c); err != nil {
-				return nil, err
-			}
-			return &CreateCustomerResult{Customer: *mask(env, c)}, nil
+			return &CreateCustomerResult{Customer: *c}, nil
 		},
 	})
 	ops.Register(r, ops.Operation[UpdateCustomerProfileInput, Customer]{
 		Name: "update_customer_profile", Summary: "修改顾客姓名、性别、来源与备注", Kind: ops.Write,
 		Permission: perm.CustomerEdit, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *UpdateCustomerProfileInput) (*Customer, error) {
-			row, err := lock(ctx, env, in.ID)
-			if err != nil {
-				return nil, err
-			}
-			before, err := view(ctx, env, row)
-			if err != nil {
-				return nil, err
-			}
-			if err := checkSource(ctx, env, in.SourceID, row.SourceID); err != nil {
-				return nil, err
-			}
-			row.Name = in.Name
-			row.Gender = in.Gender
-			row.SourceID = in.SourceID
-			row.Note = in.Note
-			return finish(ctx, env, "update_customer_profile", before, row)
+			return changeOne(ctx, env, "update_customer_profile", in.ID, func(row *dbgen.Customer) error {
+				if err := checkSource(ctx, env, in.SourceID, row.SourceID); err != nil {
+					return err
+				}
+				row.Name = in.Name
+				row.Gender = in.Gender
+				row.SourceID = in.SourceID
+				row.Note = in.Note
+				return nil
+			})
 		},
 	})
 
@@ -129,38 +119,32 @@ func registerProfiles(r *ops.Registry) {
 
 // updatePhone 在锁定并检查查看范围后，补充或修改顾客手机号。
 func updatePhone(ctx context.Context, env ops.Env, in *CustomerPhoneInput, add bool) (*Customer, error) {
-	row, err := lock(ctx, env, in.ID)
-	if err != nil {
-		return nil, err
-	}
-	before, err := view(ctx, env, row)
-	if err != nil {
-		return nil, err
-	}
-	if add && row.Phone != nil {
-		return nil, ops.Rule("该顾客已有手机号，修改请找有权限的人")
-	}
-	if !add && row.Phone == nil {
-		return nil, ops.Rule("该顾客还没有手机号，请先补充手机号")
-	}
-	phone, err := normalizePhone(&in.Phone)
-	if err != nil {
-		return nil, err
-	}
-	if err := env.Q.LockCustomerPhone(ctx, *phone); err != nil {
-		return nil, err
-	}
-	found, err := env.Q.FindCustomerByPhone(ctx, phone)
-	if err == nil && found.ID != row.ID {
-		return nil, ops.Rule("这个手机号已属于另一位顾客，可以合并这两位顾客")
-	}
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return nil, err
-	}
-	row.Phone = phone
 	action := "change_customer_phone"
 	if add {
 		action = "add_customer_phone"
 	}
-	return finish(ctx, env, action, before, row)
+	return changeOne(ctx, env, action, in.ID, func(row *dbgen.Customer) error {
+		if add && row.Phone != nil {
+			return ops.Rule("该顾客已有手机号，修改请找有权限的人")
+		}
+		if !add && row.Phone == nil {
+			return ops.Rule("该顾客还没有手机号，请先补充手机号")
+		}
+		phone, err := normalizePhone(&in.Phone)
+		if err != nil {
+			return err
+		}
+		if err := env.Q.LockCustomerPhone(ctx, *phone); err != nil {
+			return err
+		}
+		found, err := env.Q.FindCustomerByPhone(ctx, phone)
+		if err == nil && found.ID != row.ID {
+			return ops.Rule("这个手机号已属于另一位顾客，可以合并这两位顾客")
+		}
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		row.Phone = phone
+		return nil
+	})
 }

@@ -16,6 +16,7 @@ func TestCustomerWritesRespectViewScope(t *testing.T) {
 	own := s.create(map[string]any{"phone": "13900131234"})
 	unidentified := s.create(map[string]any{})
 	s.call("assign_customer_responsible", map[string]any{"customer_ids": []any{own["id"]}, "staff_id": staffID}, 200)
+	s.call("assign_customer_responsible", map[string]any{"customer_ids": []any{other["id"]}, "staff_id": s.Res.OwnerID}, 200)
 	labelResult := s.call("add_safety_label", map[string]any{"customer_id": other["id"], "kind": "allergy", "source": "customer_said", "observed_on": "2020-01-01"}, 200)
 	label := labelResult["active_safety_labels"].([]any)[0].(map[string]any)["id"]
 	for _, scoped := range []bool{true, false} {
@@ -29,6 +30,7 @@ func TestCustomerWritesRespectViewScope(t *testing.T) {
 			args   map[string]any
 			status int
 		}{
+			{"hand_over_customers", map[string]any{"from_staff_id": s.Res.OwnerID, "to_staff_id": staffID}, 409},
 			{"create_customer", map[string]any{"phone": other["phone"]}, 409},
 			{"update_customer_profile", map[string]any{"id": other["id"], "name": "不能改"}, 404},
 			{"add_customer_phone", map[string]any{"id": unidentified["id"], "phone": "13700131234"}, 404},
@@ -44,6 +46,9 @@ func TestCustomerWritesRespectViewScope(t *testing.T) {
 			assertEqual(t, r.Status, tc.status)
 			if tc.op == "create_customer" {
 				assertEqual(t, r.Body["detail"], "这个手机号已有档案，但不在你能查看的范围内")
+			}
+			if tc.op == "hand_over_customers" {
+				assertEqual(t, r.Body["detail"], "这位员工负责的顾客里有你无权查看的，不能交接")
 			}
 			raw, err := json.Marshal(r.Body)
 			if err != nil {
