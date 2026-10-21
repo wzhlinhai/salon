@@ -32,7 +32,7 @@ SELECT pg_advisory_xact_lock(hashtextextended(current_setting('app.tenant_id') |
 SELECT * FROM customers WHERE id = $1;
 
 -- name: LockCustomer :one
-SELECT * FROM customers WHERE id = $1 FOR UPDATE;
+SELECT * FROM customers WHERE id = $1 FOR NO KEY UPDATE;
 
 -- name: SaveCustomer :exec
 UPDATE customers
@@ -58,7 +58,7 @@ LIMIT sqlc.arg(row_limit) OFFSET sqlc.arg(row_offset);
 -- name: LockResponsibleCustomers :many
 SELECT * FROM customers
 WHERE responsible_staff_id = $1 AND merged_into IS NULL
-ORDER BY id FOR UPDATE;
+ORDER BY id FOR NO KEY UPDATE;
 
 -- name: ListSafetyLabels :many
 SELECT * FROM customer_safety_labels
@@ -80,3 +80,7 @@ UPDATE customer_safety_labels SET customer_id = sqlc.arg(keep_id) WHERE customer
 -- name: ShareCustomerStaff :one
 -- 共享锁阻止并发停用，同时兼容审计和顾客外键检查的 KEY SHARE 锁。
 SELECT * FROM staff WHERE id = $1 FOR SHARE;
+
+-- name: ShareCustomerSource :one
+-- 共享锁阻止并发修改来源，同时允许其他顾客检查来源状态。
+SELECT * FROM customer_sources WHERE id = $1 FOR SHARE;

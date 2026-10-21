@@ -187,3 +187,62 @@ func TestMergeAndPhoneChangeKeepAuditBefore(t *testing.T) {
 	}
 	assertEqual(t, duplicate, false)
 }
+
+func TestCustomerOperationsAllowKeyShare(t *testing.T) {
+	for _, action := range []string{
+		"update_customer_profile", "change_customer_phone", "add_safety_label",
+		"merge_customers", "assign_customer_responsible", "hand_over_customers",
+	} {
+		t.Run(action, func(t *testing.T) {
+			s := open(t)
+			c := s.create(map[string]any{"phone": "13800131234"})
+			ids := []any{c["id"]}
+			args := map[string]any{"id": c["id"], "name": "新名"}
+			switch action {
+			case "change_customer_phone":
+				args = map[string]any{"id": c["id"], "phone": "13900131234"}
+			case "add_safety_label":
+				args = map[string]any{"customer_id": c["id"], "kind": "allergy", "source": "customer_said", "observed_on": "2020-01-01"}
+			case "merge_customers":
+				merged := s.create(map[string]any{})
+				ids = append(ids, merged["id"])
+				args = map[string]any{"keep_id": c["id"], "merged_id": merged["id"]}
+			case "assign_customer_responsible":
+				args = map[string]any{"customer_ids": ids, "staff_id": s.Res.OwnerID}
+			case "hand_over_customers":
+				from, _ := s.Hire("原负责人", "002", "key-share-from")
+				s.call("assign_customer_responsible", map[string]any{"customer_ids": ids, "staff_id": from}, 200)
+				args = map[string]any{"from_staff_id": from, "to_staff_id": s.Res.OwnerID}
+			}
+			tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+			for _, id := range ids {
+				if _, err := tx.Exec(context.Background(), "SELECT id FROM customers WHERE id=$1 FOR KEY SHARE", id); err != nil {
+					t.Fatal(err)
+				}
+			}
+			done := make(chan optest.Result, 1)
+			go func() { done <- s.HTTPWithToken(t, s.Owner, action, args) }()
+			waitResult(t, done, 200)
+		})
+	}
+}
+
+func TestCustomerSourceChecksAllowShare(t *testing.T) {
+	for _, action := range []string{"create_customer", "update_customer_profile"} {
+		t.Run(action, func(t *testing.T) {
+			s := open(t)
+			source := s.call("create_customer_source", map[string]any{"name": "共享来源"}, 200)
+			args := map[string]any{"source_id": source["id"]}
+			if action == "update_customer_profile" {
+				args["id"] = s.create(map[string]any{})["id"]
+			}
+			tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+			if _, err := dbgen.New(tx).ShareCustomerSource(context.Background(), aID(source)); err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan optest.Result, 1)
+			go func() { done <- s.HTTPWithToken(t, s.Owner, action, args) }()
+			waitResult(t, done, 200)
+		})
+	}
+}

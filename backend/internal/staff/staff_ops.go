@@ -121,7 +121,7 @@ func registerStaff(r *ops.Registry) {
 		Name: "update_staff", Summary: "修改员工的姓名、编号、级别、岗位", Kind: ops.Write,
 		Permission: perm.StaffManage, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *UpdateStaffInput) (*Staff, error) {
-			current, err := lockStaffRow(ctx, env, in.StaffID)
+			current, err := lockStaffRow(ctx, env, in.StaffID, true)
 			if err != nil {
 				return nil, err
 			}
@@ -155,7 +155,7 @@ func registerStaff(r *ops.Registry) {
 		Name: "set_staff_login", Summary: "设置员工的登录账号和密码", Kind: ops.Write,
 		Permission: perm.StaffManage, AI: ops.AINone,
 		Handle: func(ctx context.Context, env ops.Env, in *SetStaffLoginInput) (*Staff, error) {
-			if _, err := lockStaffRow(ctx, env, in.StaffID); err != nil {
+			if _, err := lockStaffRow(ctx, env, in.StaffID, true); err != nil {
 				return nil, err
 			}
 			if err := ensureCanManage(ctx, env, in.StaffID); err != nil {
@@ -188,7 +188,7 @@ func registerStaff(r *ops.Registry) {
 		Name: "deactivate_staff", Summary: "员工离职：停用，不删除；停用后不能登录，历史单据仍显示姓名", Kind: ops.Write,
 		Permission: perm.StaffManage, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *StaffIDInput) (*Staff, error) {
-			if _, err := lockStaffRow(ctx, env, in.StaffID); err != nil {
+			if _, err := lockStaffRow(ctx, env, in.StaffID, false); err != nil {
 				return nil, err
 			}
 			if err := ensureCanManage(ctx, env, in.StaffID); err != nil {
@@ -225,7 +225,7 @@ func registerStaff(r *ops.Registry) {
 		Name: "reactivate_staff", Summary: "恢复已停用的员工", Kind: ops.Write,
 		Permission: perm.StaffManage, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *StaffIDInput) (*Staff, error) {
-			if _, err := lockStaffRow(ctx, env, in.StaffID); err != nil {
+			if _, err := lockStaffRow(ctx, env, in.StaffID, false); err != nil {
 				return nil, err
 			}
 			if err := ensureCanManage(ctx, env, in.StaffID); err != nil {
@@ -256,7 +256,7 @@ func registerStaff(r *ops.Registry) {
 		Name: "set_staff_roles", Summary: "设置员工的角色", Kind: ops.Write,
 		Permission: perm.StaffManage, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *SetStaffRolesInput) (*Staff, error) {
-			if _, err := lockStaffRow(ctx, env, in.StaffID); err != nil {
+			if _, err := lockStaffRow(ctx, env, in.StaffID, false); err != nil {
 				return nil, err
 			}
 			if err := ensureCanManage(ctx, env, in.StaffID); err != nil {

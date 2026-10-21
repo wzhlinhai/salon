@@ -249,7 +249,7 @@ func (q *Queries) ListSafetyLabels(ctx context.Context, customerID uuid.UUID) ([
 }
 
 const lockCustomer = `-- name: LockCustomer :one
-SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at FROM customers WHERE id = $1 FOR UPDATE
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at FROM customers WHERE id = $1 FOR NO KEY UPDATE
 `
 
 func (q *Queries) LockCustomer(ctx context.Context, id uuid.UUID) (Customer, error) {
@@ -301,7 +301,7 @@ func (q *Queries) LockCustomerSource(ctx context.Context, id uuid.UUID) (Custome
 const lockResponsibleCustomers = `-- name: LockResponsibleCustomers :many
 SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at FROM customers
 WHERE responsible_staff_id = $1 AND merged_into IS NULL
-ORDER BY id FOR UPDATE
+ORDER BY id FOR NO KEY UPDATE
 `
 
 func (q *Queries) LockResponsibleCustomers(ctx context.Context, responsibleStaffID *uuid.UUID) ([]Customer, error) {
@@ -466,6 +466,24 @@ func (q *Queries) SearchCustomers(ctx context.Context, arg SearchCustomersParams
 		return nil, err
 	}
 	return items, nil
+}
+
+const shareCustomerSource = `-- name: ShareCustomerSource :one
+SELECT id, tenant_id, store_id, name, active FROM customer_sources WHERE id = $1 FOR SHARE
+`
+
+// 共享锁阻止并发修改来源，同时允许其他顾客检查来源状态。
+func (q *Queries) ShareCustomerSource(ctx context.Context, id uuid.UUID) (CustomerSource, error) {
+	row := q.db.QueryRow(ctx, shareCustomerSource, id)
+	var i CustomerSource
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Name,
+		&i.Active,
+	)
+	return i, err
 }
 
 const shareCustomerStaff = `-- name: ShareCustomerStaff :one
