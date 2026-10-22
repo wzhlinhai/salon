@@ -13,6 +13,61 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/money"
 )
 
+const addCardAdjustment = `-- name: AddCardAdjustment :one
+INSERT INTO card_adjustments (tenant_id,store_id,card_id,reason,expires_before,expires_after,expiry_changed,card_type_before,card_type_after,ledger_id,business_date,actor_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, tenant_id, store_id, card_id, reason, expires_before, expires_after, expiry_changed, card_type_before, card_type_after, ledger_id, business_date, actor_id, at
+`
+
+type AddCardAdjustmentParams struct {
+	TenantID       uuid.UUID
+	StoreID        uuid.UUID
+	CardID         uuid.UUID
+	Reason         string
+	ExpiresBefore  pgtype.Date
+	ExpiresAfter   pgtype.Date
+	ExpiryChanged  bool
+	CardTypeBefore *uuid.UUID
+	CardTypeAfter  *uuid.UUID
+	LedgerID       *uuid.UUID
+	BusinessDate   pgtype.Date
+	ActorID        uuid.UUID
+}
+
+func (q *Queries) AddCardAdjustment(ctx context.Context, arg AddCardAdjustmentParams) (CardAdjustment, error) {
+	row := q.db.QueryRow(ctx, addCardAdjustment,
+		arg.TenantID,
+		arg.StoreID,
+		arg.CardID,
+		arg.Reason,
+		arg.ExpiresBefore,
+		arg.ExpiresAfter,
+		arg.ExpiryChanged,
+		arg.CardTypeBefore,
+		arg.CardTypeAfter,
+		arg.LedgerID,
+		arg.BusinessDate,
+		arg.ActorID,
+	)
+	var i CardAdjustment
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.CardID,
+		&i.Reason,
+		&i.ExpiresBefore,
+		&i.ExpiresAfter,
+		&i.ExpiryChanged,
+		&i.CardTypeBefore,
+		&i.CardTypeAfter,
+		&i.LedgerID,
+		&i.BusinessDate,
+		&i.ActorID,
+		&i.At,
+	)
+	return i, err
+}
+
 const addCardLedger = `-- name: AddCardLedger :one
 INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, tenant_id, store_id, card_id, kind, principal_before, principal_delta, principal_after, bonus_before, bonus_delta, bonus_after, business_date, actor_id, at
@@ -24,10 +79,10 @@ type AddCardLedgerParams struct {
 	CardID          uuid.UUID
 	Kind            string
 	PrincipalBefore money.Amount
-	PrincipalDelta  money.Amount
+	PrincipalDelta  money.Change
 	PrincipalAfter  money.Amount
 	BonusBefore     money.Amount
-	BonusDelta      money.Amount
+	BonusDelta      money.Change
 	BonusAfter      money.Amount
 	BusinessDate    pgtype.Date
 	ActorID         uuid.UUID
@@ -235,6 +290,33 @@ func (q *Queries) GetCard(ctx context.Context, arg GetCardParams) (Card, error) 
 	return i, err
 }
 
+const getCardType = `-- name: GetCardType :one
+SELECT id, tenant_id, store_id, name, kind, validity_kind, validity_date, validity_days, active, created_at FROM card_types WHERE store_id=$1 AND id=$2
+`
+
+type GetCardTypeParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) GetCardType(ctx context.Context, arg GetCardTypeParams) (CardType, error) {
+	row := q.db.QueryRow(ctx, getCardType, arg.StoreID, arg.ID)
+	var i CardType
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Name,
+		&i.Kind,
+		&i.ValidityKind,
+		&i.ValidityDate,
+		&i.ValidityDays,
+		&i.Active,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const latestCardLedger = `-- name: LatestCardLedger :one
 SELECT id, tenant_id, store_id, card_id, kind, principal_before, principal_delta, principal_after, bonus_before, bonus_delta, bonus_after, business_date, actor_id, at FROM card_ledger WHERE card_id=$1 ORDER BY at DESC,id DESC LIMIT 1
 `
@@ -261,8 +343,83 @@ func (q *Queries) LatestCardLedger(ctx context.Context, cardID uuid.UUID) (CardL
 	return i, err
 }
 
+const listCardAdjustments = `-- name: ListCardAdjustments :many
+SELECT a.id, a.tenant_id, a.store_id, a.card_id, a.reason, a.expires_before, a.expires_after, a.expiry_changed, a.card_type_before, a.card_type_after, a.ledger_id, a.business_date, a.actor_id, a.at, s.name AS actor_name, tb.name AS type_before_name, ta.name AS type_after_name,
+ COALESCE(l.principal_before,0) AS principal_before, COALESCE(l.principal_delta,0) AS principal_delta, COALESCE(l.principal_after,0) AS principal_after,
+ COALESCE(l.bonus_before,0) AS bonus_before, COALESCE(l.bonus_delta,0) AS bonus_delta, COALESCE(l.bonus_after,0) AS bonus_after
+FROM card_adjustments a JOIN staff s ON s.id=a.actor_id
+LEFT JOIN card_types tb ON tb.id=a.card_type_before
+LEFT JOIN card_types ta ON ta.id=a.card_type_after
+LEFT JOIN card_ledger l ON l.id=a.ledger_id
+WHERE a.card_id=$1 AND ($2::uuid IS NULL OR (a.at,a.id) < (SELECT at,id FROM card_adjustments WHERE id=$2 AND card_id=$1))
+ORDER BY a.at DESC,a.id DESC LIMIT $3
+`
+
+type ListCardAdjustmentsParams struct {
+	CardID   uuid.UUID
+	BeforeID *uuid.UUID
+	RowLimit int32
+}
+
+type ListCardAdjustmentsRow struct {
+	CardAdjustment  CardAdjustment
+	ActorName       string
+	TypeBeforeName  *string
+	TypeAfterName   *string
+	PrincipalBefore money.Amount
+	PrincipalDelta  money.Change
+	PrincipalAfter  money.Amount
+	BonusBefore     money.Amount
+	BonusDelta      money.Change
+	BonusAfter      money.Amount
+}
+
+func (q *Queries) ListCardAdjustments(ctx context.Context, arg ListCardAdjustmentsParams) ([]ListCardAdjustmentsRow, error) {
+	rows, err := q.db.Query(ctx, listCardAdjustments, arg.CardID, arg.BeforeID, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCardAdjustmentsRow
+	for rows.Next() {
+		var i ListCardAdjustmentsRow
+		if err := rows.Scan(
+			&i.CardAdjustment.ID,
+			&i.CardAdjustment.TenantID,
+			&i.CardAdjustment.StoreID,
+			&i.CardAdjustment.CardID,
+			&i.CardAdjustment.Reason,
+			&i.CardAdjustment.ExpiresBefore,
+			&i.CardAdjustment.ExpiresAfter,
+			&i.CardAdjustment.ExpiryChanged,
+			&i.CardAdjustment.CardTypeBefore,
+			&i.CardAdjustment.CardTypeAfter,
+			&i.CardAdjustment.LedgerID,
+			&i.CardAdjustment.BusinessDate,
+			&i.CardAdjustment.ActorID,
+			&i.CardAdjustment.At,
+			&i.ActorName,
+			&i.TypeBeforeName,
+			&i.TypeAfterName,
+			&i.PrincipalBefore,
+			&i.PrincipalDelta,
+			&i.PrincipalAfter,
+			&i.BonusBefore,
+			&i.BonusDelta,
+			&i.BonusAfter,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCardLedger = `-- name: ListCardLedger :many
-SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.kind, l.principal_before, l.principal_delta, l.principal_after, l.bonus_before, l.bonus_delta, l.bonus_after, l.business_date, l.actor_id, l.at, s.name AS actor_name FROM card_ledger l JOIN staff s ON s.id=l.actor_id
+SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.kind, l.principal_before, l.principal_delta, l.principal_after, l.bonus_before, l.bonus_delta, l.bonus_after, l.business_date, l.actor_id, l.at, s.name AS actor_name, COALESCE(a.reason,'')::text AS reason FROM card_ledger l JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.ledger_id=l.id
 WHERE l.card_id=$1 AND ($2::uuid IS NULL OR (l.at,l.id) < (SELECT at,id FROM card_ledger WHERE id=$2 AND card_id=$1))
 ORDER BY l.at DESC,l.id DESC LIMIT $3
 `
@@ -276,6 +433,7 @@ type ListCardLedgerParams struct {
 type ListCardLedgerRow struct {
 	CardLedger CardLedger
 	ActorName  string
+	Reason     string
 }
 
 func (q *Queries) ListCardLedger(ctx context.Context, arg ListCardLedgerParams) ([]ListCardLedgerRow, error) {
@@ -303,6 +461,7 @@ func (q *Queries) ListCardLedger(ctx context.Context, arg ListCardLedgerParams) 
 			&i.CardLedger.ActorID,
 			&i.CardLedger.At,
 			&i.ActorName,
+			&i.Reason,
 		); err != nil {
 			return nil, err
 		}
@@ -553,6 +712,21 @@ func (q *Queries) ShareCardType(ctx context.Context, arg ShareCardTypeParams) (C
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const updateAdjustedCard = `-- name: UpdateAdjustedCard :exec
+UPDATE cards SET expires_on=$2,card_type_id=$3 WHERE id=$1
+`
+
+type UpdateAdjustedCardParams struct {
+	ID         uuid.UUID
+	ExpiresOn  pgtype.Date
+	CardTypeID uuid.UUID
+}
+
+func (q *Queries) UpdateAdjustedCard(ctx context.Context, arg UpdateAdjustedCardParams) error {
+	_, err := q.db.Exec(ctx, updateAdjustedCard, arg.ID, arg.ExpiresOn, arg.CardTypeID)
+	return err
 }
 
 const updateCardType = `-- name: UpdateCardType :one
