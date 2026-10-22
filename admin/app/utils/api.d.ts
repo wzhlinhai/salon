@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/add_order_item": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 向单添加项目行 */
+        post: operations["add_order_item"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/add_safety_label": {
         parameters: {
             query?: never;
@@ -361,6 +378,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/get_order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看本店单据 */
+        post: operations["get_order"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/get_settings": {
         parameters: {
             query?: never;
@@ -616,6 +650,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_open_orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 列出本店挂单 */
+        post: operations["list_open_orders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_permissions": {
         parameters: {
             query?: never;
@@ -763,6 +814,23 @@ export interface paths {
         put?: never;
         /** 为顾客开卡并记录首次充值 */
         post: operations["open_card"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/open_order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 开单并保存规则快照 */
+        post: operations["open_order"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1099,6 +1167,10 @@ export interface components {
         Actor: {
             id: string;
             name: string;
+        };
+        AddOrderItemInput: {
+            item: components["schemas"]["OrderItemInput"];
+            order_id: string;
         };
         AddSafetyLabelInput: {
             customer_id: string;
@@ -1499,6 +1571,9 @@ export interface components {
             type: string;
         };
         GetMeInput: Record<string, never>;
+        GetOrderInput: {
+            id: string;
+        };
         GetSettingsInput: {
             /**
              * Format: date
@@ -1618,6 +1693,7 @@ export interface components {
         ListCustomerSourcesInput: Record<string, never>;
         ListInput: Record<string, never>;
         ListItemsInput: Record<string, never>;
+        ListOpenOrdersInput: Record<string, never>;
         ListSettingChangesInput: {
             /** @description 上一页最后一条的 ID，只看比它更早的；不填为最新一页 */
             before_id?: string;
@@ -1665,6 +1741,60 @@ export interface components {
             customer_id: string;
             principal: string;
             sales_staff_ids: string[];
+        };
+        OpenOrderInput: {
+            customer_id?: string;
+            designated: boolean;
+            /** @enum {string} */
+            gender: "male" | "female";
+            items: components["schemas"]["OrderItemInput"][];
+        };
+        Order: {
+            /** Format: date */
+            business_date: string;
+            customer_id: string;
+            designated: boolean;
+            /** @enum {string} */
+            gender: "male" | "female";
+            id: string;
+            items: components["schemas"]["OrderItem"][];
+            /** Format: date-time */
+            opened_at: string;
+            opened_by: string;
+            receivable: string;
+            /** @enum {string} */
+            status: "open";
+        };
+        OrderItem: {
+            /** Format: date-time */
+            added_at: string;
+            id: string;
+            item_id: string;
+            item_name: string;
+            level_id: string | null;
+            positions: components["schemas"]["OrderItemPosition"][];
+            price: string;
+            /** @enum {string} */
+            price_source: "standard" | "level";
+        };
+        OrderItemInput: {
+            item_id: string;
+            staff: components["schemas"]["OrderItemStaffInput"][];
+        };
+        OrderItemPosition: {
+            position_id: string;
+            required: boolean;
+            /** Format: int32 */
+            slot: number;
+            staff_id: string | null;
+        };
+        OrderItemStaffInput: {
+            /** Format: int32 */
+            slot: number;
+            staff_id: string;
+        };
+        OrderList: {
+            items: components["schemas"]["Order"][];
         };
         PermissionList: {
             permissions: components["schemas"]["Def"][];
@@ -2047,6 +2177,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Customer"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    add_order_item: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddOrderItemInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
                 };
             };
             /** @description Error */
@@ -2687,6 +2850,39 @@ export interface operations {
             };
         };
     };
+    get_order: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GetOrderInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     get_settings: {
         parameters: {
             query?: never;
@@ -3182,6 +3378,39 @@ export interface operations {
             };
         };
     };
+    list_open_orders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListOpenOrdersInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     list_permissions: {
         parameters: {
             query?: never;
@@ -3466,6 +3695,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Card"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    open_order: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenOrderInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
                 };
             };
             /** @description Error */

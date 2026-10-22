@@ -76,3 +76,7 @@ sql:
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money
               type: Amount
+          - column: order_items.price
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount

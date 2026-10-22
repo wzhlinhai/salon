@@ -275,6 +275,44 @@ type Level struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type Order struct {
+	TenantID           uuid.UUID
+	StoreID            uuid.UUID
+	ID                 uuid.UUID
+	CustomerID         uuid.UUID
+	Gender             string
+	Designated         bool
+	Status             string
+	SettingsSnapshotID uuid.UUID
+	BusinessDate       pgtype.Date
+	OpenedBy           uuid.UUID
+	OpenedAt           pgtype.Timestamptz
+}
+
+type OrderItem struct {
+	TenantID    uuid.UUID
+	StoreID     uuid.UUID
+	ID          uuid.UUID
+	OrderID     uuid.UUID
+	ItemID      uuid.UUID
+	ItemName    string
+	Price       money.Amount
+	PriceSource string
+	LevelID     *uuid.UUID
+	AddedBy     uuid.UUID
+	AddedAt     pgtype.Timestamptz
+}
+
+type OrderItemPosition struct {
+	TenantID    uuid.UUID
+	StoreID     uuid.UUID
+	OrderItemID uuid.UUID
+	Slot        int16
+	PositionID  uuid.UUID
+	Required    bool
+	StaffID     *uuid.UUID
+}
+
 type Position struct {
 	ID        uuid.UUID
 	TenantID  uuid.UUID
