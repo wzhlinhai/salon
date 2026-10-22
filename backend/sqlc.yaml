@@ -36,6 +36,10 @@ sql:
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money
               type: Amount
+          - column: item_member_prices.price
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
           - column: card_ledger.principal_before
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money

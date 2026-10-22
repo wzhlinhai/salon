@@ -9,6 +9,7 @@ const api = useApi()
 const toast = useToast()
 const items = ref<Item[]>([])
 const levels = ref<Level[]>([])
+const cardTypes = ref<components['schemas']['CardType'][]>([])
 const positions = ref<Position[]>([])
 const loading = ref(false)
 const loadGuard = useRequestGuard()
@@ -17,19 +18,21 @@ async function load() {
   const current = loadGuard.next()
   loading.value = true
   try {
-    const [i, l, p] = await Promise.all([
+    const [i, l, p, t] = await Promise.all([
       api.POST('/api/ops/list_items', { body: {} }),
       api.POST('/api/ops/list_levels', { body: {} }),
-      api.POST('/api/ops/list_positions', { body: {} })
+      api.POST('/api/ops/list_positions', { body: {} }),
+      api.POST('/api/ops/list_card_types', { body: {} })
     ])
     if (!current()) return
-    if (!i.data || !l.data || !p.data) {
-      toast.add({ title: errorText(i.error ?? l.error ?? p.error), color: 'error' })
+    if (!i.data || !l.data || !p.data || !t.data) {
+      toast.add({ title: errorText(i.error ?? l.error ?? p.error ?? t.error), color: 'error' })
       return
     }
     items.value = i.data.items
     levels.value = l.data.items
     positions.value = p.data.items
+    cardTypes.value = t.data.items
   } finally {
     if (current()) loading.value = false
   }
@@ -48,6 +51,8 @@ const active = ref(true)
 const feeKind = ref('none')
 const feeValue = ref('0.00')
 const positionRows = ref<{ position_id: string, required: boolean }[]>([])
+const memberRows = ref<{ card_type_id: string, price: string }[]>([])
+const memberOptions = computed(() => cardTypes.value.filter(t => t.active || editing.value?.member_prices.some(p => p.card_type_id === t.id)).map(t => ({ label: t.name + (t.active ? '' : '（停用）'), value: t.id })))
 const levelRows = ref<{ level_id: string, price: string }[]>([])
 const levelOptions = computed(() => levels.value.filter(l => l.active || editing.value?.level_prices.some(p => p.level_id === l.id)).map(l => ({ label: l.name + (l.active ? '' : '（停用）'), value: l.id })))
 
@@ -66,6 +71,7 @@ function openEditor(item: Item | null) {
   feeKind.value = item?.labor_fee_amount != null ? 'amount' : item?.labor_fee_percent != null ? 'percent' : 'none'
   feeValue.value = item?.labor_fee_amount ?? item?.labor_fee_percent ?? '0.00'
   positionRows.value = item?.positions.map(p => ({ position_id: p.position_id, required: p.required })) ?? []
+  memberRows.value = item?.member_prices.map(m => ({ ...m })) ?? []
   levelRows.value = item?.level_prices.map(l => ({ ...l })) ?? []
   open.value = true
 }
@@ -90,6 +96,7 @@ async function save() {
     labor_fee_amount: feeKind.value === 'amount' ? feeValue.value : null,
     labor_fee_percent: feeKind.value === 'percent' ? feeValue.value : null,
     positions: positionRows.value.map(p => ({ ...p })),
+    member_prices: memberRows.value.map(m => ({ ...m })),
     level_prices: levelRows.value.map(l => ({ ...l }))
   }
   try {
@@ -161,6 +168,15 @@ function laborFee(item: Item) {
               <UButton color="error" @click="levelRows.splice(index, 1)">移除级别价</UButton>
             </div>
             <UButton variant="outline" @click="levelRows.push({ level_id: levels.find(l => l.active)?.id ?? '', price: '0.00' })">添加级别价</UButton>
+          </div>
+          <div class="space-y-2">
+            <h2 class="font-medium">会员价</h2>
+            <div v-for="(row, index) in memberRows" :key="index" class="flex gap-2" data-testid="member-row">
+              <USelect v-model="row.card_type_id" :aria-label="`卡类型${index + 1}`" :items="memberOptions" placeholder="选择卡类型" />
+              <UInput v-model="row.price" :aria-label="`会员价${index + 1}`" inputmode="decimal" />
+              <UButton color="error" @click="memberRows.splice(index, 1)">移除会员价</UButton>
+            </div>
+            <UButton variant="outline" @click="memberRows.push({ card_type_id: cardTypes.find(t => t.active)?.id ?? '', price: '0.00' })">添加会员价</UButton>
           </div>
           <USwitch v-if="editing" v-model="active" label="启用项目" />
         </div>

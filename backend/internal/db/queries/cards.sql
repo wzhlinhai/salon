@@ -71,8 +71,8 @@ UPDATE cards SET customer_id=sqlc.arg(keep_id) WHERE customer_id=sqlc.arg(merged
 UPDATE cards SET expires_on=$2,card_type_id=$3 WHERE id=$1;
 
 -- name: AddCardAdjustment :one
-INSERT INTO card_adjustments (tenant_id,store_id,card_id,reason,expires_before,expires_after,expiry_changed,card_type_before,card_type_after,ledger_id,business_date,actor_id,counts_changed)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *;
+INSERT INTO card_adjustments (tenant_id,store_id,card_id,reason,expires_before,expires_after,expiry_changed,card_type_before,card_type_after,ledger_id,business_date,actor_id,counts_changed,points_changed)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *;
 
 -- name: ListCardAdjustments :many
 SELECT sqlc.embed(a), s.name AS actor_name, tb.name AS type_before_name, ta.name AS type_after_name,
@@ -180,3 +180,20 @@ VALUES (sqlc.arg(tenant_id),sqlc.arg(store_id),sqlc.arg(card_id),sqlc.arg(kind),
 
 -- name: CardTypeHasUpgradeRules :one
 SELECT EXISTS(SELECT 1 FROM card_upgrade_rules WHERE from_type_id=$1 OR to_type_id=$1);
+
+-- name: CardPoints :many
+SELECT DISTINCT ON (card_id) card_id,after FROM card_points_ledger
+WHERE card_id=ANY(sqlc.arg(card_ids)::uuid[]) ORDER BY card_id,at DESC,id DESC;
+
+-- name: LatestCardPoints :one
+SELECT COALESCE((SELECT after FROM card_points_ledger WHERE card_id=$1 ORDER BY at DESC,id DESC LIMIT 1),0)::int AS points;
+
+-- name: AddCardPoints :exec
+INSERT INTO card_points_ledger (tenant_id,store_id,card_id,kind,before,delta,after,card_ledger_id,adjustment_id,business_date,actor_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11);
+
+-- name: ListCardPoints :many
+SELECT sqlc.embed(l),s.name AS actor_name,COALESCE(a.reason,'')::text AS reason
+FROM card_points_ledger l JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.id=l.adjustment_id
+WHERE l.card_id=$1 AND (sqlc.narg(before_id)::uuid IS NULL OR (l.at,l.id) < (SELECT at,id FROM card_points_ledger WHERE id=sqlc.narg(before_id) AND card_id=$1))
+ORDER BY l.at DESC,l.id DESC LIMIT sqlc.arg(row_limit);

@@ -31,6 +31,10 @@ func adjustCard(ctx context.Context, env ops.Env, in *AdjustCardInput) (*Card, e
 	if err != nil {
 		return nil, err
 	}
+	pointsChanged := in.Points != nil && *in.Points != before.Points
+	if in.Points != nil && (*in.Points < 0 || *in.Points > 99999999) {
+		return nil, ops.Rule("积分须为 0 到 99999999")
+	}
 	previous, err := env.Q.LatestCardLedger(ctx, card.ID)
 	if err != nil {
 		return nil, err
@@ -97,7 +101,7 @@ func adjustCard(ctx context.Context, env ops.Env, in *AdjustCardInput) (*Card, e
 			return nil, ops.Rule("项目不在卡上")
 		}
 	}
-	if !balanceChanged && !expiryChanged && typeAfter == nil && len(changes) == 0 {
+	if !balanceChanged && !expiryChanged && typeAfter == nil && len(changes) == 0 && !pointsChanged {
 		return nil, ops.Rule("调整单没有任何改动")
 	}
 	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
@@ -121,9 +125,14 @@ func adjustCard(ctx context.Context, env ops.Env, in *AdjustCardInput) (*Card, e
 	if expiryChanged {
 		expiresBefore, expiresAfter = card.ExpiresOn, expires
 	}
-	adjustment, err := env.Q.AddCardAdjustment(ctx, dbgen.AddCardAdjustmentParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: card.ID, Reason: in.Reason, ExpiresBefore: expiresBefore, ExpiresAfter: expiresAfter, ExpiryChanged: expiryChanged, CardTypeBefore: typeBefore, CardTypeAfter: typeAfter, LedgerID: ledgerID, CountsChanged: len(changes) > 0, BusinessDate: pgtype.Date{Time: day, Valid: true}, ActorID: env.Caller.StaffID})
+	adjustment, err := env.Q.AddCardAdjustment(ctx, dbgen.AddCardAdjustmentParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: card.ID, Reason: in.Reason, ExpiresBefore: expiresBefore, ExpiresAfter: expiresAfter, ExpiryChanged: expiryChanged, CardTypeBefore: typeBefore, CardTypeAfter: typeAfter, LedgerID: ledgerID, CountsChanged: len(changes) > 0, PointsChanged: pointsChanged, BusinessDate: pgtype.Date{Time: day, Valid: true}, ActorID: env.Caller.StaffID})
 	if err != nil {
 		return nil, err
+	}
+	if pointsChanged {
+		if err := adjustPoints(ctx, env, card.ID, adjustment.ID, before.Points, *in.Points, day); err != nil {
+			return nil, err
+		}
 	}
 	for _, change := range changes {
 		change.AdjustmentID = &adjustment.ID

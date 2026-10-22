@@ -217,7 +217,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 新建项目，设置标准价、级别价、手工费和项目岗位 */
+        /** 新建项目，设置标准价、级别价、会员价、手工费和项目岗位 */
         post: operations["create_item"];
         delete?: never;
         options?: never;
@@ -480,6 +480,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_card_points": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看积分流水 */
+        post: operations["list_card_points"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_card_types": {
         parameters: {
             query?: never;
@@ -574,7 +591,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 列出本店项目及标准价、级别价和项目岗位 */
+        /** 列出本店项目及标准价、级别价、会员价和项目岗位 */
         post: operations["list_items"];
         delete?: never;
         options?: never;
@@ -761,7 +778,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 查询指定员工做项目时适用的价格，优先级别价，否则标准价 */
+        /** 按门店规则查询员工及卡类型适用的项目价格 */
         post: operations["quote_item_price"];
         delete?: never;
         options?: never;
@@ -1099,6 +1116,8 @@ export interface components {
             card_type_id?: string;
             counts?: components["schemas"]["CardCountTarget"][];
             expiry?: components["schemas"]["CardExpiry"];
+            /** Format: int32 */
+            points?: number;
             principal?: string;
             reason: string;
         };
@@ -1118,6 +1137,8 @@ export interface components {
             kind: string;
             /** Format: date-time */
             opened_at: string;
+            /** Format: int32 */
+            points: number;
             principal: string;
         };
         CardAdjustment: {
@@ -1303,6 +1324,10 @@ export interface components {
             /** @description 新的值，形式见 get_settings 的 kind；null 表示恢复系统默认做法 */
             value: unknown;
         };
+        ChoiceOption: {
+            label: string;
+            value: string;
+        };
         CreateCardTypeInput: {
             items?: components["schemas"]["CardTypeItemInput"][];
             /** @enum {string} */
@@ -1341,6 +1366,7 @@ export interface components {
             labor_fee_amount: string | null;
             labor_fee_percent: string | null;
             level_prices: components["schemas"]["LevelPrice"][];
+            member_prices?: components["schemas"]["MemberPrice"][];
             name: string;
             positions: components["schemas"]["ItemPositionInput"][];
             price: string;
@@ -1508,6 +1534,7 @@ export interface components {
             labor_fee_amount: string | null;
             labor_fee_percent: string | null;
             level_prices: components["schemas"]["LevelPrice"][];
+            member_prices: components["schemas"]["MemberPrice"][];
             name: string;
             positions: components["schemas"]["ItemPosition"][];
             price: string;
@@ -1526,8 +1553,11 @@ export interface components {
             required: boolean;
         };
         ItemPrice: {
+            card_type_id?: string;
             level_id?: string;
             price: string;
+            /** @enum {string} */
+            source: "standard" | "level" | "member";
         };
         Level: {
             active: boolean;
@@ -1563,6 +1593,12 @@ export interface components {
             limit?: number;
         };
         ListCardLedgerInput: {
+            before_id?: string;
+            card_id: string;
+            /** Format: int32 */
+            limit?: number;
+        };
+        ListCardPointsInput: {
             before_id?: string;
             card_id: string;
             /** Format: int32 */
@@ -1608,6 +1644,10 @@ export interface components {
             permissions: components["schemas"]["GrantSpec"][];
             staff: components["schemas"]["Staff"];
         };
+        MemberPrice: {
+            card_type_id: string;
+            price: string;
+        };
         MergeCustomersInput: {
             keep_id: string;
             merged_id: string;
@@ -1629,6 +1669,24 @@ export interface components {
         PermissionList: {
             permissions: components["schemas"]["Def"][];
         };
+        PointsLedgerEntry: {
+            actor: components["schemas"]["CardLedgerActor"];
+            /** Format: int32 */
+            after: number;
+            /** Format: date-time */
+            at: string;
+            /** Format: int32 */
+            before: number;
+            business_date: string;
+            /** Format: int32 */
+            delta: number;
+            id: string;
+            kind: string;
+            reason?: string;
+        };
+        PointsLedgerList: {
+            entries: components["schemas"]["PointsLedgerEntry"][];
+        };
         Position: {
             active: boolean;
             id: string;
@@ -1638,6 +1696,7 @@ export interface components {
             items: components["schemas"]["Position"][];
         };
         QuoteItemPriceInput: {
+            card_type_id?: string;
             item_id: string;
             staff_id: string;
         };
@@ -1659,6 +1718,8 @@ export interface components {
             kind: string;
             /** Format: date-time */
             opened_at: string;
+            /** Format: int32 */
+            points: number;
             principal: string;
             upgraded_to?: components["schemas"]["CardUpgradeType"];
         };
@@ -1756,11 +1817,16 @@ export interface components {
             is_default: boolean;
             key: string;
             /**
-             * @description 值的形式：time 为 "HH:MM"；time_range 为 {"open": "HH:MM", "close": "HH:MM"}
+             * @description 值的形式：时刻、时段、选项或整数
              * @enum {string}
              */
-            kind: "time" | "time_range";
+            kind: "time" | "time_range" | "choice" | "integer";
             label: string;
+            /** Format: int64 */
+            max: number;
+            /** Format: int64 */
+            min: number;
+            options?: components["schemas"]["ChoiceOption"][];
             upcoming: components["schemas"]["ScheduledValue"][];
             /** @description 这一天执行的值 */
             value: unknown;
@@ -1879,6 +1945,7 @@ export interface components {
             labor_fee_amount: string | null;
             labor_fee_percent: string | null;
             level_prices: components["schemas"]["LevelPrice"][];
+            member_prices?: components["schemas"]["MemberPrice"][];
             name: string;
             positions: components["schemas"]["ItemPositionInput"][];
             price: string;
@@ -2838,6 +2905,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardLedgerList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_card_points: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListCardPointsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PointsLedgerList"];
                 };
             };
             /** @description Error */

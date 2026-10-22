@@ -49,6 +49,7 @@ type CardTypeList struct {
 
 // Card 是顾客持有的卡，余额来自最后一条卡流水。
 type Card struct {
+	Points       int32             `json:"points"`
 	Kind         string            `json:"kind"`
 	Items        []RemainingCounts `json:"items"`
 	CountsPrice  string            `json:"counts_price"`
@@ -141,6 +142,7 @@ type CardExpiry struct {
 
 // AdjustCardInput 是以目标值更正卡的调整单参数。
 type AdjustCardInput struct {
+	Points     *int32            `json:"points,omitempty" minimum:"0" maximum:"99999999"`
 	Counts     []CardCountTarget `json:"counts,omitempty" maxItems:"20"`
 	CardID     uuid.UUID         `json:"card_id"`
 	Principal  *money.Amount     `json:"principal,omitempty"`

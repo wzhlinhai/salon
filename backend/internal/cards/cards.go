@@ -22,6 +22,7 @@ import (
 
 // Register 声明卡类型、开卡、充值和卡流水操作。
 func Register(r *ops.Registry) {
+	ops.Register(r, ops.Operation[ListCardPointsInput, PointsLedgerList]{Name: "list_card_points", Summary: "查看积分流水", Kind: ops.Read, Permission: perm.CustomerView, AI: ops.AIDirect, Handle: listCardPoints})
 	registerUpgrades(r)
 	registerTransfers(r)
 	ops.Register(r, ops.Operation[ListCardCountsInput, CardCountList]{Name: "list_card_counts", Summary: "查看次数流水", Kind: ops.Read, Permission: perm.CustomerView, AI: ops.AIDirect, Handle: listCardCounts})
@@ -215,6 +216,9 @@ func appendLedger(ctx context.Context, env ops.Env, id uuid.UUID, kind string, p
 		if err := env.Q.AddCardLedgerSales(ctx, dbgen.AddCardLedgerSalesParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, LedgerID: row.ID, StaffID: staff}); err != nil {
 			return dbgen.CardLedger{}, err
 		}
+	}
+	if err := earnPoints(ctx, env, row, in.Principal); err != nil {
+		return dbgen.CardLedger{}, err
 	}
 	return row, nil
 }

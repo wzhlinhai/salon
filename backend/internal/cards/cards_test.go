@@ -213,7 +213,7 @@ func snapshot(t *testing.T, s *fixture) string {
 	t.Helper()
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	var raw []byte
-	err := tx.QueryRow(context.Background(), `SELECT jsonb_build_array((SELECT jsonb_agg(t) FROM card_types t),(SELECT jsonb_agg(c) FROM cards c),(SELECT jsonb_agg(l) FROM card_ledger l),(SELECT jsonb_agg(s) FROM card_ledger_sales s),(SELECT jsonb_agg(a) FROM audit_log a))`).Scan(&raw)
+	err := tx.QueryRow(context.Background(), `SELECT jsonb_build_array((SELECT jsonb_agg(t) FROM card_types t),(SELECT jsonb_agg(c) FROM cards c),(SELECT jsonb_agg(l) FROM card_ledger l),(SELECT jsonb_agg(s) FROM card_ledger_sales s),(SELECT jsonb_agg(a) FROM audit_log a),(SELECT jsonb_agg(p) FROM card_points_ledger p),(SELECT jsonb_agg(a) FROM card_adjustments a))`).Scan(&raw)
 	if err != nil {
 		t.Fatal(err)
 	}

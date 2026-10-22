@@ -53,6 +53,7 @@ type CardAdjustment struct {
 	ActorID        uuid.UUID
 	At             pgtype.Timestamptz
 	CountsChanged  bool
+	PointsChanged  bool
 }
 
 type CardCountLedger struct {
@@ -106,6 +107,22 @@ type CardLedgerSale struct {
 	StoreID  uuid.UUID
 	LedgerID uuid.UUID
 	StaffID  uuid.UUID
+}
+
+type CardPointsLedger struct {
+	ID           uuid.UUID
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	CardID       uuid.UUID
+	Kind         string
+	Before       int32
+	Delta        int32
+	After        int32
+	CardLedgerID *uuid.UUID
+	AdjustmentID *uuid.UUID
+	BusinessDate pgtype.Date
+	ActorID      uuid.UUID
+	At           pgtype.Timestamptz
 }
 
 type CardTransfer struct {
@@ -230,6 +247,14 @@ type ItemLevelPrice struct {
 	ItemID   uuid.UUID
 	LevelID  uuid.UUID
 	Price    money.Amount
+}
+
+type ItemMemberPrice struct {
+	TenantID   uuid.UUID
+	StoreID    uuid.UUID
+	ItemID     uuid.UUID
+	CardTypeID uuid.UUID
+	Price      money.Amount
 }
 
 type ItemPosition struct {

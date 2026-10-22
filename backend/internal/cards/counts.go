@@ -86,6 +86,9 @@ func changeTypeItems(ctx context.Context, env ops.Env, id uuid.UUID, previous []
 	return nil
 }
 func fillCounts(ctx context.Context, env ops.Env, cards []Card) error {
+	if err := fillPoints(ctx, env, cards); err != nil {
+		return err
+	}
 	ids := make([]uuid.UUID, len(cards))
 	index := map[uuid.UUID]int{}
 	prices := make([]decimal.Decimal, len(cards))

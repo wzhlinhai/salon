@@ -7,11 +7,12 @@ async function seed() {
   const level = await api<{ id: string, name: string }>(token, 'create_level', { name: `首席${suffix}` })
   const first = await api<{ id: string, name: string }>(token, 'create_position', { name: `大工${suffix}` })
   const second = await api<{ id: string, name: string }>(token, 'create_position', { name: `助理${suffix}` })
-  return { token, suffix, level, first, second }
+  const cardType = await api(token, 'create_card_type', { name: `会员${suffix}`, kind: 'stored_value', validity_kind: 'none' })
+  return { token, suffix, level, first, second, cardType }
 }
 
 test('项目完整新建、编辑和停用', async ({ page }) => {
-  const { token, suffix, level, first, second } = await seed()
+  const { token, suffix, level, first, second, cardType } = await seed()
   await login(page, owner.account, owner.password)
   await page.goto('/items')
   await page.getByRole('button', { name: '新建项目', exact: true }).click()
@@ -34,6 +35,10 @@ test('项目完整新建、编辑和停用', async ({ page }) => {
   await createDialog.getByRole('combobox', { name: '级别1', exact: true }).click()
   await page.getByRole('option', { name: level.name, exact: true }).click()
   await createDialog.getByRole('textbox', { name: '级别价1', exact: true }).fill('88.00')
+  await createDialog.getByRole('button', { name: '添加会员价', exact: true }).click()
+  await createDialog.getByRole('combobox', { name: '卡类型1', exact: true }).click()
+  await page.getByRole('option', { name: cardType.name, exact: true }).click()
+  await createDialog.getByRole('textbox', { name: '会员价1', exact: true }).fill('66.00')
   await createDialog.getByRole('button', { name: '保存', exact: true }).click()
   await expect(createDialog).not.toBeVisible()
   const card = page.locator(`[data-item="${name}"]`)
@@ -50,11 +55,12 @@ test('项目完整新建、编辑和停用', async ({ page }) => {
   await editDialog.getByRole('button', { name: '保存', exact: true }).click()
   await expect(editDialog).not.toBeVisible()
   await expect(card).toContainText('停用')
-  const result = await api<{ items: { name: string, positions: { position_id: string, required: boolean }[], level_prices: { level_id: string, price: string }[] }[] }>(token, 'list_items', {})
+  const result = await api<{ items: { name: string, positions: { position_id: string, required: boolean }[], level_prices: { level_id: string, price: string }[], member_prices: { card_type_id: string, price: string }[] }[] }>(token, 'list_items', {})
   const item = result.items.find(i => i.name === name)!
   expect(item.positions.map(p => p.position_id)).toEqual([second.id, first.id])
   expect(item.positions.map(p => p.required)).toEqual([false, true])
   expect(item.level_prices).toEqual([{ level_id: level.id, price: '88.00' }])
+  expect(item.member_prices).toEqual([{ card_type_id: cardType.id, price: '66.00' }])
 })
 
 test('发型师没有项目入口，直接访问无权限', async ({ page }) => {

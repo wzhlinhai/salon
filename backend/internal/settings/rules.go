@@ -77,6 +77,20 @@ func (r Rules) BusinessDayEnd() string {
 	return v
 }
 
+// MemberPriceRule 返回会员价与级别价的取价做法。
+func (r Rules) MemberPriceRule() string {
+	var v string
+	r.decode(KeyMemberPriceRule, &v)
+	return v
+}
+
+// PointsPerRechargeYuan 返回每积一分所需充值本金元数，零表示不积分。
+func (r Rules) PointsPerRechargeYuan() int {
+	var v int
+	r.decode(KeyPointsPerRechargeYuan, &v)
+	return v
+}
+
 // effectiveRow 是某项设置在某个营业日生效的那次修改。
 type effectiveRow struct {
 	value         json.RawMessage
