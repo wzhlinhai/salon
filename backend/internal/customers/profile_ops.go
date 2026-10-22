@@ -148,3 +148,15 @@ func updatePhone(ctx context.Context, env ops.Env, in *CustomerPhoneInput, add b
 		return nil
 	})
 }
+
+// CreateUnidentified 为开单创建未识别顾客并记新建日志；由开单权限覆盖，无需 customer.edit 权限。
+func CreateUnidentified(ctx context.Context, env ops.Env, gender string) (uuid.UUID, error) {
+	row, err := env.Q.CreateCustomer(ctx, dbgen.CreateCustomerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Gender: &gender, CreatedBy: env.Caller.StaffID})
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if _, err := created(ctx, env, "create_customer", row); err != nil {
+		return uuid.Nil, err
+	}
+	return row.ID, nil
+}

@@ -26,7 +26,7 @@ func TestAuditTargetConstraints(t *testing.T) {
 		{"missing customer", "customer", "audit_log_customer_presence_check", customerID, nil},
 		{"different customer", "customer", "audit_log_customer_target_check", uuid.New(), &customerID},
 		{"unexpected customer", "staff", "audit_log_customer_presence_check", customerID, &customerID},
-		{"unknown kind", "order", "audit_log_target_kind_check", uuid.New(), nil},
+		{"unknown kind", "unknown", "audit_log_target_kind_check", uuid.New(), nil},
 		{"missing reference", "customer", "audit_log_customer_fk", uuid.Nil, &uuid.Nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

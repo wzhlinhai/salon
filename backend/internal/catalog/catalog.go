@@ -136,7 +136,7 @@ func Register(r *ops.Registry) {
 			if err != nil {
 				return nil, err
 			}
-			return Quote(ctx, env.Q, env.Caller.StoreID, in.ItemID, in.StaffID, in.CardTypeID, rules)
+			return Quote(ctx, env.Q, env.Caller.StoreID, in.ItemID, &in.StaffID, in.CardTypeID, rules)
 		},
 	})
 }
@@ -420,23 +420,26 @@ func writeChildren(ctx context.Context, env ops.Env, id uuid.UUID, before *Item,
 }
 
 // Quote 按给定规则计算员工做项目时适用的标准价、级别价或会员价。
-func Quote(ctx context.Context, q *dbgen.Queries, storeID, itemID, staffID uuid.UUID, cardTypeID *uuid.UUID, rules settings.Rules) (*ItemPrice, error) {
+func Quote(ctx context.Context, q *dbgen.Queries, storeID, itemID uuid.UUID, staffID, cardTypeID *uuid.UUID, rules settings.Rules) (*ItemPrice, error) {
 	item, err := q.GetItem(ctx, dbgen.GetItemParams{StoreID: storeID, ID: itemID})
 	if err != nil {
 		return nil, rowError(err)
 	}
-	employee, err := q.GetStaff(ctx, staffID)
-	if err != nil {
-		return nil, rowError(err)
-	}
-	if employee.StoreID != storeID {
-		return nil, ops.ErrNotFound
+	var employee dbgen.Staff
+	if staffID != nil {
+		employee, err = q.GetStaff(ctx, *staffID)
+		if err != nil {
+			return nil, rowError(err)
+		}
+		if employee.StoreID != storeID {
+			return nil, ops.ErrNotFound
+		}
 	}
 	if !item.Active {
 		return nil, ops.Rule("项目已停用")
 	}
 	out := &ItemPrice{Price: item.Price, Source: "standard"}
-	if employee.LevelID != nil {
+	if staffID != nil && employee.LevelID != nil {
 		levelPrice, err := q.GetItemLevelPrice(ctx, dbgen.GetItemLevelPriceParams{ItemID: itemID, LevelID: *employee.LevelID})
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err

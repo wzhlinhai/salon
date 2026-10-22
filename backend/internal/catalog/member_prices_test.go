@@ -70,7 +70,7 @@ func TestMemberQuoteCombinations(t *testing.T) {
 					if err != nil {
 						return err
 					}
-					result, err := catalog.Quote(context.Background(), q, s.Res.StoreID, uuid.MustParse(item["id"].(string)), staff, cardID, rules)
+					result, err := catalog.Quote(context.Background(), q, s.Res.StoreID, uuid.MustParse(item["id"].(string)), &staff, cardID, rules)
 					if err != nil {
 						return err
 					}
@@ -303,7 +303,7 @@ func TestQuoteUsesSnapshotRules(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		price, err := catalog.Quote(ctx, q, s.Res.StoreID, uuid.MustParse(item["id"].(string)), s.Res.OwnerID, &ct, rules)
+		price, err := catalog.Quote(ctx, q, s.Res.StoreID, uuid.MustParse(item["id"].(string)), &s.Res.OwnerID, &ct, rules)
 		if err != nil {
 			return err
 		}
@@ -318,12 +318,46 @@ func TestQuoteUsesSnapshotRules(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		price, err = catalog.Quote(ctx, q, s.Res.StoreID, uuid.MustParse(item["id"].(string)), s.Res.OwnerID, &ct, current)
+		price, err = catalog.Quote(ctx, q, s.Res.StoreID, uuid.MustParse(item["id"].(string)), &s.Res.OwnerID, &ct, current)
 		if err != nil {
 			return err
 		}
 		if price.Price.String() != "50.00" || price.Source != "standard" {
 			t.Fatalf("current Quote = %+v, want standard 50.00", price)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestQuoteNilStaff(t *testing.T) {
+	s := open(t)
+	level := s.level(true)
+	s.call("update_staff", map[string]any{"staff_id": s.Res.OwnerID, "name": "王老板", "number": "001", "level_id": level, "position_id": nil}, 200)
+	ct := uuid.MustParse(s.cardType("无员工会员"))
+	in := input("无员工报价")
+	in["price"] = "100.00"
+	in["level_prices"] = []any{map[string]any{"level_id": level, "price": "150.00"}}
+	in["member_prices"] = []any{map[string]any{"card_type_id": ct, "price": "80.00"}}
+	item := s.call("create_item", in, 200)
+	if err := db.InTenant(context.Background(), s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error {
+		rules, err := settings.Effective(context.Background(), q, s.Res.StoreID, settings.Date(time.Now()))
+		if err != nil {
+			return err
+		}
+		for _, card := range []*uuid.UUID{nil, &ct} {
+			quote, err := catalog.Quote(context.Background(), q, s.Res.StoreID, uuid.MustParse(item["id"].(string)), nil, card, rules)
+			if err != nil {
+				return err
+			}
+			price, source := "100.00", "standard"
+			if card != nil {
+				price, source = "80.00", "member"
+			}
+			if quote.Price.String() != price || quote.Source != source || quote.LevelID != nil {
+				t.Fatal(quote)
+			}
 		}
 		return nil
 	}); err != nil {
