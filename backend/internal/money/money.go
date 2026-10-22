@@ -25,6 +25,9 @@ type Amount struct{ value decimal.Decimal }
 // String 返回固定两位小数。
 func (a Amount) String() string { return a.value.StringFixed(2) }
 
+// Cmp 精确比较两个金额，依次返回 -1、0 或 1。
+func (a Amount) Cmp(b Amount) int { return a.value.Cmp(b.value) }
+
 // MarshalJSON 将数值编码为两位小数的字符串。
 func (a Amount) MarshalJSON() ([]byte, error) { return json.Marshal(a.String()) }
 

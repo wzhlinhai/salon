@@ -6,6 +6,7 @@ type CardType = components['schemas']['CardType']
 const api = useApi()
 const toast = useToast()
 const items = ref<CardType[]>([])
+const upgradeRules = ref<components['schemas']['CardUpgradeRule'][]>([])
 const catalog = ref<components['schemas']['Item'][]>([])
 const kind = ref<'stored_value' | 'count' | 'package'>('stored_value')
 const kindItems = [{ label: '储值卡', value: 'stored_value' }, { label: '次卡', value: 'count' }, { label: '套餐', value: 'package' }]
@@ -19,12 +20,15 @@ async function load() {
   const current = loadGuard.next()
   loading.value = true
   try {
-    const [types, projects] = await Promise.all([
+    const [types, projects, rules] = await Promise.all([
       api.POST('/api/ops/list_card_types', { body: {} }),
-      api.POST('/api/ops/list_items', { body: {} })
+      api.POST('/api/ops/list_items', { body: {} }),
+      api.POST('/api/ops/list_card_upgrade_rules', { body: {} })
     ])
     const { data, error } = types
     if (!current()) return
+    if (rules.data) upgradeRules.value = rules.data.items
+    else toast.add({ title: errorText(rules.error), color: 'error' })
     if (projects.data) catalog.value = projects.data.items
     if (data) items.value = data.items
     else toast.add({ title: errorText(error), color: 'error' })
@@ -92,6 +96,50 @@ async function save() {
 function validityText(item: CardType) {
   return item.validity_kind === 'fixed_date' ? item.validity_date : item.validity_kind === 'days_after_open' ? `开卡后 ${item.validity_days} 天` : '不限'
 }
+
+const ruleGuard = useRequestGuard()
+const ruleOpen = ref(false)
+const ruleSaving = ref(false)
+const ruleEditing = ref<components['schemas']['CardUpgradeRule'] | null>(null)
+const ruleFrom = ref('')
+const ruleTo = ref('')
+const ruleCondition = ref<'single_recharge' | 'total_recharge'>('single_recharge')
+const ruleThreshold = ref('0.00')
+const ruleActive = ref(true)
+const ruleConditions = [{ label: '单次充值本金 ≥', value: 'single_recharge' }, { label: '累计充值本金 ≥', value: 'total_recharge' }]
+const storedTypes = computed(() => items.value.filter(t => t.kind === 'stored_value'))
+
+function editRule(rule: components['schemas']['CardUpgradeRule'] | null) {
+  ruleGuard.next()
+  ruleSaving.value = false
+  ruleEditing.value = rule
+  ruleFrom.value = rule?.from_type_id ?? ''
+  ruleTo.value = rule?.to_type_id ?? ''
+  ruleCondition.value = rule?.condition_kind ?? 'single_recharge'
+  ruleThreshold.value = rule?.threshold ?? '0.00'
+  ruleActive.value = rule?.active ?? true
+  ruleOpen.value = true
+}
+
+watch(ruleOpen, () => ruleGuard.next())
+
+async function saveRule() {
+  if (ruleSaving.value) return
+  const current = ruleGuard.hold()
+  ruleSaving.value = true
+  try {
+    const { data, error } = ruleEditing.value
+      ? await api.POST('/api/ops/update_card_upgrade_rule', { body: { id: ruleEditing.value.id, threshold: ruleThreshold.value, active: ruleActive.value } })
+      : await api.POST('/api/ops/create_card_upgrade_rule', { body: { from_type_id: ruleFrom.value, to_type_id: ruleTo.value, condition_kind: ruleCondition.value, threshold: ruleThreshold.value } })
+    if (!current()) return
+    if (data) {
+      ruleOpen.value = false
+      await load()
+    } else toast.add({ title: errorText(error), color: 'error' })
+  } finally {
+    if (current() || !ruleOpen.value) ruleSaving.value = false
+  }
+}
 </script>
 
 <template>
@@ -107,6 +155,27 @@ function validityText(item: CardType) {
         <UButton variant="outline" @click="edit(item)">编辑</UButton>
       </div>
     </UCard>
+    <section class="space-y-3" aria-label="升级规则">
+      <div class="flex justify-between"><h2 class="text-lg font-semibold">升级规则</h2><UButton @click="editRule(null)">新建升级规则</UButton></div>
+      <UCard v-for="rule in upgradeRules" :key="rule.id" data-testid="upgrade-rule">
+        <div class="flex justify-between items-center">
+          <p>{{ rule.from_type_name }} → {{ rule.to_type_name }} · {{ ruleConditions.find(c => c.value === rule.condition_kind)?.label }} {{ rule.threshold }} · {{ rule.active ? '启用' : '停用' }}</p>
+          <UButton variant="outline" @click="editRule(rule)">编辑升级规则</UButton>
+        </div>
+      </UCard>
+    </section>
+    <UModal v-model:open="ruleOpen" :title="ruleEditing ? '编辑升级规则' : '新建升级规则'">
+      <template #body>
+        <div class="space-y-3">
+          <UFormField label="原卡类型"><USelect v-model="ruleFrom" :disabled="!!ruleEditing" :items="storedTypes.map(t => ({ label: t.name, value: t.id }))" class="w-full" /></UFormField>
+          <UFormField label="目标卡类型"><USelect v-model="ruleTo" :disabled="!!ruleEditing" :items="storedTypes.filter(t => t.active && t.id !== ruleFrom).map(t => ({ label: t.name, value: t.id }))" class="w-full" /></UFormField>
+          <UFormField label="条件"><USelect v-model="ruleCondition" :disabled="!!ruleEditing" :items="ruleConditions" class="w-full" /></UFormField>
+          <UFormField label="门槛"><UInput v-model="ruleThreshold" inputmode="decimal" class="w-full" /></UFormField>
+          <USwitch v-if="ruleEditing" v-model="ruleActive" label="启用升级规则" />
+        </div>
+      </template>
+      <template #footer><UButton :loading="ruleSaving" :disabled="!ruleFrom || !ruleTo" @click="saveRule">保存</UButton></template>
+    </UModal>
     <UModal v-model:open="open" :title="editing ? '编辑卡类型' : '新建卡类型'">
       <template #body>
         <div class="space-y-3">

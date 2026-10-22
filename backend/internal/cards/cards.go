@@ -22,6 +22,8 @@ import (
 
 // Register 声明卡类型、开卡、充值和卡流水操作。
 func Register(r *ops.Registry) {
+	registerUpgrades(r)
+	registerTransfers(r)
 	ops.Register(r, ops.Operation[ListCardCountsInput, CardCountList]{Name: "list_card_counts", Summary: "查看次数流水", Kind: ops.Read, Permission: perm.CustomerView, AI: ops.AIDirect, Handle: listCardCounts})
 	ops.Register(r, ops.Operation[AdjustCardInput, Card]{Name: "adjust_card", Summary: "更正卡并追加调整单", Kind: ops.Write, Permission: perm.CardAdjust, AI: ops.AIDraft, Handle: adjustCard})
 	ops.Register(r, ops.Operation[ListCardAdjustmentsInput, CardAdjustmentList]{Name: "list_card_adjustments", Summary: "查看卡调整单", Kind: ops.Read, Permission: perm.CustomerView, AI: ops.AIDirect, Handle: listCardAdjustments})
@@ -29,7 +31,7 @@ func Register(r *ops.Registry) {
 	ops.Register(r, ops.Operation[CreateCardTypeInput, CardType]{Name: "create_card_type", Summary: "新建卡类型", Kind: ops.Write, Permission: perm.SettingsManage, AI: ops.AIDraft, Handle: createCardType})
 	ops.Register(r, ops.Operation[UpdateCardTypeInput, CardType]{Name: "update_card_type", Summary: "编辑或停用卡类型", Kind: ops.Write, Permission: perm.SettingsManage, AI: ops.AIDraft, Handle: updateCardType})
 	ops.Register(r, ops.Operation[OpenCardInput, Card]{Name: "open_card", Summary: "为顾客开卡并记录首次充值", Kind: ops.Write, Permission: perm.CardSell, AI: ops.AIDraft, Handle: openCard})
-	ops.Register(r, ops.Operation[RechargeInput, Card]{Name: "recharge_card", Summary: "充值并追加卡流水", Kind: ops.Write, Permission: perm.CardSell, AI: ops.AIDraft, Handle: rechargeCard})
+	ops.Register(r, ops.Operation[RechargeInput, RechargeResult]{Name: "recharge_card", Summary: "充值并追加卡流水", Kind: ops.Write, Permission: perm.CardSell, AI: ops.AIDraft, Handle: rechargeCard})
 	ops.Register(r, ops.Operation[ListCustomerCardsInput, CardList]{Name: "list_customer_cards", Summary: "查看顾客在发行门店的卡", Kind: ops.Read, Permission: perm.CustomerView, AI: ops.AIDirect, Handle: listCustomerCards})
 	ops.Register(r, ops.Operation[ListCardLedgerInput, CardLedgerList]{Name: "list_card_ledger", Summary: "查看卡流水和业绩归属人", Kind: ops.Read, Permission: perm.CustomerView, AI: ops.AIDirect, Handle: listCardLedger})
 }
@@ -117,7 +119,7 @@ func openCardAt(ctx context.Context, env ops.Env, in *OpenCardInput, now time.Ti
 	if !ct.Active {
 		return nil, ops.Rule("卡类型已停用")
 	}
-	if ct.Kind == CountCard && (in.Principal.String() != "0.00" || in.Bonus.String() != "0.00") {
+	if ct.Kind == CountCard && (in.Principal.Cmp(money.Amount{}) != 0 || in.Bonus.Cmp(money.Amount{}) != 0) {
 		return nil, ops.Rule("次卡本金和赠送金必须为零")
 	}
 	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, now)
@@ -138,7 +140,7 @@ func openCardAt(ctx context.Context, env ops.Env, in *OpenCardInput, now time.Ti
 		}
 	}
 	// 次卡也写零余额开卡流水，保证每张卡都有余额行并兼容现有视图。
-	if err := appendLedger(ctx, env, card.ID, "open", money.Amount{}, money.Amount{}, in.TopUpInput, day); err != nil {
+	if _, err := appendLedger(ctx, env, card.ID, "open", money.Amount{}, money.Amount{}, in.TopUpInput, day); err != nil {
 		return nil, err
 	}
 	out, err := cardView(ctx, env, card.ID)
@@ -150,7 +152,7 @@ func openCardAt(ctx context.Context, env ops.Env, in *OpenCardInput, now time.Ti
 	}
 	return out, nil
 }
-func rechargeCard(ctx context.Context, env ops.Env, in *RechargeInput) (*Card, error) {
+func rechargeCard(ctx context.Context, env ops.Env, in *RechargeInput) (*RechargeResult, error) {
 	if err := lockSalesStaff(ctx, env, in.SalesStaffIDs); err != nil {
 		return nil, err
 	}
@@ -168,7 +170,7 @@ func rechargeCard(ctx context.Context, env ops.Env, in *RechargeInput) (*Card, e
 	if before.Kind == CountCard {
 		return nil, ops.Rule("次卡不能充值")
 	}
-	if in.Principal.String() == "0.00" && in.Bonus.String() == "0.00" {
+	if in.Principal.Cmp(money.Amount{}) == 0 && in.Bonus.Cmp(money.Amount{}) == 0 {
 		return nil, ops.Rule("充值本金与赠送金合计必须大于零")
 	}
 	previous, err := env.Q.LatestCardLedger(ctx, card.ID)
@@ -179,7 +181,12 @@ func rechargeCard(ctx context.Context, env ops.Env, in *RechargeInput) (*Card, e
 	if err != nil {
 		return nil, err
 	}
-	if err := appendLedger(ctx, env, card.ID, "recharge", previous.PrincipalAfter, previous.BonusAfter, in.TopUpInput, day); err != nil {
+	ledger, err := appendLedger(ctx, env, card.ID, "recharge", previous.PrincipalAfter, previous.BonusAfter, in.TopUpInput, day)
+	if err != nil {
+		return nil, err
+	}
+	upgraded, err := autoUpgradeCard(ctx, env, card, in.Principal, ledger.ID, day)
+	if err != nil {
 		return nil, err
 	}
 	out, err := cardView(ctx, env, card.ID)
@@ -189,27 +196,27 @@ func rechargeCard(ctx context.Context, env ops.Env, in *RechargeInput) (*Card, e
 	if err := audit.Record(ctx, env, "recharge_card", audit.CardTarget(card.ID, card.CustomerID), before, out); err != nil {
 		return nil, err
 	}
-	return out, nil
+	return &RechargeResult{Card: *out, UpgradedTo: upgraded}, nil
 }
-func appendLedger(ctx context.Context, env ops.Env, id uuid.UUID, kind string, principal, bonus money.Amount, in TopUpInput, day time.Time) error {
+func appendLedger(ctx context.Context, env ops.Env, id uuid.UUID, kind string, principal, bonus money.Amount, in TopUpInput, day time.Time) (dbgen.CardLedger, error) {
 	pa, err := principal.Add(in.Principal)
 	if err != nil {
-		return ops.Rule("卡余额超过上限")
+		return dbgen.CardLedger{}, ops.Rule("卡余额超过上限")
 	}
 	ba, err := bonus.Add(in.Bonus)
 	if err != nil {
-		return ops.Rule("卡余额超过上限")
+		return dbgen.CardLedger{}, ops.Rule("卡余额超过上限")
 	}
 	row, err := env.Q.AddCardLedger(ctx, dbgen.AddCardLedgerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: id, Kind: kind, PrincipalBefore: principal, PrincipalDelta: in.Principal.Sub(money.Amount{}), PrincipalAfter: pa, BonusBefore: bonus, BonusDelta: in.Bonus.Sub(money.Amount{}), BonusAfter: ba, BusinessDate: pgtype.Date{Time: day, Valid: true}, ActorID: env.Caller.StaffID})
 	if err != nil {
-		return err
+		return dbgen.CardLedger{}, err
 	}
 	for _, staff := range in.SalesStaffIDs {
 		if err := env.Q.AddCardLedgerSales(ctx, dbgen.AddCardLedgerSalesParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, LedgerID: row.ID, StaffID: staff}); err != nil {
-			return err
+			return dbgen.CardLedger{}, err
 		}
 	}
-	return nil
+	return row, nil
 }
 func listCustomerCards(ctx context.Context, env ops.Env, in *ListCustomerCardsInput) (*CardList, error) {
 	if err := canView(ctx, env, in.CustomerID); err != nil {
@@ -265,7 +272,14 @@ func listCardLedger(ctx context.Context, env ops.Env, in *ListCardLedgerInput) (
 		if staff == nil {
 			staff = []SalesStaff{}
 		}
-		out.Entries = append(out.Entries, CardLedgerEntry{ID: l.ID, Kind: l.Kind, Reason: r.Reason, PrincipalBefore: l.PrincipalBefore, PrincipalDelta: l.PrincipalDelta, PrincipalAfter: l.PrincipalAfter, BonusBefore: l.BonusBefore, BonusDelta: l.BonusDelta, BonusAfter: l.BonusAfter, BusinessDate: l.BusinessDate.Time.Format(time.DateOnly), At: l.At.Time, Actor: CardLedgerActor{ID: l.ActorID, Name: r.ActorName}, SalesStaff: staff})
+		out.Entries = append(out.Entries, CardLedgerEntry{ID: l.ID, Kind: l.Kind, Reason: r.Reason, OtherCardID: optionalCardID(r.OtherCardID), PrincipalBefore: l.PrincipalBefore, PrincipalDelta: l.PrincipalDelta, PrincipalAfter: l.PrincipalAfter, BonusBefore: l.BonusBefore, BonusDelta: l.BonusDelta, BonusAfter: l.BonusAfter, BusinessDate: l.BusinessDate.Time.Format(time.DateOnly), At: l.At.Time, Actor: CardLedgerActor{ID: l.ActorID, Name: r.ActorName}, SalesStaff: staff})
 	}
 	return out, nil
+}
+
+func optionalCardID(id uuid.UUID) *uuid.UUID {
+	if id == uuid.Nil {
+		return nil
+	}
+	return &id
 }

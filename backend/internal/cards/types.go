@@ -106,6 +106,7 @@ type CardLedgerActor struct {
 
 // CardLedgerEntry 是本金和赠送金的一次变动。
 type CardLedgerEntry struct {
+	OtherCardID     *uuid.UUID      `json:"other_card_id,omitempty"`
 	ID              uuid.UUID       `json:"id"`
 	Kind            string          `json:"kind"`
 	Reason          string          `json:"reason,omitempty"`

@@ -120,6 +120,13 @@ func updateCardType(ctx context.Context, env ops.Env, in *UpdateCardTypeInput) (
 		if exists {
 			return nil, ops.Rule("已有卡的卡类型不能改变种类")
 		}
+		rules, err := env.Q.CardTypeHasUpgradeRules(ctx, in.ID)
+		if err != nil {
+			return nil, err
+		}
+		if rules {
+			return nil, ops.Rule("升级规则引用的卡类型不能改变种类")
+		}
 	}
 	if err := changeTypeItems(ctx, env, in.ID, beforeViews[0].Items, in.Items); err != nil {
 		return nil, err

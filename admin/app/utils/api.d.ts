@@ -157,6 +157,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/create_card_upgrade_rule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 新建升级规则 */
+        post: operations["create_card_upgrade_rule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/create_customer": {
         parameters: {
             query?: never;
@@ -474,6 +491,40 @@ export interface paths {
         put?: never;
         /** 列出本店卡类型 */
         post: operations["list_card_types"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_card_upgrade_rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 列出升级规则 */
+        post: operations["list_card_upgrade_rules"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_card_upgrades": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看升级记录 */
+        post: operations["list_card_upgrades"];
         delete?: never;
         options?: never;
         head?: never;
@@ -837,6 +888,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/transfer_card_balance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 在两张卡之间转余额并记录原因 */
+        post: operations["transfer_card_balance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/update_card_type": {
         parameters: {
             query?: never;
@@ -848,6 +916,23 @@ export interface paths {
         put?: never;
         /** 编辑或停用卡类型 */
         post: operations["update_card_type"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/update_card_upgrade_rule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 编辑升级规则 */
+        post: operations["update_card_upgrade_rule"];
         delete?: never;
         options?: never;
         head?: never;
@@ -967,6 +1052,23 @@ export interface paths {
         put?: never;
         /** 修改员工的姓名、编号、级别、岗位 */
         post: operations["update_staff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/upgrade_card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 补差价升级储值卡 */
+        post: operations["upgrade_card"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1101,6 +1203,7 @@ export interface components {
             business_date: string;
             id: string;
             kind: string;
+            other_card_id?: string;
             principal_after: string;
             principal_before: string;
             principal_delta: string;
@@ -1112,6 +1215,10 @@ export interface components {
         };
         CardList: {
             items: components["schemas"]["Card"][];
+        };
+        CardTransferResult: {
+            from: components["schemas"]["Card"];
+            to: components["schemas"]["Card"];
         };
         CardType: {
             active: boolean;
@@ -1146,6 +1253,41 @@ export interface components {
         CardTypeList: {
             items: components["schemas"]["CardType"][];
         };
+        CardUpgrade: {
+            actor: components["schemas"]["CardLedgerActor"];
+            /** Format: date-time */
+            at: string;
+            business_date: string;
+            id: string;
+            ledger_id?: string;
+            rule_id?: string;
+            trigger: string;
+            type_after: components["schemas"]["CardUpgradeType"];
+            type_before: components["schemas"]["CardUpgradeType"];
+        };
+        CardUpgradeList: {
+            entries: components["schemas"]["CardUpgrade"][];
+        };
+        CardUpgradeRule: {
+            active: boolean;
+            /** @enum {string} */
+            condition_kind: "single_recharge" | "total_recharge";
+            /** Format: date-time */
+            created_at: string;
+            from_type_id: string;
+            from_type_name: string;
+            id: string;
+            threshold: string;
+            to_type_id: string;
+            to_type_name: string;
+        };
+        CardUpgradeRuleList: {
+            items: components["schemas"]["CardUpgradeRule"][];
+        };
+        CardUpgradeType: {
+            id: string;
+            name: string;
+        };
         ChangeMyPasswordInput: {
             new_password: string;
             old_password: string;
@@ -1171,6 +1313,13 @@ export interface components {
             validity_days?: number;
             /** @enum {string} */
             validity_kind: "none" | "fixed_date" | "days_after_open";
+        };
+        CreateCardUpgradeRuleInput: {
+            /** @enum {string} */
+            condition_kind: "single_recharge" | "total_recharge";
+            from_type_id: string;
+            threshold: string;
+            to_type_id: string;
         };
         CreateCustomerInput: {
             /** @enum {string} */
@@ -1420,6 +1569,13 @@ export interface components {
             limit?: number;
         };
         ListCardTypesInput: Record<string, never>;
+        ListCardUpgradeRulesInput: Record<string, never>;
+        ListCardUpgradesInput: {
+            before_id?: string;
+            card_id: string;
+            /** Format: int32 */
+            limit?: number;
+        };
         ListCustomerCardsInput: {
             customer_id: string;
         };
@@ -1490,6 +1646,21 @@ export interface components {
             card_id: string;
             principal: string;
             sales_staff_ids: string[];
+        };
+        RechargeResult: {
+            bonus: string;
+            card_type_id: string;
+            card_type_name: string;
+            counts_price: string;
+            customer_id: string;
+            expires_on?: string;
+            id: string;
+            items: components["schemas"]["RemainingCounts"][];
+            kind: string;
+            /** Format: date-time */
+            opened_at: string;
+            principal: string;
+            upgraded_to?: components["schemas"]["CardUpgradeType"];
         };
         Ref: {
             id: string;
@@ -1663,6 +1834,13 @@ export interface components {
             /** @description 门店名称 */
             name: string;
         };
+        TransferCardBalanceInput: {
+            bonus: string;
+            from_card_id: string;
+            principal: string;
+            reason: string;
+            to_card_id: string;
+        };
         UpdateCardTypeInput: {
             active: boolean;
             id: string;
@@ -1675,6 +1853,11 @@ export interface components {
             validity_days?: number;
             /** @enum {string} */
             validity_kind: "none" | "fixed_date" | "days_after_open";
+        };
+        UpdateCardUpgradeRuleInput: {
+            active: boolean;
+            id: string;
+            threshold: string;
         };
         UpdateCustomerProfileInput: {
             /** @enum {string} */
@@ -1727,6 +1910,13 @@ export interface components {
             /** @description 岗位，不填为不设 */
             position_id?: string;
             staff_id: string;
+        };
+        UpgradeCardInput: {
+            bonus: string;
+            card_id: string;
+            principal: string;
+            sales_staff_ids?: string[];
+            to_type_id: string;
         };
     };
     responses: never;
@@ -2021,6 +2211,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardType"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    create_card_upgrade_rule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCardUpgradeRuleInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardUpgradeRule"];
                 };
             };
             /** @description Error */
@@ -2661,6 +2884,72 @@ export interface operations {
             };
         };
     };
+    list_card_upgrade_rules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListCardUpgradeRulesInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardUpgradeRuleList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_card_upgrades: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListCardUpgradesInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardUpgradeList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     list_customer_cards: {
         parameters: {
             query?: never;
@@ -3175,7 +3464,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Card"];
+                    "application/json": components["schemas"]["RechargeResult"];
                 };
             };
             /** @description Error */
@@ -3354,6 +3643,39 @@ export interface operations {
             };
         };
     };
+    transfer_card_balance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransferCardBalanceInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardTransferResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     update_card_type: {
         parameters: {
             query?: never;
@@ -3374,6 +3696,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardType"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    update_card_upgrade_rule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCardUpgradeRuleInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardUpgradeRule"];
                 };
             };
             /** @description Error */
@@ -3605,6 +3960,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Staff"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    upgrade_card: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeCardInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Card"];
                 };
             };
             /** @description Error */

@@ -46,7 +46,7 @@ func shareItem(ctx context.Context, env ops.Env, id uuid.UUID) error {
 	return err
 }
 func sameTypeItem(a, b CardTypeItemInput) bool {
-	return a.ItemID == b.ItemID && a.PaidCount == b.PaidCount && a.GiftCount == b.GiftCount && a.UnitPrice.String() == b.UnitPrice.String()
+	return a.ItemID == b.ItemID && a.PaidCount == b.PaidCount && a.GiftCount == b.GiftCount && a.UnitPrice.Cmp(b.UnitPrice) == 0
 }
 func changeTypeItems(ctx context.Context, env ops.Env, id uuid.UUID, previous []CardTypeItem, in []CardTypeItemInput) error {
 	old := map[uuid.UUID]CardTypeItemInput{}

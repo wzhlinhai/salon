@@ -30,6 +30,10 @@ type customerReference struct {
 // customerReferences 是合并时必须改挂的外键清单；新增单、卡等外键时在这里追加。
 var customerReferences = []customerReference{
 	{"cards", "customer_id", func(ctx context.Context, q *dbgen.Queries, from, to uuid.UUID) error {
+		// 与 transfer_card_balance 一样按卡 ID 加锁，避免合并与转余额交错死锁。
+		if _, err := q.LockMergedCustomerCards(ctx, from); err != nil {
+			return err
+		}
 		return q.MergeCustomerCards(ctx, dbgen.MergeCustomerCardsParams{MergedID: from, KeepID: to})
 	}},
 	{"customer_safety_labels", "customer_id", func(ctx context.Context, q *dbgen.Queries, from, to uuid.UUID) error {
