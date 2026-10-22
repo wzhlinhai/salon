@@ -416,3 +416,69 @@ func TestConcurrentChangesToOneSettingKeepTheTrail(t *testing.T) {
 		t.Fatalf("second change = %d %v, want its old value to be the first change's 02:00", r.Status, r.Body)
 	}
 }
+
+func TestChoiceAndIntegerValidation(t *testing.T) {
+	s := open(t)
+	for _, tc := range []struct {
+		key   string
+		value any
+	}{
+		{settings.KeyMemberPriceRule, "anything"}, {settings.KeyMemberPriceRule, 1},
+		{settings.KeyPointsPerRechargeYuan, -1}, {settings.KeyPointsPerRechargeYuan, 100001},
+		{settings.KeyPointsPerRechargeYuan, 1.5}, {settings.KeyPointsPerRechargeYuan, "10"},
+	} {
+		s.change(s.owner, tc.key, tc.value, day(0), 409)
+	}
+	if s.changeCount() != 0 {
+		t.Fatal("invalid settings persisted")
+	}
+}
+
+func TestChoiceAndIntegerRulesAndSnapshot(t *testing.T) {
+	s := open(t)
+	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
+		r, err := settings.Effective(ctx, q, s.Res.StoreID, settings.Date(time.Now()))
+		if err != nil {
+			return err
+		}
+		if r.MemberPriceRule() != "member_first" || r.PointsPerRechargeYuan() != 0 {
+			t.Fatal("wrong defaults")
+		}
+		return nil
+	})
+	s.change(s.owner, settings.KeyMemberPriceRule, "lowest", day(0), 200)
+	s.change(s.owner, settings.KeyPointsPerRechargeYuan, 100000, day(0), 200)
+	var snapshot uuid.UUID
+	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
+		var err error
+		snapshot, err = settings.TakeSnapshot(ctx, q, s.Res.TenantID, s.Res.StoreID, time.Now())
+		return err
+	})
+	s.change(s.owner, settings.KeyMemberPriceRule, "member_first", day(0), 200)
+	s.change(s.owner, settings.KeyPointsPerRechargeYuan, 1, day(0), 200)
+	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
+		r, err := settings.LoadSnapshot(ctx, q, s.Res.StoreID, snapshot)
+		if err != nil {
+			return err
+		}
+		if r.MemberPriceRule() != "lowest" || r.PointsPerRechargeYuan() != 100000 {
+			t.Fatal("snapshot changed")
+		}
+		r, err = settings.Effective(ctx, q, s.Res.StoreID, settings.Date(time.Now()))
+		if err != nil {
+			return err
+		}
+		if r.MemberPriceRule() != "member_first" || r.PointsPerRechargeYuan() != 1 {
+			t.Fatal("readers ignored setting")
+		}
+		return nil
+	})
+	for _, ch := range s.Channels() {
+		r := ch.Call(t, s.owner, "get_settings", map[string]any{})
+		choice := setting(t, r, settings.KeyMemberPriceRule)
+		integer := setting(t, r, settings.KeyPointsPerRechargeYuan)
+		if choice["kind"] != "choice" || len(choice["options"].([]any)) != 2 || choice["value"] != "member_first" || integer["kind"] != "integer" || integer["value"] != float64(1) || integer["min"] != float64(0) || integer["max"] != float64(100000) {
+			t.Fatal(choice, integer)
+		}
+	}
+}

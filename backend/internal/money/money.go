@@ -107,3 +107,12 @@ func (a Amount) Add(b Amount) (Amount, error) {
 	err := out.Scan(a.value.Add(b.value).StringFixed(2))
 	return out, err
 }
+
+// WholeDiv 返回金额除以正整数 n 后向下取整的结果，n 非正时 panic。
+func (a Amount) WholeDiv(n int64) int64 {
+	if n <= 0 {
+		panic("money: WholeDiv divisor must be positive")
+	}
+	quotient, _ := a.value.QuoRem(decimal.NewFromInt(n), 0)
+	return quotient.IntPart()
+}

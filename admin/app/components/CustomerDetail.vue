@@ -362,11 +362,23 @@ async function cardSave() {
       cardModal.value = false
       await cardLoad()
       if (upgradeCardID.value === data.id) await upgrades.reload()
+      if (pointsCard.value === data.id) await cardPoints.reload()
       if (cardLedgerCard.value === data.id) await cardLedger.reload()
     } else toast.add({ title: errorText(error), color: 'error' })
   } finally {
     if (current() || !cardModal.value) cardSaving.value = false
   }
+}
+
+const pointsCard = ref('')
+const cardPoints = useCursorList(async (beforeId) => {
+  const { data, error } = await api.POST('/api/ops/list_card_points', { body: { card_id: pointsCard.value, before_id: beforeId } })
+  return { data: data?.entries, error }
+})
+
+function showPoints(id: string) {
+  pointsCard.value = id
+  cardPoints.reload()
 }
 
 const cardLedgerCard = ref('')
@@ -405,6 +417,7 @@ function showAdjustments(id: string) {
 const adjustModal = ref(false)
 const adjustGuard = useRequestGuard()
 const adjustTarget = ref<CustomerCard | null>(null)
+const adjustPoints = ref(0)
 const adjustPrincipal = ref('')
 const adjustBonus = ref('')
 const adjustExpires = ref('')
@@ -421,6 +434,7 @@ async function editAdjustment(card: CustomerCard) {
   const current = adjustGuard.next()
   adjustTarget.value = card
   adjustCounts.value = card.items.map(x => ({ item_id: x.item_id, paid: x.paid_remaining, gift: x.gift_remaining, name: x.item_name }))
+  adjustPoints.value = card.points
   adjustPrincipal.value = card.principal
   adjustBonus.value = card.bonus
   adjustExpires.value = card.expires_on || ''
@@ -458,6 +472,7 @@ async function saveAdjustment() {
     return Number(x.paid) !== old.paid_remaining || Number(x.gift) !== old.gift_remaining
   }).map(x => ({ item_id: x.item_id, paid: Number(x.paid), gift: Number(x.gift) }))
   if (changedCounts.length) body.counts = changedCounts
+  if (Number(adjustPoints.value) !== card.points) body.points = Number(adjustPoints.value)
   if (adjustPrincipal.value !== card.principal) body.principal = adjustPrincipal.value
   if (adjustBonus.value !== card.bonus) body.bonus = adjustBonus.value
   const expires = adjustUnlimited.value ? null : adjustExpires.value
@@ -470,6 +485,7 @@ async function saveAdjustment() {
     if (data) {
       adjustModal.value = false
       await cardLoad()
+      if (pointsCard.value === card.id) await cardPoints.reload()
       if (cardLedgerCard.value === card.id) await cardLedger.reload()
       if (adjustmentCard.value === card.id) await adjustments.reload()
       if (countCard.value === card.id) await cardCounts.reload()
@@ -558,6 +574,7 @@ async function saveBalance() {
     if (data) {
       balanceOpen.value = false
       await cardLoad()
+      if (pointsCard.value === card.id) await cardPoints.reload()
       if (cardLedgerCard.value) await cardLedger.reload()
       if (upgradeCardID.value === card.id) await upgrades.reload()
     } else toast.add({ title: errorText(error), color: 'error' })
@@ -630,6 +647,8 @@ watch(() => props.id, () => {
   cardOptionsLoading.value = false
   cardCards.value = []
   cardLedgerCard.value = ''
+  pointsCard.value = ''
+  cardPoints.clear()
   cardLedger.clear()
   if (can('customer.view')) cardLoad()
   customer.value = null
@@ -729,13 +748,14 @@ onBeforeUnmount(() => {
             <p v-if="cardLoading">正在读取卡…</p>
             <p v-else-if="!cardCards.length">暂无卡</p>
             <div v-for="card in cardCards" :key="card.id" :data-card="card.id" class="space-y-2 py-3 border-b border-default">
-              <p>{{ card.card_type_name }} · 本金 {{ card.principal }} · 赠送金 {{ card.bonus }} · 有效期 {{ card.expires_on || '不限' }}</p>
+              <p>{{ card.card_type_name }} · 本金 {{ card.principal }} · 赠送金 {{ card.bonus }} · 积分 {{ card.points }} · 有效期 {{ card.expires_on || '不限' }}</p>
               <p v-for="item in card.items" :key="item.item_id" data-testid="remaining-counts">{{ item.item_name }} · 购买 {{ item.paid_remaining }} · 赠送 {{ item.gift_remaining }}</p>
               <p v-if="card.items.length">次数售价 {{ card.counts_price }}</p>
               <div class="flex gap-2">
                 <UButton v-if="card.kind !== 'count' && can('card.sell') && !customer.merged_into" size="xs" variant="outline" @click="cardEdit(card)">充值</UButton>
                 <UButton v-if="can('card.adjust')" size="xs" variant="outline" @click="editAdjustment(card)">调整</UButton>
                 <UButton size="xs" variant="outline" @click="cardShowLedger(card.id)">流水</UButton>
+                <UButton size="xs" variant="outline" @click="showPoints(card.id)">积分流水</UButton>
                 <UButton v-if="card.items.length" size="xs" variant="outline" @click="showCounts(card.id)">次数流水</UButton>
                 <UButton v-if="can('card.sell') && card.kind === 'stored_value'" size="xs" variant="outline" @click="editBalance(card, 'upgrade')">升级</UButton>
                 <UButton v-if="can('card.adjust')" size="xs" variant="outline" @click="editBalance(card, 'transfer')">转余额</UButton>
@@ -747,6 +767,15 @@ onBeforeUnmount(() => {
                 <p v-for="entry in upgrades.items.value" :key="entry.id" data-testid="card-upgrade-entry">{{ entry.type_before.name }} → {{ entry.type_after.name }} · {{ entry.trigger === 'auto' ? '自动升级' : '手动升级' }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN') }} · {{ entry.actor.name }}</p>
                 <p v-if="!upgrades.loading.value && !upgrades.items.value.length">暂无升级记录</p>
                 <UButton v-if="upgrades.hasMore.value" :loading="upgrades.loading.value" variant="outline" @click="upgrades.loadMore">加载更多</UButton>
+              </div>
+              <div v-if="pointsCard === card.id" data-testid="card-points" class="space-y-2 text-sm">
+                <p v-if="cardPoints.loading.value">正在读取积分流水…</p>
+                <p v-for="entry in cardPoints.items.value" :key="entry.id" data-testid="card-points-entry">
+                  {{ ledgerKinds[entry.kind] || entry.kind }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN') }} · {{ entry.actor.name }}
+                  积分 {{ entry.before }} + {{ entry.delta }} = {{ entry.after }} <span v-if="entry.reason">· 原因：{{ entry.reason }}</span>
+                </p>
+                <p v-if="!cardPoints.loading.value && !cardPoints.items.value.length">暂无积分流水</p>
+                <UButton v-if="cardPoints.hasMore.value" :loading="cardPoints.loading.value" variant="outline" @click="cardPoints.loadMore">加载更多</UButton>
               </div>
               <div v-if="countCard === card.id" data-testid="card-counts" class="space-y-2 text-sm">
                 <p v-if="cardCounts.loading.value">正在读取次数流水…</p>
@@ -837,6 +866,7 @@ onBeforeUnmount(() => {
   <UModal v-model:open="adjustModal" title="调整">
     <template #body>
       <div class="space-y-3">
+        <UFormField label="积分"><UInput v-model="adjustPoints" type="number" :min="0" :max="99999999" :step="1" /></UFormField>
         <UFormField label="本金"><UInput v-model="adjustPrincipal" inputmode="decimal" class="w-full" /></UFormField>
         <UFormField label="赠送金"><UInput v-model="adjustBonus" inputmode="decimal" class="w-full" /></UFormField>
         <div v-for="row in adjustCounts" :key="row.item_id" data-testid="adjust-count-item">

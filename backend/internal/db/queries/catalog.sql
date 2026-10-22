@@ -42,3 +42,21 @@ DELETE FROM item_positions WHERE item_id=$1 AND slot=$2;
 
 -- name: GetItemLevelPrice :one
 SELECT * FROM item_level_prices WHERE item_id=$1 AND level_id=$2;
+
+-- name: ListItemMemberPrices :many
+SELECT * FROM item_member_prices WHERE store_id=$1 AND item_id=ANY(sqlc.arg(item_ids)::uuid[]) ORDER BY item_id,card_type_id;
+
+-- name: GetItemMemberPrice :one
+SELECT * FROM item_member_prices WHERE item_id=$1 AND card_type_id=$2;
+
+-- name: AddItemMemberPrice :exec
+INSERT INTO item_member_prices (tenant_id,store_id,item_id,card_type_id,price) VALUES ($1,$2,$3,$4,$5);
+
+-- name: UpdateItemMemberPrice :exec
+UPDATE item_member_prices SET price=$3 WHERE item_id=$1 AND card_type_id=$2;
+
+-- name: DeleteItemMemberPrice :exec
+DELETE FROM item_member_prices WHERE item_id=$1 AND card_type_id=$2;
+
+-- name: ShareItemCardType :one
+SELECT * FROM card_types WHERE store_id=$1 AND id=$2 FOR SHARE;

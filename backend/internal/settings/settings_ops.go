@@ -15,13 +15,16 @@ import (
 
 // Setting 是一项门店设置在某个营业日的状态。
 type Setting struct {
-	Key       string `json:"key"`
-	Label     string `json:"label"`
-	Hint      string `json:"hint"`
-	Kind      Kind   `json:"kind" enum:"time,time_range" doc:"值的形式：time 为 \"HH:MM\"；time_range 为 {\"open\": \"HH:MM\", \"close\": \"HH:MM\"}"`
-	Value     any    `json:"value" doc:"这一天执行的值"`
-	Default   any    `json:"default" doc:"系统默认做法"`
-	IsDefault bool   `json:"is_default" doc:"这一天用的是系统默认做法"`
+	Options   []ChoiceOption `json:"options,omitempty"`
+	Min       int            `json:"min"`
+	Max       int            `json:"max"`
+	Key       string         `json:"key"`
+	Label     string         `json:"label"`
+	Hint      string         `json:"hint"`
+	Kind      Kind           `json:"kind" enum:"time,time_range,choice,integer" doc:"值的形式：时刻、时段、选项或整数"`
+	Value     any            `json:"value" doc:"这一天执行的值"`
+	Default   any            `json:"default" doc:"系统默认做法"`
+	IsDefault bool           `json:"is_default" doc:"这一天用的是系统默认做法"`
 	// EffectiveFrom 是这一天执行的值从哪一天开始生效；用系统默认做法时为空。
 	EffectiveFrom *string `json:"effective_from,omitempty" format:"date"`
 	// Upcoming 是这一天之后已经安排好、尚未生效的修改。
@@ -140,7 +143,7 @@ func listSettings(ctx context.Context, env ops.Env, day time.Time) (*SettingList
 	}
 	out := &SettingList{BusinessDate: day.Format(DateLayout), Settings: make([]Setting, 0, len(Catalogue))}
 	for _, d := range Catalogue {
-		st := Setting{Key: d.Key, Label: d.Label, Hint: d.Hint, Kind: d.Kind, Value: d.Default, Default: d.Default, IsDefault: true, Upcoming: []ScheduledValue{}}
+		st := Setting{Key: d.Key, Label: d.Label, Hint: d.Hint, Kind: d.Kind, Options: d.Options, Min: d.Min, Max: d.Max, Value: d.Default, Default: d.Default, IsDefault: true, Upcoming: []ScheduledValue{}}
 		if row, ok := configured(rows, d.Key); ok {
 			st.Value = row.value
 			st.IsDefault = false
@@ -191,7 +194,7 @@ func changeSetting(ctx context.Context, env ops.Env, in *ChangeSettingInput) (*S
 		if value, err = json.Marshal(in.Value); err != nil {
 			return nil, err
 		}
-		if err := d.check(value); err != nil {
+		if err := d.validate(value); err != nil {
 			return nil, ops.Rule(err.Error())
 		}
 	}

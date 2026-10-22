@@ -71,8 +71,8 @@ func (q *Queries) ActiveCardUpgradeRules(ctx context.Context, arg ActiveCardUpgr
 }
 
 const addCardAdjustment = `-- name: AddCardAdjustment :one
-INSERT INTO card_adjustments (tenant_id,store_id,card_id,reason,expires_before,expires_after,expiry_changed,card_type_before,card_type_after,ledger_id,business_date,actor_id,counts_changed)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, tenant_id, store_id, card_id, reason, expires_before, expires_after, expiry_changed, card_type_before, card_type_after, ledger_id, business_date, actor_id, at, counts_changed
+INSERT INTO card_adjustments (tenant_id,store_id,card_id,reason,expires_before,expires_after,expiry_changed,card_type_before,card_type_after,ledger_id,business_date,actor_id,counts_changed,points_changed)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id, tenant_id, store_id, card_id, reason, expires_before, expires_after, expiry_changed, card_type_before, card_type_after, ledger_id, business_date, actor_id, at, counts_changed, points_changed
 `
 
 type AddCardAdjustmentParams struct {
@@ -89,6 +89,7 @@ type AddCardAdjustmentParams struct {
 	BusinessDate   pgtype.Date
 	ActorID        uuid.UUID
 	CountsChanged  bool
+	PointsChanged  bool
 }
 
 func (q *Queries) AddCardAdjustment(ctx context.Context, arg AddCardAdjustmentParams) (CardAdjustment, error) {
@@ -106,6 +107,7 @@ func (q *Queries) AddCardAdjustment(ctx context.Context, arg AddCardAdjustmentPa
 		arg.BusinessDate,
 		arg.ActorID,
 		arg.CountsChanged,
+		arg.PointsChanged,
 	)
 	var i CardAdjustment
 	err := row.Scan(
@@ -124,6 +126,7 @@ func (q *Queries) AddCardAdjustment(ctx context.Context, arg AddCardAdjustmentPa
 		&i.ActorID,
 		&i.At,
 		&i.CountsChanged,
+		&i.PointsChanged,
 	)
 	return i, err
 }
@@ -269,6 +272,42 @@ func (q *Queries) AddCardLedgerSales(ctx context.Context, arg AddCardLedgerSales
 		arg.StoreID,
 		arg.LedgerID,
 		arg.StaffID,
+	)
+	return err
+}
+
+const addCardPoints = `-- name: AddCardPoints :exec
+INSERT INTO card_points_ledger (tenant_id,store_id,card_id,kind,before,delta,after,card_ledger_id,adjustment_id,business_date,actor_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+`
+
+type AddCardPointsParams struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	CardID       uuid.UUID
+	Kind         string
+	Before       int32
+	Delta        int32
+	After        int32
+	CardLedgerID *uuid.UUID
+	AdjustmentID *uuid.UUID
+	BusinessDate pgtype.Date
+	ActorID      uuid.UUID
+}
+
+func (q *Queries) AddCardPoints(ctx context.Context, arg AddCardPointsParams) error {
+	_, err := q.db.Exec(ctx, addCardPoints,
+		arg.TenantID,
+		arg.StoreID,
+		arg.CardID,
+		arg.Kind,
+		arg.Before,
+		arg.Delta,
+		arg.After,
+		arg.CardLedgerID,
+		arg.AdjustmentID,
+		arg.BusinessDate,
+		arg.ActorID,
 	)
 	return err
 }
@@ -455,6 +494,36 @@ func (q *Queries) AdjustmentCounts(ctx context.Context, adjustmentIds []uuid.UUI
 			&i.CardCountLedger.At,
 			&i.ItemName,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const cardPoints = `-- name: CardPoints :many
+SELECT DISTINCT ON (card_id) card_id,after FROM card_points_ledger
+WHERE card_id=ANY($1::uuid[]) ORDER BY card_id,at DESC,id DESC
+`
+
+type CardPointsRow struct {
+	CardID uuid.UUID
+	After  int32
+}
+
+func (q *Queries) CardPoints(ctx context.Context, cardIds []uuid.UUID) ([]CardPointsRow, error) {
+	rows, err := q.db.Query(ctx, cardPoints, cardIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CardPointsRow
+	for rows.Next() {
+		var i CardPointsRow
+		if err := rows.Scan(&i.CardID, &i.After); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -768,8 +837,19 @@ func (q *Queries) LatestCardLedger(ctx context.Context, cardID uuid.UUID) (CardL
 	return i, err
 }
 
+const latestCardPoints = `-- name: LatestCardPoints :one
+SELECT COALESCE((SELECT after FROM card_points_ledger WHERE card_id=$1 ORDER BY at DESC,id DESC LIMIT 1),0)::int AS points
+`
+
+func (q *Queries) LatestCardPoints(ctx context.Context, cardID uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, latestCardPoints, cardID)
+	var points int32
+	err := row.Scan(&points)
+	return points, err
+}
+
 const listCardAdjustments = `-- name: ListCardAdjustments :many
-SELECT a.id, a.tenant_id, a.store_id, a.card_id, a.reason, a.expires_before, a.expires_after, a.expiry_changed, a.card_type_before, a.card_type_after, a.ledger_id, a.business_date, a.actor_id, a.at, a.counts_changed, s.name AS actor_name, tb.name AS type_before_name, ta.name AS type_after_name,
+SELECT a.id, a.tenant_id, a.store_id, a.card_id, a.reason, a.expires_before, a.expires_after, a.expiry_changed, a.card_type_before, a.card_type_after, a.ledger_id, a.business_date, a.actor_id, a.at, a.counts_changed, a.points_changed, s.name AS actor_name, tb.name AS type_before_name, ta.name AS type_after_name,
  COALESCE(l.principal_before,0) AS principal_before, COALESCE(l.principal_delta,0) AS principal_delta, COALESCE(l.principal_after,0) AS principal_after,
  COALESCE(l.bonus_before,0) AS bonus_before, COALESCE(l.bonus_delta,0) AS bonus_delta, COALESCE(l.bonus_after,0) AS bonus_after
 FROM card_adjustments a JOIN staff s ON s.id=a.actor_id
@@ -824,6 +904,7 @@ func (q *Queries) ListCardAdjustments(ctx context.Context, arg ListCardAdjustmen
 			&i.CardAdjustment.ActorID,
 			&i.CardAdjustment.At,
 			&i.CardAdjustment.CountsChanged,
+			&i.CardAdjustment.PointsChanged,
 			&i.ActorName,
 			&i.TypeBeforeName,
 			&i.TypeAfterName,
@@ -992,6 +1073,61 @@ func (q *Queries) ListCardLedgerSales(ctx context.Context, ledgerIds []uuid.UUID
 	for rows.Next() {
 		var i ListCardLedgerSalesRow
 		if err := rows.Scan(&i.LedgerID, &i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCardPoints = `-- name: ListCardPoints :many
+SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.kind, l.before, l.delta, l.after, l.card_ledger_id, l.adjustment_id, l.business_date, l.actor_id, l.at,s.name AS actor_name,COALESCE(a.reason,'')::text AS reason
+FROM card_points_ledger l JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.id=l.adjustment_id
+WHERE l.card_id=$1 AND ($2::uuid IS NULL OR (l.at,l.id) < (SELECT at,id FROM card_points_ledger WHERE id=$2 AND card_id=$1))
+ORDER BY l.at DESC,l.id DESC LIMIT $3
+`
+
+type ListCardPointsParams struct {
+	CardID   uuid.UUID
+	BeforeID *uuid.UUID
+	RowLimit int32
+}
+
+type ListCardPointsRow struct {
+	CardPointsLedger CardPointsLedger
+	ActorName        string
+	Reason           string
+}
+
+func (q *Queries) ListCardPoints(ctx context.Context, arg ListCardPointsParams) ([]ListCardPointsRow, error) {
+	rows, err := q.db.Query(ctx, listCardPoints, arg.CardID, arg.BeforeID, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCardPointsRow
+	for rows.Next() {
+		var i ListCardPointsRow
+		if err := rows.Scan(
+			&i.CardPointsLedger.ID,
+			&i.CardPointsLedger.TenantID,
+			&i.CardPointsLedger.StoreID,
+			&i.CardPointsLedger.CardID,
+			&i.CardPointsLedger.Kind,
+			&i.CardPointsLedger.Before,
+			&i.CardPointsLedger.Delta,
+			&i.CardPointsLedger.After,
+			&i.CardPointsLedger.CardLedgerID,
+			&i.CardPointsLedger.AdjustmentID,
+			&i.CardPointsLedger.BusinessDate,
+			&i.CardPointsLedger.ActorID,
+			&i.CardPointsLedger.At,
+			&i.ActorName,
+			&i.Reason,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

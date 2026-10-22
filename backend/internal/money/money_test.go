@@ -3,6 +3,7 @@ package money_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
@@ -195,5 +196,40 @@ func TestTotalNumericScan(t *testing.T) {
 	}
 	if total.Cmp(threshold) != 1 {
 		t.Fatal("numeric sum lost precision or applied the single-amount limit")
+	}
+}
+
+func TestAmountWholeDiv(t *testing.T) {
+	for _, tc := range []struct {
+		amount        string
+		divisor, want int64
+	}{
+		{"0.00", 1, 0}, {"0.99", 1, 0}, {"1.00", 1, 1}, {"19.99", 10, 1}, {"20.00", 10, 2},
+		{"20.01", 10, 2}, {"99999999.99", 1, 99999999}, {"99999999.99", 100000, 999},
+		{"99999999.99", 9223372036854775807, 0},
+	} {
+		var amount money.Amount
+		if err := amount.Scan(tc.amount); err != nil {
+			t.Fatal(err)
+		}
+		if got := amount.WholeDiv(tc.divisor); got != tc.want {
+			t.Fatalf("%s / %d = %d, want %d", tc.amount, tc.divisor, got, tc.want)
+		}
+	}
+	if (money.Amount{}).WholeDiv(10) != 0 {
+		t.Fatal("zero value division is nonzero")
+	}
+}
+
+func TestAmountWholeDivRequiresPositiveDivisor(t *testing.T) {
+	for _, divisor := range []int64{0, -1} {
+		t.Run(fmt.Sprint(divisor), func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Fatal("non-positive divisor accepted")
+				}
+			}()
+			_ = (money.Amount{}).WholeDiv(divisor)
+		})
 	}
 }

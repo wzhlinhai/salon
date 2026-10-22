@@ -13,6 +13,10 @@ type Kind string
 const (
 	// KindTime：一天中的时刻，"HH:MM"。
 	KindTime Kind = "time"
+	// KindChoice：从选项中选择字符串。
+	KindChoice Kind = "choice"
+	// KindInteger：非负整数。
+	KindInteger Kind = "integer"
 	// KindTimeRange：一天中的时段，{"open": "HH:MM", "close": "HH:MM"}。
 	KindTimeRange Kind = "time_range"
 )
@@ -23,14 +27,23 @@ type TimeRange struct {
 	Close string `json:"close"`
 }
 
+// ChoiceOption 是设置的一个可选做法。
+type ChoiceOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
 // Def 描述一项门店设置。
 type Def struct {
 	// Key 是设置项的标识，保存在修改记录和快照里，不能改名。
 	Key string
 	// Label 和 Hint 是面向人的名称和说明。
-	Label string
-	Hint  string
-	Kind  Kind
+	Label   string
+	Hint    string
+	Kind    Kind
+	Options []ChoiceOption
+	Min     int
+	Max     int
 	// Default 是系统默认做法，门店没有设置时使用。
 	Default any
 	// check 校验 JSON 值，返回面向人的错误说明。
@@ -41,12 +54,23 @@ type Def struct {
 
 // 设置项的 Key。
 const (
-	KeyBusinessHours  = "business_hours"
-	KeyBusinessDayEnd = "business_day_end"
+	KeyMemberPriceRule       = "member_price_rule"
+	KeyPointsPerRechargeYuan = "points_per_recharge_yuan"
+	KeyBusinessHours         = "business_hours"
+	KeyBusinessDayEnd        = "business_day_end"
 )
 
 // Catalogue 是全部门店设置，顺序即设置页面的显示顺序。后续模块的业务规则在这里添加。
 var Catalogue = []Def{
+	{
+		Key: KeyMemberPriceRule, Label: "会员价取价", Kind: KindChoice,
+		Hint: "持卡顾客做有级别价的项目时，会员价和级别价取哪个", Default: "member_first",
+		Options: []ChoiceOption{{Value: "member_first", Label: "会员价优先"}, {Value: "lowest", Label: "取较低价"}},
+	},
+	{
+		Key: KeyPointsPerRechargeYuan, Label: "充值积分", Kind: KindInteger, Min: 0, Max: 100000,
+		Hint: "每充值多少元本金积 1 分，0 为不积分，不足一分的部分不计", Default: 0,
+	},
 	{
 		Key: KeyBusinessHours, Label: "营业时段", Kind: KindTimeRange,
 		Hint:    "每天开门和关门的时间，预约等按它限制",
@@ -99,4 +123,29 @@ func strict(raw json.RawMessage, v any) error {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	return dec.Decode(v)
+}
+
+// validate 按值形式校验，选项和范围以目录定义为准。
+func (d Def) validate(raw json.RawMessage) error {
+	switch d.Kind {
+	case KindChoice:
+		var value string
+		if err := strict(raw, &value); err != nil {
+			return fmt.Errorf("%s须选择一种做法", d.Label)
+		}
+		for _, option := range d.Options {
+			if value == option.Value {
+				return nil
+			}
+		}
+		return fmt.Errorf("%s的做法无效", d.Label)
+	case KindInteger:
+		var value int
+		if err := strict(raw, &value); err != nil || value < 0 || value < d.Min || value > d.Max {
+			return fmt.Errorf("%s须为 %d 到 %d 的整数", d.Label, d.Min, d.Max)
+		}
+		return nil
+	default:
+		return d.check(raw)
+	}
 }

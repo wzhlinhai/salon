@@ -17,12 +17,19 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
+	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
 // LevelPrice 是项目的级别价。
 type LevelPrice struct {
 	LevelID uuid.UUID    `json:"level_id"`
 	Price   money.Amount `json:"price"`
+}
+
+// MemberPrice 是项目按卡类型设置的会员价。
+type MemberPrice struct {
+	CardTypeID uuid.UUID    `json:"card_type_id"`
+	Price      money.Amount `json:"price"`
 }
 
 // ItemPositionInput 是按列表顺序分配的项目岗位。
@@ -40,6 +47,7 @@ type ItemPosition struct {
 
 // Item 是本店项目及其完整价格规则。
 type Item struct {
+	MemberPrices    []MemberPrice  `json:"member_prices"`
 	ID              uuid.UUID      `json:"id"`
 	Name            string         `json:"name"`
 	Price           money.Amount   `json:"price"`
@@ -62,6 +70,7 @@ type ListItemsInput struct{}
 
 // CreateItemInput 是新建项目的完整价格规则。
 type CreateItemInput struct {
+	MemberPrices    []MemberPrice       `json:"member_prices,omitempty" maxItems:"20"`
 	Name            string              `json:"name" minLength:"1" maxLength:"40"`
 	Price           money.Amount        `json:"price"`
 	Discountable    bool                `json:"discountable"`
@@ -80,20 +89,23 @@ type UpdateItemInput struct {
 
 // QuoteItemPriceInput 指定做项目的员工。
 type QuoteItemPriceInput struct {
-	ItemID  uuid.UUID `json:"item_id"`
-	StaffID uuid.UUID `json:"staff_id"`
+	CardTypeID *uuid.UUID `json:"card_type_id,omitempty"`
+	ItemID     uuid.UUID  `json:"item_id"`
+	StaffID    uuid.UUID  `json:"staff_id"`
 }
 
-// ItemPrice 是项目标准价或适用的级别价。
+// ItemPrice 是项目适用的标准价、级别价或会员价及其来源。
 type ItemPrice struct {
-	Price   money.Amount `json:"price"`
-	LevelID *uuid.UUID   `json:"level_id,omitempty"`
+	Source     string       `json:"source" enum:"standard,level,member"`
+	CardTypeID *uuid.UUID   `json:"card_type_id,omitempty"`
+	Price      money.Amount `json:"price"`
+	LevelID    *uuid.UUID   `json:"level_id,omitempty"`
 }
 
 // Register 声明项目目录与价格操作。
 func Register(r *ops.Registry) {
 	ops.Register(r, ops.Operation[ListItemsInput, ItemList]{
-		Name: "list_items", Summary: "列出本店项目及标准价、级别价和项目岗位", Kind: ops.Read,
+		Name: "list_items", Summary: "列出本店项目及标准价、级别价、会员价和项目岗位", Kind: ops.Read,
 		Permission: ops.LoggedIn, AI: ops.AIDirect,
 		Handle: func(ctx context.Context, env ops.Env, _ *ListItemsInput) (*ItemList, error) {
 			rows, err := env.Q.ListItems(ctx, env.Caller.StoreID)
@@ -105,7 +117,7 @@ func Register(r *ops.Registry) {
 		},
 	})
 	ops.Register(r, ops.Operation[CreateItemInput, Item]{
-		Name: "create_item", Summary: "新建项目，设置标准价、级别价、手工费和项目岗位", Kind: ops.Write,
+		Name: "create_item", Summary: "新建项目，设置标准价、级别价、会员价、手工费和项目岗位", Kind: ops.Write,
 		Permission: perm.SettingsManage, AI: ops.AIDraft, Handle: createItem,
 	})
 	ops.Register(r, ops.Operation[UpdateItemInput, Item]{
@@ -113,10 +125,18 @@ func Register(r *ops.Registry) {
 		Permission: perm.SettingsManage, AI: ops.AIDraft, Handle: updateItem,
 	})
 	ops.Register(r, ops.Operation[QuoteItemPriceInput, ItemPrice]{
-		Name: "quote_item_price", Summary: "查询指定员工做项目时适用的价格，优先级别价，否则标准价", Kind: ops.Read,
+		Name: "quote_item_price", Summary: "按门店规则查询员工及卡类型适用的项目价格", Kind: ops.Read,
 		Permission: ops.LoggedIn, AI: ops.AIDirect,
 		Handle: func(ctx context.Context, env ops.Env, in *QuoteItemPriceInput) (*ItemPrice, error) {
-			return quoteItemPrice(ctx, env.Q, env.Caller.StoreID, in.ItemID, in.StaffID)
+			day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
+			if err != nil {
+				return nil, err
+			}
+			rules, err := settings.Effective(ctx, env.Q, env.Caller.StoreID, day)
+			if err != nil {
+				return nil, err
+			}
+			return Quote(ctx, env.Q, env.Caller.StoreID, in.ItemID, in.StaffID, in.CardTypeID, rules)
 		},
 	})
 }
@@ -134,11 +154,20 @@ func views(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, rows []dbge
 	if err != nil {
 		return nil, err
 	}
+	members, err := q.ListItemMemberPrices(ctx, dbgen.ListItemMemberPricesParams{StoreID: storeID, ItemIds: ids})
+	if err != nil {
+		return nil, err
+	}
 	out := make([]Item, 0, len(rows))
 	indices := map[uuid.UUID]int{}
 	for _, r := range rows {
 		indices[r.ID] = len(out)
-		out = append(out, Item{ID: r.ID, Name: r.Name, Price: r.Price, Discountable: r.Discountable, LaborFeeAmount: r.LaborFeeAmount, LaborFeePercent: r.LaborFeePercent, Active: r.Active, CreatedAt: r.CreatedAt.Time, LevelPrices: []LevelPrice{}, Positions: []ItemPosition{}})
+		out = append(out, Item{ID: r.ID, Name: r.Name, Price: r.Price, Discountable: r.Discountable, LaborFeeAmount: r.LaborFeeAmount, LaborFeePercent: r.LaborFeePercent, Active: r.Active, CreatedAt: r.CreatedAt.Time, MemberPrices: []MemberPrice{}, LevelPrices: []LevelPrice{}, Positions: []ItemPosition{}})
+	}
+	for _, m := range members {
+		if i, ok := indices[m.ItemID]; ok {
+			out[i].MemberPrices = append(out[i].MemberPrices, MemberPrice{CardTypeID: m.CardTypeID, Price: m.Price})
+		}
 	}
 	for _, l := range levels {
 		if i, ok := indices[l.ItemID]; ok {
@@ -175,6 +204,13 @@ func rowError(err error) error {
 func validate(in *CreateItemInput) error {
 	if in.LaborFeeAmount != nil && in.LaborFeePercent != nil {
 		return ops.Rule("手工费只能选择固定金额或售价百分比")
+	}
+	memberSeen := map[uuid.UUID]bool{}
+	for _, m := range in.MemberPrices {
+		if memberSeen[m.CardTypeID] {
+			return ops.Rule("会员价的卡类型不能重复")
+		}
+		memberSeen[m.CardTypeID] = true
 	}
 	seen := map[uuid.UUID]bool{}
 	for _, l := range in.LevelPrices {
@@ -242,7 +278,7 @@ func updateItem(ctx context.Context, env ops.Env, in *UpdateItemInput) (*Item, e
 	return after, nil
 }
 
-// shareReferences 先按 UUID 锁级别，再按 UUID 锁岗位，各条写入路径保持相同顺序。
+// shareReferences 按级别、岗位、卡类型的顺序，各组按 UUID 加共享锁。
 func shareReferences(ctx context.Context, env ops.Env, in *CreateItemInput, before *Item) error {
 	oldLevels := map[uuid.UUID]bool{}
 	for _, l := range before.LevelPrices {
@@ -282,10 +318,58 @@ func shareReferences(ctx context.Context, env ops.Env, in *CreateItemInput, befo
 			return ops.Rule("不能新增停用的项目岗位")
 		}
 	}
+	oldTypes := map[uuid.UUID]bool{}
+	for _, m := range before.MemberPrices {
+		oldTypes[m.CardTypeID] = true
+	}
+	types := []uuid.UUID{}
+	for _, m := range in.MemberPrices {
+		if !oldTypes[m.CardTypeID] {
+			types = append(types, m.CardTypeID)
+		}
+	}
+	slices.SortFunc(types, order)
+	for _, id := range types {
+		ct, err := env.Q.ShareItemCardType(ctx, dbgen.ShareItemCardTypeParams{StoreID: env.Caller.StoreID, ID: id})
+		if err != nil {
+			return rowError(err)
+		}
+		if !ct.Active {
+			return ops.Rule("不能新增停用卡类型的会员价")
+		}
+	}
+
 	return nil
 }
 
 func writeChildren(ctx context.Context, env ops.Env, id uuid.UUID, before *Item, in *CreateItemInput) error {
+	oldMembers := map[uuid.UUID]MemberPrice{}
+	nextMembers := map[uuid.UUID]bool{}
+	for _, m := range before.MemberPrices {
+		oldMembers[m.CardTypeID] = m
+	}
+	for _, m := range in.MemberPrices {
+		nextMembers[m.CardTypeID] = true
+	}
+	for _, m := range before.MemberPrices {
+		if !nextMembers[m.CardTypeID] {
+			if err := env.Q.DeleteItemMemberPrice(ctx, dbgen.DeleteItemMemberPriceParams{ItemID: id, CardTypeID: m.CardTypeID}); err != nil {
+				return err
+			}
+		}
+	}
+	for _, m := range in.MemberPrices {
+		previous, exists := oldMembers[m.CardTypeID]
+		if !exists {
+			if err := env.Q.AddItemMemberPrice(ctx, dbgen.AddItemMemberPriceParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, ItemID: id, CardTypeID: m.CardTypeID, Price: m.Price}); err != nil {
+				return err
+			}
+		} else if previous.Price.Cmp(m.Price) != 0 {
+			if err := env.Q.UpdateItemMemberPrice(ctx, dbgen.UpdateItemMemberPriceParams{ItemID: id, CardTypeID: m.CardTypeID, Price: m.Price}); err != nil {
+				return err
+			}
+		}
+	}
 	old := map[uuid.UUID]LevelPrice{}
 	for _, l := range before.LevelPrices {
 		old[l.LevelID] = l
@@ -335,7 +419,8 @@ func writeChildren(ctx context.Context, env ops.Env, id uuid.UUID, before *Item,
 	return nil
 }
 
-func quoteItemPrice(ctx context.Context, q *dbgen.Queries, storeID, itemID, staffID uuid.UUID) (*ItemPrice, error) {
+// Quote 按给定规则计算员工做项目时适用的标准价、级别价或会员价。
+func Quote(ctx context.Context, q *dbgen.Queries, storeID, itemID, staffID uuid.UUID, cardTypeID *uuid.UUID, rules settings.Rules) (*ItemPrice, error) {
 	item, err := q.GetItem(ctx, dbgen.GetItemParams{StoreID: storeID, ID: itemID})
 	if err != nil {
 		return nil, rowError(err)
@@ -350,7 +435,7 @@ func quoteItemPrice(ctx context.Context, q *dbgen.Queries, storeID, itemID, staf
 	if !item.Active {
 		return nil, ops.Rule("项目已停用")
 	}
-	out := &ItemPrice{Price: item.Price}
+	out := &ItemPrice{Price: item.Price, Source: "standard"}
 	if employee.LevelID != nil {
 		levelPrice, err := q.GetItemLevelPrice(ctx, dbgen.GetItemLevelPriceParams{ItemID: itemID, LevelID: *employee.LevelID})
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -359,7 +444,24 @@ func quoteItemPrice(ctx context.Context, q *dbgen.Queries, storeID, itemID, staf
 		if err == nil {
 			out.Price = levelPrice.Price
 			out.LevelID = employee.LevelID
+			out.Source = "level"
 		}
 	}
+	if cardTypeID != nil {
+		if _, err := q.GetCardType(ctx, dbgen.GetCardTypeParams{StoreID: storeID, ID: *cardTypeID}); err != nil {
+			return nil, rowError(err)
+		}
+		member, err := q.GetItemMemberPrice(ctx, dbgen.GetItemMemberPriceParams{ItemID: itemID, CardTypeID: *cardTypeID})
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return nil, err
+		}
+		if err == nil && (rules.MemberPriceRule() == "member_first" || member.Price.Cmp(out.Price) <= 0) {
+			out.Price = member.Price
+			out.Source = "member"
+			out.CardTypeID = cardTypeID
+			out.LevelID = nil
+		}
+	}
+
 	return out, nil
 }

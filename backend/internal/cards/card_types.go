@@ -3,6 +3,7 @@ package cards
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -103,6 +104,21 @@ func updateCardType(ctx context.Context, env ops.Env, in *UpdateCardTypeInput) (
 	date, err := validateType(&in.CreateCardTypeInput)
 	if err != nil {
 		return nil, err
+	}
+	// 会员价写入按项目 → 卡类型加锁；类型编辑也先共享锁住传入项目，避免反向等待。
+	// 此处只锁行，停用检查仍由 changeTypeItems 仅对新增或改动的引用执行。
+	itemIDs := make([]uuid.UUID, len(in.Items))
+	for i, item := range in.Items {
+		itemIDs[i] = item.ItemID
+	}
+	slices.SortFunc(itemIDs, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
+	for _, id := range itemIDs {
+		if _, err := env.Q.ShareCatalogItem(ctx, dbgen.ShareCatalogItemParams{StoreID: env.Caller.StoreID, ID: id}); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, ops.Rule("项目必须是本店启用的项目")
+			}
+			return nil, err
+		}
 	}
 	before, err := env.Q.LockCardType(ctx, dbgen.LockCardTypeParams{StoreID: env.Caller.StoreID, ID: in.ID})
 	if err != nil {

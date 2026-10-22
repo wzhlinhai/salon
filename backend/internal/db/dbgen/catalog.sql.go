@@ -35,6 +35,29 @@ func (q *Queries) AddItemLevelPrice(ctx context.Context, arg AddItemLevelPricePa
 	return err
 }
 
+const addItemMemberPrice = `-- name: AddItemMemberPrice :exec
+INSERT INTO item_member_prices (tenant_id,store_id,item_id,card_type_id,price) VALUES ($1,$2,$3,$4,$5)
+`
+
+type AddItemMemberPriceParams struct {
+	TenantID   uuid.UUID
+	StoreID    uuid.UUID
+	ItemID     uuid.UUID
+	CardTypeID uuid.UUID
+	Price      money.Amount
+}
+
+func (q *Queries) AddItemMemberPrice(ctx context.Context, arg AddItemMemberPriceParams) error {
+	_, err := q.db.Exec(ctx, addItemMemberPrice,
+		arg.TenantID,
+		arg.StoreID,
+		arg.ItemID,
+		arg.CardTypeID,
+		arg.Price,
+	)
+	return err
+}
+
 const addItemPosition = `-- name: AddItemPosition :exec
 INSERT INTO item_positions (tenant_id,store_id,item_id,slot,position_id,required) VALUES ($1,$2,$3,$4,$5,$6)
 `
@@ -115,6 +138,20 @@ func (q *Queries) DeleteItemLevelPrice(ctx context.Context, arg DeleteItemLevelP
 	return err
 }
 
+const deleteItemMemberPrice = `-- name: DeleteItemMemberPrice :exec
+DELETE FROM item_member_prices WHERE item_id=$1 AND card_type_id=$2
+`
+
+type DeleteItemMemberPriceParams struct {
+	ItemID     uuid.UUID
+	CardTypeID uuid.UUID
+}
+
+func (q *Queries) DeleteItemMemberPrice(ctx context.Context, arg DeleteItemMemberPriceParams) error {
+	_, err := q.db.Exec(ctx, deleteItemMemberPrice, arg.ItemID, arg.CardTypeID)
+	return err
+}
+
 const deleteItemPosition = `-- name: DeleteItemPosition :exec
 DELETE FROM item_positions WHERE item_id=$1 AND slot=$2
 `
@@ -178,6 +215,28 @@ func (q *Queries) GetItemLevelPrice(ctx context.Context, arg GetItemLevelPricePa
 	return i, err
 }
 
+const getItemMemberPrice = `-- name: GetItemMemberPrice :one
+SELECT tenant_id, store_id, item_id, card_type_id, price FROM item_member_prices WHERE item_id=$1 AND card_type_id=$2
+`
+
+type GetItemMemberPriceParams struct {
+	ItemID     uuid.UUID
+	CardTypeID uuid.UUID
+}
+
+func (q *Queries) GetItemMemberPrice(ctx context.Context, arg GetItemMemberPriceParams) (ItemMemberPrice, error) {
+	row := q.db.QueryRow(ctx, getItemMemberPrice, arg.ItemID, arg.CardTypeID)
+	var i ItemMemberPrice
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ItemID,
+		&i.CardTypeID,
+		&i.Price,
+	)
+	return i, err
+}
+
 const listItemLevelPrices = `-- name: ListItemLevelPrices :many
 SELECT tenant_id, store_id, item_id, level_id, price FROM item_level_prices WHERE store_id=$1 AND item_id = ANY($2::uuid[]) ORDER BY item_id, level_id
 `
@@ -201,6 +260,41 @@ func (q *Queries) ListItemLevelPrices(ctx context.Context, arg ListItemLevelPric
 			&i.StoreID,
 			&i.ItemID,
 			&i.LevelID,
+			&i.Price,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listItemMemberPrices = `-- name: ListItemMemberPrices :many
+SELECT tenant_id, store_id, item_id, card_type_id, price FROM item_member_prices WHERE store_id=$1 AND item_id=ANY($2::uuid[]) ORDER BY item_id,card_type_id
+`
+
+type ListItemMemberPricesParams struct {
+	StoreID uuid.UUID
+	ItemIds []uuid.UUID
+}
+
+func (q *Queries) ListItemMemberPrices(ctx context.Context, arg ListItemMemberPricesParams) ([]ItemMemberPrice, error) {
+	rows, err := q.db.Query(ctx, listItemMemberPrices, arg.StoreID, arg.ItemIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ItemMemberPrice
+	for rows.Next() {
+		var i ItemMemberPrice
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ItemID,
+			&i.CardTypeID,
 			&i.Price,
 		); err != nil {
 			return nil, err
@@ -312,6 +406,33 @@ func (q *Queries) LockItem(ctx context.Context, arg LockItemParams) (Item, error
 	return i, err
 }
 
+const shareItemCardType = `-- name: ShareItemCardType :one
+SELECT id, tenant_id, store_id, name, kind, validity_kind, validity_date, validity_days, active, created_at FROM card_types WHERE store_id=$1 AND id=$2 FOR SHARE
+`
+
+type ShareItemCardTypeParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) ShareItemCardType(ctx context.Context, arg ShareItemCardTypeParams) (CardType, error) {
+	row := q.db.QueryRow(ctx, shareItemCardType, arg.StoreID, arg.ID)
+	var i CardType
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Name,
+		&i.Kind,
+		&i.ValidityKind,
+		&i.ValidityDate,
+		&i.ValidityDays,
+		&i.Active,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const updateItem = `-- name: UpdateItem :one
 UPDATE items SET name=$2, price=$3, discountable=$4, labor_fee_amount=$5, labor_fee_percent=$6, active=$7
 WHERE id=$1 RETURNING id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at
@@ -365,6 +486,21 @@ type UpdateItemLevelPriceParams struct {
 
 func (q *Queries) UpdateItemLevelPrice(ctx context.Context, arg UpdateItemLevelPriceParams) error {
 	_, err := q.db.Exec(ctx, updateItemLevelPrice, arg.ItemID, arg.LevelID, arg.Price)
+	return err
+}
+
+const updateItemMemberPrice = `-- name: UpdateItemMemberPrice :exec
+UPDATE item_member_prices SET price=$3 WHERE item_id=$1 AND card_type_id=$2
+`
+
+type UpdateItemMemberPriceParams struct {
+	ItemID     uuid.UUID
+	CardTypeID uuid.UUID
+	Price      money.Amount
+}
+
+func (q *Queries) UpdateItemMemberPrice(ctx context.Context, arg UpdateItemMemberPriceParams) error {
+	_, err := q.db.Exec(ctx, updateItemMemberPrice, arg.ItemID, arg.CardTypeID, arg.Price)
 	return err
 }
 

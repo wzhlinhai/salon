@@ -514,3 +514,98 @@ test('升级记录 A→B→A 丢弃旧响应', async ({ page }) => {
     release()
   }
 })
+
+test('积分流水 A→B→A 丢弃旧响应', async ({ page }) => {
+  const { token, suffix, customer: a } = await seed()
+  const b = (await api(token, 'create_customer', { name: `调整乙${suffix}` })).customer
+  const ct = await api(token, 'create_card_type', { name: `回切调整${suffix}`, kind: 'stored_value', validity_kind: 'none' })
+  const me = await api(token, 'get_me', {})
+  const card = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '0.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
+  await api(token, 'adjust_card', { card_id: card.id, points: 90, reason: '第一次更正' })
+  let release!: () => void
+  let started!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const pending = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  let first = true
+  await page.route('**/api/ops/list_card_points', async (route) => {
+    if (route.request().postDataJSON().card_id === card.id && first) {
+      first = false
+      const response = await route.fetch()
+      started()
+      await blocked
+      await route.fulfill({ response })
+    } else await route.continue()
+  })
+  try {
+    await login(page, owner.account, owner.password)
+    await page.goto(`/customers?id=${a.id}`)
+    const shown = page.locator(`[data-card="${card.id}"]`)
+    await shown.getByRole('button', { name: '积分流水', exact: true }).click()
+    await pending
+    await page.evaluate((id) => {
+      window.history.pushState({}, '', `/customers?id=${id}`)
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    }, b.id)
+    const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+    await expect(detail.locator('dd').filter({ hasText: b.name })).toBeVisible()
+    await api(token, 'adjust_card', { card_id: card.id, points: 80, reason: '第二次更正' })
+    await page.evaluate((id) => {
+      window.history.pushState({}, '', `/customers?id=${id}`)
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    }, a.id)
+    await shown.getByRole('button', { name: '积分流水', exact: true }).click()
+    await expect(shown.getByTestId('card-points-entry')).toHaveCount(2)
+    await expect(shown.getByTestId('card-points-entry').first()).toContainText('第二次更正')
+    const late = page.waitForResponse(r => r.url().endsWith('/api/ops/list_card_points') && r.request().postDataJSON().card_id === card.id)
+    release()
+    await (await late).finished()
+    // eslint-disable-next-line no-restricted-syntax -- 旧响应被丢弃没有状态变化，等待组件回调后断言第二次结果。
+    await page.waitForTimeout(500)
+    await expect(shown.getByTestId('card-points-entry')).toHaveCount(2)
+    await expect(shown.getByTestId('card-points-entry').first()).toContainText('第二次更正')
+  } finally {
+    release()
+  }
+})
+
+test('充值积分、积分流水和调整积分', async ({ page }) => {
+  const { token, suffix, customer, staff } = await seed()
+  const settings = await api(token, 'get_settings', {})
+  await api(token, 'change_setting', { key: 'points_per_recharge_yuan', value: 10, effective_from: settings.business_date })
+  try {
+    const ct = await api(token, 'create_card_type', { name: `积分卡${suffix}`, kind: 'stored_value', validity_kind: 'none' })
+    const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: ct.id, principal: '100.00', bonus: '999.00', sales_staff_ids: [staff.id] })
+    await login(page, owner.account, owner.password)
+    await page.goto(`/customers?id=${customer.id}`)
+    const shown = page.locator(`[data-card="${card.id}"]`)
+    await expect(shown).toContainText('积分 10')
+    await shown.getByRole('button', { name: '充值', exact: true }).click()
+    const recharge = page.getByRole('dialog', { name: '充值', exact: true })
+    await recharge.getByLabel('本金', { exact: true }).fill('25.99')
+    await recharge.getByLabel('赠送金', { exact: true }).fill('100.00')
+    await recharge.getByRole('combobox', { name: '业绩归属人', exact: true }).click()
+    await page.getByRole('option', { name: staff.name, exact: true }).click()
+    await page.keyboard.press('Escape')
+    await recharge.getByRole('button', { name: '保存', exact: true }).click()
+    await expect(recharge).not.toBeVisible()
+    await expect(shown).toContainText('积分 12')
+    await shown.getByRole('button', { name: '积分流水', exact: true }).click()
+    await expect(shown.getByTestId('card-points-entry')).toHaveCount(2)
+    await expect(shown.getByTestId('card-points-entry').first()).toContainText('10 + 2 = 12')
+    await shown.getByRole('button', { name: '调整', exact: true }).click()
+    const adjust = page.getByRole('dialog', { name: '调整', exact: true })
+    await adjust.getByLabel('积分', { exact: true }).fill('5')
+    await adjust.getByLabel('原因', { exact: true }).fill('核对积分')
+    await adjust.getByRole('button', { name: '保存', exact: true }).click()
+    await expect(adjust).not.toBeVisible()
+    await expect(shown.getByTestId('card-points-entry')).toHaveCount(3)
+    await expect(shown.getByTestId('card-points-entry').first()).toContainText('12 + -7 = 5')
+    await expect(shown.getByTestId('card-points-entry').first()).toContainText('核对积分')
+  } finally {
+    await api(token, 'change_setting', { key: 'points_per_recharge_yuan', value: null, effective_from: settings.business_date })
+  }
+})
