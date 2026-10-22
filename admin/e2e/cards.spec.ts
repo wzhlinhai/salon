@@ -382,3 +382,135 @@ test('次数流水 A→B→A 丢弃旧响应', async ({ page }) => {
     release()
   }
 })
+
+test('升级规则累计充值、自动升级、补差价升级及转余额流水', async ({ page }) => {
+  const { token, suffix, customer, staff } = await seed()
+  const types = []
+  for (const name of ['基础', '银卡', '金卡']) types.push(await api(token, 'create_card_type', { name: `${name}${suffix}`, kind: 'stored_value', validity_kind: 'none' }))
+  const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: types[0].id, principal: '100.00', bonus: '10.00', sales_staff_ids: [staff.id] })
+  const second = await api(token, 'open_card', { customer_id: customer.id, card_type_id: types[0].id, principal: '50.00', bonus: '0.00', sales_staff_ids: [staff.id] })
+  await login(page, owner.account, owner.password)
+  await page.goto('/card-types')
+  await page.getByRole('button', { name: '新建升级规则', exact: true }).click()
+  const rule = page.getByRole('dialog', { name: '新建升级规则', exact: true })
+  await rule.getByRole('combobox', { name: '原卡类型', exact: true }).click()
+  await page.getByRole('option', { name: types[0].name, exact: true }).click()
+  await rule.getByRole('combobox', { name: '目标卡类型', exact: true }).click()
+  await page.getByRole('option', { name: types[1].name, exact: true }).click()
+  await rule.getByRole('combobox', { name: '条件', exact: true }).click()
+  await page.getByRole('option', { name: '累计充值本金 ≥', exact: true }).click()
+  await rule.getByLabel('门槛', { exact: true }).fill('150.00')
+  await rule.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(rule).not.toBeVisible()
+  await expect(page.getByTestId('upgrade-rule').filter({ hasText: types[0].name })).toContainText('累计充值本金 ≥ 150.00')
+  await page.goto(`/customers?id=${customer.id}`)
+  const shown = page.locator(`[data-card="${card.id}"]`)
+  await shown.getByRole('button', { name: '充值', exact: true }).click()
+  const recharge = page.getByRole('dialog', { name: '充值', exact: true })
+  await recharge.getByLabel('本金', { exact: true }).fill('50.00')
+  await recharge.getByRole('combobox', { name: '业绩归属人', exact: true }).click()
+  await page.getByRole('option', { name: staff.name, exact: true }).click()
+  await page.keyboard.press('Escape')
+  await recharge.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(recharge).not.toBeVisible()
+  await expect(page.getByText(`充值成功，已自动升级为 ${types[1].name}`, { exact: true })).toBeVisible()
+  await expect(shown).toContainText(types[1].name)
+  await shown.getByRole('button', { name: '升级记录', exact: true }).click()
+  await expect(shown.getByTestId('card-upgrade-entry')).toContainText(`${types[0].name} → ${types[1].name}`)
+  await expect(shown.getByTestId('card-upgrade-entry')).toContainText('自动升级')
+  await shown.getByRole('button', { name: '升级', exact: true }).click()
+  const upgrade = page.getByRole('dialog', { name: '升级', exact: true })
+  await upgrade.getByRole('combobox', { name: '目标卡类型', exact: true }).click()
+  await page.getByRole('option', { name: types[2].name, exact: true }).click()
+  await upgrade.getByLabel('本金', { exact: true }).fill('20.00')
+  await upgrade.getByLabel('赠送金', { exact: true }).fill('2.00')
+  await upgrade.getByRole('combobox', { name: '业绩归属人', exact: true }).click()
+  await page.getByRole('option', { name: staff.name, exact: true }).click()
+  await page.keyboard.press('Escape')
+  await upgrade.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(upgrade).not.toBeVisible()
+  await expect(shown).toContainText(types[2].name)
+  await expect(shown).toContainText('本金 170.00')
+  await expect(shown.getByTestId('card-upgrade-entry')).toHaveCount(2)
+  await shown.getByRole('button', { name: '流水', exact: true }).click()
+  await expect(shown.getByTestId('card-ledger-entry').first()).toContainText('升级')
+  await expect(shown.getByTestId('card-ledger-entry').first()).toContainText('150.00 + 20.00 = 170.00')
+  await expect(shown.getByTestId('card-ledger-entry').first()).toContainText(staff.name)
+  await shown.getByRole('button', { name: '转余额', exact: true }).click()
+  const transfer = page.getByRole('dialog', { name: '转余额', exact: true })
+  await transfer.getByRole('combobox', { name: '目标卡', exact: true }).click()
+  await page.getByRole('option', { name: `${types[0].name} · ${second.id}`, exact: true }).click()
+  await transfer.getByLabel('本金', { exact: true }).fill('10.00')
+  await transfer.getByLabel('赠送金', { exact: true }).fill('1.00')
+  await transfer.getByLabel('原因', { exact: true }).fill('同顾客余额归集')
+  await transfer.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(transfer).not.toBeVisible()
+  await expect(shown).toContainText('本金 160.00')
+  await expect(shown.getByTestId('card-ledger-entry').first()).toContainText('转出')
+  await expect(shown.getByTestId('card-ledger-entry').first()).toContainText('同顾客余额归集')
+  const destination = page.locator(`[data-card="${second.id}"]`)
+  await expect(destination).toContainText('本金 60.00')
+  await expect(destination).toContainText('赠送金 1.00')
+  await destination.getByRole('button', { name: '流水', exact: true }).click()
+  await expect(destination.getByTestId('card-ledger-entry').first()).toContainText('转入')
+  await expect(destination.getByTestId('card-ledger-entry').first()).toContainText('同顾客余额归集')
+  await expect(destination.getByTestId('card-ledger-entry').first()).toContainText(card.id)
+})
+
+test('升级记录 A→B→A 丢弃旧响应', async ({ page }) => {
+  const { token, suffix, customer: a } = await seed()
+  const b = (await api(token, 'create_customer', { name: `升级乙${suffix}` })).customer
+  const types = []
+  for (const name of ['基础', '银卡', '金卡']) types.push(await api(token, 'create_card_type', { name: `${name}${suffix}`, kind: 'stored_value', validity_kind: 'none' }))
+  const me = await api(token, 'get_me', {})
+  const card = await api(token, 'open_card', { customer_id: a.id, card_type_id: types[0].id, principal: '100.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
+  await api(token, 'upgrade_card', { card_id: card.id, to_type_id: types[1].id, principal: '0.00', bonus: '0.00' })
+  let release!: () => void
+  let started!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const pending = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  let first = true
+  await page.route('**/api/ops/list_card_upgrades', async (route) => {
+    if (route.request().postDataJSON().card_id === card.id && first) {
+      first = false
+      const response = await route.fetch()
+      started()
+      await blocked
+      await route.fulfill({ response })
+    } else await route.continue()
+  })
+  try {
+    await login(page, owner.account, owner.password)
+    await page.goto(`/customers?id=${a.id}`)
+    const shown = page.locator(`[data-card="${card.id}"]`)
+    await shown.getByRole('button', { name: '升级记录', exact: true }).click()
+    await pending
+    await page.evaluate((id) => {
+      window.history.pushState({}, '', `/customers?id=${id}`)
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    }, b.id)
+    const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+    await expect(detail.locator('dd').filter({ hasText: b.name })).toBeVisible()
+    await api(token, 'upgrade_card', { card_id: card.id, to_type_id: types[2].id, principal: '0.00', bonus: '0.00' })
+    await page.evaluate((id) => {
+      window.history.pushState({}, '', `/customers?id=${id}`)
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    }, a.id)
+    await shown.getByRole('button', { name: '升级记录', exact: true }).click()
+    await expect(shown.getByTestId('card-upgrade-entry')).toHaveCount(2)
+    await expect(shown.getByTestId('card-upgrade-entry').first()).toContainText(types[2].name)
+    const late = page.waitForResponse(r => r.url().endsWith('/api/ops/list_card_upgrades') && r.request().postDataJSON().card_id === card.id)
+    release()
+    await (await late).finished()
+    // eslint-disable-next-line no-restricted-syntax -- 旧响应被丢弃不会更新 DOM，等待组件回调后确认第二次结果仍在。
+    await page.waitForTimeout(500)
+    await expect(shown.getByTestId('card-upgrade-entry')).toHaveCount(2)
+    await expect(shown.getByTestId('card-upgrade-entry').first()).toContainText(types[2].name)
+  } finally {
+    release()
+  }
+})

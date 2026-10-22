@@ -356,8 +356,12 @@ async function cardSave() {
       : await api.POST('/api/ops/open_card', { body: { ...body, customer_id: id, card_type_id: cardCardType.value } })
     if (id !== props.id || !current()) return
     if (data) {
+      const upgradedTo = (data as components['schemas']['RechargeResult']).upgraded_to
+      if (upgradedTo) toast.add({ title: `充值成功，已自动升级为 ${upgradedTo.name}`, color: 'success' })
+      else toast.add({ title: cardTarget.value ? '充值成功' : '开卡成功', color: 'success' })
       cardModal.value = false
       await cardLoad()
+      if (upgradeCardID.value === data.id) await upgrades.reload()
       if (cardLedgerCard.value === data.id) await cardLedger.reload()
     } else toast.add({ title: errorText(error), color: 'error' })
   } finally {
@@ -475,6 +479,95 @@ async function saveAdjustment() {
   }
 }
 
+// 升级与转余额
+const upgradeCardID = ref('')
+const upgrades = useCursorList(async (beforeId) => {
+  const { data, error } = await api.POST('/api/ops/list_card_upgrades', { body: { card_id: upgradeCardID.value, before_id: beforeId } })
+  return { data: data?.entries, error }
+})
+
+function showUpgrades(id: string) {
+  upgradeCardID.value = id
+  upgrades.reload()
+}
+
+const balanceGuard = useRequestGuard()
+const balanceOpen = ref(false)
+const balanceMode = ref<'upgrade' | 'transfer'>('upgrade')
+const balanceCard = ref<CustomerCard | null>(null)
+const balanceTo = ref('')
+const balancePrincipal = ref('0.00')
+const balanceBonus = ref('0.00')
+const balanceSales = ref<string[]>([])
+const balanceReason = ref('')
+const balanceTypes = ref<components['schemas']['CardType'][]>([])
+const balanceStaff = ref<components['schemas']['StaffOption'][]>([])
+const balanceLoading = ref(false)
+const balanceSaving = ref(false)
+const hasDifference = computed(() => Number(balancePrincipal.value) > 0 || Number(balanceBonus.value) > 0)
+const transferTargets = computed(() => cardCards.value.filter(c => c.id !== balanceCard.value?.id && c.kind !== 'count'))
+
+async function editBalance(card: CustomerCard, mode: 'upgrade' | 'transfer') {
+  const id = props.id
+  const current = balanceGuard.next()
+  balanceCard.value = card
+  balanceMode.value = mode
+  balanceTo.value = ''
+  balancePrincipal.value = '0.00'
+  balanceBonus.value = '0.00'
+  balanceSales.value = []
+  balanceReason.value = ''
+  balanceTypes.value = []
+  balanceStaff.value = []
+  balanceSaving.value = false
+  balanceLoading.value = false
+  balanceOpen.value = true
+  if (mode === 'transfer') return
+  balanceLoading.value = true
+  try {
+    const [types, staff] = await Promise.all([
+      api.POST('/api/ops/list_card_types', { body: {} }),
+      api.POST('/api/ops/list_staff_options', { body: {} })
+    ])
+    if (id !== props.id || !current()) return
+    if (types.data && staff.data) {
+      balanceTypes.value = types.data.items.filter(t => t.active && t.kind === 'stored_value' && t.id !== card.card_type_id)
+      balanceStaff.value = staff.data.staff.filter(s => s.active)
+    } else toast.add({ title: errorText(types.error ?? staff.error), color: 'error' })
+  } finally {
+    if (current()) balanceLoading.value = false
+  }
+}
+
+watch(balanceOpen, (value) => {
+  if (!value) balanceGuard.next()
+})
+
+async function saveBalance() {
+  const card = balanceCard.value
+  if (!card || balanceSaving.value) return
+  const id = props.id
+  const current = balanceGuard.hold()
+  const amounts = { principal: balancePrincipal.value, bonus: balanceBonus.value }
+  balanceSaving.value = true
+  try {
+    const { data, error } = balanceMode.value === 'upgrade'
+      ? await api.POST('/api/ops/upgrade_card', { body: { ...amounts, card_id: card.id, to_type_id: balanceTo.value, sales_staff_ids: hasDifference.value ? [...balanceSales.value] : [] } })
+      : await api.POST('/api/ops/transfer_card_balance', { body: { ...amounts, from_card_id: card.id, to_card_id: balanceTo.value, reason: balanceReason.value.trim() } })
+    if (id !== props.id || !current()) return
+    if (data) {
+      balanceOpen.value = false
+      await cardLoad()
+      if (cardLedgerCard.value) await cardLedger.reload()
+      if (upgradeCardID.value === card.id) await upgrades.reload()
+    } else toast.add({ title: errorText(error), color: 'error' })
+  } finally {
+    if (current() || !balanceOpen.value) balanceSaving.value = false
+  }
+}
+
+const ledgerKinds: Record<string, string> = { open: '开卡', recharge: '充值', adjust: '调整', upgrade: '升级', transfer_out: '转出', transfer_in: '转入' }
+
 // 操作日志
 const logs = useCursorList(async (beforeId) => {
   const { data, error } = await api.POST('/api/ops/list_audit_log', {
@@ -516,6 +609,12 @@ function snapshot(value: unknown): string {
 // 读取档案及营业日，切换顾客时关闭编辑入口
 watch(() => props.id, () => {
   customerGuard.next()
+  upgradeCardID.value = ''
+  upgrades.clear()
+  balanceGuard.next()
+  balanceOpen.value = false
+  balanceSaving.value = false
+  balanceLoading.value = false
   adjustmentCard.value = ''
   adjustments.clear()
   countCard.value = ''
@@ -638,7 +737,16 @@ onBeforeUnmount(() => {
                 <UButton v-if="can('card.adjust')" size="xs" variant="outline" @click="editAdjustment(card)">调整</UButton>
                 <UButton size="xs" variant="outline" @click="cardShowLedger(card.id)">流水</UButton>
                 <UButton v-if="card.items.length" size="xs" variant="outline" @click="showCounts(card.id)">次数流水</UButton>
+                <UButton v-if="can('card.sell') && card.kind === 'stored_value'" size="xs" variant="outline" @click="editBalance(card, 'upgrade')">升级</UButton>
+                <UButton v-if="can('card.adjust')" size="xs" variant="outline" @click="editBalance(card, 'transfer')">转余额</UButton>
+                <UButton size="xs" variant="outline" @click="showUpgrades(card.id)">升级记录</UButton>
                 <UButton size="xs" variant="outline" @click="showAdjustments(card.id)">调整记录</UButton>
+              </div>
+              <div v-if="upgradeCardID === card.id" data-testid="card-upgrades" class="space-y-2 text-sm">
+                <p v-if="upgrades.loading.value">正在读取升级记录…</p>
+                <p v-for="entry in upgrades.items.value" :key="entry.id" data-testid="card-upgrade-entry">{{ entry.type_before.name }} → {{ entry.type_after.name }} · {{ entry.trigger === 'auto' ? '自动升级' : '手动升级' }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN') }} · {{ entry.actor.name }}</p>
+                <p v-if="!upgrades.loading.value && !upgrades.items.value.length">暂无升级记录</p>
+                <UButton v-if="upgrades.hasMore.value" :loading="upgrades.loading.value" variant="outline" @click="upgrades.loadMore">加载更多</UButton>
               </div>
               <div v-if="countCard === card.id" data-testid="card-counts" class="space-y-2 text-sm">
                 <p v-if="cardCounts.loading.value">正在读取次数流水…</p>
@@ -662,9 +770,10 @@ onBeforeUnmount(() => {
               </div>
               <div v-if="cardLedgerCard === card.id" data-testid="card-ledger" class="space-y-2 text-sm">
                 <p v-for="entry in cardLedger.items.value" :key="entry.id" data-testid="card-ledger-entry">
-                  {{ entry.kind === 'open' ? '开卡' : entry.kind === 'adjust' ? '调整' : '充值' }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN') }} · {{ entry.actor.name }}
+                  {{ ledgerKinds[entry.kind] || entry.kind }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN') }} · {{ entry.actor.name }}
                   本金 {{ entry.principal_before }} + {{ entry.principal_delta }} = {{ entry.principal_after }}；赠送金 {{ entry.bonus_before }} + {{ entry.bonus_delta }} = {{ entry.bonus_after }}
                   <span v-if="entry.reason">· 原因：{{ entry.reason }}</span>
+                  <span v-if="entry.other_card_id">· 对方卡：{{ entry.other_card_id }}</span>
                   <span v-if="entry.sales_staff.length">· 业绩归属人：{{ entry.sales_staff.map(s => s.name).join('、') }}</span>
                 </p>
                 <UButton v-if="cardLedger.hasMore.value" :loading="cardLedger.loading.value" variant="outline" @click="cardLedger.loadMore">加载更多</UButton>
@@ -709,6 +818,22 @@ onBeforeUnmount(() => {
       <p v-else class="text-muted">正在读取顾客档案…</p>
     </template>
   </USlideover>
+  <UModal v-model:open="balanceOpen" :title="balanceMode === 'upgrade' ? '升级' : '转余额'">
+    <template #body>
+      <div class="space-y-3">
+        <template v-if="balanceMode === 'upgrade'">
+          <UFormField label="目标卡类型"><USelect v-model="balanceTo" :items="balanceTypes.map(t => ({ label: t.name, value: t.id }))" class="w-full" /></UFormField>
+          <p>补差价（可为零），有效期不变。</p>
+        </template>
+        <UFormField v-else label="目标卡"><USelect v-model="balanceTo" :items="transferTargets.map(c => ({ label: `${c.card_type_name} · ${c.id}`, value: c.id }))" class="w-full" /></UFormField>
+        <UFormField label="本金"><UInput v-model="balancePrincipal" inputmode="decimal" class="w-full" /></UFormField>
+        <UFormField label="赠送金"><UInput v-model="balanceBonus" inputmode="decimal" class="w-full" /></UFormField>
+        <UFormField v-if="balanceMode === 'upgrade' && hasDifference" label="业绩归属人"><USelect v-model="balanceSales" multiple :items="balanceStaff.map(s => ({ label: s.name, value: s.id }))" class="w-full" /></UFormField>
+        <UFormField v-if="balanceMode === 'transfer'" label="原因" required><UTextarea v-model="balanceReason" :maxlength="200" class="w-full" /></UFormField>
+      </div>
+    </template>
+    <template #footer><UButton :loading="balanceSaving" :disabled="balanceLoading || !balanceTo || (balanceMode === 'upgrade' && hasDifference && !balanceSales.length) || (balanceMode === 'transfer' && (!hasDifference || !balanceReason.trim()))" @click="saveBalance">保存</UButton></template>
+  </UModal>
   <UModal v-model:open="adjustModal" title="调整">
     <template #body>
       <div class="space-y-3">

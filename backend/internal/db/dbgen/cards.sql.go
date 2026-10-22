@@ -13,6 +13,63 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/money"
 )
 
+const activeCardUpgradeRules = `-- name: ActiveCardUpgradeRules :many
+SELECT r.id, r.tenant_id, r.store_id, r.from_type_id, r.to_type_id, r.type_kind, r.condition_kind, r.threshold, r.active, r.created_at, t.name AS to_type_name FROM card_upgrade_rules r JOIN card_types t ON t.id=r.to_type_id
+WHERE r.store_id=$1 AND r.from_type_id=$2 AND r.active
+ORDER BY r.threshold DESC,t.name COLLATE "C" DESC,r.to_type_id DESC,r.id DESC
+`
+
+type ActiveCardUpgradeRulesParams struct {
+	StoreID    uuid.UUID
+	FromTypeID uuid.UUID
+}
+
+type ActiveCardUpgradeRulesRow struct {
+	ID            uuid.UUID
+	TenantID      uuid.UUID
+	StoreID       uuid.UUID
+	FromTypeID    uuid.UUID
+	ToTypeID      uuid.UUID
+	TypeKind      string
+	ConditionKind string
+	Threshold     money.Amount
+	Active        bool
+	CreatedAt     pgtype.Timestamptz
+	ToTypeName    string
+}
+
+func (q *Queries) ActiveCardUpgradeRules(ctx context.Context, arg ActiveCardUpgradeRulesParams) ([]ActiveCardUpgradeRulesRow, error) {
+	rows, err := q.db.Query(ctx, activeCardUpgradeRules, arg.StoreID, arg.FromTypeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ActiveCardUpgradeRulesRow
+	for rows.Next() {
+		var i ActiveCardUpgradeRulesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.StoreID,
+			&i.FromTypeID,
+			&i.ToTypeID,
+			&i.TypeKind,
+			&i.ConditionKind,
+			&i.Threshold,
+			&i.Active,
+			&i.CreatedAt,
+			&i.ToTypeName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const addCardAdjustment = `-- name: AddCardAdjustment :one
 INSERT INTO card_adjustments (tenant_id,store_id,card_id,reason,expires_before,expires_after,expiry_changed,card_type_before,card_type_after,ledger_id,business_date,actor_id,counts_changed)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, tenant_id, store_id, card_id, reason, expires_before, expires_after, expiry_changed, card_type_before, card_type_after, ledger_id, business_date, actor_id, at, counts_changed
@@ -216,6 +273,89 @@ func (q *Queries) AddCardLedgerSales(ctx context.Context, arg AddCardLedgerSales
 	return err
 }
 
+const addCardTransfer = `-- name: AddCardTransfer :exec
+INSERT INTO card_transfers (tenant_id,store_id,from_card_id,to_card_id,reason,from_ledger_id,to_ledger_id,business_date,actor_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+`
+
+type AddCardTransferParams struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	FromCardID   uuid.UUID
+	ToCardID     uuid.UUID
+	Reason       string
+	FromLedgerID uuid.UUID
+	ToLedgerID   uuid.UUID
+	BusinessDate pgtype.Date
+	ActorID      uuid.UUID
+}
+
+func (q *Queries) AddCardTransfer(ctx context.Context, arg AddCardTransferParams) error {
+	_, err := q.db.Exec(ctx, addCardTransfer,
+		arg.TenantID,
+		arg.StoreID,
+		arg.FromCardID,
+		arg.ToCardID,
+		arg.Reason,
+		arg.FromLedgerID,
+		arg.ToLedgerID,
+		arg.BusinessDate,
+		arg.ActorID,
+	)
+	return err
+}
+
+const addCardTransferLedger = `-- name: AddCardTransferLedger :one
+INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id)
+VALUES ($1,$2,$3,$4,$5,$6,$5::numeric+$6::numeric,$7,$8,$7::numeric+$8::numeric,$9,$10) RETURNING id, tenant_id, store_id, card_id, kind, principal_before, principal_delta, principal_after, bonus_before, bonus_delta, bonus_after, business_date, actor_id, at
+`
+
+type AddCardTransferLedgerParams struct {
+	TenantID        uuid.UUID
+	StoreID         uuid.UUID
+	CardID          uuid.UUID
+	Kind            string
+	PrincipalBefore money.Amount
+	PrincipalDelta  money.Change
+	BonusBefore     money.Amount
+	BonusDelta      money.Change
+	BusinessDate    pgtype.Date
+	ActorID         uuid.UUID
+}
+
+func (q *Queries) AddCardTransferLedger(ctx context.Context, arg AddCardTransferLedgerParams) (CardLedger, error) {
+	row := q.db.QueryRow(ctx, addCardTransferLedger,
+		arg.TenantID,
+		arg.StoreID,
+		arg.CardID,
+		arg.Kind,
+		arg.PrincipalBefore,
+		arg.PrincipalDelta,
+		arg.BonusBefore,
+		arg.BonusDelta,
+		arg.BusinessDate,
+		arg.ActorID,
+	)
+	var i CardLedger
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.CardID,
+		&i.Kind,
+		&i.PrincipalBefore,
+		&i.PrincipalDelta,
+		&i.PrincipalAfter,
+		&i.BonusBefore,
+		&i.BonusDelta,
+		&i.BonusAfter,
+		&i.BusinessDate,
+		&i.ActorID,
+		&i.At,
+	)
+	return i, err
+}
+
 const addCardTypeItem = `-- name: AddCardTypeItem :exec
 INSERT INTO card_type_items (tenant_id,store_id,card_type_id,item_id,paid_count,gift_count,unit_price) VALUES ($1,$2,$3,$4,$5,$6,$7)
 `
@@ -239,6 +379,40 @@ func (q *Queries) AddCardTypeItem(ctx context.Context, arg AddCardTypeItemParams
 		arg.PaidCount,
 		arg.GiftCount,
 		arg.UnitPrice,
+	)
+	return err
+}
+
+const addCardUpgrade = `-- name: AddCardUpgrade :exec
+INSERT INTO card_upgrades (tenant_id,store_id,card_id,type_before,type_after,trigger,rule_id,ledger_id,business_date,actor_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+`
+
+type AddCardUpgradeParams struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	CardID       uuid.UUID
+	TypeBefore   uuid.UUID
+	TypeAfter    uuid.UUID
+	Trigger      string
+	RuleID       *uuid.UUID
+	LedgerID     *uuid.UUID
+	BusinessDate pgtype.Date
+	ActorID      uuid.UUID
+}
+
+func (q *Queries) AddCardUpgrade(ctx context.Context, arg AddCardUpgradeParams) error {
+	_, err := q.db.Exec(ctx, addCardUpgrade,
+		arg.TenantID,
+		arg.StoreID,
+		arg.CardID,
+		arg.TypeBefore,
+		arg.TypeAfter,
+		arg.Trigger,
+		arg.RuleID,
+		arg.LedgerID,
+		arg.BusinessDate,
+		arg.ActorID,
 	)
 	return err
 }
@@ -297,6 +471,17 @@ SELECT EXISTS(SELECT 1 FROM cards WHERE card_type_id=$1)
 
 func (q *Queries) CardTypeHasCards(ctx context.Context, cardTypeID uuid.UUID) (bool, error) {
 	row := q.db.QueryRow(ctx, cardTypeHasCards, cardTypeID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const cardTypeHasUpgradeRules = `-- name: CardTypeHasUpgradeRules :one
+SELECT EXISTS(SELECT 1 FROM card_upgrade_rules WHERE from_type_id=$1 OR to_type_id=$1)
+`
+
+func (q *Queries) CardTypeHasUpgradeRules(ctx context.Context, fromTypeID uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, cardTypeHasUpgradeRules, fromTypeID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -424,6 +609,45 @@ func (q *Queries) CreateCardType(ctx context.Context, arg CreateCardTypeParams) 
 	return i, err
 }
 
+const createCardUpgradeRule = `-- name: CreateCardUpgradeRule :one
+INSERT INTO card_upgrade_rules (tenant_id,store_id,from_type_id,to_type_id,condition_kind,threshold)
+VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, tenant_id, store_id, from_type_id, to_type_id, type_kind, condition_kind, threshold, active, created_at
+`
+
+type CreateCardUpgradeRuleParams struct {
+	TenantID      uuid.UUID
+	StoreID       uuid.UUID
+	FromTypeID    uuid.UUID
+	ToTypeID      uuid.UUID
+	ConditionKind string
+	Threshold     money.Amount
+}
+
+func (q *Queries) CreateCardUpgradeRule(ctx context.Context, arg CreateCardUpgradeRuleParams) (CardUpgradeRule, error) {
+	row := q.db.QueryRow(ctx, createCardUpgradeRule,
+		arg.TenantID,
+		arg.StoreID,
+		arg.FromTypeID,
+		arg.ToTypeID,
+		arg.ConditionKind,
+		arg.Threshold,
+	)
+	var i CardUpgradeRule
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.FromTypeID,
+		&i.ToTypeID,
+		&i.TypeKind,
+		&i.ConditionKind,
+		&i.Threshold,
+		&i.Active,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const deleteCardTypeItem = `-- name: DeleteCardTypeItem :exec
 DELETE FROM card_type_items WHERE card_type_id=$1 AND item_id=$2
 `
@@ -485,6 +709,33 @@ func (q *Queries) GetCardType(ctx context.Context, arg GetCardTypeParams) (CardT
 		&i.ValidityKind,
 		&i.ValidityDate,
 		&i.ValidityDays,
+		&i.Active,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getCardUpgradeRule = `-- name: GetCardUpgradeRule :one
+SELECT id, tenant_id, store_id, from_type_id, to_type_id, type_kind, condition_kind, threshold, active, created_at FROM card_upgrade_rules WHERE store_id=$1 AND id=$2
+`
+
+type GetCardUpgradeRuleParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) GetCardUpgradeRule(ctx context.Context, arg GetCardUpgradeRuleParams) (CardUpgradeRule, error) {
+	row := q.db.QueryRow(ctx, getCardUpgradeRule, arg.StoreID, arg.ID)
+	var i CardUpgradeRule
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.FromTypeID,
+		&i.ToTypeID,
+		&i.TypeKind,
+		&i.ConditionKind,
+		&i.Threshold,
 		&i.Active,
 		&i.CreatedAt,
 	)
@@ -661,7 +912,10 @@ func (q *Queries) ListCardCounts(ctx context.Context, arg ListCardCountsParams) 
 }
 
 const listCardLedger = `-- name: ListCardLedger :many
-SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.kind, l.principal_before, l.principal_delta, l.principal_after, l.bonus_before, l.bonus_delta, l.bonus_after, l.business_date, l.actor_id, l.at, s.name AS actor_name, COALESCE(a.reason,'')::text AS reason FROM card_ledger l JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.ledger_id=l.id
+SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.kind, l.principal_before, l.principal_delta, l.principal_after, l.bonus_before, l.bonus_delta, l.bonus_after, l.business_date, l.actor_id, l.at, s.name AS actor_name, COALESCE(a.reason,tr.reason,'')::text AS reason,
+ CASE WHEN tr.from_ledger_id=l.id THEN tr.to_card_id ELSE tr.from_card_id END::uuid AS other_card_id
+FROM card_ledger l JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.ledger_id=l.id
+LEFT JOIN card_transfers tr ON tr.from_ledger_id=l.id OR tr.to_ledger_id=l.id
 WHERE l.card_id=$1 AND ($2::uuid IS NULL OR (l.at,l.id) < (SELECT at,id FROM card_ledger WHERE id=$2 AND card_id=$1))
 ORDER BY l.at DESC,l.id DESC LIMIT $3
 `
@@ -673,9 +927,10 @@ type ListCardLedgerParams struct {
 }
 
 type ListCardLedgerRow struct {
-	CardLedger CardLedger
-	ActorName  string
-	Reason     string
+	CardLedger  CardLedger
+	ActorName   string
+	Reason      string
+	OtherCardID uuid.UUID
 }
 
 func (q *Queries) ListCardLedger(ctx context.Context, arg ListCardLedgerParams) ([]ListCardLedgerRow, error) {
@@ -704,6 +959,7 @@ func (q *Queries) ListCardLedger(ctx context.Context, arg ListCardLedgerParams) 
 			&i.CardLedger.At,
 			&i.ActorName,
 			&i.Reason,
+			&i.OtherCardID,
 		); err != nil {
 			return nil, err
 		}
@@ -820,6 +1076,116 @@ func (q *Queries) ListCardTypes(ctx context.Context, storeID uuid.UUID) ([]CardT
 	return items, nil
 }
 
+const listCardUpgradeRules = `-- name: ListCardUpgradeRules :many
+SELECT r.id, r.tenant_id, r.store_id, r.from_type_id, r.to_type_id, r.type_kind, r.condition_kind, r.threshold, r.active, r.created_at, f.name AS from_type_name, t.name AS to_type_name FROM card_upgrade_rules r
+JOIN card_types f ON f.id=r.from_type_id JOIN card_types t ON t.id=r.to_type_id
+WHERE r.store_id=$1 ORDER BY r.created_at,r.id
+`
+
+type ListCardUpgradeRulesRow struct {
+	ID            uuid.UUID
+	TenantID      uuid.UUID
+	StoreID       uuid.UUID
+	FromTypeID    uuid.UUID
+	ToTypeID      uuid.UUID
+	TypeKind      string
+	ConditionKind string
+	Threshold     money.Amount
+	Active        bool
+	CreatedAt     pgtype.Timestamptz
+	FromTypeName  string
+	ToTypeName    string
+}
+
+func (q *Queries) ListCardUpgradeRules(ctx context.Context, storeID uuid.UUID) ([]ListCardUpgradeRulesRow, error) {
+	rows, err := q.db.Query(ctx, listCardUpgradeRules, storeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCardUpgradeRulesRow
+	for rows.Next() {
+		var i ListCardUpgradeRulesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.StoreID,
+			&i.FromTypeID,
+			&i.ToTypeID,
+			&i.TypeKind,
+			&i.ConditionKind,
+			&i.Threshold,
+			&i.Active,
+			&i.CreatedAt,
+			&i.FromTypeName,
+			&i.ToTypeName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCardUpgrades = `-- name: ListCardUpgrades :many
+SELECT u.id, u.tenant_id, u.store_id, u.card_id, u.type_before, u.type_after, u.trigger, u.rule_id, u.ledger_id, u.business_date, u.actor_id, u.at, b.name AS type_before_name, a.name AS type_after_name, s.name AS actor_name
+FROM card_upgrades u JOIN card_types b ON b.id=u.type_before JOIN card_types a ON a.id=u.type_after JOIN staff s ON s.id=u.actor_id
+WHERE u.card_id=$1 AND ($2::uuid IS NULL OR (u.at,u.id) < (SELECT at,id FROM card_upgrades WHERE id=$2 AND card_id=$1))
+ORDER BY u.at DESC,u.id DESC LIMIT $3
+`
+
+type ListCardUpgradesParams struct {
+	CardID   uuid.UUID
+	BeforeID *uuid.UUID
+	RowLimit int32
+}
+
+type ListCardUpgradesRow struct {
+	CardUpgrade    CardUpgrade
+	TypeBeforeName string
+	TypeAfterName  string
+	ActorName      string
+}
+
+func (q *Queries) ListCardUpgrades(ctx context.Context, arg ListCardUpgradesParams) ([]ListCardUpgradesRow, error) {
+	rows, err := q.db.Query(ctx, listCardUpgrades, arg.CardID, arg.BeforeID, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCardUpgradesRow
+	for rows.Next() {
+		var i ListCardUpgradesRow
+		if err := rows.Scan(
+			&i.CardUpgrade.ID,
+			&i.CardUpgrade.TenantID,
+			&i.CardUpgrade.StoreID,
+			&i.CardUpgrade.CardID,
+			&i.CardUpgrade.TypeBefore,
+			&i.CardUpgrade.TypeAfter,
+			&i.CardUpgrade.Trigger,
+			&i.CardUpgrade.RuleID,
+			&i.CardUpgrade.LedgerID,
+			&i.CardUpgrade.BusinessDate,
+			&i.CardUpgrade.ActorID,
+			&i.CardUpgrade.At,
+			&i.TypeBeforeName,
+			&i.TypeAfterName,
+			&i.ActorName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCustomerCards = `-- name: ListCustomerCards :many
 SELECT c.id, c.tenant_id, c.store_id, c.customer_id, c.card_type_id, c.opened_at, c.expires_on, c.family_group_id, c.created_by, t.name AS card_type_name, t.kind, l.principal_after, l.bonus_after
 FROM cards c JOIN card_types t ON t.id=c.card_type_id
@@ -925,6 +1291,39 @@ func (q *Queries) LockCardType(ctx context.Context, arg LockCardTypeParams) (Car
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const lockCardUpgradeRules = `-- name: LockCardUpgradeRules :exec
+SELECT pg_advisory_xact_lock(hashtextextended($1::text, 130031))
+`
+
+func (q *Queries) LockCardUpgradeRules(ctx context.Context, storeID string) error {
+	_, err := q.db.Exec(ctx, lockCardUpgradeRules, storeID)
+	return err
+}
+
+const lockMergedCustomerCards = `-- name: LockMergedCustomerCards :many
+SELECT id FROM cards WHERE customer_id=$1 ORDER BY id FOR NO KEY UPDATE
+`
+
+func (q *Queries) LockMergedCustomerCards(ctx context.Context, customerID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, lockMergedCustomerCards, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const mergeCustomerCards = `-- name: MergeCustomerCards :exec
@@ -1068,6 +1467,18 @@ func (q *Queries) ShareCatalogItem(ctx context.Context, arg ShareCatalogItemPara
 	return i, err
 }
 
+const totalCardRecharge = `-- name: TotalCardRecharge :one
+SELECT COALESCE(SUM(principal_delta),0)::text FROM card_ledger
+WHERE card_id=$1 AND kind IN ('open','recharge','upgrade') AND principal_delta > 0
+`
+
+func (q *Queries) TotalCardRecharge(ctx context.Context, cardID uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, totalCardRecharge, cardID)
+	var column_1 string
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const updateAdjustedCard = `-- name: UpdateAdjustedCard :exec
 UPDATE cards SET expires_on=$2,card_type_id=$3 WHERE id=$1
 `
@@ -1143,5 +1554,47 @@ func (q *Queries) UpdateCardTypeItem(ctx context.Context, arg UpdateCardTypeItem
 		arg.GiftCount,
 		arg.UnitPrice,
 	)
+	return err
+}
+
+const updateCardUpgradeRule = `-- name: UpdateCardUpgradeRule :one
+UPDATE card_upgrade_rules SET threshold=$2,active=$3 WHERE id=$1 RETURNING id, tenant_id, store_id, from_type_id, to_type_id, type_kind, condition_kind, threshold, active, created_at
+`
+
+type UpdateCardUpgradeRuleParams struct {
+	ID        uuid.UUID
+	Threshold money.Amount
+	Active    bool
+}
+
+func (q *Queries) UpdateCardUpgradeRule(ctx context.Context, arg UpdateCardUpgradeRuleParams) (CardUpgradeRule, error) {
+	row := q.db.QueryRow(ctx, updateCardUpgradeRule, arg.ID, arg.Threshold, arg.Active)
+	var i CardUpgradeRule
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.FromTypeID,
+		&i.ToTypeID,
+		&i.TypeKind,
+		&i.ConditionKind,
+		&i.Threshold,
+		&i.Active,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const updateUpgradedCard = `-- name: UpdateUpgradedCard :exec
+UPDATE cards SET card_type_id=$2 WHERE id=$1
+`
+
+type UpdateUpgradedCardParams struct {
+	ID         uuid.UUID
+	CardTypeID uuid.UUID
+}
+
+func (q *Queries) UpdateUpgradedCard(ctx context.Context, arg UpdateUpgradedCardParams) error {
+	_, err := q.db.Exec(ctx, updateUpgradedCard, arg.ID, arg.CardTypeID)
 	return err
 }

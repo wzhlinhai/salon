@@ -68,3 +68,7 @@ sql:
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money
               type: Amount
+          - column: card_upgrade_rules.threshold
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount

@@ -108,6 +108,20 @@ type CardLedgerSale struct {
 	StaffID  uuid.UUID
 }
 
+type CardTransfer struct {
+	ID           uuid.UUID
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	FromCardID   uuid.UUID
+	ToCardID     uuid.UUID
+	Reason       string
+	FromLedgerID uuid.UUID
+	ToLedgerID   uuid.UUID
+	BusinessDate pgtype.Date
+	ActorID      uuid.UUID
+	At           pgtype.Timestamptz
+}
+
 type CardType struct {
 	ID           uuid.UUID
 	TenantID     uuid.UUID
@@ -129,6 +143,34 @@ type CardTypeItem struct {
 	PaidCount  int32
 	GiftCount  int32
 	UnitPrice  money.Amount
+}
+
+type CardUpgrade struct {
+	ID           uuid.UUID
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	CardID       uuid.UUID
+	TypeBefore   uuid.UUID
+	TypeAfter    uuid.UUID
+	Trigger      string
+	RuleID       *uuid.UUID
+	LedgerID     *uuid.UUID
+	BusinessDate pgtype.Date
+	ActorID      uuid.UUID
+	At           pgtype.Timestamptz
+}
+
+type CardUpgradeRule struct {
+	ID            uuid.UUID
+	TenantID      uuid.UUID
+	StoreID       uuid.UUID
+	FromTypeID    uuid.UUID
+	ToTypeID      uuid.UUID
+	TypeKind      string
+	ConditionKind string
+	Threshold     money.Amount
+	Active        bool
+	CreatedAt     pgtype.Timestamptz
 }
 
 type Customer struct {

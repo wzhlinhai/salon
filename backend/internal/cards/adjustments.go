@@ -42,8 +42,7 @@ func adjustCard(ctx context.Context, env ops.Env, in *AdjustCardInput) (*Card, e
 	if in.Bonus != nil {
 		bonus = *in.Bonus
 	}
-	// 金额比较使用规范化文本，避免 decimal 内部表示影响相等判断。
-	balanceChanged := principal.String() != previous.PrincipalAfter.String() || bonus.String() != previous.BonusAfter.String()
+	balanceChanged := principal.Cmp(previous.PrincipalAfter) != 0 || bonus.Cmp(previous.BonusAfter) != 0
 	expires := card.ExpiresOn
 	if in.Expiry != nil {
 		expires = pgtype.Date{}

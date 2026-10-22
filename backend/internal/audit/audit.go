@@ -251,3 +251,6 @@ func CardTypeTarget(id uuid.UUID) Target { return Target{kind: "card_type", id: 
 func CardTarget(id, customerID uuid.UUID) Target {
 	return Target{kind: "card", id: id, customerID: &customerID}
 }
+
+// CardUpgradeRuleTarget 创建不关联顾客的升级规则日志目标。
+func CardUpgradeRuleTarget(id uuid.UUID) Target { return Target{kind: "card_upgrade_rule", id: id} }

@@ -53,7 +53,10 @@ JOIN LATERAL (SELECT principal_after,bonus_after FROM card_ledger WHERE card_id=
 WHERE c.store_id=$1 AND c.id=$2;
 
 -- name: ListCardLedger :many
-SELECT sqlc.embed(l), s.name AS actor_name, COALESCE(a.reason,'')::text AS reason FROM card_ledger l JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.ledger_id=l.id
+SELECT sqlc.embed(l), s.name AS actor_name, COALESCE(a.reason,tr.reason,'')::text AS reason,
+ CASE WHEN tr.from_ledger_id=l.id THEN tr.to_card_id ELSE tr.from_card_id END::uuid AS other_card_id
+FROM card_ledger l JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.ledger_id=l.id
+LEFT JOIN card_transfers tr ON tr.from_ledger_id=l.id OR tr.to_ledger_id=l.id
 WHERE l.card_id=$1 AND (sqlc.narg(before_id)::uuid IS NULL OR (l.at,l.id) < (SELECT at,id FROM card_ledger WHERE id=sqlc.narg(before_id) AND card_id=$1))
 ORDER BY l.at DESC,l.id DESC LIMIT sqlc.arg(row_limit);
 
@@ -123,3 +126,57 @@ ORDER BY l.at DESC,l.id DESC LIMIT sqlc.arg(row_limit);
 -- name: AdjustmentCounts :many
 SELECT sqlc.embed(l), i.name AS item_name FROM card_count_ledger l JOIN items i ON i.id=l.item_id
 WHERE l.adjustment_id=ANY(sqlc.arg(adjustment_ids)::uuid[]) ORDER BY l.adjustment_id,l.item_id;
+
+-- name: LockCardUpgradeRules :exec
+SELECT pg_advisory_xact_lock(hashtextextended(sqlc.arg(store_id)::text, 130031));
+
+-- name: ListCardUpgradeRules :many
+SELECT r.*, f.name AS from_type_name, t.name AS to_type_name FROM card_upgrade_rules r
+JOIN card_types f ON f.id=r.from_type_id JOIN card_types t ON t.id=r.to_type_id
+WHERE r.store_id=$1 ORDER BY r.created_at,r.id;
+
+-- name: GetCardUpgradeRule :one
+SELECT * FROM card_upgrade_rules WHERE store_id=$1 AND id=$2;
+
+-- name: CreateCardUpgradeRule :one
+INSERT INTO card_upgrade_rules (tenant_id,store_id,from_type_id,to_type_id,condition_kind,threshold)
+VALUES ($1,$2,$3,$4,$5,$6) RETURNING *;
+
+-- name: UpdateCardUpgradeRule :one
+UPDATE card_upgrade_rules SET threshold=$2,active=$3 WHERE id=$1 RETURNING *;
+
+-- name: ActiveCardUpgradeRules :many
+SELECT r.*, t.name AS to_type_name FROM card_upgrade_rules r JOIN card_types t ON t.id=r.to_type_id
+WHERE r.store_id=$1 AND r.from_type_id=$2 AND r.active
+ORDER BY r.threshold DESC,t.name COLLATE "C" DESC,r.to_type_id DESC,r.id DESC;
+
+-- name: TotalCardRecharge :one
+SELECT COALESCE(SUM(principal_delta),0)::text FROM card_ledger
+WHERE card_id=$1 AND kind IN ('open','recharge','upgrade') AND principal_delta > 0;
+
+-- name: UpdateUpgradedCard :exec
+UPDATE cards SET card_type_id=$2 WHERE id=$1;
+
+-- name: AddCardUpgrade :exec
+INSERT INTO card_upgrades (tenant_id,store_id,card_id,type_before,type_after,trigger,rule_id,ledger_id,business_date,actor_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10);
+
+-- name: ListCardUpgrades :many
+SELECT sqlc.embed(u), b.name AS type_before_name, a.name AS type_after_name, s.name AS actor_name
+FROM card_upgrades u JOIN card_types b ON b.id=u.type_before JOIN card_types a ON a.id=u.type_after JOIN staff s ON s.id=u.actor_id
+WHERE u.card_id=$1 AND (sqlc.narg(before_id)::uuid IS NULL OR (u.at,u.id) < (SELECT at,id FROM card_upgrades WHERE id=sqlc.narg(before_id) AND card_id=$1))
+ORDER BY u.at DESC,u.id DESC LIMIT sqlc.arg(row_limit);
+
+-- name: AddCardTransfer :exec
+INSERT INTO card_transfers (tenant_id,store_id,from_card_id,to_card_id,reason,from_ledger_id,to_ledger_id,business_date,actor_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9);
+
+-- name: LockMergedCustomerCards :many
+SELECT id FROM cards WHERE customer_id=$1 ORDER BY id FOR NO KEY UPDATE;
+
+-- name: AddCardTransferLedger :one
+INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id)
+VALUES (sqlc.arg(tenant_id),sqlc.arg(store_id),sqlc.arg(card_id),sqlc.arg(kind),sqlc.arg(principal_before),sqlc.arg(principal_delta),sqlc.arg(principal_before)::numeric+sqlc.arg(principal_delta)::numeric,sqlc.arg(bonus_before),sqlc.arg(bonus_delta),sqlc.arg(bonus_before)::numeric+sqlc.arg(bonus_delta)::numeric,sqlc.arg(business_date),sqlc.arg(actor_id)) RETURNING *;
+
+-- name: CardTypeHasUpgradeRules :one
+SELECT EXISTS(SELECT 1 FROM card_upgrade_rules WHERE from_type_id=$1 OR to_type_id=$1);
