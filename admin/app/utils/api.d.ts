@@ -55,6 +55,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/adjust_card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 更正卡并追加调整单 */
+        post: operations["adjust_card"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/assign_customer_responsible": {
         parameters: {
             query?: never;
@@ -389,6 +406,23 @@ export interface paths {
         put?: never;
         /** 查看业务操作的修改记录：谁、何时、改了什么、改前改后 */
         post: operations["list_audit_log"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_card_adjustments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看卡调整单 */
+        post: operations["list_card_adjustments"];
         delete?: never;
         options?: never;
         head?: never;
@@ -940,6 +974,14 @@ export interface components {
             /** @enum {string} */
             source: "customer_said" | "staff_observed";
         };
+        AdjustCardInput: {
+            bonus?: string;
+            card_id: string;
+            card_type_id?: string;
+            expiry?: components["schemas"]["CardExpiry"];
+            principal?: string;
+            reason: string;
+        };
         AssignCustomerResponsibleInput: {
             customer_ids: string[];
             staff_id?: string;
@@ -954,6 +996,38 @@ export interface components {
             /** Format: date-time */
             opened_at: string;
             principal: string;
+        };
+        CardAdjustment: {
+            actor: components["schemas"]["CardLedgerActor"];
+            /** Format: date-time */
+            at: string;
+            balance?: components["schemas"]["CardAdjustmentBalance"];
+            business_date: string;
+            card_type_after?: components["schemas"]["CardAdjustmentType"];
+            card_type_before?: components["schemas"]["CardAdjustmentType"];
+            expiry_after?: components["schemas"]["CardExpiry"];
+            expiry_before?: components["schemas"]["CardExpiry"];
+            id: string;
+            reason: string;
+        };
+        CardAdjustmentBalance: {
+            bonus_after: string;
+            bonus_before: string;
+            bonus_delta: string;
+            principal_after: string;
+            principal_before: string;
+            principal_delta: string;
+        };
+        CardAdjustmentList: {
+            entries: components["schemas"]["CardAdjustment"][];
+        };
+        CardAdjustmentType: {
+            id: string;
+            name: string;
+        };
+        CardExpiry: {
+            /** Format: date */
+            expires_on: string | null;
         };
         CardLedgerActor: {
             id: string;
@@ -972,6 +1046,7 @@ export interface components {
             principal_after: string;
             principal_before: string;
             principal_delta: string;
+            reason?: string;
             sales_staff: components["schemas"]["SalesStaff"][];
         };
         CardLedgerList: {
@@ -1247,6 +1322,12 @@ export interface components {
             limit?: number;
             /** @description 只看这个目标的修改，不填为全部 */
             target_id?: string;
+        };
+        ListCardAdjustmentsInput: {
+            before_id?: string;
+            card_id: string;
+            /** Format: int32 */
+            limit?: number;
         };
         ListCardLedgerInput: {
             before_id?: string;
@@ -1648,6 +1729,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Customer"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    adjust_card: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdjustCardInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Card"];
                 };
             };
             /** @description Error */
@@ -2308,6 +2422,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LogList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_card_adjustments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListCardAdjustmentsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardAdjustmentList"];
                 };
             };
             /** @description Error */

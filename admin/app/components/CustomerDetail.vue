@@ -374,6 +374,86 @@ function cardShowLedger(id: string) {
   cardLedger.reload()
 }
 
+const adjustmentCard = ref('')
+const adjustments = useCursorList(async (beforeId) => {
+  const { data, error } = await api.POST('/api/ops/list_card_adjustments', { body: { card_id: adjustmentCard.value, before_id: beforeId } })
+  return { data: data?.entries, error }
+})
+
+function showAdjustments(id: string) {
+  adjustmentCard.value = id
+  adjustments.reload()
+}
+
+const adjustModal = ref(false)
+const adjustGuard = useRequestGuard()
+const adjustTarget = ref<CustomerCard | null>(null)
+const adjustPrincipal = ref('')
+const adjustBonus = ref('')
+const adjustExpires = ref('')
+const adjustUnlimited = ref(false)
+const adjustType = ref('')
+const adjustReason = ref('')
+const adjustTypes = ref<components['schemas']['CardType'][]>([])
+const adjustSaving = ref(false)
+const adjustLoading = ref(false)
+
+async function editAdjustment(card: CustomerCard) {
+  const customerID = props.id
+  const current = adjustGuard.next()
+  adjustTarget.value = card
+  adjustPrincipal.value = card.principal
+  adjustBonus.value = card.bonus
+  adjustExpires.value = card.expires_on || ''
+  adjustUnlimited.value = !card.expires_on
+  adjustType.value = card.card_type_id
+  adjustReason.value = ''
+  adjustTypes.value = []
+  adjustSaving.value = false
+  adjustModal.value = true
+  adjustLoading.value = true
+  try {
+    const { data, error } = await api.POST('/api/ops/list_card_types', { body: {} })
+    if (customerID !== props.id || !current()) return
+    if (data) {
+      const kind = data.items.find(t => t.id === card.card_type_id)?.kind
+      adjustTypes.value = data.items.filter(t => t.id === card.card_type_id || (t.active && t.kind === kind))
+    } else toast.add({ title: errorText(error), color: 'error' })
+  } finally {
+    if (current()) adjustLoading.value = false
+  }
+}
+
+watch(adjustModal, (value) => {
+  if (!value) adjustGuard.next()
+})
+
+async function saveAdjustment() {
+  const card = adjustTarget.value
+  if (!card || adjustSaving.value) return
+  const customerID = props.id
+  const current = adjustGuard.hold()
+  const body: components['schemas']['AdjustCardInput'] = { card_id: card.id, reason: adjustReason.value.trim() }
+  if (adjustPrincipal.value !== card.principal) body.principal = adjustPrincipal.value
+  if (adjustBonus.value !== card.bonus) body.bonus = adjustBonus.value
+  const expires = adjustUnlimited.value ? null : adjustExpires.value
+  if (expires !== (card.expires_on || null)) body.expiry = { expires_on: expires }
+  if (adjustType.value !== card.card_type_id) body.card_type_id = adjustType.value
+  adjustSaving.value = true
+  try {
+    const { data, error } = await api.POST('/api/ops/adjust_card', { body })
+    if (customerID !== props.id || !current()) return
+    if (data) {
+      adjustModal.value = false
+      await cardLoad()
+      if (cardLedgerCard.value === card.id) await cardLedger.reload()
+      if (adjustmentCard.value === card.id) await adjustments.reload()
+    } else toast.add({ title: errorText(error), color: 'error' })
+  } finally {
+    if (current() || !adjustModal.value) adjustSaving.value = false
+  }
+}
+
 // 操作日志
 const logs = useCursorList(async (beforeId) => {
   const { data, error } = await api.POST('/api/ops/list_audit_log', {
@@ -415,6 +495,12 @@ function snapshot(value: unknown): string {
 // 读取档案及营业日，切换顾客时关闭编辑入口
 watch(() => props.id, () => {
   customerGuard.next()
+  adjustmentCard.value = ''
+  adjustments.clear()
+  adjustGuard.next()
+  adjustModal.value = false
+  adjustSaving.value = false
+  adjustLoading.value = false
   cardListGuard.invalidate()
   cardModalGuard.next()
   cardModal.value = false
@@ -524,13 +610,26 @@ onBeforeUnmount(() => {
               <p>{{ card.card_type_name }} · 本金 {{ card.principal }} · 赠送金 {{ card.bonus }} · 有效期 {{ card.expires_on || '不限' }}</p>
               <div class="flex gap-2">
                 <UButton v-if="can('card.sell') && !customer.merged_into" size="xs" variant="outline" @click="cardEdit(card)">充值</UButton>
+                <UButton v-if="can('card.adjust')" size="xs" variant="outline" @click="editAdjustment(card)">调整</UButton>
                 <UButton size="xs" variant="outline" @click="cardShowLedger(card.id)">流水</UButton>
+                <UButton size="xs" variant="outline" @click="showAdjustments(card.id)">调整记录</UButton>
+              </div>
+              <div v-if="adjustmentCard === card.id" data-testid="card-adjustments" class="space-y-2 text-sm">
+                <p v-if="adjustments.loading.value">正在读取调整记录…</p>
+                <p v-for="entry in adjustments.items.value" :key="entry.id" data-testid="card-adjustment-entry">
+                  {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN') }} · {{ entry.actor.name }} · 原因：{{ entry.reason }}
+                  <span v-if="entry.balance">本金 {{ entry.balance.principal_before }} + {{ entry.balance.principal_delta }} = {{ entry.balance.principal_after }}；赠送金 {{ entry.balance.bonus_before }} + {{ entry.balance.bonus_delta }} = {{ entry.balance.bonus_after }}</span>
+                  <span v-if="entry.expiry_before && entry.expiry_after">有效期 {{ entry.expiry_before.expires_on || '不限' }} → {{ entry.expiry_after.expires_on || '不限' }}</span>
+                  <span v-if="entry.card_type_before && entry.card_type_after">卡类型 {{ entry.card_type_before.name }} → {{ entry.card_type_after.name }}</span>
+                </p>
+                <UButton v-if="adjustments.hasMore.value" :loading="adjustments.loading.value" variant="outline" @click="adjustments.loadMore">加载更多</UButton>
               </div>
               <div v-if="cardLedgerCard === card.id" data-testid="card-ledger" class="space-y-2 text-sm">
                 <p v-for="entry in cardLedger.items.value" :key="entry.id" data-testid="card-ledger-entry">
-                  {{ entry.kind === 'open' ? '开卡' : '充值' }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN') }} · {{ entry.actor.name }}
+                  {{ entry.kind === 'open' ? '开卡' : entry.kind === 'adjust' ? '调整' : '充值' }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN') }} · {{ entry.actor.name }}
                   本金 {{ entry.principal_before }} + {{ entry.principal_delta }} = {{ entry.principal_after }}；赠送金 {{ entry.bonus_before }} + {{ entry.bonus_delta }} = {{ entry.bonus_after }}
-                  · 业绩归属人：{{ entry.sales_staff.map(s => s.name).join('、') }}
+                  <span v-if="entry.reason">· 原因：{{ entry.reason }}</span>
+                  <span v-if="entry.sales_staff.length">· 业绩归属人：{{ entry.sales_staff.map(s => s.name).join('、') }}</span>
                 </p>
                 <UButton v-if="cardLedger.hasMore.value" :loading="cardLedger.loading.value" variant="outline" @click="cardLedger.loadMore">加载更多</UButton>
               </div>
@@ -574,6 +673,19 @@ onBeforeUnmount(() => {
       <p v-else class="text-muted">正在读取顾客档案…</p>
     </template>
   </USlideover>
+  <UModal v-model:open="adjustModal" title="调整">
+    <template #body>
+      <div class="space-y-3">
+        <UFormField label="本金"><UInput v-model="adjustPrincipal" inputmode="decimal" class="w-full" /></UFormField>
+        <UFormField label="赠送金"><UInput v-model="adjustBonus" inputmode="decimal" class="w-full" /></UFormField>
+        <UCheckbox v-model="adjustUnlimited" label="不限" />
+        <UFormField v-if="!adjustUnlimited" label="有效期"><UInput v-model="adjustExpires" type="date" class="w-full" /></UFormField>
+        <UFormField label="卡类型"><USelect v-model="adjustType" :items="adjustTypes.map(t => ({ label: t.name, value: t.id }))" class="w-full" /></UFormField>
+        <UFormField label="原因" required><UTextarea v-model="adjustReason" :maxlength="200" class="w-full" /></UFormField>
+      </div>
+    </template>
+    <template #footer><UButton :loading="adjustSaving" :disabled="adjustLoading || !adjustReason.trim() || (!adjustUnlimited && !adjustExpires)" @click="saveAdjustment">保存</UButton></template>
+  </UModal>
   <UModal v-model:open="cardModal" :title="cardTarget ? '充值' : '开卡'">
     <template #body>
       <div class="space-y-3">

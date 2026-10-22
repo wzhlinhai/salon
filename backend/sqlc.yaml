@@ -43,7 +43,7 @@ sql:
           - column: card_ledger.principal_delta
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money
-              type: Amount
+              type: Change
           - column: card_ledger.principal_after
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money
@@ -55,7 +55,7 @@ sql:
           - column: card_ledger.bonus_delta
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money
-              type: Amount
+              type: Change
           - column: card_ledger.bonus_after
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money

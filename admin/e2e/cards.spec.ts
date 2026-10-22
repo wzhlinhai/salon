@@ -111,6 +111,7 @@ test('无开卡权限不显示开卡和充值按钮', async ({ page }) => {
   await expect(detail).toContainText(ct.name)
   await expect(detail.getByRole('button', { name: '开卡', exact: true })).toHaveCount(0)
   await expect(detail.getByRole('button', { name: '充值', exact: true })).toHaveCount(0)
+  await expect(detail.getByRole('button', { name: '调整', exact: true })).toHaveCount(0)
 })
 
 test('切回同一顾客后丢弃第一次卡列表，保留第二次响应', async ({ page }) => {
@@ -169,6 +170,98 @@ test('切回同一顾客后丢弃第一次卡列表，保留第二次响应', as
     await expect(shownCard).toContainText('本金 123.56')
     await expect(shownCard).toContainText('赠送金 0.50')
     await expect(shownCard).not.toContainText('本金 99.00')
+  } finally {
+    release()
+  }
+})
+
+test('调整余额、记录原因并清除有效期', async ({ page }) => {
+  const { token, suffix, customer } = await seed()
+  const ct = await api(token, 'create_card_type', { name: `调整卡${suffix}`, kind: 'stored_value', validity_kind: 'fixed_date', validity_date: '2030-01-01' })
+  const me = await api(token, 'get_me', {})
+  const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: ct.id, principal: '100.00', bonus: '0.50', sales_staff_ids: [me.staff.id] })
+  await login(page, owner.account, owner.password)
+  await page.goto(`/customers?id=${customer.id}`)
+  const shown = page.locator(`[data-card="${card.id}"]`)
+  await shown.getByRole('button', { name: '调整', exact: true }).click()
+  const modal = page.getByRole('dialog', { name: '调整', exact: true })
+  await expect(modal.getByLabel('本金', { exact: true })).toHaveValue('100.00')
+  await modal.getByLabel('本金', { exact: true }).fill('80.00')
+  await modal.getByLabel('原因', { exact: true }).fill('核对原始收款')
+  await modal.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(modal).not.toBeVisible()
+  await shown.getByRole('button', { name: '流水', exact: true }).click()
+  await expect(shown.getByTestId('card-ledger-entry').first()).toContainText('100.00 + -20.00 = 80.00')
+  await expect(shown.getByTestId('card-ledger-entry').first()).toContainText('核对原始收款')
+  await shown.getByRole('button', { name: '调整记录', exact: true }).click()
+  await expect(shown.getByTestId('card-adjustment-entry')).toContainText('核对原始收款')
+  await shown.getByRole('button', { name: '调整', exact: true }).click()
+  await modal.getByRole('checkbox', { name: '不限', exact: true }).check()
+  await modal.getByLabel('原因', { exact: true }).fill('原卡不限期')
+  let submitted: Record<string, unknown> = {}
+  await page.route('**/api/ops/adjust_card', async (route) => {
+    submitted = route.request().postDataJSON()
+    await route.continue()
+  })
+  await modal.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(modal).not.toBeVisible()
+  await expect(shown).toContainText('有效期 不限')
+  expect(submitted).toEqual({ card_id: card.id, reason: '原卡不限期', expiry: { expires_on: null } })
+  await expect(shown.getByTestId('card-adjustment-entry').first()).toContainText('2030-01-01 → 不限')
+})
+
+test('调整记录切走再切回同一卡丢弃旧响应', async ({ page }) => {
+  const { token, suffix, customer: a } = await seed()
+  const b = (await api(token, 'create_customer', { name: `调整乙${suffix}` })).customer
+  const ct = await api(token, 'create_card_type', { name: `回切调整${suffix}`, kind: 'stored_value', validity_kind: 'none' })
+  const me = await api(token, 'get_me', {})
+  const card = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '100.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
+  await api(token, 'adjust_card', { card_id: card.id, principal: '90.00', reason: '第一次更正' })
+  let release!: () => void
+  let started!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const pending = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  let first = true
+  await page.route('**/api/ops/list_card_adjustments', async (route) => {
+    if (route.request().postDataJSON().card_id === card.id && first) {
+      first = false
+      const response = await route.fetch()
+      started()
+      await blocked
+      await route.fulfill({ response })
+    } else await route.continue()
+  })
+  try {
+    await login(page, owner.account, owner.password)
+    await page.goto(`/customers?id=${a.id}`)
+    const shown = page.locator(`[data-card="${card.id}"]`)
+    await shown.getByRole('button', { name: '调整记录', exact: true }).click()
+    await pending
+    await page.evaluate((id) => {
+      window.history.pushState({}, '', `/customers?id=${id}`)
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    }, b.id)
+    const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+    await expect(detail.locator('dd').filter({ hasText: b.name })).toBeVisible()
+    await api(token, 'adjust_card', { card_id: card.id, principal: '80.00', reason: '第二次更正' })
+    await page.evaluate((id) => {
+      window.history.pushState({}, '', `/customers?id=${id}`)
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    }, a.id)
+    await shown.getByRole('button', { name: '调整记录', exact: true }).click()
+    await expect(shown.getByTestId('card-adjustment-entry')).toHaveCount(2)
+    await expect(shown.getByTestId('card-adjustment-entry').first()).toContainText('第二次更正')
+    const late = page.waitForResponse(r => r.url().endsWith('/api/ops/list_card_adjustments') && r.request().postDataJSON().card_id === card.id)
+    release()
+    await (await late).finished()
+    // eslint-disable-next-line no-restricted-syntax -- 旧响应被丢弃没有状态变化，等待组件回调后断言第二次结果。
+    await page.waitForTimeout(500)
+    await expect(shown.getByTestId('card-adjustment-entry')).toHaveCount(2)
+    await expect(shown.getByTestId('card-adjustment-entry').first()).toContainText('第二次更正')
   } finally {
     release()
   }

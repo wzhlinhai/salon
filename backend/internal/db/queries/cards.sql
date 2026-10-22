@@ -5,6 +5,9 @@ SELECT * FROM card_types WHERE store_id=$1 ORDER BY active DESC, created_at, id;
 INSERT INTO card_types (tenant_id,store_id,name,kind,validity_kind,validity_date,validity_days)
 VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *;
 
+-- name: GetCardType :one
+SELECT * FROM card_types WHERE store_id=$1 AND id=$2;
+
 -- name: LockCardType :one
 SELECT * FROM card_types WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE;
 
@@ -50,7 +53,7 @@ JOIN LATERAL (SELECT principal_after,bonus_after FROM card_ledger WHERE card_id=
 WHERE c.store_id=$1 AND c.id=$2;
 
 -- name: ListCardLedger :many
-SELECT sqlc.embed(l), s.name AS actor_name FROM card_ledger l JOIN staff s ON s.id=l.actor_id
+SELECT sqlc.embed(l), s.name AS actor_name, COALESCE(a.reason,'')::text AS reason FROM card_ledger l JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.ledger_id=l.id
 WHERE l.card_id=$1 AND (sqlc.narg(before_id)::uuid IS NULL OR (l.at,l.id) < (SELECT at,id FROM card_ledger WHERE id=sqlc.narg(before_id) AND card_id=$1))
 ORDER BY l.at DESC,l.id DESC LIMIT sqlc.arg(row_limit);
 
@@ -60,3 +63,21 @@ WHERE cs.ledger_id=ANY(sqlc.arg(ledger_ids)::uuid[]) ORDER BY cs.ledger_id,s.id;
 
 -- name: MergeCustomerCards :exec
 UPDATE cards SET customer_id=sqlc.arg(keep_id) WHERE customer_id=sqlc.arg(merged_id);
+
+-- name: UpdateAdjustedCard :exec
+UPDATE cards SET expires_on=$2,card_type_id=$3 WHERE id=$1;
+
+-- name: AddCardAdjustment :one
+INSERT INTO card_adjustments (tenant_id,store_id,card_id,reason,expires_before,expires_after,expiry_changed,card_type_before,card_type_after,ledger_id,business_date,actor_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *;
+
+-- name: ListCardAdjustments :many
+SELECT sqlc.embed(a), s.name AS actor_name, tb.name AS type_before_name, ta.name AS type_after_name,
+ COALESCE(l.principal_before,0) AS principal_before, COALESCE(l.principal_delta,0) AS principal_delta, COALESCE(l.principal_after,0) AS principal_after,
+ COALESCE(l.bonus_before,0) AS bonus_before, COALESCE(l.bonus_delta,0) AS bonus_delta, COALESCE(l.bonus_after,0) AS bonus_after
+FROM card_adjustments a JOIN staff s ON s.id=a.actor_id
+LEFT JOIN card_types tb ON tb.id=a.card_type_before
+LEFT JOIN card_types ta ON ta.id=a.card_type_after
+LEFT JOIN card_ledger l ON l.id=a.ledger_id
+WHERE a.card_id=$1 AND (sqlc.narg(before_id)::uuid IS NULL OR (a.at,a.id) < (SELECT at,id FROM card_adjustments WHERE id=sqlc.narg(before_id) AND card_id=$1))
+ORDER BY a.at DESC,a.id DESC LIMIT sqlc.arg(row_limit);

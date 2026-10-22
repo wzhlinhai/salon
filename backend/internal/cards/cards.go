@@ -22,6 +22,8 @@ import (
 
 // Register 声明卡类型、开卡、充值和卡流水操作。
 func Register(r *ops.Registry) {
+	ops.Register(r, ops.Operation[AdjustCardInput, Card]{Name: "adjust_card", Summary: "更正卡并追加调整单", Kind: ops.Write, Permission: perm.CardAdjust, AI: ops.AIDraft, Handle: adjustCard})
+	ops.Register(r, ops.Operation[ListCardAdjustmentsInput, CardAdjustmentList]{Name: "list_card_adjustments", Summary: "查看卡调整单", Kind: ops.Read, Permission: perm.CustomerView, AI: ops.AIDirect, Handle: listCardAdjustments})
 	ops.Register(r, ops.Operation[ListCardTypesInput, CardTypeList]{Name: "list_card_types", Summary: "列出本店卡类型", Kind: ops.Read, Permission: ops.LoggedIn, AI: ops.AIDirect, Handle: listCardTypes})
 	ops.Register(r, ops.Operation[CreateCardTypeInput, CardType]{Name: "create_card_type", Summary: "新建卡类型", Kind: ops.Write, Permission: perm.SettingsManage, AI: ops.AIDraft, Handle: createCardType})
 	ops.Register(r, ops.Operation[UpdateCardTypeInput, CardType]{Name: "update_card_type", Summary: "编辑或停用卡类型", Kind: ops.Write, Permission: perm.SettingsManage, AI: ops.AIDraft, Handle: updateCardType})
@@ -177,7 +179,7 @@ func appendLedger(ctx context.Context, env ops.Env, id uuid.UUID, kind string, p
 	if err != nil {
 		return ops.Rule("卡余额超过上限")
 	}
-	row, err := env.Q.AddCardLedger(ctx, dbgen.AddCardLedgerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: id, Kind: kind, PrincipalBefore: principal, PrincipalDelta: in.Principal, PrincipalAfter: pa, BonusBefore: bonus, BonusDelta: in.Bonus, BonusAfter: ba, BusinessDate: pgtype.Date{Time: day, Valid: true}, ActorID: env.Caller.StaffID})
+	row, err := env.Q.AddCardLedger(ctx, dbgen.AddCardLedgerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: id, Kind: kind, PrincipalBefore: principal, PrincipalDelta: in.Principal.Sub(money.Amount{}), PrincipalAfter: pa, BonusBefore: bonus, BonusDelta: in.Bonus.Sub(money.Amount{}), BonusAfter: ba, BusinessDate: pgtype.Date{Time: day, Valid: true}, ActorID: env.Caller.StaffID})
 	if err != nil {
 		return err
 	}
@@ -237,7 +239,7 @@ func listCardLedger(ctx context.Context, env ops.Env, in *ListCardLedgerInput) (
 		if staff == nil {
 			staff = []SalesStaff{}
 		}
-		out.Entries = append(out.Entries, CardLedgerEntry{ID: l.ID, Kind: l.Kind, PrincipalBefore: l.PrincipalBefore, PrincipalDelta: l.PrincipalDelta, PrincipalAfter: l.PrincipalAfter, BonusBefore: l.BonusBefore, BonusDelta: l.BonusDelta, BonusAfter: l.BonusAfter, BusinessDate: l.BusinessDate.Time.Format(time.DateOnly), At: l.At.Time, Actor: CardLedgerActor{ID: l.ActorID, Name: r.ActorName}, SalesStaff: staff})
+		out.Entries = append(out.Entries, CardLedgerEntry{ID: l.ID, Kind: l.Kind, Reason: r.Reason, PrincipalBefore: l.PrincipalBefore, PrincipalDelta: l.PrincipalDelta, PrincipalAfter: l.PrincipalAfter, BonusBefore: l.BonusBefore, BonusDelta: l.BonusDelta, BonusAfter: l.BonusAfter, BusinessDate: l.BusinessDate.Time.Format(time.DateOnly), At: l.At.Time, Actor: CardLedgerActor{ID: l.ActorID, Name: r.ActorName}, SalesStaff: staff})
 	}
 	return out, nil
 }

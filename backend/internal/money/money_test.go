@@ -72,3 +72,43 @@ func TestNumericRoundTrip(t *testing.T) {
 		t.Fatalf("%s %s", got, percent)
 	}
 }
+
+func TestChangeJSON(t *testing.T) {
+	for _, value := range []string{`"-0.50"`, `"-99999999.99"`, `"99999999.99"`, `"0.00"`} {
+		var c money.Change
+		if err := json.Unmarshal([]byte(value), &c); err != nil {
+			t.Fatal(err)
+		}
+		out, err := json.Marshal(c)
+		if err != nil || string(out) != value {
+			t.Fatal(string(out), err)
+		}
+	}
+	for _, value := range []string{`"-100000000.00"`, `"100000000.00"`, `"-0.501"`, `"+1.00"`, `1`, `null`, `"1e2"`} {
+		var c money.Change
+		if err := json.Unmarshal([]byte(value), &c); err == nil {
+			t.Fatal("accepted", value)
+		}
+	}
+}
+
+func TestChangeNumericRoundTrip(t *testing.T) {
+	pool := dbtest.NewPool(t)
+	tenant, _ := dbtest.NewTenant(t, pool, "变动")
+	tx := dbtest.AppTx(t, pool, tenant)
+	for _, value := range []string{"-0.50", "-99999999.99", "99999999.99", "0.00"} {
+		var c, got money.Change
+		if err := c.Scan(value); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.QueryRow(context.Background(), "SELECT $1::numeric(10,2)", c).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got.String() != value {
+			t.Fatal(got.String(), value)
+		}
+	}
+	if err := tx.Rollback(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}

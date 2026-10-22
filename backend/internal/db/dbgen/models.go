@@ -37,6 +37,23 @@ type Card struct {
 	CreatedBy     uuid.UUID
 }
 
+type CardAdjustment struct {
+	ID             uuid.UUID
+	TenantID       uuid.UUID
+	StoreID        uuid.UUID
+	CardID         uuid.UUID
+	Reason         string
+	ExpiresBefore  pgtype.Date
+	ExpiresAfter   pgtype.Date
+	ExpiryChanged  bool
+	CardTypeBefore *uuid.UUID
+	CardTypeAfter  *uuid.UUID
+	LedgerID       *uuid.UUID
+	BusinessDate   pgtype.Date
+	ActorID        uuid.UUID
+	At             pgtype.Timestamptz
+}
+
 type CardLedger struct {
 	ID              uuid.UUID
 	TenantID        uuid.UUID
@@ -44,10 +61,10 @@ type CardLedger struct {
 	CardID          uuid.UUID
 	Kind            string
 	PrincipalBefore money.Amount
-	PrincipalDelta  money.Amount
+	PrincipalDelta  money.Change
 	PrincipalAfter  money.Amount
 	BonusBefore     money.Amount
-	BonusDelta      money.Amount
+	BonusDelta      money.Change
 	BonusAfter      money.Amount
 	BusinessDate    pgtype.Date
 	ActorID         uuid.UUID

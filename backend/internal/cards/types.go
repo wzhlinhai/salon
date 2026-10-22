@@ -103,11 +103,12 @@ type CardLedgerActor struct {
 type CardLedgerEntry struct {
 	ID              uuid.UUID       `json:"id"`
 	Kind            string          `json:"kind"`
+	Reason          string          `json:"reason,omitempty"`
 	PrincipalBefore money.Amount    `json:"principal_before"`
-	PrincipalDelta  money.Amount    `json:"principal_delta"`
+	PrincipalDelta  money.Change    `json:"principal_delta"`
 	PrincipalAfter  money.Amount    `json:"principal_after"`
 	BonusBefore     money.Amount    `json:"bonus_before"`
-	BonusDelta      money.Amount    `json:"bonus_delta"`
+	BonusDelta      money.Change    `json:"bonus_delta"`
 	BonusAfter      money.Amount    `json:"bonus_after"`
 	BusinessDate    string          `json:"business_date"`
 	At              time.Time       `json:"at"`
@@ -125,4 +126,61 @@ type ListCardLedgerInput struct {
 // CardLedgerList 是由新到旧的卡流水。
 type CardLedgerList struct {
 	Entries []CardLedgerEntry `json:"entries"`
+}
+
+// CardExpiry 是调整后的有效期，空日期表示不限。
+type CardExpiry struct {
+	ExpiresOn *string `json:"expires_on" format:"date"`
+}
+
+// AdjustCardInput 是以目标值更正卡的调整单参数。
+type AdjustCardInput struct {
+	CardID     uuid.UUID     `json:"card_id"`
+	Principal  *money.Amount `json:"principal,omitempty"`
+	Bonus      *money.Amount `json:"bonus,omitempty"`
+	Expiry     *CardExpiry   `json:"expiry,omitempty"`
+	CardTypeID *uuid.UUID    `json:"card_type_id,omitempty"`
+	Reason     string        `json:"reason" minLength:"1"`
+}
+
+// ListCardAdjustmentsInput 是调整单的游标分页参数。
+type ListCardAdjustmentsInput struct {
+	CardID   uuid.UUID  `json:"card_id"`
+	BeforeID *uuid.UUID `json:"before_id,omitempty"`
+	Limit    int32      `json:"limit,omitempty" minimum:"0" maximum:"200"`
+}
+
+// CardAdjustmentType 是调整单保存的卡类型。
+type CardAdjustmentType struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+// CardAdjustmentBalance 是调整单关联的余额变动。
+type CardAdjustmentBalance struct {
+	PrincipalBefore money.Amount `json:"principal_before"`
+	PrincipalDelta  money.Change `json:"principal_delta"`
+	PrincipalAfter  money.Amount `json:"principal_after"`
+	BonusBefore     money.Amount `json:"bonus_before"`
+	BonusDelta      money.Change `json:"bonus_delta"`
+	BonusAfter      money.Amount `json:"bonus_after"`
+}
+
+// CardAdjustment 是只追加的更正记录及原因。
+type CardAdjustment struct {
+	ID             uuid.UUID              `json:"id"`
+	Reason         string                 `json:"reason"`
+	ExpiryBefore   *CardExpiry            `json:"expiry_before,omitempty"`
+	ExpiryAfter    *CardExpiry            `json:"expiry_after,omitempty"`
+	CardTypeBefore *CardAdjustmentType    `json:"card_type_before,omitempty"`
+	CardTypeAfter  *CardAdjustmentType    `json:"card_type_after,omitempty"`
+	Balance        *CardAdjustmentBalance `json:"balance,omitempty"`
+	BusinessDate   string                 `json:"business_date"`
+	At             time.Time              `json:"at"`
+	Actor          CardLedgerActor        `json:"actor"`
+}
+
+// CardAdjustmentList 是由新到旧的调整单。
+type CardAdjustmentList struct {
+	Entries []CardAdjustment `json:"entries"`
 }
