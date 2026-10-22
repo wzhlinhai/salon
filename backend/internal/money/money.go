@@ -97,3 +97,10 @@ func scanDecimal(value *decimal.Decimal, src any, pattern *regexp.Regexp) error 
 	*value = d
 	return nil
 }
+
+// Add 精确相加，超过金额上限 99999999.99 时返回错误。
+func (a Amount) Add(b Amount) (Amount, error) {
+	var out Amount
+	err := out.Scan(a.value.Add(b.value).StringFixed(2))
+	return out, err
+}

@@ -24,6 +24,56 @@ type AuditLog struct {
 	CustomerID *uuid.UUID
 }
 
+type Card struct {
+	ID         uuid.UUID
+	TenantID   uuid.UUID
+	StoreID    uuid.UUID
+	CustomerID uuid.UUID
+	CardTypeID uuid.UUID
+	OpenedAt   pgtype.Timestamptz
+	ExpiresOn  pgtype.Date
+	// 家庭卡、共用卡关联，P0 只预留，界面不做
+	FamilyGroupID *uuid.UUID
+	CreatedBy     uuid.UUID
+}
+
+type CardLedger struct {
+	ID              uuid.UUID
+	TenantID        uuid.UUID
+	StoreID         uuid.UUID
+	CardID          uuid.UUID
+	Kind            string
+	PrincipalBefore money.Amount
+	PrincipalDelta  money.Amount
+	PrincipalAfter  money.Amount
+	BonusBefore     money.Amount
+	BonusDelta      money.Amount
+	BonusAfter      money.Amount
+	BusinessDate    pgtype.Date
+	ActorID         uuid.UUID
+	At              pgtype.Timestamptz
+}
+
+type CardLedgerSale struct {
+	TenantID uuid.UUID
+	StoreID  uuid.UUID
+	LedgerID uuid.UUID
+	StaffID  uuid.UUID
+}
+
+type CardType struct {
+	ID           uuid.UUID
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	Name         string
+	Kind         string
+	ValidityKind string
+	ValidityDate pgtype.Date
+	ValidityDays *int32
+	Active       bool
+	CreatedAt    pgtype.Timestamptz
+}
+
 type Customer struct {
 	ID                 uuid.UUID
 	TenantID           uuid.UUID

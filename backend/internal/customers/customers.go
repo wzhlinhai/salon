@@ -216,3 +216,6 @@ func canView(caller ops.Caller, row dbgen.Customer) bool {
 	self, err := viewScope(caller)
 	return err == nil && (self == nil || (row.ResponsibleStaffID != nil && *row.ResponsibleStaffID == *self))
 }
+
+// CanView 判断调用者是否有权查看顾客，供关联顾客的业务操作共用。
+func CanView(caller ops.Caller, row dbgen.Customer) bool { return canView(caller, row) }

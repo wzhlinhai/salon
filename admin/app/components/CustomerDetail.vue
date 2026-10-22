@@ -279,6 +279,101 @@ async function merge() {
   })
 }
 
+type CustomerCard = components['schemas']['Card']
+const cardCards = ref<CustomerCard[]>([])
+const cardLoading = ref(false)
+const cardListGuard = useRequestGuard()
+
+async function cardLoad() {
+  const id = props.id
+  const current = cardListGuard.next()
+  cardLoading.value = true
+  try {
+    const { data, error } = await api.POST('/api/ops/list_customer_cards', { body: { customer_id: id } })
+    if (id !== props.id || !current()) return
+    if (data) cardCards.value = data.items
+    else toast.add({ title: errorText(error), color: 'error' })
+  } finally {
+    if (current()) cardLoading.value = false
+  }
+}
+
+const cardTypes = ref<components['schemas']['CardType'][]>([])
+const cardStaff = ref<components['schemas']['StaffOption'][]>([])
+const cardModalGuard = useRequestGuard()
+const cardModal = ref(false)
+const cardTarget = ref<CustomerCard | null>(null)
+const cardCardType = ref('')
+const cardPrincipal = ref('0.00')
+const cardBonus = ref('0.00')
+const cardSales = ref<string[]>([])
+const cardSaving = ref(false)
+const cardOptionsLoading = ref(false)
+
+async function cardEdit(card: CustomerCard | null) {
+  const id = props.id
+  const current = cardModalGuard.next()
+  cardSaving.value = false
+  cardTarget.value = card
+  cardPrincipal.value = '0.00'
+  cardBonus.value = '0.00'
+  cardSales.value = []
+  cardCardType.value = ''
+  cardTypes.value = []
+  cardStaff.value = []
+  cardModal.value = true
+  cardOptionsLoading.value = true
+  try {
+    const [t, s] = await Promise.all([
+      api.POST('/api/ops/list_card_types', { body: {} }),
+      api.POST('/api/ops/list_staff_options', { body: {} })
+    ])
+    if (id !== props.id || !current()) return
+    if (t.data && s.data) {
+      cardTypes.value = t.data.items.filter(t => t.active)
+      cardStaff.value = s.data.staff.filter(s => s.active)
+    } else toast.add({ title: errorText(t.error ?? s.error), color: 'error' })
+  } finally {
+    if (current()) cardOptionsLoading.value = false
+  }
+}
+
+watch(cardModal, (value) => {
+  if (!value) cardModalGuard.next()
+})
+
+async function cardSave() {
+  if (cardSaving.value) return
+  const id = props.id
+  const current = cardModalGuard.hold()
+  const body = { principal: cardPrincipal.value, bonus: cardBonus.value, sales_staff_ids: [...cardSales.value] }
+  cardSaving.value = true
+  try {
+    const { data, error } = cardTarget.value
+      ? await api.POST('/api/ops/recharge_card', { body: { ...body, card_id: cardTarget.value.id } })
+      : await api.POST('/api/ops/open_card', { body: { ...body, customer_id: id, card_type_id: cardCardType.value } })
+    if (id !== props.id || !current()) return
+    if (data) {
+      cardModal.value = false
+      await cardLoad()
+      if (cardLedgerCard.value === data.id) await cardLedger.reload()
+    } else toast.add({ title: errorText(error), color: 'error' })
+  } finally {
+    if (current() || !cardModal.value) cardSaving.value = false
+  }
+}
+
+const cardLedgerCard = ref('')
+const cardLedger = useCursorList(async (beforeId) => {
+  const { data, error } = await api.POST('/api/ops/list_card_ledger', { body: { card_id: cardLedgerCard.value, before_id: beforeId } })
+  return { data: data?.entries, error }
+})
+
+function cardShowLedger(id: string) {
+  cardLedgerCard.value = id
+  cardLedger.reload()
+}
+
 // 操作日志
 const logs = useCursorList(async (beforeId) => {
   const { data, error } = await api.POST('/api/ops/list_audit_log', {
@@ -320,6 +415,15 @@ function snapshot(value: unknown): string {
 // 读取档案及营业日，切换顾客时关闭编辑入口
 watch(() => props.id, () => {
   customerGuard.next()
+  cardListGuard.invalidate()
+  cardModalGuard.next()
+  cardModal.value = false
+  cardSaving.value = false
+  cardOptionsLoading.value = false
+  cardCards.value = []
+  cardLedgerCard.value = ''
+  cardLedger.clear()
+  if (can('customer.view')) cardLoad()
   customer.value = null
   editing.value = false
   phoneOpen.value = false
@@ -339,6 +443,7 @@ const businessDateGuard = useRequestGuard()
 onMounted(async () => {
   const current = businessDateGuard.next()
   load()
+  if (can('customer.view')) cardLoad()
   const res = await api.POST('/api/ops/get_settings', { body: {} })
   if (!current()) return
   if (res.data) {
@@ -405,6 +510,33 @@ onBeforeUnmount(() => {
             <UButton v-if="!customer.merged_into && can('customer.safety_label')" size="xs" color="error" variant="ghost" @click="revokeTarget = l">撤销</UButton>
           </div>
         </UCard>
+        <div v-if="can('customer.view')">
+          <UCard>
+            <template #header>
+              <div class="flex justify-between items-center">
+                <h3 class="font-medium">卡</h3>
+                <UButton v-if="can('card.sell') && !customer.merged_into" size="sm" @click="cardEdit(null)">开卡</UButton>
+              </div>
+            </template>
+            <p v-if="cardLoading">正在读取卡…</p>
+            <p v-else-if="!cardCards.length">暂无卡</p>
+            <div v-for="card in cardCards" :key="card.id" :data-card="card.id" class="space-y-2 py-3 border-b border-default">
+              <p>{{ card.card_type_name }} · 本金 {{ card.principal }} · 赠送金 {{ card.bonus }} · 有效期 {{ card.expires_on || '不限' }}</p>
+              <div class="flex gap-2">
+                <UButton v-if="can('card.sell') && !customer.merged_into" size="xs" variant="outline" @click="cardEdit(card)">充值</UButton>
+                <UButton size="xs" variant="outline" @click="cardShowLedger(card.id)">流水</UButton>
+              </div>
+              <div v-if="cardLedgerCard === card.id" data-testid="card-ledger" class="space-y-2 text-sm">
+                <p v-for="entry in cardLedger.items.value" :key="entry.id" data-testid="card-ledger-entry">
+                  {{ entry.kind === 'open' ? '开卡' : '充值' }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN') }} · {{ entry.actor.name }}
+                  本金 {{ entry.principal_before }} + {{ entry.principal_delta }} = {{ entry.principal_after }}；赠送金 {{ entry.bonus_before }} + {{ entry.bonus_delta }} = {{ entry.bonus_after }}
+                  · 业绩归属人：{{ entry.sales_staff.map(s => s.name).join('、') }}
+                </p>
+                <UButton v-if="cardLedger.hasMore.value" :loading="cardLedger.loading.value" variant="outline" @click="cardLedger.loadMore">加载更多</UButton>
+              </div>
+            </div>
+          </UCard>
+        </div>
         <UCard v-if="can('audit_log.view')">
           <template #header>
             <h3 class="font-medium">修改记录</h3>
@@ -442,6 +574,18 @@ onBeforeUnmount(() => {
       <p v-else class="text-muted">正在读取顾客档案…</p>
     </template>
   </USlideover>
+  <UModal v-model:open="cardModal" :title="cardTarget ? '充值' : '开卡'">
+    <template #body>
+      <div class="space-y-3">
+        <UFormField v-if="!cardTarget" label="卡类型"><USelect v-model="cardCardType" :items="cardTypes.map(t => ({ label: t.name, value: t.id }))" class="w-full" /></UFormField>
+        <UFormField label="本金"><UInput v-model="cardPrincipal" inputmode="decimal" class="w-full" /></UFormField>
+        <UFormField label="赠送金"><UInput v-model="cardBonus" inputmode="decimal" class="w-full" /></UFormField>
+        <UFormField label="业绩归属人"><USelect v-model="cardSales" multiple :items="cardStaff.map(s => ({ label: s.name, value: s.id }))" class="w-full" /></UFormField>
+      </div>
+    </template>
+    <template #footer><UButton :loading="cardSaving" :disabled="cardOptionsLoading || !cardSales.length || (!cardTarget && !cardCardType)" @click="cardSave">保存</UButton></template>
+  </UModal>
+
   <UModal v-model:open="editing" title="修改顾客资料">
     <template #body>
       <div class="space-y-3">
