@@ -243,3 +243,11 @@ func maskPhoneValues(value any) {
 		}
 	}
 }
+
+// CardTypeTarget 创建卡类型日志目标。
+func CardTypeTarget(id uuid.UUID) Target { return Target{kind: "card_type", id: id} }
+
+// CardTarget 创建关联顾客的卡日志目标。
+func CardTarget(id, customerID uuid.UUID) Target {
+	return Target{kind: "card", id: id, customerID: &customerID}
+}

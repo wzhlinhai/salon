@@ -36,3 +36,27 @@ sql:
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money
               type: Amount
+          - column: card_ledger.principal_before
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: card_ledger.principal_delta
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: card_ledger.principal_after
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: card_ledger.bonus_before
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: card_ledger.bonus_delta
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: card_ledger.bonus_after
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount

@@ -99,7 +99,7 @@ test('店长合并顾客时迁移安全标签，默认搜索隐藏被合并顾�
   await expect(detail.getByRole('heading', { name: keepName, exact: true })).toBeVisible()
 })
 
-test('店长从空查询分页找到全空未识别顾客，并选择保留另一位有手机号的顾客', async ({ page }) => {
+test('店长从空查询分页找到全空未识别顾客，并选择保留另一位有手机号的顾客', { tag: '@store-customer-dataset' }, async ({ page }) => {
   const manager = await hire('店长')
   const token = await apiLogin(manager.account, manager.password)
   const name = `识别顾客${Date.now()}`

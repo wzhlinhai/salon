@@ -127,6 +127,9 @@ func TestRoundTripAndAudit(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
+	if err := tx.Rollback(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	if count != 2 {
 		t.Fatal(count)
 	}
@@ -362,6 +365,9 @@ func TestLocksBeforeReadingState(t *testing.T) {
 	auditTx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	var beforeName string
 	if err := auditTx.QueryRow(context.Background(), "SELECT before->>'name' FROM audit_log WHERE target_id=$1 AND action='update_item'", item["id"]).Scan(&beforeName); err != nil {
+		t.Fatal(err)
+	}
+	if err := auditTx.Rollback(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if beforeName != "锁内改名" {

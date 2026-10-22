@@ -123,6 +123,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/create_card_type": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 新建卡类型 */
+        post: operations["create_card_type"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/create_customer": {
         parameters: {
             query?: never;
@@ -378,6 +395,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_card_ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看卡流水和业绩归属人 */
+        post: operations["list_card_ledger"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_card_types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 列出本店卡类型 */
+        post: operations["list_card_types"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_customer_cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看顾客在发行门店的卡 */
+        post: operations["list_customer_cards"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_customer_sources": {
         parameters: {
             query?: never;
@@ -565,6 +633,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/open_card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 为顾客开卡并记录首次充值 */
+        post: operations["open_card"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/quote_item_price": {
         parameters: {
             query?: never;
@@ -593,6 +678,23 @@ export interface paths {
         put?: never;
         /** 恢复已停用的员工 */
         post: operations["reactivate_staff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/recharge_card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 充值并追加卡流水 */
+        post: operations["recharge_card"];
         delete?: never;
         options?: never;
         head?: never;
@@ -678,6 +780,23 @@ export interface paths {
         put?: never;
         /** 设置员工的角色 */
         post: operations["set_staff_roles"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/update_card_type": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 编辑或停用卡类型 */
+        post: operations["update_card_type"];
         delete?: never;
         options?: never;
         head?: never;
@@ -825,6 +944,57 @@ export interface components {
             customer_ids: string[];
             staff_id?: string;
         };
+        Card: {
+            bonus: string;
+            card_type_id: string;
+            card_type_name: string;
+            customer_id: string;
+            expires_on?: string;
+            id: string;
+            /** Format: date-time */
+            opened_at: string;
+            principal: string;
+        };
+        CardLedgerActor: {
+            id: string;
+            name: string;
+        };
+        CardLedgerEntry: {
+            actor: components["schemas"]["CardLedgerActor"];
+            /** Format: date-time */
+            at: string;
+            bonus_after: string;
+            bonus_before: string;
+            bonus_delta: string;
+            business_date: string;
+            id: string;
+            kind: string;
+            principal_after: string;
+            principal_before: string;
+            principal_delta: string;
+            sales_staff: components["schemas"]["SalesStaff"][];
+        };
+        CardLedgerList: {
+            entries: components["schemas"]["CardLedgerEntry"][];
+        };
+        CardList: {
+            items: components["schemas"]["Card"][];
+        };
+        CardType: {
+            active: boolean;
+            /** Format: date-time */
+            created_at: string;
+            id: string;
+            kind: string;
+            name: string;
+            validity_date?: string;
+            /** Format: int32 */
+            validity_days?: number;
+            validity_kind: string;
+        };
+        CardTypeList: {
+            items: components["schemas"]["CardType"][];
+        };
         ChangeMyPasswordInput: {
             new_password: string;
             old_password: string;
@@ -839,6 +1009,16 @@ export interface components {
             key: string;
             /** @description 新的值，形式见 get_settings 的 kind；null 表示恢复系统默认做法 */
             value: unknown;
+        };
+        CreateCardTypeInput: {
+            /** @enum {string} */
+            kind: "stored_value";
+            name: string;
+            validity_date?: string;
+            /** Format: int32 */
+            validity_days?: number;
+            /** @enum {string} */
+            validity_kind: "none" | "fixed_date" | "days_after_open";
         };
         CreateCustomerInput: {
             /** @enum {string} */
@@ -1068,6 +1248,16 @@ export interface components {
             /** @description 只看这个目标的修改，不填为全部 */
             target_id?: string;
         };
+        ListCardLedgerInput: {
+            before_id?: string;
+            card_id: string;
+            /** Format: int32 */
+            limit?: number;
+        };
+        ListCardTypesInput: Record<string, never>;
+        ListCustomerCardsInput: {
+            customer_id: string;
+        };
         ListCustomerSourcesInput: Record<string, never>;
         ListInput: Record<string, never>;
         ListItemsInput: Record<string, never>;
@@ -1108,6 +1298,13 @@ export interface components {
         OK: {
             ok: boolean;
         };
+        OpenCardInput: {
+            bonus: string;
+            card_type_id: string;
+            customer_id: string;
+            principal: string;
+            sales_staff_ids: string[];
+        };
         PermissionList: {
             permissions: components["schemas"]["Def"][];
         };
@@ -1122,6 +1319,12 @@ export interface components {
         QuoteItemPriceInput: {
             item_id: string;
             staff_id: string;
+        };
+        RechargeInput: {
+            bonus: string;
+            card_id: string;
+            principal: string;
+            sales_staff_ids: string[];
         };
         Ref: {
             id: string;
@@ -1165,6 +1368,10 @@ export interface components {
             observed_on: string;
             recorded_by: string;
             source: string;
+        };
+        SalesStaff: {
+            id: string;
+            name: string;
         };
         ScheduledValue: {
             /** Format: date */
@@ -1281,6 +1488,18 @@ export interface components {
             id: string;
             /** @description 门店名称 */
             name: string;
+        };
+        UpdateCardTypeInput: {
+            active: boolean;
+            id: string;
+            /** @enum {string} */
+            kind: "stored_value";
+            name: string;
+            validity_date?: string;
+            /** Format: int32 */
+            validity_days?: number;
+            /** @enum {string} */
+            validity_kind: "none" | "fixed_date" | "days_after_open";
         };
         UpdateCustomerProfileInput: {
             /** @enum {string} */
@@ -1561,6 +1780,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SettingChange"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    create_card_type: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCardTypeInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardType"];
                 };
             };
             /** @description Error */
@@ -2069,6 +2321,105 @@ export interface operations {
             };
         };
     };
+    list_card_ledger: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListCardLedgerInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardLedgerList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_card_types: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListCardTypesInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardTypeList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_customer_cards: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListCustomerCardsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     list_customer_sources: {
         parameters: {
             query?: never;
@@ -2432,6 +2783,39 @@ export interface operations {
             };
         };
     };
+    open_card: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenCardInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Card"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     quote_item_price: {
         parameters: {
             query?: never;
@@ -2485,6 +2869,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Staff"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    recharge_card: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RechargeInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Card"];
                 };
             };
             /** @description Error */
@@ -2650,6 +3067,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Staff"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    update_card_type: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCardTypeInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardType"];
                 };
             };
             /** @description Error */

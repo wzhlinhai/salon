@@ -73,6 +73,8 @@ func NewEmptyPool(t testing.TB) *pgxpool.Pool {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// 与 CI 一样限制为四个连接，让占用连接的测试在本地也能暴露问题。
+	cfg.MaxConns = 4
 	cfg.ConnConfig.Database = name
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {

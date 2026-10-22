@@ -65,6 +65,9 @@ func TestNumericRoundTrip(t *testing.T) {
 	if err := tx.QueryRow(context.Background(), "SELECT $1::numeric(10,2), $2::numeric(5,2)", a, p).Scan(&got, &percent); err != nil {
 		t.Fatal(err)
 	}
+	if err := tx.Rollback(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	if got.String() != "1234.56" || percent.String() != "0.50" {
 		t.Fatalf("%s %s", got, percent)
 	}
