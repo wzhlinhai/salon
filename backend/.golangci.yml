@@ -1,3 +1,30 @@
 version: "2"
 # 默认的 linter：errcheck、govet、ineffassign、staticcheck、unused。
 # 忽略错误时写成 `_ = x.Close()`，让读者看到这是有意的。
+# 金额运算只在 money 内使用 decimal；业务代码不通过显示文本处理金额。
+linters:
+  enable:
+    - depguard
+    - forbidigo
+  settings:
+    depguard:
+      rules:
+        money:
+          files:
+            - "$all"
+            - "!**/internal/money/**"
+          deny:
+            - pkg: github.com/shopspring/decimal
+              desc: 金额运算必须通过 internal/money。
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: '^money\.(Amount|Change|Total|Percent)\.String$'
+          pkg: '^github\.com/wzhlinhai/salon/backend/internal/money$'
+          msg: 金额比较和运算必须使用 money 方法。
+  exclusions:
+    rules:
+      # 测试可以把显示文本与金额字面量对照。
+      - path: '(_test\.go$|internal/money/)'
+        linters:
+          - forbidigo

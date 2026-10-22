@@ -44,6 +44,8 @@ Codex runs every applicable gate and fixes failures before reporting. Each outpu
 - A mutcheck counts as caught only when the failing test names are the tests guarding that protection. A failure caused by the environment (Docker, browser, port) is not a catch: report it as not run.
 - A mutation that moves code (not just deletes it) is easy to get wrong on the command line: build the original and replacement text with a script from the file, and check the log says "caught by". "does not build" or "NOT caught" is not a pass. Run every mutcheck on the final code: one recorded before a later edit (for example, before deleting a query it calls) may no longer build.
 - A protection in the admin UI (no `mutcheck.sh` there): temporarily remove it, run the guarding e2e in the same one-command form, restore it, report both results.
+- Every protection of a P0 ticket lives in one manifest, `.dev/codex/<ticket>/manifest.py`, run by `backend/scripts/mutchecks.py` (its docstring gives the format). Each step appends its entries, runs them, and runs `--locate` over the whole manifest: an entry whose original no longer matches is rewritten in the step whose edit moved it.
+- When a Codex run ends in any way (finished, quota, crash), run `backend/scripts/mutcheck.sh --restore` before reviewing: an interrupted mutation leaves its backup in `.dev/mutcheck-backup/`.
 
 ## Report
 

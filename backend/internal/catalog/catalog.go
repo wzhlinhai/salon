@@ -391,7 +391,7 @@ func writeChildren(ctx context.Context, env ops.Env, id uuid.UUID, before *Item,
 			if err := env.Q.AddItemLevelPrice(ctx, dbgen.AddItemLevelPriceParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, ItemID: id, LevelID: l.LevelID, Price: l.Price}); err != nil {
 				return err
 			}
-		} else if previous.Price.String() != l.Price.String() {
+		} else if previous.Price.Cmp(l.Price) != 0 {
 			if err := env.Q.UpdateItemLevelPrice(ctx, dbgen.UpdateItemLevelPriceParams{ItemID: id, LevelID: l.LevelID, Price: l.Price}); err != nil {
 				return err
 			}
