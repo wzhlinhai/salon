@@ -60,3 +60,11 @@ sql:
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money
               type: Amount
+          - column: card_type_items.unit_price
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: card_items.unit_price
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount

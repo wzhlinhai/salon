@@ -52,6 +52,36 @@ type CardAdjustment struct {
 	BusinessDate   pgtype.Date
 	ActorID        uuid.UUID
 	At             pgtype.Timestamptz
+	CountsChanged  bool
+}
+
+type CardCountLedger struct {
+	ID           uuid.UUID
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	CardID       uuid.UUID
+	ItemID       uuid.UUID
+	Kind         string
+	PaidBefore   int32
+	PaidDelta    int32
+	PaidAfter    int32
+	GiftBefore   int32
+	GiftDelta    int32
+	GiftAfter    int32
+	AdjustmentID *uuid.UUID
+	BusinessDate pgtype.Date
+	ActorID      uuid.UUID
+	At           pgtype.Timestamptz
+}
+
+type CardItem struct {
+	TenantID        uuid.UUID
+	StoreID         uuid.UUID
+	CardID          uuid.UUID
+	ItemID          uuid.UUID
+	UnitPrice       money.Amount
+	PaidCountOpened int32
+	GiftCountOpened int32
 }
 
 type CardLedger struct {
@@ -89,6 +119,16 @@ type CardType struct {
 	ValidityDays *int32
 	Active       bool
 	CreatedAt    pgtype.Timestamptz
+}
+
+type CardTypeItem struct {
+	TenantID   uuid.UUID
+	StoreID    uuid.UUID
+	CardTypeID uuid.UUID
+	ItemID     uuid.UUID
+	PaidCount  int32
+	GiftCount  int32
+	UnitPrice  money.Amount
 }
 
 type Customer struct {

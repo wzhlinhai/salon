@@ -1,4 +1,4 @@
-// Package cards 管理储值卡类型、开卡、充值及只追加的卡流水。
+// Package cards 管理卡类型、开卡、充值及只追加的余额和次数流水。
 package cards
 
 import (
@@ -11,23 +11,25 @@ import (
 
 // CardType 是门店定义的卡类型及有效期规则。
 type CardType struct {
-	ID           uuid.UUID `json:"id"`
-	Name         string    `json:"name"`
-	Kind         string    `json:"kind"`
-	ValidityKind string    `json:"validity_kind"`
-	ValidityDate *string   `json:"validity_date,omitempty"`
-	ValidityDays *int32    `json:"validity_days,omitempty"`
-	Active       bool      `json:"active"`
-	CreatedAt    time.Time `json:"created_at"`
+	Items        []CardTypeItem `json:"items"`
+	ID           uuid.UUID      `json:"id"`
+	Name         string         `json:"name"`
+	Kind         string         `json:"kind"`
+	ValidityKind string         `json:"validity_kind"`
+	ValidityDate *string        `json:"validity_date,omitempty"`
+	ValidityDays *int32         `json:"validity_days,omitempty"`
+	Active       bool           `json:"active"`
+	CreatedAt    time.Time      `json:"created_at"`
 }
 
-// CreateCardTypeInput 是新建储值卡类型的参数。
+// CreateCardTypeInput 是新建卡类型的参数。
 type CreateCardTypeInput struct {
-	Name         string  `json:"name" minLength:"1" maxLength:"40"`
-	Kind         string  `json:"kind" enum:"stored_value"`
-	ValidityKind string  `json:"validity_kind" enum:"none,fixed_date,days_after_open"`
-	ValidityDate *string `json:"validity_date,omitempty"`
-	ValidityDays *int32  `json:"validity_days,omitempty"`
+	Items        []CardTypeItemInput `json:"items,omitempty" maxItems:"20"`
+	Name         string              `json:"name" minLength:"1" maxLength:"40"`
+	Kind         string              `json:"kind" enum:"stored_value,count,package"`
+	ValidityKind string              `json:"validity_kind" enum:"none,fixed_date,days_after_open"`
+	ValidityDate *string             `json:"validity_date,omitempty"`
+	ValidityDays *int32              `json:"validity_days,omitempty"`
 }
 
 // UpdateCardTypeInput 是编辑或停用卡类型的参数。
@@ -47,14 +49,17 @@ type CardTypeList struct {
 
 // Card 是顾客持有的卡，余额来自最后一条卡流水。
 type Card struct {
-	ID           uuid.UUID    `json:"id"`
-	CustomerID   uuid.UUID    `json:"customer_id"`
-	CardTypeID   uuid.UUID    `json:"card_type_id"`
-	CardTypeName string       `json:"card_type_name"`
-	OpenedAt     time.Time    `json:"opened_at"`
-	ExpiresOn    *string      `json:"expires_on,omitempty"`
-	Principal    money.Amount `json:"principal"`
-	Bonus        money.Amount `json:"bonus"`
+	Kind         string            `json:"kind"`
+	Items        []RemainingCounts `json:"items"`
+	CountsPrice  string            `json:"counts_price"`
+	ID           uuid.UUID         `json:"id"`
+	CustomerID   uuid.UUID         `json:"customer_id"`
+	CardTypeID   uuid.UUID         `json:"card_type_id"`
+	CardTypeName string            `json:"card_type_name"`
+	OpenedAt     time.Time         `json:"opened_at"`
+	ExpiresOn    *string           `json:"expires_on,omitempty"`
+	Principal    money.Amount      `json:"principal"`
+	Bonus        money.Amount      `json:"bonus"`
 }
 
 // TopUpInput 是本金、赠送金与业绩归属人。
@@ -135,12 +140,13 @@ type CardExpiry struct {
 
 // AdjustCardInput 是以目标值更正卡的调整单参数。
 type AdjustCardInput struct {
-	CardID     uuid.UUID     `json:"card_id"`
-	Principal  *money.Amount `json:"principal,omitempty"`
-	Bonus      *money.Amount `json:"bonus,omitempty"`
-	Expiry     *CardExpiry   `json:"expiry,omitempty"`
-	CardTypeID *uuid.UUID    `json:"card_type_id,omitempty"`
-	Reason     string        `json:"reason" minLength:"1"`
+	Counts     []CardCountTarget `json:"counts,omitempty" maxItems:"20"`
+	CardID     uuid.UUID         `json:"card_id"`
+	Principal  *money.Amount     `json:"principal,omitempty"`
+	Bonus      *money.Amount     `json:"bonus,omitempty"`
+	Expiry     *CardExpiry       `json:"expiry,omitempty"`
+	CardTypeID *uuid.UUID        `json:"card_type_id,omitempty"`
+	Reason     string            `json:"reason" minLength:"1"`
 }
 
 // ListCardAdjustmentsInput 是调整单的游标分页参数。
@@ -168,6 +174,7 @@ type CardAdjustmentBalance struct {
 
 // CardAdjustment 是只追加的更正记录及原因。
 type CardAdjustment struct {
+	Counts         []CardCountEntry       `json:"counts"`
 	ID             uuid.UUID              `json:"id"`
 	Reason         string                 `json:"reason"`
 	ExpiryBefore   *CardExpiry            `json:"expiry_before,omitempty"`
@@ -183,4 +190,79 @@ type CardAdjustment struct {
 // CardAdjustmentList 是由新到旧的调整单。
 type CardAdjustmentList struct {
 	Entries []CardAdjustment `json:"entries"`
+}
+
+// StoredValue 是储值卡的种类。
+const StoredValue = "stored_value"
+
+// CountCard 是只含项目次数的次卡种类。
+const CountCard = "count"
+
+// Package 是兼含储值和项目次数的套餐种类。
+const Package = "package"
+
+// CardTypeItemInput 是卡类型内项目的购买次数、赠送次数和单次金额。
+type CardTypeItemInput struct {
+	ItemID    uuid.UUID    `json:"item_id"`
+	PaidCount int32        `json:"paid_count" minimum:"1" maximum:"9999"`
+	GiftCount int32        `json:"gift_count" minimum:"0" maximum:"9999"`
+	UnitPrice money.Amount `json:"unit_price"`
+}
+
+// CardTypeItem 是卡类型内的项目定义。
+type CardTypeItem struct {
+	CardTypeItemInput
+	ItemName string `json:"item_name"`
+}
+
+// RemainingCounts 是卡上一个项目由次数流水推得的剩余次数。
+type RemainingCounts struct {
+	ItemID        uuid.UUID    `json:"item_id"`
+	ItemName      string       `json:"item_name"`
+	UnitPrice     money.Amount `json:"unit_price"`
+	PaidRemaining int32        `json:"paid_remaining"`
+	GiftRemaining int32        `json:"gift_remaining"`
+}
+
+// CardCountTarget 是调整单中一个项目的目标剩余次数。
+type CardCountTarget struct {
+	ItemID uuid.UUID `json:"item_id"`
+	Paid   int32     `json:"paid" minimum:"0" maximum:"9999"`
+	Gift   int32     `json:"gift" minimum:"0" maximum:"9999"`
+}
+
+// CardCountItem 是次数流水关联的项目。
+type CardCountItem struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+// CardCountEntry 是购买次数与赠送次数的一次变动。
+type CardCountEntry struct {
+	ID           uuid.UUID       `json:"id"`
+	Item         CardCountItem   `json:"item"`
+	Kind         string          `json:"kind"`
+	PaidBefore   int32           `json:"paid_before"`
+	PaidDelta    int32           `json:"paid_delta"`
+	PaidAfter    int32           `json:"paid_after"`
+	GiftBefore   int32           `json:"gift_before"`
+	GiftDelta    int32           `json:"gift_delta"`
+	GiftAfter    int32           `json:"gift_after"`
+	Reason       string          `json:"reason,omitempty"`
+	BusinessDate string          `json:"business_date"`
+	At           time.Time       `json:"at"`
+	Actor        CardLedgerActor `json:"actor"`
+}
+
+// ListCardCountsInput 是次数流水的项目筛选和游标分页参数。
+type ListCardCountsInput struct {
+	CardID   uuid.UUID  `json:"card_id"`
+	ItemID   *uuid.UUID `json:"item_id,omitempty"`
+	BeforeID *uuid.UUID `json:"before_id,omitempty"`
+	Limit    int32      `json:"limit,omitempty" minimum:"0" maximum:"200"`
+}
+
+// CardCountList 是由新到旧的次数流水。
+type CardCountList struct {
+	Entries []CardCountEntry `json:"entries"`
 }

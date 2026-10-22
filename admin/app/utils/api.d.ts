@@ -429,6 +429,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_card_counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看次数流水 */
+        post: operations["list_card_counts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_card_ledger": {
         parameters: {
             query?: never;
@@ -978,6 +995,7 @@ export interface components {
             bonus?: string;
             card_id: string;
             card_type_id?: string;
+            counts?: components["schemas"]["CardCountTarget"][];
             expiry?: components["schemas"]["CardExpiry"];
             principal?: string;
             reason: string;
@@ -990,9 +1008,12 @@ export interface components {
             bonus: string;
             card_type_id: string;
             card_type_name: string;
+            counts_price: string;
             customer_id: string;
             expires_on?: string;
             id: string;
+            items: components["schemas"]["RemainingCounts"][];
+            kind: string;
             /** Format: date-time */
             opened_at: string;
             principal: string;
@@ -1005,6 +1026,7 @@ export interface components {
             business_date: string;
             card_type_after?: components["schemas"]["CardAdjustmentType"];
             card_type_before?: components["schemas"]["CardAdjustmentType"];
+            counts: components["schemas"]["CardCountEntry"][];
             expiry_after?: components["schemas"]["CardExpiry"];
             expiry_before?: components["schemas"]["CardExpiry"];
             id: string;
@@ -1024,6 +1046,42 @@ export interface components {
         CardAdjustmentType: {
             id: string;
             name: string;
+        };
+        CardCountEntry: {
+            actor: components["schemas"]["CardLedgerActor"];
+            /** Format: date-time */
+            at: string;
+            business_date: string;
+            /** Format: int32 */
+            gift_after: number;
+            /** Format: int32 */
+            gift_before: number;
+            /** Format: int32 */
+            gift_delta: number;
+            id: string;
+            item: components["schemas"]["CardCountItem"];
+            kind: string;
+            /** Format: int32 */
+            paid_after: number;
+            /** Format: int32 */
+            paid_before: number;
+            /** Format: int32 */
+            paid_delta: number;
+            reason?: string;
+        };
+        CardCountItem: {
+            id: string;
+            name: string;
+        };
+        CardCountList: {
+            entries: components["schemas"]["CardCountEntry"][];
+        };
+        CardCountTarget: {
+            /** Format: int32 */
+            gift: number;
+            item_id: string;
+            /** Format: int32 */
+            paid: number;
         };
         CardExpiry: {
             /** Format: date */
@@ -1060,12 +1118,30 @@ export interface components {
             /** Format: date-time */
             created_at: string;
             id: string;
+            items: components["schemas"]["CardTypeItem"][];
             kind: string;
             name: string;
             validity_date?: string;
             /** Format: int32 */
             validity_days?: number;
             validity_kind: string;
+        };
+        CardTypeItem: {
+            /** Format: int32 */
+            gift_count: number;
+            item_id: string;
+            item_name: string;
+            /** Format: int32 */
+            paid_count: number;
+            unit_price: string;
+        };
+        CardTypeItemInput: {
+            /** Format: int32 */
+            gift_count: number;
+            item_id: string;
+            /** Format: int32 */
+            paid_count: number;
+            unit_price: string;
         };
         CardTypeList: {
             items: components["schemas"]["CardType"][];
@@ -1086,8 +1162,9 @@ export interface components {
             value: unknown;
         };
         CreateCardTypeInput: {
+            items?: components["schemas"]["CardTypeItemInput"][];
             /** @enum {string} */
-            kind: "stored_value";
+            kind: "stored_value" | "count" | "package";
             name: string;
             validity_date?: string;
             /** Format: int32 */
@@ -1329,6 +1406,13 @@ export interface components {
             /** Format: int32 */
             limit?: number;
         };
+        ListCardCountsInput: {
+            before_id?: string;
+            card_id: string;
+            item_id?: string;
+            /** Format: int32 */
+            limit?: number;
+        };
         ListCardLedgerInput: {
             before_id?: string;
             card_id: string;
@@ -1410,6 +1494,15 @@ export interface components {
         Ref: {
             id: string;
             name: string;
+        };
+        RemainingCounts: {
+            /** Format: int32 */
+            gift_remaining: number;
+            item_id: string;
+            item_name: string;
+            /** Format: int32 */
+            paid_remaining: number;
+            unit_price: string;
         };
         RenameStoreInput: {
             /** @description 新的门店名称 */
@@ -1573,8 +1666,9 @@ export interface components {
         UpdateCardTypeInput: {
             active: boolean;
             id: string;
+            items?: components["schemas"]["CardTypeItemInput"][];
             /** @enum {string} */
-            kind: "stored_value";
+            kind: "stored_value" | "count" | "package";
             name: string;
             validity_date?: string;
             /** Format: int32 */
@@ -2455,6 +2549,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardAdjustmentList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_card_counts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListCardCountsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardCountList"];
                 };
             };
             /** @description Error */
