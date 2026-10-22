@@ -78,7 +78,27 @@ func adjustCard(ctx context.Context, env ops.Env, in *AdjustCardInput) (*Card, e
 		typeID = ct.ID
 		typeBefore, typeAfter = &card.CardTypeID, &typeID
 	}
-	if !balanceChanged && !expiryChanged && typeAfter == nil {
+	changes := []dbgen.AddCardCountEntryParams{}
+	seen := map[uuid.UUID]bool{}
+	for _, target := range in.Counts {
+		if seen[target.ItemID] || target.Paid < 0 || target.Gift < 0 {
+			return nil, ops.Rule("次数目标不能重复或为负")
+		}
+		seen[target.ItemID] = true
+		found := false
+		for _, item := range before.Items {
+			if item.ItemID == target.ItemID {
+				found = true
+				if target.Paid != item.PaidRemaining || target.Gift != item.GiftRemaining {
+					changes = append(changes, dbgen.AddCardCountEntryParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: card.ID, ItemID: target.ItemID, Kind: "adjust", PaidBefore: item.PaidRemaining, PaidDelta: target.Paid - item.PaidRemaining, PaidAfter: target.Paid, GiftBefore: item.GiftRemaining, GiftDelta: target.Gift - item.GiftRemaining, GiftAfter: target.Gift, ActorID: env.Caller.StaffID})
+				}
+			}
+		}
+		if !found {
+			return nil, ops.Rule("项目不在卡上")
+		}
+	}
+	if !balanceChanged && !expiryChanged && typeAfter == nil && len(changes) == 0 {
 		return nil, ops.Rule("调整单没有任何改动")
 	}
 	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
@@ -102,9 +122,16 @@ func adjustCard(ctx context.Context, env ops.Env, in *AdjustCardInput) (*Card, e
 	if expiryChanged {
 		expiresBefore, expiresAfter = card.ExpiresOn, expires
 	}
-	_, err = env.Q.AddCardAdjustment(ctx, dbgen.AddCardAdjustmentParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: card.ID, Reason: in.Reason, ExpiresBefore: expiresBefore, ExpiresAfter: expiresAfter, ExpiryChanged: expiryChanged, CardTypeBefore: typeBefore, CardTypeAfter: typeAfter, LedgerID: ledgerID, BusinessDate: pgtype.Date{Time: day, Valid: true}, ActorID: env.Caller.StaffID})
+	adjustment, err := env.Q.AddCardAdjustment(ctx, dbgen.AddCardAdjustmentParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: card.ID, Reason: in.Reason, ExpiresBefore: expiresBefore, ExpiresAfter: expiresAfter, ExpiryChanged: expiryChanged, CardTypeBefore: typeBefore, CardTypeAfter: typeAfter, LedgerID: ledgerID, CountsChanged: len(changes) > 0, BusinessDate: pgtype.Date{Time: day, Valid: true}, ActorID: env.Caller.StaffID})
 	if err != nil {
 		return nil, err
+	}
+	for _, change := range changes {
+		change.AdjustmentID = &adjustment.ID
+		change.BusinessDate = pgtype.Date{Time: day, Valid: true}
+		if err := env.Q.AddCardCountEntry(ctx, change); err != nil {
+			return nil, err
+		}
 	}
 	out, err := cardView(ctx, env, card.ID)
 	if err != nil {
@@ -132,10 +159,31 @@ func listCardAdjustments(ctx context.Context, env ops.Env, in *ListCardAdjustmen
 	if err != nil {
 		return nil, err
 	}
+	ids := make([]uuid.UUID, len(rows))
+	for i, r := range rows {
+		ids[i] = r.CardAdjustment.ID
+	}
+	counts, err := env.Q.AdjustmentCounts(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	byID := map[uuid.UUID][]CardCountEntry{}
+	for _, r := range counts {
+		l := r.CardCountLedger
+		byID[*l.AdjustmentID] = append(byID[*l.AdjustmentID], countEntry(l, r.ItemName, "", ""))
+	}
 	out := &CardAdjustmentList{Entries: []CardAdjustment{}}
 	for _, r := range rows {
 		a := r.CardAdjustment
 		item := CardAdjustment{ID: a.ID, Reason: a.Reason, BusinessDate: a.BusinessDate.Time.Format(time.DateOnly), At: a.At.Time, Actor: CardLedgerActor{ID: a.ActorID, Name: r.ActorName}}
+		item.Counts = byID[a.ID]
+		if item.Counts == nil {
+			item.Counts = []CardCountEntry{}
+		}
+		for i := range item.Counts {
+			item.Counts[i].Reason = a.Reason
+			item.Counts[i].Actor = item.Actor
+		}
 		if a.ExpiryChanged {
 			item.ExpiryBefore = &CardExpiry{ExpiresOn: dateView(a.ExpiresBefore)}
 			item.ExpiryAfter = &CardExpiry{ExpiresOn: dateView(a.ExpiresAfter)}

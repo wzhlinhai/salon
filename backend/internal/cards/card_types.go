@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -36,6 +37,19 @@ func rowError(err error) error {
 }
 func validateType(in *CreateCardTypeInput) (pgtype.Date, error) {
 	var date pgtype.Date
+	if in.Kind != StoredValue && in.Kind != CountCard && in.Kind != Package {
+		return date, ops.Rule("卡种类无效")
+	}
+	if len(in.Items) > 20 || (in.Kind == StoredValue && len(in.Items) != 0) || (in.Kind != StoredValue && len(in.Items) == 0) {
+		return date, ops.Rule("储值卡不能含项目，次卡和套餐须含一到二十个项目")
+	}
+	seen := map[uuid.UUID]bool{}
+	for _, x := range in.Items {
+		if seen[x.ItemID] || x.PaidCount <= 0 || x.GiftCount < 0 {
+			return date, ops.Rule("项目不能重复，购买次数须大于零，赠送次数不能为负")
+		}
+		seen[x.ItemID] = true
+	}
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" {
 		return date, ops.Rule("请填写卡类型名称")
@@ -72,7 +86,14 @@ func createCardType(ctx context.Context, env ops.Env, in *CreateCardTypeInput) (
 	if err != nil {
 		return nil, rowError(err)
 	}
-	out := typeView(row)
+	if err := changeTypeItems(ctx, env, row.ID, nil, in.Items); err != nil {
+		return nil, err
+	}
+	views := []CardType{typeView(row)}
+	if err := typeItems(ctx, env, views); err != nil {
+		return nil, err
+	}
+	out := views[0]
 	if err := audit.Record(ctx, env, "create_card_type", audit.CardTypeTarget(row.ID), nil, out); err != nil {
 		return nil, err
 	}
@@ -87,12 +108,32 @@ func updateCardType(ctx context.Context, env ops.Env, in *UpdateCardTypeInput) (
 	if err != nil {
 		return nil, rowError(err)
 	}
+	beforeViews := []CardType{typeView(before)}
+	if err := typeItems(ctx, env, beforeViews); err != nil {
+		return nil, err
+	}
+	if before.Kind != in.Kind {
+		exists, err := env.Q.CardTypeHasCards(ctx, in.ID)
+		if err != nil {
+			return nil, err
+		}
+		if exists {
+			return nil, ops.Rule("已有卡的卡类型不能改变种类")
+		}
+	}
+	if err := changeTypeItems(ctx, env, in.ID, beforeViews[0].Items, in.Items); err != nil {
+		return nil, err
+	}
 	row, err := env.Q.UpdateCardType(ctx, dbgen.UpdateCardTypeParams{ID: in.ID, Name: in.Name, Kind: in.Kind, ValidityKind: in.ValidityKind, ValidityDate: date, ValidityDays: in.ValidityDays, Active: in.Active})
 	if err != nil {
 		return nil, rowError(err)
 	}
-	out := typeView(row)
-	if err := audit.Record(ctx, env, "update_card_type", audit.CardTypeTarget(row.ID), typeView(before), out); err != nil {
+	views := []CardType{typeView(row)}
+	if err := typeItems(ctx, env, views); err != nil {
+		return nil, err
+	}
+	out := views[0]
+	if err := audit.Record(ctx, env, "update_card_type", audit.CardTypeTarget(row.ID), beforeViews[0], out); err != nil {
 		return nil, err
 	}
 	return &out, nil

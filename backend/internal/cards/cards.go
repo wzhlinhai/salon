@@ -22,6 +22,7 @@ import (
 
 // Register 声明卡类型、开卡、充值和卡流水操作。
 func Register(r *ops.Registry) {
+	ops.Register(r, ops.Operation[ListCardCountsInput, CardCountList]{Name: "list_card_counts", Summary: "查看次数流水", Kind: ops.Read, Permission: perm.CustomerView, AI: ops.AIDirect, Handle: listCardCounts})
 	ops.Register(r, ops.Operation[AdjustCardInput, Card]{Name: "adjust_card", Summary: "更正卡并追加调整单", Kind: ops.Write, Permission: perm.CardAdjust, AI: ops.AIDraft, Handle: adjustCard})
 	ops.Register(r, ops.Operation[ListCardAdjustmentsInput, CardAdjustmentList]{Name: "list_card_adjustments", Summary: "查看卡调整单", Kind: ops.Read, Permission: perm.CustomerView, AI: ops.AIDirect, Handle: listCardAdjustments})
 	ops.Register(r, ops.Operation[ListCardTypesInput, CardTypeList]{Name: "list_card_types", Summary: "列出本店卡类型", Kind: ops.Read, Permission: ops.LoggedIn, AI: ops.AIDirect, Handle: listCardTypes})
@@ -40,6 +41,9 @@ func listCardTypes(ctx context.Context, env ops.Env, _ *ListCardTypesInput) (*Ca
 	out := &CardTypeList{Items: []CardType{}}
 	for _, r := range rows {
 		out.Items = append(out.Items, typeView(r))
+	}
+	if err := typeItems(ctx, env, out.Items); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -79,7 +83,12 @@ func cardView(ctx context.Context, env ops.Env, id uuid.UUID) (*Card, error) {
 		return nil, rowError(err)
 	}
 	out := view(r.Card, r.CardTypeName, r.PrincipalAfter, r.BonusAfter)
-	return &out, nil
+	out.Kind = r.Kind
+	views := []Card{out}
+	if err := fillCounts(ctx, env, views); err != nil {
+		return nil, err
+	}
+	return &views[0], nil
 }
 func openCard(ctx context.Context, env ops.Env, in *OpenCardInput) (*Card, error) {
 	return openCardAt(ctx, env, in, time.Now())
@@ -108,6 +117,9 @@ func openCardAt(ctx context.Context, env ops.Env, in *OpenCardInput, now time.Ti
 	if !ct.Active {
 		return nil, ops.Rule("卡类型已停用")
 	}
+	if ct.Kind == CountCard && (in.Principal.String() != "0.00" || in.Bonus.String() != "0.00") {
+		return nil, ops.Rule("次卡本金和赠送金必须为零")
+	}
 	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, now)
 	if err != nil {
 		return nil, err
@@ -120,6 +132,12 @@ func openCardAt(ctx context.Context, env ops.Env, in *OpenCardInput, now time.Ti
 	if err != nil {
 		return nil, err
 	}
+	if ct.Kind != StoredValue {
+		if err := openCounts(ctx, env, card.ID, ct.ID, day); err != nil {
+			return nil, err
+		}
+	}
+	// 次卡也写零余额开卡流水，保证每张卡都有余额行并兼容现有视图。
 	if err := appendLedger(ctx, env, card.ID, "open", money.Amount{}, money.Amount{}, in.TopUpInput, day); err != nil {
 		return nil, err
 	}
@@ -133,9 +151,6 @@ func openCardAt(ctx context.Context, env ops.Env, in *OpenCardInput, now time.Ti
 	return out, nil
 }
 func rechargeCard(ctx context.Context, env ops.Env, in *RechargeInput) (*Card, error) {
-	if in.Principal.String() == "0.00" && in.Bonus.String() == "0.00" {
-		return nil, ops.Rule("充值本金与赠送金合计必须大于零")
-	}
 	if err := lockSalesStaff(ctx, env, in.SalesStaffIDs); err != nil {
 		return nil, err
 	}
@@ -149,6 +164,12 @@ func rechargeCard(ctx context.Context, env ops.Env, in *RechargeInput) (*Card, e
 	before, err := cardView(ctx, env, card.ID)
 	if err != nil {
 		return nil, err
+	}
+	if before.Kind == CountCard {
+		return nil, ops.Rule("次卡不能充值")
+	}
+	if in.Principal.String() == "0.00" && in.Bonus.String() == "0.00" {
+		return nil, ops.Rule("充值本金与赠送金合计必须大于零")
 	}
 	previous, err := env.Q.LatestCardLedger(ctx, card.ID)
 	if err != nil {
@@ -200,7 +221,12 @@ func listCustomerCards(ctx context.Context, env ops.Env, in *ListCustomerCardsIn
 	}
 	out := &CardList{Items: []Card{}}
 	for _, r := range rows {
-		out.Items = append(out.Items, view(r.Card, r.CardTypeName, r.PrincipalAfter, r.BonusAfter))
+		item := view(r.Card, r.CardTypeName, r.PrincipalAfter, r.BonusAfter)
+		item.Kind = r.Kind
+		out.Items = append(out.Items, item)
+	}
+	if err := fillCounts(ctx, env, out.Items); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

@@ -304,6 +304,7 @@ const cardModalGuard = useRequestGuard()
 const cardModal = ref(false)
 const cardTarget = ref<CustomerCard | null>(null)
 const cardCardType = ref('')
+const openingType = computed(() => cardTypes.value.find(t => t.id === cardCardType.value))
 const cardPrincipal = ref('0.00')
 const cardBonus = ref('0.00')
 const cardSales = ref<string[]>([])
@@ -346,7 +347,8 @@ async function cardSave() {
   if (cardSaving.value) return
   const id = props.id
   const current = cardModalGuard.hold()
-  const body = { principal: cardPrincipal.value, bonus: cardBonus.value, sales_staff_ids: [...cardSales.value] }
+  const countsOnly = !cardTarget.value && openingType.value?.kind === 'count'
+  const body = { principal: countsOnly ? '0.00' : cardPrincipal.value, bonus: countsOnly ? '0.00' : cardBonus.value, sales_staff_ids: [...cardSales.value] }
   cardSaving.value = true
   try {
     const { data, error } = cardTarget.value
@@ -374,6 +376,17 @@ function cardShowLedger(id: string) {
   cardLedger.reload()
 }
 
+const countCard = ref('')
+const cardCounts = useCursorList(async (beforeId) => {
+  const { data, error } = await api.POST('/api/ops/list_card_counts', { body: { card_id: countCard.value, before_id: beforeId } })
+  return { data: data?.entries, error }
+})
+
+function showCounts(id: string) {
+  countCard.value = id
+  cardCounts.reload()
+}
+
 const adjustmentCard = ref('')
 const adjustments = useCursorList(async (beforeId) => {
   const { data, error } = await api.POST('/api/ops/list_card_adjustments', { body: { card_id: adjustmentCard.value, before_id: beforeId } })
@@ -394,6 +407,7 @@ const adjustExpires = ref('')
 const adjustUnlimited = ref(false)
 const adjustType = ref('')
 const adjustReason = ref('')
+const adjustCounts = ref<(components['schemas']['CardCountTarget'] & { name: string })[]>([])
 const adjustTypes = ref<components['schemas']['CardType'][]>([])
 const adjustSaving = ref(false)
 const adjustLoading = ref(false)
@@ -402,6 +416,7 @@ async function editAdjustment(card: CustomerCard) {
   const customerID = props.id
   const current = adjustGuard.next()
   adjustTarget.value = card
+  adjustCounts.value = card.items.map(x => ({ item_id: x.item_id, paid: x.paid_remaining, gift: x.gift_remaining, name: x.item_name }))
   adjustPrincipal.value = card.principal
   adjustBonus.value = card.bonus
   adjustExpires.value = card.expires_on || ''
@@ -434,6 +449,11 @@ async function saveAdjustment() {
   const customerID = props.id
   const current = adjustGuard.hold()
   const body: components['schemas']['AdjustCardInput'] = { card_id: card.id, reason: adjustReason.value.trim() }
+  const changedCounts = adjustCounts.value.filter((x) => {
+    const old = card.items.find(i => i.item_id === x.item_id)!
+    return Number(x.paid) !== old.paid_remaining || Number(x.gift) !== old.gift_remaining
+  }).map(x => ({ item_id: x.item_id, paid: Number(x.paid), gift: Number(x.gift) }))
+  if (changedCounts.length) body.counts = changedCounts
   if (adjustPrincipal.value !== card.principal) body.principal = adjustPrincipal.value
   if (adjustBonus.value !== card.bonus) body.bonus = adjustBonus.value
   const expires = adjustUnlimited.value ? null : adjustExpires.value
@@ -448,6 +468,7 @@ async function saveAdjustment() {
       await cardLoad()
       if (cardLedgerCard.value === card.id) await cardLedger.reload()
       if (adjustmentCard.value === card.id) await adjustments.reload()
+      if (countCard.value === card.id) await cardCounts.reload()
     } else toast.add({ title: errorText(error), color: 'error' })
   } finally {
     if (current() || !adjustModal.value) adjustSaving.value = false
@@ -497,6 +518,8 @@ watch(() => props.id, () => {
   customerGuard.next()
   adjustmentCard.value = ''
   adjustments.clear()
+  countCard.value = ''
+  cardCounts.clear()
   adjustGuard.next()
   adjustModal.value = false
   adjustSaving.value = false
@@ -608,16 +631,29 @@ onBeforeUnmount(() => {
             <p v-else-if="!cardCards.length">暂无卡</p>
             <div v-for="card in cardCards" :key="card.id" :data-card="card.id" class="space-y-2 py-3 border-b border-default">
               <p>{{ card.card_type_name }} · 本金 {{ card.principal }} · 赠送金 {{ card.bonus }} · 有效期 {{ card.expires_on || '不限' }}</p>
+              <p v-for="item in card.items" :key="item.item_id" data-testid="remaining-counts">{{ item.item_name }} · 购买 {{ item.paid_remaining }} · 赠送 {{ item.gift_remaining }}</p>
+              <p v-if="card.items.length">次数售价 {{ card.counts_price }}</p>
               <div class="flex gap-2">
-                <UButton v-if="can('card.sell') && !customer.merged_into" size="xs" variant="outline" @click="cardEdit(card)">充值</UButton>
+                <UButton v-if="card.kind !== 'count' && can('card.sell') && !customer.merged_into" size="xs" variant="outline" @click="cardEdit(card)">充值</UButton>
                 <UButton v-if="can('card.adjust')" size="xs" variant="outline" @click="editAdjustment(card)">调整</UButton>
                 <UButton size="xs" variant="outline" @click="cardShowLedger(card.id)">流水</UButton>
+                <UButton v-if="card.items.length" size="xs" variant="outline" @click="showCounts(card.id)">次数流水</UButton>
                 <UButton size="xs" variant="outline" @click="showAdjustments(card.id)">调整记录</UButton>
+              </div>
+              <div v-if="countCard === card.id" data-testid="card-counts" class="space-y-2 text-sm">
+                <p v-if="cardCounts.loading.value">正在读取次数流水…</p>
+                <p v-for="entry in cardCounts.items.value" :key="entry.id" data-testid="card-count-entry">
+                  {{ entry.item.name }} · {{ entry.kind === 'open' ? '开卡' : '调整' }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN') }} · {{ entry.actor.name }}
+                  购买 {{ entry.paid_before }} + {{ entry.paid_delta }} = {{ entry.paid_after }}；赠送 {{ entry.gift_before }} + {{ entry.gift_delta }} = {{ entry.gift_after }}
+                  <span v-if="entry.reason">· 原因：{{ entry.reason }}</span>
+                </p>
+                <UButton v-if="cardCounts.hasMore.value" :loading="cardCounts.loading.value" variant="outline" @click="cardCounts.loadMore">加载更多</UButton>
               </div>
               <div v-if="adjustmentCard === card.id" data-testid="card-adjustments" class="space-y-2 text-sm">
                 <p v-if="adjustments.loading.value">正在读取调整记录…</p>
                 <p v-for="entry in adjustments.items.value" :key="entry.id" data-testid="card-adjustment-entry">
                   {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN') }} · {{ entry.actor.name }} · 原因：{{ entry.reason }}
+                  <span v-for="change in entry.counts" :key="change.id">{{ change.item.name }}：购买 {{ change.paid_before }} → {{ change.paid_after }}；赠送 {{ change.gift_before }} → {{ change.gift_after }}</span>
                   <span v-if="entry.balance">本金 {{ entry.balance.principal_before }} + {{ entry.balance.principal_delta }} = {{ entry.balance.principal_after }}；赠送金 {{ entry.balance.bonus_before }} + {{ entry.balance.bonus_delta }} = {{ entry.balance.bonus_after }}</span>
                   <span v-if="entry.expiry_before && entry.expiry_after">有效期 {{ entry.expiry_before.expires_on || '不限' }} → {{ entry.expiry_after.expires_on || '不限' }}</span>
                   <span v-if="entry.card_type_before && entry.card_type_after">卡类型 {{ entry.card_type_before.name }} → {{ entry.card_type_after.name }}</span>
@@ -678,6 +714,11 @@ onBeforeUnmount(() => {
       <div class="space-y-3">
         <UFormField label="本金"><UInput v-model="adjustPrincipal" inputmode="decimal" class="w-full" /></UFormField>
         <UFormField label="赠送金"><UInput v-model="adjustBonus" inputmode="decimal" class="w-full" /></UFormField>
+        <div v-for="row in adjustCounts" :key="row.item_id" data-testid="adjust-count-item">
+          <p>{{ row.name }}</p>
+          <UFormField :label="`${row.name}购买次数`"><UInput v-model="row.paid" type="number" :min="0" /></UFormField>
+          <UFormField :label="`${row.name}赠送次数`"><UInput v-model="row.gift" type="number" :min="0" /></UFormField>
+        </div>
         <UCheckbox v-model="adjustUnlimited" label="不限" />
         <UFormField v-if="!adjustUnlimited" label="有效期"><UInput v-model="adjustExpires" type="date" class="w-full" /></UFormField>
         <UFormField label="卡类型"><USelect v-model="adjustType" :items="adjustTypes.map(t => ({ label: t.name, value: t.id }))" class="w-full" /></UFormField>
@@ -690,8 +731,9 @@ onBeforeUnmount(() => {
     <template #body>
       <div class="space-y-3">
         <UFormField v-if="!cardTarget" label="卡类型"><USelect v-model="cardCardType" :items="cardTypes.map(t => ({ label: t.name, value: t.id }))" class="w-full" /></UFormField>
-        <UFormField label="本金"><UInput v-model="cardPrincipal" inputmode="decimal" class="w-full" /></UFormField>
-        <UFormField label="赠送金"><UInput v-model="cardBonus" inputmode="decimal" class="w-full" /></UFormField>
+        <UFormField v-if="cardTarget || openingType?.kind !== 'count'" label="本金"><UInput v-model="cardPrincipal" inputmode="decimal" class="w-full" /></UFormField>
+        <UFormField v-if="cardTarget || openingType?.kind !== 'count'" label="赠送金"><UInput v-model="cardBonus" inputmode="decimal" class="w-full" /></UFormField>
+        <p v-for="item in openingType?.items ?? []" :key="item.item_id">{{ item.item_name }} · 购买 {{ item.paid_count }} · 赠送 {{ item.gift_count }} · 单次金额 {{ item.unit_price }}</p>
         <UFormField label="业绩归属人"><USelect v-model="cardSales" multiple :items="cardStaff.map(s => ({ label: s.name, value: s.id }))" class="w-full" /></UFormField>
       </div>
     </template>
