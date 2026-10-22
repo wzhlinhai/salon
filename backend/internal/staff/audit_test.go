@@ -286,7 +286,11 @@ func TestStaffAndRoleAuditLog(t *testing.T) {
 	}
 	// 日志表只追加，应用角色不能修改或删除。
 	for _, query := range []string{"UPDATE audit_log SET action = 'changed'", "DELETE FROM audit_log"} {
-		_, err := dbtest.AppTx(t, s.Pool, s.Res.TenantID).Exec(context.Background(), query)
+		tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+		_, err := tx.Exec(context.Background(), query)
+		if rollbackErr := tx.Rollback(context.Background()); rollbackErr != nil {
+			t.Fatal(rollbackErr)
+		}
 		if err == nil || !strings.Contains(err.Error(), "permission denied") {
 			t.Errorf("%s: %v, want permission denied", query, err)
 		}

@@ -184,6 +184,9 @@ func TestSetStaffRolesReturnsNotFoundWhenAddedRoleIsDeleted(t *testing.T) {
 	if err := check.QueryRow(ctx, "SELECT array_agg(role_id ORDER BY role_id) FROM staff_roles WHERE staff_id=$1", staffID).Scan(&roleIDs); err != nil {
 		t.Fatal(err)
 	}
+	if err := check.Rollback(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	if len(roleIDs) != 1 || roleIDs[0] != keptID {
 		t.Fatalf("staff roles = %v, want unchanged role %s", roleIDs, keptID)
 	}

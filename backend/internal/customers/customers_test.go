@@ -412,7 +412,11 @@ func TestCustomerUpdateLocksBeforeAudit(t *testing.T) {
 func TestCustomersCannotBeDeleted(t *testing.T) {
 	s := open(t)
 	for _, table := range []string{"customers", "customer_safety_labels"} {
-		_, err := dbtest.AppTx(t, s.Pool, s.Res.TenantID).Exec(context.Background(), "DELETE FROM "+table)
+		tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+		_, err := tx.Exec(context.Background(), "DELETE FROM "+table)
+		if rollbackErr := tx.Rollback(context.Background()); rollbackErr != nil {
+			t.Fatal(rollbackErr)
+		}
 		if err == nil || !strings.Contains(err.Error(), "permission denied") {
 			t.Fatalf("DELETE %s: %v", table, err)
 		}

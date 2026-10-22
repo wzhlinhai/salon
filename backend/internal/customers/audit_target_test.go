@@ -96,6 +96,9 @@ func TestCustomerMergePreservesAuditCustomerReferences(t *testing.T) {
 	if err := tx.QueryRow(context.Background(), "SELECT target_id,customer_id FROM audit_log WHERE id=$1", logID).Scan(&targetID, &customerID); err != nil {
 		t.Fatal(err)
 	}
+	if err := tx.Rollback(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	assertEqual(t, targetID, aID(merged))
 	assertEqual(t, customerID, aID(merged))
 }

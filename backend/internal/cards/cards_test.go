@@ -73,6 +73,9 @@ func TestLedgerChain(t *testing.T) {
 	if err != nil || !valid {
 		t.Fatal(valid, err)
 	}
+	if err := tx.Rollback(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	for _, ch := range s.Channels() {
 		r := ch.Call(t, s.MustCaller(s.Owner), "list_customer_cards", map[string]any{"customer_id": s.customer})
 		if r.Status != 200 {
@@ -214,6 +217,9 @@ func snapshot(t *testing.T, s *fixture) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := tx.Rollback(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	return string(raw)
 }
 func TestAIWritesRefused(t *testing.T) {
@@ -351,6 +357,9 @@ func TestOpenWaitsForMerge(t *testing.T) {
 	if err := check.QueryRow(context.Background(), "SELECT count(*) FROM cards WHERE customer_id=$1", s.customer).Scan(&n); err != nil || n != 0 {
 		t.Fatal(n, err)
 	}
+	if err := check.Rollback(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 }
 func TestMergeMovesCards(t *testing.T) {
 	s := open(t)
@@ -378,6 +387,9 @@ func TestAuditTargets(t *testing.T) {
 	if err := tx.QueryRow(context.Background(), "SELECT target_kind,customer_id FROM audit_log WHERE target_id=$1", s.cardType).Scan(&kind, &customer); err != nil || kind != "card_type" || customer != nil {
 		t.Fatal(kind, customer, err)
 	}
+	if err := tx.Rollback(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 }
 func TestLedgerDatabaseProtections(t *testing.T) {
 	s := open(t)
@@ -385,6 +397,9 @@ func TestLedgerDatabaseProtections(t *testing.T) {
 	for _, sql := range []string{"UPDATE card_ledger SET principal_after=principal_after WHERE card_id=$1", "DELETE FROM card_ledger WHERE card_id=$1"} {
 		tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 		_, err := tx.Exec(context.Background(), sql, card["id"])
+		if rollbackErr := tx.Rollback(context.Background()); rollbackErr != nil {
+			t.Fatal(rollbackErr)
+		}
 		if err == nil {
 			t.Fatal("ledger mutation allowed", sql)
 		}
@@ -433,6 +448,9 @@ func TestCardTypeLocksBeforeAudit(t *testing.T) {
 	var name string
 	if err := check.QueryRow(context.Background(), "SELECT before->>'name' FROM audit_log WHERE target_id=$1 AND action='update_card_type'", s.cardType).Scan(&name); err != nil || name != "锁内名称" {
 		t.Fatal(name, err)
+	}
+	if err := check.Rollback(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }
 func TestOpenReferenceShareLocks(t *testing.T) {
@@ -507,6 +525,9 @@ func TestBalanceLimit(t *testing.T) {
 			var count int
 			if err := tx.QueryRow(context.Background(), "SELECT count(*) FROM card_ledger WHERE card_id=$1", card["id"]).Scan(&count); err != nil || count != 1 {
 				t.Fatal(count, err)
+			}
+			if err := tx.Rollback(context.Background()); err != nil {
+				t.Fatal(err)
 			}
 		})
 	}
