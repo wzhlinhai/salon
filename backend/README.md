@@ -12,6 +12,8 @@ go tool sqlc generate                          # 修改 internal/db/queries 或�
 go run ./cmd/salon openapi > openapi.json      # 输出 OpenAPI 文档，不需要数据库
 golangci-lint run ./...                        # CI 同样运行，配置见 .golangci.yml
 scripts/mutcheck.sh <文件> <原文> <替换> [包]   # 临时改坏一处，确认有测试失败，然后还原；改查询 SQL 时自动重新生成
+scripts/mutcheck.sh --restore                  # 恢复中断的变异验证，清理未发布的备份槽
+scripts/mutchecks.py <清单> [--locate] [名称...] # 运行清单中的保护验证；--locate 只检查原文匹配
 DATABASE_URL=postgres://... go run ./cmd/salon migrate up
 DATABASE_URL=postgres://... BOOTSTRAP_PASSWORD=... go run ./cmd/salon bootstrap \
   -tenant 本店 -store 本店 -owner-name 姓名 -owner-number 001 -owner-account boss

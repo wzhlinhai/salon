@@ -10,9 +10,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/shopspring/decimal"
 
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
+	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 )
 
@@ -91,7 +91,7 @@ func fillCounts(ctx context.Context, env ops.Env, cards []Card) error {
 	}
 	ids := make([]uuid.UUID, len(cards))
 	index := map[uuid.UUID]int{}
-	prices := make([]decimal.Decimal, len(cards))
+	prices := make([]money.Total, len(cards))
 	for i := range cards {
 		ids[i] = cards[i].ID
 		index[cards[i].ID] = i
@@ -105,14 +105,10 @@ func fillCounts(ctx context.Context, env ops.Env, cards []Card) error {
 		x := r.CardItem
 		i := index[x.CardID]
 		cards[i].Items = append(cards[i].Items, RemainingCounts{ItemID: x.ItemID, ItemName: r.ItemName, UnitPrice: x.UnitPrice, PaidRemaining: r.PaidAfter, GiftRemaining: r.GiftAfter})
-		price, err := decimal.NewFromString(x.UnitPrice.String())
-		if err != nil {
-			return err
-		}
-		prices[i] = prices[i].Add(price.Mul(decimal.NewFromInt(int64(x.PaidCountOpened))))
+		prices[i] = prices[i].AddProduct(x.UnitPrice, int64(x.PaidCountOpened))
 	}
 	for i := range cards {
-		cards[i].CountsPrice = prices[i].StringFixed(2)
+		cards[i].CountsPrice = prices[i].Format()
 	}
 	return nil
 }

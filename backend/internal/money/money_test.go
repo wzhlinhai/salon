@@ -233,3 +233,48 @@ func TestAmountWholeDivRequiresPositiveDivisor(t *testing.T) {
 		})
 	}
 }
+
+func TestTotalAddProduct(t *testing.T) {
+	for _, tc := range []struct {
+		price string
+		count int64
+		want  string
+	}{
+		{"12.34", 10, "246.80"}, {"0.01", 3, "0.06"},
+		{"99999999.99", 2147483647, "429496729357050327.06"},
+		{"12.34", 0, "0.00"}, {"0", 10, "0.00"},
+	} {
+		var price money.Amount
+		if err := price.Scan(tc.price); err != nil {
+			t.Fatal(err)
+		}
+		total := (money.Total{}).AddProduct(price, tc.count).AddProduct(price, tc.count)
+		if total.Format() != tc.want {
+			t.Fatalf("twice %s * %d = %s, want %s", tc.price, tc.count, total.Format(), tc.want)
+		}
+	}
+}
+
+func TestTotalAddProductRejectsNegativeCount(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("negative count accepted")
+		}
+	}()
+	_ = (money.Total{}).AddProduct(money.Amount{}, -1)
+}
+
+func TestTotalFormat(t *testing.T) {
+	if (money.Total{}).Format() != "0.00" {
+		t.Fatal("zero total must display two decimal places")
+	}
+	for _, value := range []string{"0.10", "12.00", "123456789012345678901234567890.12"} {
+		var total money.Total
+		if err := total.Scan(value); err != nil {
+			t.Fatal(err)
+		}
+		if total.Format() != value {
+			t.Fatalf("formatted %s as %s", value, total.Format())
+		}
+	}
+}
