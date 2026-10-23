@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""按清单验证保护：mutchecks.py <manifest.py> [--locate] [names...]。
+"""按清单验证保护：mutchecks.py <manifest.py> [--since <git-ref>] [--locate] [names...]。
 
 清单是定义 ENTRIES 的 Python 文件：它是由字典组成的列表；可选的 SKIPPED
 用 (step, name, reason) 元组列出跳过的保护及原因。
 每项包含 kind（go 或 e2e）、step、name、file（相对仓库根目录）、original、
 replacement 和 guards（必须全部命中的测试名称或标题）。go 项另有 packages，
-即相对 backend/ 的 go test 包参数；e2e 项另有 spec，即相对 admin/ 的测试文件，
+即相对 backend/ 的 go test 包参数；guards 是顶层测试名，go 项只运行这些测试（含子测试）。
+e2e 项另有 spec，即相对 admin/ 的测试文件，
 并在 default 项目中按完整标题选择测试。名称可用裸名称或 step/name。
 原文必须恰好出现一次。--locate 只检查匹配，不修改文件、不运行测试。
+--since 将名称选择进一步缩小到 git-ref 与工作树（含未跟踪文件）之间受影响的项：
+保护文件、所在包中定义 guard 的 _test.go，或 e2e 的 spec 改动都会选中；
+查询或迁移目录中任意文件改动也会选中该目录的保护。选中名称逐行输出到 stderr。
+无 --since 的 --locate 始终检查名称选择范围（不指定名称时为整份清单）。
 正式运行先对选中 go 项的每个不同包执行一次 go test -count=1，全部通过后
 才允许任何变异；基线失败时打印测试输出并退出，避免把已有故障算成保护生效。
 每次运行在清单旁新建日志目录，保存完整命令、测试输出和所有结果行 results.log。
@@ -35,6 +40,43 @@ def select_entries(entries, names):
     if unknown:
         raise ValueError('unknown entries: ' + ', '.join(sorted(unknown)))
     return [e for e in entries if not names or e['name'] in names or e['step'] + '/' + e['name'] in names]
+
+
+def affected_entries(entries, ref):
+    changed = set()
+    for command in (['git', 'diff', '--name-only', '-z', ref, '--'],
+                    ['git', 'ls-files', '--others', '--exclude-standard', '-z']):
+        result = subprocess.run(command, cwd=ROOT, capture_output=True, check=True)
+        changed.update(os.fsdecode(path) for path in result.stdout.split(b'\0') if path)
+    changed_dirs = {str(Path(path).parent) for path in changed}
+    tests = {}
+    for path in changed:
+        if path.endswith('_test.go') and (ROOT / path).is_file():
+            tests[ROOT / Path(path).parent] = tests.get(ROOT / Path(path).parent, set()) | set(
+                re.findall(r'^\s*func\s+(\w+)\s*\(', (ROOT / path).read_text(), re.M))
+    package_dirs = {}
+    selected = []
+    env = dict(os.environ)
+    env.pop('GOFLAGS', None)
+    for entry in entries:
+        path = entry['file']
+        affected = path in changed
+        if path.startswith(('backend/internal/db/queries/', 'backend/internal/db/migrations/')):
+            affected |= str(Path(path).parent) in changed_dirs
+        if entry['kind'] == 'e2e':
+            affected |= 'admin/' + entry['spec'] in changed
+        elif not affected and tests:
+            for package in entry['packages']:
+                if package not in package_dirs:
+                    result = subprocess.run(['go', 'list', '-f', '{{.Dir}}', package],
+                                            cwd=ROOT / 'backend', env=env,
+                                            capture_output=True, text=True, check=True)
+                    package_dirs[package] = [Path(line) for line in result.stdout.splitlines()]
+                affected |= any(set(entry['guards']) & tests.get(directory, set())
+                                for directory in package_dirs[package])
+        if affected:
+            selected.append(entry)
+    return selected
 
 
 def locate(entry):
@@ -107,7 +149,9 @@ def run_go(entry, logs, results):
     try:
         locate(entry)
         before = snapshot(entry)
-        command = ['backend/scripts/mutcheck.sh', entry['file'], entry['original'], entry['replacement'], *entry['packages']]
+        guard_regex = '^(' + '|'.join(re.escape(guard) for guard in entry['guards']) + ')$'
+        command = ['backend/scripts/mutcheck.sh', '--run', guard_regex,
+                   entry['file'], entry['original'], entry['replacement'], *entry['packages']]
         log = logs / (entry['step'] + '-' + entry['name'] + '.log')
         (logs / (entry['step'] + '-' + entry['name'] + '.command.json')).write_text(json.dumps(command, ensure_ascii=False, indent=2) + '\n')
         # 清除继承的 GOFLAGS，避免它悄悄过滤守护测试。
@@ -247,14 +291,24 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('manifest', type=Path)
     parser.add_argument('--locate', action='store_true')
+    parser.add_argument('--since', metavar='git-ref')
     parser.add_argument('names', nargs='*')
     args = parser.parse_intermixed_args()
     manifest = args.manifest.resolve()
     try:
         entries = runpy.run_path(str(manifest))['ENTRIES']
         selected = select_entries(entries, args.names)
+        if args.since is not None:
+            selected = affected_entries(selected, args.since)
+    except subprocess.CalledProcessError as exc:
+        parser.error(exc.stderr.decode(errors='replace') if isinstance(exc.stderr, bytes) else exc.stderr)
     except (OSError, ValueError, KeyError) as exc:
         parser.error(str(exc))
+    for entry in selected:
+        print(entry['step'] + '/' + entry['name'], file=sys.stderr)
+    if not selected:
+        print('no affected entries', file=sys.stderr)
+        return 0
     logs = Path(tempfile.mkdtemp(prefix='mutchecks-', dir=manifest.parent))
     print(f'logs={logs}', file=sys.stderr)
     failed = False
