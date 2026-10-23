@@ -34,8 +34,8 @@ Single-context: one root `GLOSSARY.md` plus `docs/adr/`. See `docs/agents/domain
 6. Claude verifies every finding and decides what needs fixing.
 7. Codex applies confirmed fixes; Claude reviews them again.
 8. Codex runs the project's applicable verification commands (see `AGENTS.md` and `backend/README.md`).
-9. Each PR merges on Codex's in-sandbox gates, mutchecks and admin protection checks plus the PR's CI: the full suite runs there and counts as the final result, so merge only when it is green. Claude does not re-run per PR.
-10. When a P0 ticket is finished (its last step merged), Claude re-runs on the latest main, outside the sandbox: the ticket's protection manifest (`backend/scripts/mutchecks.py .dev/codex/<ticket>/manifest.py`) and the full e2e suite, then comments the main commit, the results and the log directory on the ticket. A failure there is fixed in a follow-up PR before the next ticket starts.
+9. Each PR merges on Codex's in-sandbox gates, the mutchecks its changes affect (`--since main`) and admin protection checks plus the PR's CI: the full suite runs there and counts as the final result, so merge only when it is green. Claude does not re-run per PR.
+10. When a P0 ticket is finished (its last step merged), Claude re-runs on the latest main, outside the sandbox: the ticket's whole protection manifest (`backend/scripts/mutchecks.py .dev/codex/<ticket>/manifest.py`, no `--since`; this is the only full run, so it also catches an earlier protection broken by a later step) and the full e2e suite, then comments the main commit, the results and the log directory on the ticket. A failure there is fixed in a follow-up PR before the next ticket starts.
 
 ### Constraints
 

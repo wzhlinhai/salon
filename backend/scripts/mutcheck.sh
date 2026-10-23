@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # 删保护验证：临时改坏一处代码，确认有测试因此失败，然后还原。
 #
-#   backend/scripts/mutcheck.sh <文件> <原文> <替换> [go test 参数，默认 ./...]
+#   backend/scripts/mutcheck.sh [--run <regex>] <文件> <原文> <替换> [go test 参数，默认 ./...]
 #   backend/scripts/mutcheck.sh --restore
 #
 # 备份固定保存在仓库根目录 .dev/mutcheck-backup/（原始字节和绝对路径），仅一个槽。
 # 中断后先用 --restore 还原；完整槽拒绝新的验证，未发布 original 的槽可安全清理。
 # <文件> 相对当前目录；go test 参数里的包路径相对 backend/。
-# 原文必须在文件中恰好出现一次；替换后要测的包必须能构建（参数里不要再传 -run）。
+# 原文必须在文件中恰好出现一次；替换后要测的包必须能构建；测试选择只通过 --run 传入。
 # 改的是 internal/db/queries 下的查询时，改坏后重新运行 sqlc 生成代码，结束时连生成的代码一起还原。
 # 结束时无论成功失败都还原文件。
 # 退出码：0 有测试失败（被发现）；1 测试全部通过（没被发现）；
@@ -53,7 +53,13 @@ if [ -d "$slot" ] && ! discard_incomplete; then
   echo "mutcheck: backup occupied for $(cat "$slot/path" 2>/dev/null || echo unknown); restore with: $backend/scripts/mutcheck.sh --restore" >&2
   exit 2
 fi
-[ $# -ge 3 ] || { echo "usage: backend/scripts/mutcheck.sh <file> <old> <new> [go test args] | --restore" >&2; exit 2; }
+test_selection=()
+if [ "${1:-}" = --run ]; then
+  [ -n "${2:-}" ] || { echo "mutcheck: --run requires a nonempty regex" >&2; exit 2; }
+  test_selection=(-run "$2")
+  shift 2
+fi
+[ $# -ge 3 ] || { echo "usage: backend/scripts/mutcheck.sh [--run <regex>] <file> <old> <new> [go test args] | --restore" >&2; exit 2; }
 file=$(realpath "$1") old=$2 new=$3; shift 3
 [ -f "$file" ] || { echo "mutcheck: no such file: $file" >&2; exit 2; }
 [ $# -gt 0 ] || set -- ./...
@@ -94,7 +100,7 @@ if ! build=$(go test -count=1 -run '^$' "$@" 2>&1); then
   exit 2
 fi
 
-if out=$(go test -count=1 "$@" 2>&1); then
+if out=$(go test -count=1 "${test_selection[@]}" "$@" 2>&1); then
   echo "NOT caught: all tests passed with the mutation"
   exit 1
 fi

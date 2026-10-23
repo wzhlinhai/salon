@@ -11,14 +11,16 @@ go test ./...                                  # 每个测试包启动一个全�
 go tool sqlc generate                          # 修改 internal/db/queries 或迁移后重新生成
 go run ./cmd/salon openapi > openapi.json      # 输出 OpenAPI 文档，不需要数据库
 golangci-lint run ./...                        # CI 同样运行，配置见 .golangci.yml
-scripts/mutcheck.sh <文件> <原文> <替换> [包]   # 临时改坏一处，确认有测试失败，然后还原；改查询 SQL 时自动重新生成
+scripts/mutcheck.sh [--run <regex>] <文件> <原文> <替换> [包] # 临时改坏一处，确认有测试失败，然后还原；改查询 SQL 时自动重新生成
 scripts/mutcheck.sh --restore                  # 恢复中断的变异验证，清理未发布的备份槽
-scripts/mutchecks.py <清单> [--locate] [名称...] # 运行清单中的保护验证；--locate 只检查原文匹配
+scripts/mutchecks.py <清单> [--since <git-ref>] [--locate] [名称...] # go 项只运行 guards（含子测试）；每包先跑完整基线
 DATABASE_URL=postgres://... go run ./cmd/salon migrate up
 DATABASE_URL=postgres://... BOOTSTRAP_PASSWORD=... go run ./cmd/salon bootstrap \
   -tenant 本店 -store 本店 -owner-name 姓名 -owner-number 001 -owner-account boss
 DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 ```
+
+`mutchecks.py --since <git-ref>` 只选中该引用与工作树（含未跟踪文件）之间受影响的项，可与名称和 `--locate` 组合。保护文件、定义 guard 的包内测试文件或 e2e spec 改动会选中对应项；查询、迁移目录内任意文件改动会选中该目录的保护。每轮可运行受影响项，同时不带 `--since` 运行 `--locate` 检查整份清单的原文匹配。手动使用 `mutcheck.sh` 时测试选择只通过 `--run` 传入；省略它仍运行完整包。
 
 `serve` 的可选环境变量：`HTTP_ADDR`（默认 `:8080`）、`TOKEN_TTL`（默认 `12h`）。健康检查 `GET /healthz`，登录 `POST /api/auth/login`。
 
