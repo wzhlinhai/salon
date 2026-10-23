@@ -9,10 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/wzhlinhai/salon/backend/internal/audit"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
-	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
 func adjustCard(ctx context.Context, env ops.Env, in *AdjustCardInput) (*Card, error) {
@@ -20,135 +18,112 @@ func adjustCard(ctx context.Context, env ops.Env, in *AdjustCardInput) (*Card, e
 	if utf8.RuneCountInString(in.Reason) < 1 || utf8.RuneCountInString(in.Reason) > 200 {
 		return nil, ops.Rule("原因须为一到二百字")
 	}
-	card, err := env.Q.LockCard(ctx, dbgen.LockCardParams{StoreID: env.Caller.StoreID, ID: in.CardID})
-	if err != nil {
-		return nil, rowError(err)
-	}
-	if err := canView(ctx, env, card.CustomerID); err != nil {
-		return nil, err
-	}
-	before, err := cardView(ctx, env, card.ID)
-	if err != nil {
-		return nil, err
-	}
-	pointsChanged := in.Points != nil && *in.Points != before.Points
-	if in.Points != nil && (*in.Points < 0 || *in.Points > 99999999) {
-		return nil, ops.Rule("积分须为 0 到 99999999")
-	}
-	previous, err := env.Q.LatestCardLedger(ctx, card.ID)
-	if err != nil {
-		return nil, err
-	}
-	principal, bonus := previous.PrincipalAfter, previous.BonusAfter
-	if in.Principal != nil {
-		principal = *in.Principal
-	}
-	if in.Bonus != nil {
-		bonus = *in.Bonus
-	}
-	balanceChanged := principal.Cmp(previous.PrincipalAfter) != 0 || bonus.Cmp(previous.BonusAfter) != 0
-	expires := card.ExpiresOn
-	if in.Expiry != nil {
-		expires = pgtype.Date{}
-		if in.Expiry.ExpiresOn != nil {
-			date, err := time.Parse(time.DateOnly, *in.Expiry.ExpiresOn)
-			if err != nil {
-				return nil, ops.Rule("有效期日期无效")
+	return changeOne(ctx, env, "adjust_card", in.CardID, func(c cardChange, day time.Time) error {
+		card, before := c.row, c.before
+		pointsChanged := in.Points != nil && *in.Points != before.Points
+		if in.Points != nil && (*in.Points < 0 || *in.Points > 99999999) {
+			return ops.Rule("积分须为 0 到 99999999")
+		}
+		principal, bonus := before.Principal, before.Bonus
+		if in.Principal != nil {
+			principal = *in.Principal
+		}
+		if in.Bonus != nil {
+			bonus = *in.Bonus
+		}
+		balanceChanged := principal.Cmp(before.Principal) != 0 || bonus.Cmp(before.Bonus) != 0
+		expires := card.ExpiresOn
+		if in.Expiry != nil {
+			expires = pgtype.Date{}
+			if in.Expiry.ExpiresOn != nil {
+				date, err := time.Parse(time.DateOnly, *in.Expiry.ExpiresOn)
+				if err != nil {
+					return ops.Rule("有效期日期无效")
+				}
+				// 调整单用于更正历史，有效期可以早于当前营业日。
+				expires = pgtype.Date{Time: date, Valid: true}
 			}
-			// 调整单用于更正历史，有效期可以早于当前营业日。
-			expires = pgtype.Date{Time: date, Valid: true}
 		}
-	}
-	expiryChanged := expires.Valid != card.ExpiresOn.Valid || (expires.Valid && !expires.Time.Equal(card.ExpiresOn.Time))
-	typeID := card.CardTypeID
-	var typeBefore, typeAfter *uuid.UUID
-	if in.CardTypeID != nil && *in.CardTypeID != card.CardTypeID {
-		// 固定锁序：卡 → 新卡类型；开卡只锁类型，类型编辑也只锁类型。
-		ct, err := env.Q.ShareCardType(ctx, dbgen.ShareCardTypeParams{StoreID: env.Caller.StoreID, ID: *in.CardTypeID})
-		if err != nil {
-			return nil, rowError(err)
+		expiryChanged := expires.Valid != card.ExpiresOn.Valid || (expires.Valid && !expires.Time.Equal(card.ExpiresOn.Time))
+		typeID := card.CardTypeID
+		var typeBefore, typeAfter *uuid.UUID
+		if in.CardTypeID != nil && *in.CardTypeID != card.CardTypeID {
+			// 固定锁序：卡 → 新卡类型；开卡只锁类型，类型编辑也只锁类型。
+			ct, err := env.Q.ShareCardType(ctx, dbgen.ShareCardTypeParams{StoreID: env.Caller.StoreID, ID: *in.CardTypeID})
+			if err != nil {
+				return rowError(err)
+			}
+			old, err := env.Q.GetCardType(ctx, dbgen.GetCardTypeParams{StoreID: env.Caller.StoreID, ID: card.CardTypeID})
+			if err != nil {
+				return err
+			}
+			if old.Kind != ct.Kind {
+				return ops.Rule("卡类型必须同类")
+			}
+			if !ct.Active {
+				return ops.Rule("卡类型已停用")
+			}
+			typeID = ct.ID
+			typeBefore, typeAfter = &card.CardTypeID, &typeID
 		}
-		old, err := env.Q.GetCardType(ctx, dbgen.GetCardTypeParams{StoreID: env.Caller.StoreID, ID: card.CardTypeID})
-		if err != nil {
-			return nil, err
-		}
-		if old.Kind != ct.Kind {
-			return nil, ops.Rule("卡类型必须同类")
-		}
-		if !ct.Active {
-			return nil, ops.Rule("卡类型已停用")
-		}
-		typeID = ct.ID
-		typeBefore, typeAfter = &card.CardTypeID, &typeID
-	}
-	changes := []dbgen.AddCardCountEntryParams{}
-	seen := map[uuid.UUID]bool{}
-	for _, target := range in.Counts {
-		if seen[target.ItemID] || target.Paid < 0 || target.Gift < 0 {
-			return nil, ops.Rule("次数目标不能重复或为负")
-		}
-		seen[target.ItemID] = true
-		found := false
-		for _, item := range before.Items {
-			if item.ItemID == target.ItemID {
-				found = true
-				if target.Paid != item.PaidRemaining || target.Gift != item.GiftRemaining {
-					changes = append(changes, dbgen.AddCardCountEntryParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: card.ID, ItemID: target.ItemID, Kind: "adjust", PaidBefore: item.PaidRemaining, PaidDelta: target.Paid - item.PaidRemaining, PaidAfter: target.Paid, GiftBefore: item.GiftRemaining, GiftDelta: target.Gift - item.GiftRemaining, GiftAfter: target.Gift, ActorID: env.Caller.StaffID})
+		changes := []dbgen.AddCardCountEntryParams{}
+		seen := map[uuid.UUID]bool{}
+		for _, target := range in.Counts {
+			if seen[target.ItemID] || target.Paid < 0 || target.Gift < 0 {
+				return ops.Rule("次数目标不能重复或为负")
+			}
+			seen[target.ItemID] = true
+			found := false
+			for _, item := range before.Items {
+				if item.ItemID == target.ItemID {
+					found = true
+					if target.Paid != item.PaidRemaining || target.Gift != item.GiftRemaining {
+						changes = append(changes, dbgen.AddCardCountEntryParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: card.ID, ItemID: target.ItemID, Kind: "adjust", PaidBefore: item.PaidRemaining, PaidDelta: target.Paid - item.PaidRemaining, PaidAfter: target.Paid, GiftBefore: item.GiftRemaining, GiftDelta: target.Gift - item.GiftRemaining, GiftAfter: target.Gift, ActorID: env.Caller.StaffID})
+					}
 				}
 			}
+			if !found {
+				return ops.Rule("项目不在卡上")
+			}
 		}
-		if !found {
-			return nil, ops.Rule("项目不在卡上")
+		if !balanceChanged && !expiryChanged && typeAfter == nil && len(changes) == 0 && !pointsChanged {
+			return ops.Rule("调整单没有任何改动")
 		}
-	}
-	if !balanceChanged && !expiryChanged && typeAfter == nil && len(changes) == 0 && !pointsChanged {
-		return nil, ops.Rule("调整单没有任何改动")
-	}
-	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
-	if err != nil {
-		return nil, err
-	}
-	var ledgerID *uuid.UUID
-	if balanceChanged {
-		row, err := env.Q.AddCardLedger(ctx, dbgen.AddCardLedgerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: card.ID, Kind: "adjust", PrincipalBefore: previous.PrincipalAfter, PrincipalDelta: principal.Sub(previous.PrincipalAfter), PrincipalAfter: principal, BonusBefore: previous.BonusAfter, BonusDelta: bonus.Sub(previous.BonusAfter), BonusAfter: bonus, BusinessDate: pgtype.Date{Time: day, Valid: true}, ActorID: env.Caller.StaffID})
+		var ledgerID *uuid.UUID
+		if balanceChanged {
+			row, err := writeBalance(ctx, env, card.ID, "adjust", before.Principal, before.Bonus, principal.Sub(before.Principal), bonus.Sub(before.Bonus), day)
+			if err != nil {
+				return err
+			}
+			ledgerID = &row.ID
+		}
+		if expiryChanged || typeAfter != nil {
+			if err := env.Q.UpdateAdjustedCard(ctx, dbgen.UpdateAdjustedCardParams{ID: card.ID, ExpiresOn: expires, CardTypeID: typeID}); err != nil {
+				return err
+			}
+		}
+		var expiresBefore, expiresAfter pgtype.Date
+		if expiryChanged {
+			expiresBefore, expiresAfter = card.ExpiresOn, expires
+		}
+		adjustment, err := env.Q.AddCardAdjustment(ctx, dbgen.AddCardAdjustmentParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: card.ID, Reason: in.Reason, ExpiresBefore: expiresBefore, ExpiresAfter: expiresAfter, ExpiryChanged: expiryChanged, CardTypeBefore: typeBefore, CardTypeAfter: typeAfter, LedgerID: ledgerID, CountsChanged: len(changes) > 0, PointsChanged: pointsChanged, BusinessDate: pgtype.Date{Time: day, Valid: true}, ActorID: env.Caller.StaffID})
 		if err != nil {
-			return nil, err
+			return err
 		}
-		ledgerID = &row.ID
-	}
-	if expiryChanged || typeAfter != nil {
-		if err := env.Q.UpdateAdjustedCard(ctx, dbgen.UpdateAdjustedCardParams{ID: card.ID, ExpiresOn: expires, CardTypeID: typeID}); err != nil {
-			return nil, err
+		if pointsChanged {
+			if err := adjustPoints(ctx, env, card.ID, adjustment.ID, before.Points, *in.Points, day); err != nil {
+				return err
+			}
 		}
-	}
-	var expiresBefore, expiresAfter pgtype.Date
-	if expiryChanged {
-		expiresBefore, expiresAfter = card.ExpiresOn, expires
-	}
-	adjustment, err := env.Q.AddCardAdjustment(ctx, dbgen.AddCardAdjustmentParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: card.ID, Reason: in.Reason, ExpiresBefore: expiresBefore, ExpiresAfter: expiresAfter, ExpiryChanged: expiryChanged, CardTypeBefore: typeBefore, CardTypeAfter: typeAfter, LedgerID: ledgerID, CountsChanged: len(changes) > 0, PointsChanged: pointsChanged, BusinessDate: pgtype.Date{Time: day, Valid: true}, ActorID: env.Caller.StaffID})
-	if err != nil {
-		return nil, err
-	}
-	if pointsChanged {
-		if err := adjustPoints(ctx, env, card.ID, adjustment.ID, before.Points, *in.Points, day); err != nil {
-			return nil, err
+		for _, change := range changes {
+			change.AdjustmentID = &adjustment.ID
+			change.BusinessDate = pgtype.Date{Time: day, Valid: true}
+			if err := env.Q.AddCardCountEntry(ctx, change); err != nil {
+				return err
+			}
 		}
-	}
-	for _, change := range changes {
-		change.AdjustmentID = &adjustment.ID
-		change.BusinessDate = pgtype.Date{Time: day, Valid: true}
-		if err := env.Q.AddCardCountEntry(ctx, change); err != nil {
-			return nil, err
-		}
-	}
-	out, err := cardView(ctx, env, card.ID)
-	if err != nil {
-		return nil, err
-	}
-	if err := audit.Record(ctx, env, "adjust_card", audit.CardTarget(card.ID, card.CustomerID), before, out); err != nil {
-		return nil, err
-	}
-	return out, nil
+		return nil
+	})
 }
 
 func listCardAdjustments(ctx context.Context, env ops.Env, in *ListCardAdjustmentsInput) (*CardAdjustmentList, error) {

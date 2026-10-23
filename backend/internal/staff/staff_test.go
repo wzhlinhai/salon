@@ -27,11 +27,7 @@ func open(t *testing.T) *shop { return &shop{Shop: optest.OpenShop(t), t: t} }
 // call 用登录凭证通过 HTTP 调用；want 不为 0 时检查状态码。
 func (s *shop) call(token, op string, args any, want int) optest.Result {
 	s.t.Helper()
-	r := s.HTTPWithToken(s.t, token, op, args)
-	if want != 0 && r.Status != want {
-		s.t.Fatalf("%s: got %d %v, want %d", op, r.Status, r.Body, want)
-	}
-	return r
+	return s.Call(s.t, token, op, args, want)
 }
 
 // ai 以登录凭证对应的员工本人身份调用 AI 工具。

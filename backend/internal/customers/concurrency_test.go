@@ -15,31 +15,6 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/optest"
 )
 
-// waitResult 检查并发 HTTP 请求在提交后成功返回。
-func waitResult(t *testing.T, done <-chan optest.Result, status int) optest.Result {
-	t.Helper()
-	select {
-	case r := <-done:
-		if r.Status != status {
-			t.Fatalf("concurrent request: %d %v %v, want %d", r.Status, r.Body, r.Err, status)
-		}
-		return r
-	case <-time.After(10 * time.Second):
-		t.Fatal("concurrent HTTP request timed out")
-		return optest.Result{}
-	}
-}
-
-// assertWaiting 检查 HTTP 请求在锁释放前不能返回。
-func assertWaiting(t *testing.T, done <-chan optest.Result) {
-	t.Helper()
-	select {
-	case r := <-done:
-		t.Fatalf("request returned while transaction holds lock: %+v", r)
-	case <-time.After(300 * time.Millisecond):
-	}
-}
-
 func TestCustomerStaffLocksAllowAuditForeignKey(t *testing.T) {
 	for _, action := range []string{"assign_customer_responsible", "hand_over_customers"} {
 		t.Run(action, func(t *testing.T) {
@@ -70,7 +45,7 @@ func TestCustomerStaffLocksAllowAuditForeignKey(t *testing.T) {
 			if err := tx.Commit(ctx); err != nil {
 				t.Fatal(err)
 			}
-			waitResult(t, done, 200)
+			optest.WaitResult(t, done, 200)
 			after := s.get(c["id"])
 			assertEqual(t, after["name"], "事务改名")
 			assertEqual(t, after["responsible"].(map[string]any)["id"], s.Res.OwnerID.String())
@@ -98,14 +73,14 @@ func TestCustomerStaffShareLockWaitsForDeactivation(t *testing.T) {
 			done := make(chan optest.Result, 1)
 			go func() { done <- s.HTTPWithToken(t, s.Owner, action, args) }()
 			dbtest.WaitForLockWait(t, s.Pool)
-			assertWaiting(t, done)
+			optest.AssertWaiting(t, done)
 			if _, err := q.DeactivateStaff(ctx, id); err != nil {
 				t.Fatal(err)
 			}
 			if err := tx.Commit(ctx); err != nil {
 				t.Fatal(err)
 			}
-			r := waitResult(t, done, 409)
+			r := optest.WaitResult(t, done, 409)
 			assertEqual(t, r.Body["detail"], "负责人必须是在职员工")
 			assertEqual(t, s.get(c["id"])["responsible"].(map[string]any)["id"], s.Res.OwnerID.String())
 		})
@@ -128,11 +103,11 @@ func TestConcurrentCustomerCreation(t *testing.T) {
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "create_customer", map[string]any{"phone": phone}) }()
 	dbtest.WaitForLockWait(t, s.Pool)
-	assertWaiting(t, done)
+	optest.AssertWaiting(t, done)
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	result := waitResult(t, done, 200)
+	result := optest.WaitResult(t, done, 200)
 	assertEqual(t, result.Body["existed"], true)
 	assertEqual(t, result.Body["customer"].(map[string]any)["id"], row.ID.String())
 	var count int
@@ -171,7 +146,7 @@ func TestMergeCustomersLocksByIDOrder(t *testing.T) {
 	if err := tx1.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	waitResult(t, done, 200)
+	optest.WaitResult(t, done, 200)
 }
 
 func TestMergeAndPhoneChangeKeepAuditBefore(t *testing.T) {
@@ -190,7 +165,7 @@ func TestMergeAndPhoneChangeKeepAuditBefore(t *testing.T) {
 		done <- s.HTTPWithToken(t, s.Owner, "change_customer_phone", map[string]any{"id": keep["id"], "phone": "13700131234"})
 	}()
 	dbtest.WaitForLockWait(t, s.Pool)
-	assertWaiting(t, done)
+	optest.AssertWaiting(t, done)
 	if _, err := tx.Exec(ctx, "UPDATE customers SET phone=NULL, merged_into=$2 WHERE id=$1", aID(merged), aID(keep)); err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +181,7 @@ func TestMergeAndPhoneChangeKeepAuditBefore(t *testing.T) {
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	waitResult(t, done, 200)
+	optest.WaitResult(t, done, 200)
 	result := s.get(keep["id"])
 	assertEqual(t, result["phone"], "13700131234")
 	assertEqual(t, result["name"], "合并后姓名")
@@ -257,7 +232,7 @@ func TestCustomerOperationsAllowKeyShare(t *testing.T) {
 			}
 			done := make(chan optest.Result, 1)
 			go func() { done <- s.HTTPWithToken(t, s.Owner, action, args) }()
-			waitResult(t, done, 200)
+			optest.WaitResult(t, done, 200)
 		})
 	}
 }
@@ -277,7 +252,7 @@ func TestCustomerSourceChecksAllowShare(t *testing.T) {
 			}
 			done := make(chan optest.Result, 1)
 			go func() { done <- s.HTTPWithToken(t, s.Owner, action, args) }()
-			waitResult(t, done, 200)
+			optest.WaitResult(t, done, 200)
 		})
 	}
 }

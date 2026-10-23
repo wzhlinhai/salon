@@ -1,9 +1,3 @@
--- name: ShareOrderCustomer :one
-SELECT * FROM customers WHERE store_id=$1 AND id=$2 FOR SHARE;
-
--- name: ShareOrderItem :one
-SELECT * FROM items WHERE store_id=$1 AND id=$2 FOR SHARE;
-
 -- name: CreateOrder :one
 INSERT INTO orders (tenant_id,store_id,customer_id,gender,designated,settings_snapshot_id,business_date,opened_by)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *;
@@ -37,9 +31,6 @@ WITH locked AS MATERIALIZED (
  SELECT o.id FROM orders o WHERE o.customer_id=sqlc.arg(merged_id) ORDER BY o.id FOR NO KEY UPDATE
 )
 UPDATE orders o SET customer_id=sqlc.arg(keep_id) WHERE o.id IN (SELECT id FROM locked);
-
--- name: ShareOrderStaff :one
-SELECT * FROM staff WHERE id=$1 FOR SHARE;
 
 -- name: GetOrderItem :one
 SELECT * FROM order_items WHERE store_id=$1 AND order_id=$2 AND id=$3;

@@ -16,7 +16,6 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
-	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
 // CreateCardUpgradeRuleInput 是新建升级规则的参数，条件种类后续可扩展。
@@ -236,46 +235,27 @@ func upgradeCard(ctx context.Context, env ops.Env, in *UpgradeCardInput) (*Card,
 			return nil, err
 		}
 	}
-	card, err := env.Q.LockCard(ctx, dbgen.LockCardParams{StoreID: env.Caller.StoreID, ID: in.CardID})
-	if err != nil {
-		return nil, rowError(err)
-	}
-	if err := canView(ctx, env, card.CustomerID); err != nil {
-		return nil, err
-	}
-	before, err := cardView(ctx, env, card.ID)
-	if err != nil {
-		return nil, err
-	}
-	if before.Kind != StoredValue {
-		return nil, ops.Rule("仅储值卡支持升级")
-	}
-	ct, err := env.Q.ShareCardType(ctx, dbgen.ShareCardTypeParams{StoreID: env.Caller.StoreID, ID: in.ToTypeID})
-	if err != nil {
-		return nil, rowError(err)
-	}
-	if !ct.Active || ct.Kind != StoredValue || ct.ID == card.CardTypeID {
-		return nil, ops.Rule("目标须为启用的其他储值卡类型")
-	}
-	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
-	if err != nil {
-		return nil, err
-	}
-	ledger, err := appendLedger(ctx, env, card.ID, "upgrade", before.Principal, before.Bonus, TopUpInput{Principal: in.Principal, Bonus: in.Bonus, SalesStaffIDs: in.SalesStaffIDs}, day)
-	if err != nil {
-		return nil, err
-	}
-	if err := recordUpgrade(ctx, env, card, ct.ID, "manual", nil, ledger.ID, day); err != nil {
-		return nil, err
-	}
-	out, err := cardView(ctx, env, card.ID)
-	if err != nil {
-		return nil, err
-	}
-	if err := audit.Record(ctx, env, "upgrade_card", audit.CardTarget(card.ID, card.CustomerID), before, out); err != nil {
-		return nil, err
-	}
-	return out, nil
+	return changeOne(ctx, env, "upgrade_card", in.CardID, func(c cardChange, day time.Time) error {
+		card, before := c.row, c.before
+		if before.Kind != StoredValue {
+			return ops.Rule("仅储值卡支持升级")
+		}
+		ct, err := env.Q.ShareCardType(ctx, dbgen.ShareCardTypeParams{StoreID: env.Caller.StoreID, ID: in.ToTypeID})
+		if err != nil {
+			return rowError(err)
+		}
+		if !ct.Active || ct.Kind != StoredValue || ct.ID == card.CardTypeID {
+			return ops.Rule("目标须为启用的其他储值卡类型")
+		}
+		ledger, err := appendLedger(ctx, env, card.ID, "upgrade", before.Principal, before.Bonus, TopUpInput{Principal: in.Principal, Bonus: in.Bonus, SalesStaffIDs: in.SalesStaffIDs}, day)
+		if err != nil {
+			return err
+		}
+		if err := recordUpgrade(ctx, env, card, ct.ID, "manual", nil, ledger.ID, day); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 func recordUpgrade(ctx context.Context, env ops.Env, card dbgen.Card, to uuid.UUID, trigger string, rule *uuid.UUID, ledger uuid.UUID, day time.Time) error {
 	// 升级不改有效期；门店需要更正时另写调整单。
@@ -319,11 +299,7 @@ func autoUpgradeCard(ctx context.Context, env ops.Env, card dbgen.Card, principa
 		if err := recordUpgrade(ctx, env, card, target.ID, "auto", &r.ID, ledgerID, day); err != nil {
 			return nil, err
 		}
-		after, err := cardView(ctx, env, card.ID)
-		if err != nil {
-			return nil, err
-		}
-		if err := audit.Record(ctx, env, "auto_upgrade_card", audit.CardTarget(card.ID, card.CustomerID), before, after); err != nil {
+		if _, err := recordChange(ctx, env, "auto_upgrade_card", card, before); err != nil {
 			return nil, err
 		}
 		return &CardUpgradeType{ID: target.ID, Name: target.Name}, nil

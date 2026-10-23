@@ -38,9 +38,8 @@ async function load() {
 }
 
 onMounted(load)
-const editorGuard = useRequestGuard()
-const open = ref(false)
-const saving = ref(false)
+const editor = useModalForm()
+const { open, saving } = editor
 const editing = ref<CardType | null>(null)
 const name = ref('')
 const active = ref(true)
@@ -54,32 +53,26 @@ const validityItems = [
 ]
 
 function edit(item: CardType | null) {
-  editorGuard.next()
-  saving.value = false
-  editing.value = item
-  name.value = item?.name ?? ''
-  kind.value = item?.kind as typeof kind.value ?? 'stored_value'
-  definition.value = item?.items.map(x => ({ item_id: x.item_id, paid_count: x.paid_count, gift_count: x.gift_count, unit_price: x.unit_price })) ?? []
-  active.value = item?.active ?? true
-  validity.value = item?.validity_kind as typeof validity.value ?? 'none'
-  date.value = item?.validity_date ?? ''
-  days.value = item?.validity_days ?? 30
-  open.value = true
+  editor.begin(() => {
+    editing.value = item
+    name.value = item?.name ?? ''
+    kind.value = item?.kind as typeof kind.value ?? 'stored_value'
+    definition.value = item?.items.map(x => ({ item_id: x.item_id, paid_count: x.paid_count, gift_count: x.gift_count, unit_price: x.unit_price })) ?? []
+    active.value = item?.active ?? true
+    validity.value = item?.validity_kind as typeof validity.value ?? 'none'
+    date.value = item?.validity_date ?? ''
+    days.value = item?.validity_days ?? 30
+  })
 }
 
-watch(open, () => editorGuard.next())
-
 async function save() {
-  if (saving.value) return
-  const current = editorGuard.hold()
   const body = {
     name: name.value, kind: kind.value, validity_kind: validity.value,
     items: kind.value === 'stored_value' ? [] : definition.value.map(x => ({ ...x, paid_count: Number(x.paid_count), gift_count: Number(x.gift_count) })),
     validity_date: validity.value === 'fixed_date' ? date.value : undefined,
     validity_days: validity.value === 'days_after_open' ? Number(days.value) : undefined
   }
-  saving.value = true
-  try {
+  await editor.save(async (current) => {
     const { data, error } = editing.value
       ? await api.POST('/api/ops/update_card_type', { body: { ...body, id: editing.value.id, active: active.value } })
       : await api.POST('/api/ops/create_card_type', { body })
@@ -88,18 +81,15 @@ async function save() {
       open.value = false
       await load()
     } else toast.add({ title: errorText(error), color: 'error' })
-  } finally {
-    if (current() || !open.value) saving.value = false
-  }
+  })
 }
 
 function validityText(item: CardType) {
   return item.validity_kind === 'fixed_date' ? item.validity_date : item.validity_kind === 'days_after_open' ? `开卡后 ${item.validity_days} 天` : '不限'
 }
 
-const ruleGuard = useRequestGuard()
-const ruleOpen = ref(false)
-const ruleSaving = ref(false)
+const ruleEditor = useModalForm()
+const { open: ruleOpen, saving: ruleSaving } = ruleEditor
 const ruleEditing = ref<components['schemas']['CardUpgradeRule'] | null>(null)
 const ruleFrom = ref('')
 const ruleTo = ref('')
@@ -110,24 +100,18 @@ const ruleConditions = [{ label: '单次充值本金 ≥', value: 'single_rechar
 const storedTypes = computed(() => items.value.filter(t => t.kind === 'stored_value'))
 
 function editRule(rule: components['schemas']['CardUpgradeRule'] | null) {
-  ruleGuard.next()
-  ruleSaving.value = false
-  ruleEditing.value = rule
-  ruleFrom.value = rule?.from_type_id ?? ''
-  ruleTo.value = rule?.to_type_id ?? ''
-  ruleCondition.value = rule?.condition_kind ?? 'single_recharge'
-  ruleThreshold.value = rule?.threshold ?? '0.00'
-  ruleActive.value = rule?.active ?? true
-  ruleOpen.value = true
+  ruleEditor.begin(() => {
+    ruleEditing.value = rule
+    ruleFrom.value = rule?.from_type_id ?? ''
+    ruleTo.value = rule?.to_type_id ?? ''
+    ruleCondition.value = rule?.condition_kind ?? 'single_recharge'
+    ruleThreshold.value = rule?.threshold ?? '0.00'
+    ruleActive.value = rule?.active ?? true
+  })
 }
 
-watch(ruleOpen, () => ruleGuard.next())
-
 async function saveRule() {
-  if (ruleSaving.value) return
-  const current = ruleGuard.hold()
-  ruleSaving.value = true
-  try {
+  await ruleEditor.save(async (current) => {
     const { data, error } = ruleEditing.value
       ? await api.POST('/api/ops/update_card_upgrade_rule', { body: { id: ruleEditing.value.id, threshold: ruleThreshold.value, active: ruleActive.value } })
       : await api.POST('/api/ops/create_card_upgrade_rule', { body: { from_type_id: ruleFrom.value, to_type_id: ruleTo.value, condition_kind: ruleCondition.value, threshold: ruleThreshold.value } })
@@ -136,9 +120,7 @@ async function saveRule() {
       ruleOpen.value = false
       await load()
     } else toast.add({ title: errorText(error), color: 'error' })
-  } finally {
-    if (current() || !ruleOpen.value) ruleSaving.value = false
-  }
+  })
 }
 </script>
 

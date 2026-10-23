@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/wzhlinhai/salon/backend/internal/catalog"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
@@ -39,12 +40,14 @@ func typeItems(ctx context.Context, env ops.Env, types []CardType) error {
 	return nil
 }
 func shareItem(ctx context.Context, env ops.Env, id uuid.UUID) error {
-	item, err := env.Q.ShareCatalogItem(ctx, dbgen.ShareCatalogItemParams{StoreID: env.Caller.StoreID, ID: id})
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !item.Active) {
+	_, err := catalog.LockReference(ctx, env.Q, env.Caller.StoreID, id)
+	var rule *ops.RuleError
+	if errors.Is(err, pgx.ErrNoRows) || errors.As(err, &rule) {
 		return ops.Rule("项目必须是本店启用的项目")
 	}
 	return err
 }
+
 func sameTypeItem(a, b CardTypeItemInput) bool {
 	return a.ItemID == b.ItemID && a.PaidCount == b.PaidCount && a.GiftCount == b.GiftCount && a.UnitPrice.Cmp(b.UnitPrice) == 0
 }

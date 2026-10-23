@@ -72,7 +72,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 - 业务模块不直接查设置表：
   - `settings.BusinessDate` 算一个时刻属于哪个营业日，营业日 D 在第二天"营业日结束时间"截止，结束时间取 D 那天执行的设置；
   - `settings.Effective` 取某个营业日执行的设置；
-  - 单据下单时调用 `settings.TakeSnapshot`，把返回的快照 ID 存进单据，之后计算一律用 `settings.LoadSnapshot` 读回的规则，这样以后改设置不会影响已下的单。内容相同的快照共用一行。
+  - 单据下单时调用 `settings.TakeSnapshot`，把返回的 `Snapshot.ID` 存进单据，开单直接使用同时返回的 `BusinessDate` 和 `Rules`，之后计算一律用 `settings.LoadSnapshot` 读回的规则，这样以后改设置不会影响已下的单。内容相同的快照共用一行。
 
 ## 单据
 
@@ -82,10 +82,18 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 改单需要 order.edit，时间窗口按单的 business_date 与当前营业日比较；本人范围包含 opened_by 或任意项目行岗位上的员工，去掉的行也算出现过。去掉项目只标记，不计入应收。换岗位员工提交完整分配，未列出的岗位清空；仅在 slot 1 员工改变且项目行未改价时按单的规则快照重新取级别价或标准价。改价需要 order.reprice 和原因，改后不再随员工重取价。改单锁顺序为单 → 项目（仅重取价）→ 按 UUID 排序的员工。
 
-合并单需要 order.edit，对每张单检查时间窗口和本人范围，只允许同一顾客、同一营业日的挂单合并。全部项目行（包括去掉的行）移到保留单，其余单保留，标为 merged 并以 merged_into 引用保留单；保留单的其他属性不变。客次按未并入其他单的单计，已合并单不单独计客次。每个已有单的写操作先在本店以 FOR NO KEY UPDATE 锁单并检查 open 状态，再做范围检查及读取改前视图；已合并单拒绝写入。合并按 UUID 字符串排序逐张锁单，不锁顾客、项目或员工；顾客合并也在改挂前按 UUID 锁住该顾客的单；其他改单先锁单，再锁项目及按 UUID 排序的员工。
+合并单需要 order.edit，对每张单检查时间窗口和本人范围，只允许同一顾客、同一营业日的挂单合并。全部项目行（包括去掉的行）移到保留单，其余单保留，标为 merged 并以 merged_into 引用保留单；保留单的其他属性不变。客次按未并入其他单的单计，已合并单不单独计客次。每个已有单的写操作统一经过 `internal/orders.change`：在本店按 UUID 以 FOR NO KEY UPDATE 锁住全部单，检查 open 状态，再按操作声明的 `env.Grant` 检查营业日窗口和本人范围，读取改前视图、执行修改、读取改后视图并逐单写日志。加项目使用 order.create，改价使用 order.reprice，这两项按权限目录均无窗口或本人范围限制；其他改单使用 order.edit。已合并单拒绝写入。合并按 UUID 字符串排序逐张锁单，不锁顾客、项目或员工；顾客合并也在改挂前按 UUID 锁住该顾客的单；其他改单先锁单，再锁项目及按 UUID 排序的员工。
 
 ## 操作日志
 
 - `audit_log` 只追加，`salon_app` 只有 SELECT 和 INSERT 权限。日志与业务操作在同一事务里写入，任何一步失败都会一起回滚。同一员工或角色的修改用行锁排队，在读取改前快照前加锁，日志的改前才接得上前一次的改后。
 - 当前记录角色的新建、修改、删除，以及员工的新建、档案修改、登录设置、停用、恢复和角色分配；保留改前改后，删除角色时还保留持有员工的 ID、姓名。`list_audit_log` 需要操作日志权限，可按目标 ID 查询。每条日志记录目标种类及其关联顾客；`list_audit_log` 按调用者的顾客查看范围过滤关联顾客的日志。卡类型、开卡、充值、开单、加项目、去掉项目、换岗位员工、改价、合并单已记录日志。新增关联顾客的种类（例如单）时，添加接收顾客 ID 的构造函数，并扩展迁移中的 CHECK 列表。
 - 新操作在成功路径末尾用同一个 `env` 调用 `audit.Record`，传入不含密码或密码哈希的返回值视图；新建前、删除后传 nil。手机号字段的 JSON 键名必须是 `phone`，`audit.Record` 遇到别的键名会拒绝写入（读取时只按这个键名打码）。
+
+## 共享修改与引用检查
+
+卡的充值、调整、升级和转余额统一经过 `internal/cards.change`，它按 UUID 锁卡、检查顾客查看范围、读取改前改后视图并写日志。一次修改只取一次营业日；业绩员工在锁卡前检查。余额由卡视图读取，余额流水只在 `writeBalance` 计算前值、变动和后值，积分流水只在 `writePoints` 计算。自动升级沿用已持有的卡锁并保留独立日志。
+
+跨模块引用检查由数据所属模块提供：`customers.LockReference` 检查本店、查看范围和未合并；`staff.LockAssignable` 按 UUID 锁住本店在职员工，交接来源用允许离职的 `staff.LockReferences`；`catalog.LockReference` 检查本店启用项目。只检查引用均用 FOR SHARE。报价 `catalog.Quote` 自己锁住读取的项目和员工；项目行岗位分配及是否重取价由 `catalog.QuoteLine` 负责。
+
+测试调用和并发请求等待共用 `optest.App.Call`、`optest.WaitResult`、`optest.AssertWaiting`；事务 SQL、提交回滚和固定行顺序的表快照共用 `dbtest` 的辅助函数。各业务包只准备自己的业务数据。

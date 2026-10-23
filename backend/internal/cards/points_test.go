@@ -154,8 +154,8 @@ func TestPointsScope(t *testing.T) {
 	for _, own := range []bool{false, true} {
 		if own {
 			tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-			exec(t, tx, "UPDATE customers SET responsible_staff_id=$2 WHERE id=$1", s.customer, caller.StaffID)
-			commit(t, tx)
+			dbtest.Exec(t, tx, "UPDATE customers SET responsible_staff_id=$2 WHERE id=$1", s.customer, caller.StaffID)
+			dbtest.Commit(t, tx)
 		}
 		for _, ch := range s.Channels() {
 			r := ch.Call(t, caller, "list_card_points", map[string]any{"card_id": card["id"]})
@@ -186,7 +186,7 @@ func TestPointsStoreScope(t *testing.T) {
 	if err := tx.QueryRow(context.Background(), "INSERT INTO stores (tenant_id,name) VALUES ($1,'外店') RETURNING id", s.Res.TenantID).Scan(&other); err != nil {
 		t.Fatal(err)
 	}
-	commit(t, tx)
+	dbtest.Commit(t, tx)
 	caller.StoreID = other
 	for _, ch := range s.Channels() {
 		if r := ch.Call(t, caller, "list_card_points", map[string]any{"card_id": card["id"]}); r.Status != 404 {
@@ -200,14 +200,14 @@ func TestPointsRechargeWaitsForCardLock(t *testing.T) {
 	s.pointsRate(1)
 	card := s.call("open_card", s.opening(), 200)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE", card["id"])
+	dbtest.Exec(t, tx, "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE", card["id"])
 	top := s.recharge(card["id"])
 	top["principal"] = "10.00"
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "recharge_card", top) }()
 	dbtest.WaitForLockWait(t, s.Pool)
-	exec(t, tx, `INSERT INTO card_points_ledger (tenant_id,store_id,card_id,kind,before,delta,after,business_date,actor_id) VALUES ($1,$2,$3,'adjust',1234,66,1300,current_date,$4)`, s.Res.TenantID, s.Res.StoreID, card["id"], s.Res.OwnerID)
-	commit(t, tx)
+	dbtest.Exec(t, tx, `INSERT INTO card_points_ledger (tenant_id,store_id,card_id,kind,before,delta,after,business_date,actor_id) VALUES ($1,$2,$3,'adjust',1234,66,1300,current_date,$4)`, s.Res.TenantID, s.Res.StoreID, card["id"], s.Res.OwnerID)
+	dbtest.Commit(t, tx)
 	if r := <-done; r.Status != 200 || r.Body["points"] != float64(1310) {
 		t.Fatal(r)
 	}
@@ -322,14 +322,14 @@ func TestCardTypeEditLocksItemsBeforeType(t *testing.T) {
 	ct := s.call("create_card_type", in, 200)
 	in["id"], in["active"] = ct["id"], true
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "SELECT id FROM items WHERE id=$1 FOR NO KEY UPDATE", item["id"])
+	dbtest.Exec(t, tx, "SELECT id FROM items WHERE id=$1 FOR NO KEY UPDATE", item["id"])
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "update_card_type", in) }()
 	dbtest.WaitForLockWait(t, s.Pool)
 	// 编辑正在等项目时不能已持有类型写锁，否则与会员价的项目 → 类型路径形成环。
-	exec(t, tx, "SET LOCAL lock_timeout='1s'")
-	exec(t, tx, "SELECT id FROM card_types WHERE id=$1 FOR SHARE", ct["id"])
-	commit(t, tx)
+	dbtest.Exec(t, tx, "SET LOCAL lock_timeout='1s'")
+	dbtest.Exec(t, tx, "SELECT id FROM card_types WHERE id=$1 FOR SHARE", ct["id"])
+	dbtest.Commit(t, tx)
 	if r := <-done; r.Status != 200 {
 		t.Fatal(r)
 	}

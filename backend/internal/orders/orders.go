@@ -3,8 +3,6 @@ package orders
 import (
 	"context"
 	"errors"
-	"slices"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -45,15 +43,9 @@ func openOrder(ctx context.Context, env ops.Env, in *OpenOrderInput) (*Order, er
 func openOrderAt(ctx context.Context, env ops.Env, in *OpenOrderInput, now time.Time) (*Order, error) {
 	var customerID uuid.UUID
 	if in.CustomerID != nil {
-		row, err := env.Q.ShareOrderCustomer(ctx, dbgen.ShareOrderCustomerParams{StoreID: env.Caller.StoreID, ID: *in.CustomerID})
+		row, err := customers.LockReference(ctx, env, *in.CustomerID)
 		if err != nil {
 			return nil, rowError(err)
-		}
-		if !customers.CanView(env.Caller, row) {
-			return nil, ops.ErrNotFound
-		}
-		if row.MergedInto != nil {
-			return nil, ops.Rule("该顾客已合并到另一位顾客")
 		}
 		customerID = row.ID
 	} else {
@@ -70,20 +62,12 @@ func openOrderAt(ctx context.Context, env ops.Env, in *OpenOrderInput, now time.
 	if err != nil {
 		return nil, err
 	}
-	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, now)
-	if err != nil {
-		return nil, err
-	}
-	row, err := env.Q.CreateOrder(ctx, dbgen.CreateOrderParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CustomerID: customerID, Gender: in.Gender, Designated: in.Designated, SettingsSnapshotID: snapshot, BusinessDate: pgtype.Date{Time: day, Valid: true}, OpenedBy: env.Caller.StaffID})
-	if err != nil {
-		return nil, err
-	}
-	rules, err := settings.LoadSnapshot(ctx, env.Q, env.Caller.StoreID, snapshot)
+	row, err := env.Q.CreateOrder(ctx, dbgen.CreateOrderParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CustomerID: customerID, Gender: in.Gender, Designated: in.Designated, SettingsSnapshotID: snapshot.ID, BusinessDate: pgtype.Date{Time: snapshot.BusinessDate, Valid: true}, OpenedBy: env.Caller.StaffID})
 	if err != nil {
 		return nil, err
 	}
 	for _, item := range in.Items {
-		if err := addItem(ctx, env, row.ID, item, rules); err != nil {
+		if err := addItem(ctx, env, row.ID, item, snapshot.Rules); err != nil {
 			return nil, err
 		}
 	}
@@ -98,33 +82,17 @@ func openOrderAt(ctx context.Context, env ops.Env, in *OpenOrderInput, now time.
 }
 
 func addOrderItem(ctx context.Context, env ops.Env, in *AddOrderItemInput) (*Order, error) {
-	row, err := lockOpenOrder(ctx, env, in.OrderID)
-	if err != nil {
-		return nil, rowError(err)
-	}
-	before, err := view(ctx, env, row)
-	if err != nil {
-		return nil, err
-	}
-	rules, err := settings.LoadSnapshot(ctx, env.Q, env.Caller.StoreID, row.SettingsSnapshotID)
-	if err != nil {
-		return nil, err
-	}
-	if err := addItem(ctx, env, row.ID, in.Item, rules); err != nil {
-		return nil, err
-	}
-	after, err := view(ctx, env, row)
-	if err != nil {
-		return nil, err
-	}
-	if err := audit.Record(ctx, env, "add_order_item", audit.OrderTarget(row.ID, row.CustomerID), before, after); err != nil {
-		return nil, err
-	}
-	return after, nil
+	return changeOne(ctx, env, "add_order_item", in.OrderID, func(row *dbgen.Order) error {
+		rules, err := settings.LoadSnapshot(ctx, env.Q, env.Caller.StoreID, row.SettingsSnapshotID)
+		if err != nil {
+			return err
+		}
+		return addItem(ctx, env, row.ID, in.Item, rules)
+	})
 }
 
 func addItem(ctx context.Context, env ops.Env, orderID uuid.UUID, in OrderItemInput, rules settings.Rules) error {
-	item, err := env.Q.ShareOrderItem(ctx, dbgen.ShareOrderItemParams{StoreID: env.Caller.StoreID, ID: in.ItemID})
+	item, err := catalog.LockReference(ctx, env.Q, env.Caller.StoreID, in.ItemID)
 	if err != nil {
 		return rowError(err)
 	}
@@ -136,11 +104,7 @@ func addItem(ctx context.Context, env ops.Env, orderID uuid.UUID, in OrderItemIn
 	for _, p := range positions {
 		slots[p.Slot] = true
 	}
-	assigned, err := validateStaff(ctx, env, slots, in.Staff)
-	if err != nil {
-		return err
-	}
-	price, err := catalog.Quote(ctx, env.Q, env.Caller.StoreID, item.ID, assigned[1], nil, rules)
+	assigned, price, err := catalog.QuoteLine(ctx, env, item.ID, slots, lineStaff(in.Staff), nil, rules)
 	if err != nil {
 		return err
 	}
@@ -225,30 +189,12 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 	return out, nil
 }
 
-func validateStaff(ctx context.Context, env ops.Env, slots map[int16]bool, staffInput []OrderItemStaffInput) (map[int16]*uuid.UUID, error) {
-	assigned := map[int16]*uuid.UUID{}
-	ids := []uuid.UUID{}
-	for _, s := range staffInput {
-		if !slots[s.Slot] {
-			return nil, ops.Rule("项目没有这个岗位")
-		}
-		if assigned[s.Slot] != nil {
-			return nil, ops.Rule("同一岗位不能重复填员工")
-		}
-		assigned[s.Slot] = new(s.StaffID)
-		ids = append(ids, s.StaffID)
+func lineStaff(in []OrderItemStaffInput) []catalog.LineStaff {
+	out := make([]catalog.LineStaff, len(in))
+	for i, s := range in {
+		out[i] = catalog.LineStaff{Slot: s.Slot, StaffID: s.StaffID}
 	}
-	slices.SortFunc(ids, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
-	for _, id := range slices.Compact(ids) {
-		staff, err := env.Q.ShareOrderStaff(ctx, id)
-		if errors.Is(err, pgx.ErrNoRows) || (err == nil && (!staff.Active || staff.StoreID != env.Caller.StoreID)) {
-			return nil, ops.Rule("岗位上的员工必须是本店在职员工")
-		}
-		if err != nil {
-			return nil, err
-		}
-	}
-	return assigned, nil
+	return out
 }
 
 func removedTime(t pgtype.Timestamptz) *time.Time {

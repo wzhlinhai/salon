@@ -344,57 +344,6 @@ func (q *Queries) AddCardTransfer(ctx context.Context, arg AddCardTransferParams
 	return err
 }
 
-const addCardTransferLedger = `-- name: AddCardTransferLedger :one
-INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id)
-VALUES ($1,$2,$3,$4,$5,$6,$5::numeric+$6::numeric,$7,$8,$7::numeric+$8::numeric,$9,$10) RETURNING id, tenant_id, store_id, card_id, kind, principal_before, principal_delta, principal_after, bonus_before, bonus_delta, bonus_after, business_date, actor_id, at
-`
-
-type AddCardTransferLedgerParams struct {
-	TenantID        uuid.UUID
-	StoreID         uuid.UUID
-	CardID          uuid.UUID
-	Kind            string
-	PrincipalBefore money.Amount
-	PrincipalDelta  money.Change
-	BonusBefore     money.Amount
-	BonusDelta      money.Change
-	BusinessDate    pgtype.Date
-	ActorID         uuid.UUID
-}
-
-func (q *Queries) AddCardTransferLedger(ctx context.Context, arg AddCardTransferLedgerParams) (CardLedger, error) {
-	row := q.db.QueryRow(ctx, addCardTransferLedger,
-		arg.TenantID,
-		arg.StoreID,
-		arg.CardID,
-		arg.Kind,
-		arg.PrincipalBefore,
-		arg.PrincipalDelta,
-		arg.BonusBefore,
-		arg.BonusDelta,
-		arg.BusinessDate,
-		arg.ActorID,
-	)
-	var i CardLedger
-	err := row.Scan(
-		&i.ID,
-		&i.TenantID,
-		&i.StoreID,
-		&i.CardID,
-		&i.Kind,
-		&i.PrincipalBefore,
-		&i.PrincipalDelta,
-		&i.PrincipalAfter,
-		&i.BonusBefore,
-		&i.BonusDelta,
-		&i.BonusAfter,
-		&i.BusinessDate,
-		&i.ActorID,
-		&i.At,
-	)
-	return i, err
-}
-
 const addCardTypeItem = `-- name: AddCardTypeItem :exec
 INSERT INTO card_type_items (tenant_id,store_id,card_type_id,item_id,paid_count,gift_count,unit_price) VALUES ($1,$2,$3,$4,$5,$6,$7)
 `
@@ -809,43 +758,6 @@ func (q *Queries) GetCardUpgradeRule(ctx context.Context, arg GetCardUpgradeRule
 		&i.CreatedAt,
 	)
 	return i, err
-}
-
-const latestCardLedger = `-- name: LatestCardLedger :one
-SELECT id, tenant_id, store_id, card_id, kind, principal_before, principal_delta, principal_after, bonus_before, bonus_delta, bonus_after, business_date, actor_id, at FROM card_ledger WHERE card_id=$1 ORDER BY at DESC,id DESC LIMIT 1
-`
-
-func (q *Queries) LatestCardLedger(ctx context.Context, cardID uuid.UUID) (CardLedger, error) {
-	row := q.db.QueryRow(ctx, latestCardLedger, cardID)
-	var i CardLedger
-	err := row.Scan(
-		&i.ID,
-		&i.TenantID,
-		&i.StoreID,
-		&i.CardID,
-		&i.Kind,
-		&i.PrincipalBefore,
-		&i.PrincipalDelta,
-		&i.PrincipalAfter,
-		&i.BonusBefore,
-		&i.BonusDelta,
-		&i.BonusAfter,
-		&i.BusinessDate,
-		&i.ActorID,
-		&i.At,
-	)
-	return i, err
-}
-
-const latestCardPoints = `-- name: LatestCardPoints :one
-SELECT COALESCE((SELECT after FROM card_points_ledger WHERE card_id=$1 ORDER BY at DESC,id DESC LIMIT 1),0)::int AS points
-`
-
-func (q *Queries) LatestCardPoints(ctx context.Context, cardID uuid.UUID) (int32, error) {
-	row := q.db.QueryRow(ctx, latestCardPoints, cardID)
-	var points int32
-	err := row.Scan(&points)
-	return points, err
 }
 
 const listCardAdjustments = `-- name: ListCardAdjustments :many
@@ -1520,35 +1432,6 @@ func (q *Queries) RemainingCounts(ctx context.Context, cardIds []uuid.UUID) ([]R
 	return items, nil
 }
 
-const shareCardCustomer = `-- name: ShareCardCustomer :one
-SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at FROM customers WHERE store_id=$1 AND id=$2 FOR SHARE
-`
-
-type ShareCardCustomerParams struct {
-	StoreID uuid.UUID
-	ID      uuid.UUID
-}
-
-func (q *Queries) ShareCardCustomer(ctx context.Context, arg ShareCardCustomerParams) (Customer, error) {
-	row := q.db.QueryRow(ctx, shareCardCustomer, arg.StoreID, arg.ID)
-	var i Customer
-	err := row.Scan(
-		&i.ID,
-		&i.TenantID,
-		&i.StoreID,
-		&i.Name,
-		&i.Phone,
-		&i.Gender,
-		&i.SourceID,
-		&i.ResponsibleStaffID,
-		&i.Note,
-		&i.MergedInto,
-		&i.CreatedBy,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
 const shareCardType = `-- name: ShareCardType :one
 SELECT id, tenant_id, store_id, name, kind, validity_kind, validity_date, validity_days, active, created_at FROM card_types WHERE store_id=$1 AND id=$2 FOR SHARE
 `
@@ -1570,33 +1453,6 @@ func (q *Queries) ShareCardType(ctx context.Context, arg ShareCardTypeParams) (C
 		&i.ValidityKind,
 		&i.ValidityDate,
 		&i.ValidityDays,
-		&i.Active,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
-const shareCatalogItem = `-- name: ShareCatalogItem :one
-SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at FROM items WHERE store_id=$1 AND id=$2 FOR SHARE
-`
-
-type ShareCatalogItemParams struct {
-	StoreID uuid.UUID
-	ID      uuid.UUID
-}
-
-func (q *Queries) ShareCatalogItem(ctx context.Context, arg ShareCatalogItemParams) (Item, error) {
-	row := q.db.QueryRow(ctx, shareCatalogItem, arg.StoreID, arg.ID)
-	var i Item
-	err := row.Scan(
-		&i.ID,
-		&i.TenantID,
-		&i.StoreID,
-		&i.Name,
-		&i.Price,
-		&i.Discountable,
-		&i.LaborFeeAmount,
-		&i.LaborFeePercent,
 		&i.Active,
 		&i.CreatedAt,
 	)

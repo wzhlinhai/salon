@@ -289,7 +289,7 @@ func TestQuoteUsesSnapshotRules(t *testing.T) {
 	item := s.call("create_item", in, 200)
 	s.memberRule("member_first", 0)
 	ctx := context.Background()
-	var snapshot uuid.UUID
+	var snapshot settings.Snapshot
 	if err := db.InTenant(ctx, s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error {
 		var err error
 		snapshot, err = settings.TakeSnapshot(ctx, q, s.Res.TenantID, s.Res.StoreID, time.Now())
@@ -299,7 +299,7 @@ func TestQuoteUsesSnapshotRules(t *testing.T) {
 	}
 	s.memberRule("lowest", 0)
 	if err := db.InTenant(ctx, s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error {
-		rules, err := settings.LoadSnapshot(ctx, q, s.Res.StoreID, snapshot)
+		rules, err := settings.LoadSnapshot(ctx, q, s.Res.StoreID, snapshot.ID)
 		if err != nil {
 			return err
 		}

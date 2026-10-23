@@ -111,3 +111,27 @@ test('项目旧保存响应不关闭后来打开的窗口', async ({ page }) => 
   await expect(createDialog).not.toBeVisible()
   await expect(page.locator(`[data-item="下一项目${suffix}"]`)).toBeVisible()
 })
+
+test('项目保存断网后结束保存状态并能重试', async ({ page }) => {
+  const { suffix } = await seed()
+  await login(page, owner.account, owner.password)
+  await page.goto('/items')
+  await page.getByRole('button', { name: '新建项目', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '新建项目', exact: true })
+  const name = `断网重试${suffix}`
+  await dialog.getByRole('textbox', { name: '项目名称', exact: true }).fill(name)
+  let abort = true
+  await page.route('**/api/ops/create_item', async (route) => {
+    if (abort) {
+      abort = false
+      await route.abort()
+    } else await route.continue()
+  })
+  const save = dialog.getByRole('button', { name: '保存', exact: true })
+  await save.click()
+  await expect(page.getByText('网络连接失败，请重试', { exact: true })).toBeVisible()
+  await expect(save).toBeEnabled()
+  await save.click()
+  await expect(dialog).not.toBeVisible()
+  await expect(page.locator(`[data-item="${name}"]`)).toBeVisible()
+})

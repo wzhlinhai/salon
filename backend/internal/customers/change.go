@@ -26,11 +26,8 @@ func byIDs(ids ...uuid.UUID) selection {
 			if err != nil {
 				return nil, rowError(err)
 			}
-			if !canView(env.Caller, row) {
-				return nil, ops.ErrNotFound
-			}
-			if row.MergedInto != nil {
-				return nil, ops.Rule("该顾客已合并到另一位顾客")
+			if err := checkReference(env, row); err != nil {
+				return nil, err
 			}
 			locked[id] = row
 		}

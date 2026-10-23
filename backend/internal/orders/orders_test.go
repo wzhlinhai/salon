@@ -44,11 +44,7 @@ func open(t *testing.T) *fixture {
 func id(v any) uuid.UUID { return uuid.MustParse(v.(string)) }
 func (s *fixture) call(op string, in any, want int) map[string]any {
 	s.t.Helper()
-	r := s.HTTPWithToken(s.t, s.Owner, op, in)
-	if r.Status != want {
-		s.t.Fatalf("%s got %d %v want %d", op, r.Status, r.Body, want)
-	}
-	return r.Body
+	return s.Call(s.t, s.Owner, op, in, want).Body
 }
 func (s *fixture) itemInput(name string, slots int) map[string]any {
 	positions := []any{}
@@ -71,34 +67,14 @@ func (s *fixture) opening(items ...orders.OrderItemInput) orders.OpenOrderInput 
 	return orders.OpenOrderInput{Gender: "female", Designated: true, Items: items}
 }
 func lines(o map[string]any) []any { return o["items"].([]any) }
-func exec(t *testing.T, tx pgx.Tx, sql string, args ...any) {
-	t.Helper()
-	if _, err := tx.Exec(context.Background(), sql, args...); err != nil {
-		t.Fatal(err)
-	}
-}
-func commit(t *testing.T, tx pgx.Tx) {
-	t.Helper()
-	if err := tx.Commit(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-}
+
 func (s *fixture) snapshot() string {
 	s.t.Helper()
-	tx := dbtest.AppTx(s.t, s.Pool, s.Res.TenantID)
-	value := snapshotTx(s.t, tx)
-	if err := tx.Rollback(context.Background()); err != nil {
-		s.t.Fatal(err)
-	}
-	return value
+	return dbtest.Snapshot(s.t, s.Pool, s.Res.TenantID, "orders", "order_items", "order_item_positions", "customers", "audit_log", "settings_snapshots")
 }
 func snapshotTx(t *testing.T, tx pgx.Tx) string {
 	t.Helper()
-	var raw []byte
-	if err := tx.QueryRow(context.Background(), `SELECT jsonb_build_array((SELECT jsonb_agg(o ORDER BY id) FROM orders o),(SELECT jsonb_agg(i ORDER BY id) FROM order_items i),(SELECT jsonb_agg(p ORDER BY order_item_id,slot) FROM order_item_positions p),(SELECT jsonb_agg(c ORDER BY id) FROM customers c),(SELECT jsonb_agg(a ORDER BY id) FROM audit_log a),(SELECT jsonb_agg(s ORDER BY id) FROM settings_snapshots s))`).Scan(&raw); err != nil {
-		t.Fatal(err)
-	}
-	return string(raw)
+	return dbtest.SnapshotTx(t, tx, "orders", "order_items", "order_item_positions", "customers", "audit_log", "settings_snapshots")
 }
 
 func (s *fixture) otherStore() uuid.UUID {
@@ -108,7 +84,7 @@ func (s *fixture) otherStore() uuid.UUID {
 	if err != nil {
 		s.t.Fatal(err)
 	}
-	commit(s.t, tx)
+	dbtest.Commit(s.t, tx)
 	return store.ID
 }
 
@@ -173,7 +149,7 @@ func TestCustomerProtection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	commit(t, tx)
+	dbtest.Commit(t, tx)
 	for _, tc := range []struct {
 		name     string
 		customer uuid.UUID
@@ -377,7 +353,7 @@ func TestSnapshotAndBusinessDate(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if row.SettingsSnapshotID != snapshot || o.BusinessDate != day.Format(time.DateOnly) || o.BusinessDate != businessDate.Format(time.DateOnly) {
+		if row.SettingsSnapshotID != snapshot.ID || o.BusinessDate != day.Format(time.DateOnly) || o.BusinessDate != businessDate.Format(time.DateOnly) {
 			t.Fatal(row, o, snapshot, businessDate)
 		}
 		return nil
@@ -468,8 +444,8 @@ func TestItemLock(t *testing.T) {
 	s := open(t)
 	o := s.call("open_order", s.opening(), 200)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "SELECT id FROM items WHERE id=$1 FOR NO KEY UPDATE", s.item)
-	exec(t, tx, "UPDATE items SET price=222.22 WHERE id=$1", s.item)
+	dbtest.Exec(t, tx, "SELECT id FROM items WHERE id=$1 FOR NO KEY UPDATE", s.item)
+	dbtest.Exec(t, tx, "UPDATE items SET price=222.22 WHERE id=$1", s.item)
 	done := make(chan optest.Result, 1)
 	go func() {
 		done <- s.HTTPWithToken(t, s.Owner, "add_order_item", orders.AddOrderItemInput{OrderID: id(o["id"]), Item: s.line()})
@@ -480,7 +456,7 @@ func TestItemLock(t *testing.T) {
 		t.Fatal("add did not wait for item", r)
 	default:
 	}
-	commit(t, tx)
+	dbtest.Commit(t, tx)
 	r := <-done
 	if r.Status != 200 || lines(r.Body)[0].(map[string]any)["price"] != "222.22" {
 		t.Fatal(r)
@@ -491,7 +467,7 @@ func TestOrderLock(t *testing.T) {
 	s := open(t)
 	o := s.call("open_order", s.opening(), 200)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "SELECT id FROM items WHERE id=$1 FOR NO KEY UPDATE", s.item)
+	dbtest.Exec(t, tx, "SELECT id FROM items WHERE id=$1 FOR NO KEY UPDATE", s.item)
 	done := make(chan optest.Result, 2)
 	caller := s.MustCaller(s.Owner)
 	go func() {
@@ -519,7 +495,7 @@ func TestOrderLock(t *testing.T) {
 		case <-ticker.C:
 		}
 	}
-	commit(t, tx)
+	dbtest.Commit(t, tx)
 	for range 2 {
 		if r := <-done; r.Status != 200 {
 			t.Fatal(r)
@@ -617,7 +593,7 @@ func TestAddItemDoesNotLockOtherStoreOrder(t *testing.T) {
 	}
 	before := s.snapshot()
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "SELECT id FROM orders WHERE id=$1 FOR NO KEY UPDATE", foreign.Body["id"])
+	dbtest.Exec(t, tx, "SELECT id FROM orders WHERE id=$1 FOR NO KEY UPDATE", foreign.Body["id"])
 	done := make(chan optest.Result, 1)
 	go func() {
 		done <- s.HTTPWithToken(t, s.Owner, "add_order_item", orders.AddOrderItemInput{OrderID: id(foreign.Body["id"]), Item: s.line()})
@@ -673,8 +649,8 @@ func TestCustomerShareLock(t *testing.T) {
 	s := open(t)
 	keep := s.call("create_customer", map[string]any{"name": "合并后顾客"}, 200)["customer"].(map[string]any)["id"]
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "SELECT id FROM customers WHERE id=$1 FOR NO KEY UPDATE", s.customer)
-	exec(t, tx, "UPDATE customers SET merged_into=$2 WHERE id=$1", s.customer, keep)
+	dbtest.Exec(t, tx, "SELECT id FROM customers WHERE id=$1 FOR NO KEY UPDATE", s.customer)
+	dbtest.Exec(t, tx, "UPDATE customers SET merged_into=$2 WHERE id=$1", s.customer, keep)
 	expected := snapshotTx(t, tx)
 	in := s.opening(s.line())
 	in.CustomerID = &s.customer
@@ -686,7 +662,7 @@ func TestCustomerShareLock(t *testing.T) {
 		t.Fatal("open_order did not wait for customer", r)
 	default:
 	}
-	commit(t, tx)
+	dbtest.Commit(t, tx)
 	r := <-done
 	if r.Status != 409 || r.Body["detail"] != "该顾客已合并到另一位顾客" {
 		t.Fatal(r)
@@ -701,8 +677,8 @@ func TestStaffShareLock(t *testing.T) {
 	opened := s.call("open_order", s.opening(), 200)
 	before := s.snapshot()
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "SELECT id FROM staff WHERE id=$1 FOR NO KEY UPDATE", s.employee)
-	exec(t, tx, "UPDATE staff SET active=false,deactivated_at=clock_timestamp() WHERE id=$1", s.employee)
+	dbtest.Exec(t, tx, "SELECT id FROM staff WHERE id=$1 FOR NO KEY UPDATE", s.employee)
+	dbtest.Exec(t, tx, "UPDATE staff SET active=false,deactivated_at=clock_timestamp() WHERE id=$1", s.employee)
 	done := make(chan optest.Result, 1)
 	go func() {
 		done <- s.HTTPWithToken(t, s.Owner, "add_order_item", orders.AddOrderItemInput{OrderID: id(opened["id"]), Item: s.line(2)})
@@ -713,7 +689,7 @@ func TestStaffShareLock(t *testing.T) {
 		t.Fatal("add_order_item did not wait for slot two staff", r)
 	default:
 	}
-	commit(t, tx)
+	dbtest.Commit(t, tx)
 	r := <-done
 	if r.Status != 409 || r.Body["detail"] != "岗位上的员工必须是本店在职员工" {
 		t.Fatal(r)
