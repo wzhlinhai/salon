@@ -15,7 +15,8 @@ type Order struct {
 	CustomerID   uuid.UUID   `json:"customer_id"`
 	Gender       string      `json:"gender" enum:"male,female"`
 	Designated   bool        `json:"designated"`
-	Status       string      `json:"status" enum:"open"`
+	Status       string      `json:"status" enum:"open,merged"`
+	MergedInto   *uuid.UUID  `json:"merged_into" nullable:"true"`
 	BusinessDate string      `json:"business_date" format:"date"`
 	OpenedBy     uuid.UUID   `json:"opened_by"`
 	OpenedAt     time.Time   `json:"opened_at"`
@@ -104,4 +105,10 @@ type RepriceOrderItemInput struct {
 	OrderItemID uuid.UUID    `json:"order_item_id"`
 	Price       money.Amount `json:"price"`
 	Reason      string       `json:"reason" minLength:"1" maxLength:"200"`
+}
+
+// MergeOrdersInput 是保留的单及并入的挂单。
+type MergeOrdersInput struct {
+	OrderID        uuid.UUID   `json:"order_id"`
+	MergedOrderIDs []uuid.UUID `json:"merged_order_ids" minItems:"1" maxItems:"10"`
 }

@@ -24,6 +24,7 @@ import (
 // Register 声明开单、项目行修改和挂单读操作。
 func Register(r *ops.Registry) {
 	registerEdits(r)
+	registerMerge(r)
 	ops.Register(r, ops.Operation[OpenOrderInput, Order]{Name: "open_order", Summary: "开单并保存规则快照", Kind: ops.Write, Permission: perm.OrderCreate, AI: ops.AIDraft, Handle: openOrder})
 	ops.Register(r, ops.Operation[AddOrderItemInput, Order]{Name: "add_order_item", Summary: "向单添加项目行", Kind: ops.Write, Permission: perm.OrderCreate, AI: ops.AIDraft, Handle: addOrderItem})
 	ops.Register(r, ops.Operation[ListOpenOrdersInput, OrderList]{Name: "list_open_orders", Summary: "列出本店挂单", Kind: ops.Read, Permission: perm.OrderCreate, AI: ops.AIDirect, Handle: listOpenOrders})
@@ -97,7 +98,7 @@ func openOrderAt(ctx context.Context, env ops.Env, in *OpenOrderInput, now time.
 }
 
 func addOrderItem(ctx context.Context, env ops.Env, in *AddOrderItemInput) (*Order, error) {
-	row, err := env.Q.LockOrder(ctx, dbgen.LockOrderParams{StoreID: env.Caller.StoreID, ID: in.OrderID})
+	row, err := lockOpenOrder(ctx, env, in.OrderID)
 	if err != nil {
 		return nil, rowError(err)
 	}
@@ -219,7 +220,7 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 		if items == nil {
 			items = []OrderItem{}
 		}
-		out = append(out, Order{ID: r.ID, CustomerID: r.CustomerID, Gender: r.Gender, Designated: r.Designated, Status: r.Status, BusinessDate: r.BusinessDate.Time.Format(time.DateOnly), OpenedBy: r.OpenedBy, OpenedAt: r.OpenedAt.Time, Items: items, Receivable: totals[r.ID].Format()})
+		out = append(out, Order{ID: r.ID, CustomerID: r.CustomerID, Gender: r.Gender, Designated: r.Designated, Status: r.Status, MergedInto: r.MergedInto, BusinessDate: r.BusinessDate.Time.Format(time.DateOnly), OpenedBy: r.OpenedBy, OpenedAt: r.OpenedAt.Time, Items: items, Receivable: totals[r.ID].Format()})
 	}
 	return out, nil
 }

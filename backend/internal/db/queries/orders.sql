@@ -33,7 +33,10 @@ WHERE oi.store_id=$1 AND oi.order_id=ANY(sqlc.arg(order_ids)::uuid[]) ORDER BY o
 SELECT * FROM order_item_positions WHERE store_id=$1 AND order_item_id=ANY(sqlc.arg(item_ids)::uuid[]) ORDER BY order_item_id,slot;
 
 -- name: MergeCustomerOrders :exec
-UPDATE orders SET customer_id=sqlc.arg(keep_id) WHERE customer_id=sqlc.arg(merged_id);
+WITH locked AS MATERIALIZED (
+ SELECT o.id FROM orders o WHERE o.customer_id=sqlc.arg(merged_id) ORDER BY o.id FOR NO KEY UPDATE
+)
+UPDATE orders o SET customer_id=sqlc.arg(keep_id) WHERE o.id IN (SELECT id FROM locked);
 
 -- name: ShareOrderStaff :one
 SELECT * FROM staff WHERE id=$1 FOR SHARE;
@@ -61,3 +64,10 @@ UPDATE order_items SET price=$2, price_source=$3, level_id=$4 WHERE id=$1;
 
 -- name: RepriceOrderItem :exec
 UPDATE order_items SET price=$2, price_source='manual', level_id=NULL, reprice_reason=$3 WHERE id=$1;
+
+-- name: MoveMergedOrderItems :exec
+UPDATE order_items SET order_id=sqlc.arg(order_id)
+WHERE store_id=sqlc.arg(store_id) AND order_id=ANY(sqlc.arg(merged_order_ids)::uuid[]);
+
+-- name: MarkOrderMerged :exec
+UPDATE orders SET status='merged', merged_into=sqlc.arg(merged_into) WHERE store_id=sqlc.arg(store_id) AND id=sqlc.arg(id);

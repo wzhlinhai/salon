@@ -803,6 +803,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/merge_orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 合并同一顾客同一营业日的挂单 */
+        post: operations["merge_orders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/open_card": {
         parameters: {
             query?: never;
@@ -1783,6 +1800,10 @@ export interface components {
             keep: components["schemas"]["Customer"];
             merged: components["schemas"]["Customer"];
         };
+        MergeOrdersInput: {
+            merged_order_ids: string[];
+            order_id: string;
+        };
         OK: {
             ok: boolean;
         };
@@ -1809,12 +1830,13 @@ export interface components {
             gender: "male" | "female";
             id: string;
             items: components["schemas"]["OrderItem"][];
+            merged_into: string | null;
             /** Format: date-time */
             opened_at: string;
             opened_by: string;
             receivable: string;
             /** @enum {string} */
-            status: "open";
+            status: "open" | "merged";
         };
         OrderItem: {
             /** Format: date-time */
@@ -3732,6 +3754,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MergeCustomersResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    merge_orders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeOrdersInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
                 };
             };
             /** @description Error */
