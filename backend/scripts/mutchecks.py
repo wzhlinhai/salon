@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""按清单验证保护：mutchecks.py <manifest.py> [--since <git-ref>] [--locate] [names...]。
+"""按清单验证保护：mutchecks.py [manifest.py] [--since <git-ref>] [--locate] [names...]。
 
 清单是定义 ENTRIES 的 Python 文件：它是由字典组成的列表；可选的 SKIPPED
 用 (step, name, reason) 元组列出跳过的保护及原因。
@@ -13,6 +13,9 @@ e2e 项另有 spec，即相对 admin/ 的测试文件，
 保护文件、所在包中定义 guard 的 _test.go，或 e2e 的 spec 改动都会选中；
 查询或迁移目录中任意文件改动也会选中该目录的保护。选中名称逐行输出到 stderr。
 无 --since 的 --locate 始终检查名称选择范围（不指定名称时为整份清单）。
+省略清单时必须带 --locate，按路径排序检查 .dev/codex/*/manifest.py 的全部清单，
+逐份输出选中、通过、失败数量；任一项定位失败就非零退出。
+无清单形式为 mutchecks.py --locate [--since <git-ref>]，不接受名称。
 正式运行先对选中 go 项的每个不同包执行一次 go test -count=1，全部通过后
 才允许任何变异；基线失败时打印测试输出并退出，避免把已有故障算成保护生效。
 每次运行在清单旁新建日志目录，保存完整命令、测试输出和所有结果行 results.log。
@@ -192,7 +195,9 @@ def phase(entry, folder, label):
     )
     (folder / (label + '.command.sh')).write_text(command + '\n')
     with (folder / (label + '-command.log')).open('w') as output:
-        code = subprocess.run(['bash', '-c', command], cwd=ROOT, stdout=output, stderr=subprocess.STDOUT).returncode
+        env = dict(os.environ, npm_config_update_notifier='false')
+        code = subprocess.run(['bash', '-c', command], cwd=ROOT, env=env,
+                              stdout=output, stderr=subprocess.STDOUT).returncode
     command_output = (folder / (label + '-command.log')).read_text()
     test_log = folder / (label + '-e2e.log')
     if 'e2e exit=' not in command_output or not test_log.exists():
@@ -203,7 +208,7 @@ def phase(entry, folder, label):
     if position < 0:
         return code, []
     try:
-        report = json.loads(content[position:])
+        report, _ = json.JSONDecoder().raw_decode(content, position)
     except json.JSONDecodeError:
         return code, []
     specs = []
@@ -289,11 +294,37 @@ def run_e2e(entry, logs, results):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('manifest', type=Path)
+    parser.add_argument('manifest', type=Path, nargs='?')
     parser.add_argument('--locate', action='store_true')
     parser.add_argument('--since', metavar='git-ref')
     parser.add_argument('names', nargs='*')
     args = parser.parse_intermixed_args()
+    if args.manifest is None:
+        if args.names:
+            parser.error('names are not supported without a manifest')
+        if not args.locate:
+            parser.error('manifest is required without --locate')
+        failed = False
+        for manifest in sorted((ROOT / '.dev/codex').glob('*/manifest.py')):
+            try:
+                entries = runpy.run_path(str(manifest))['ENTRIES']
+                selected = entries
+                if args.since is not None:
+                    selected = affected_entries(selected, args.since)
+            except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as exc:
+                print(f'{manifest.relative_to(ROOT)}: {exc}', file=sys.stderr)
+                failed = True
+                continue
+            errors = 0
+            for entry in selected:
+                try:
+                    locate(entry)
+                except (OSError, ValueError) as exc:
+                    print(f"{manifest.relative_to(ROOT)} {entry['step']}/{entry['name']}: {exc}", file=sys.stderr)
+                    errors += 1
+            print(f'{manifest.relative_to(ROOT)} selected={len(selected)} passed={len(selected) - errors} failed={errors}', flush=True)
+            failed |= errors > 0
+        return int(failed)
     manifest = args.manifest.resolve()
     try:
         entries = runpy.run_path(str(manifest))['ENTRIES']

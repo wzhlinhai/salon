@@ -29,7 +29,7 @@ node <codex-delegate>/scripts/relay.mjs --brief .dev/codex/<task>/brief.txt \
 
 ## Gates
 
-Codex runs every applicable gate and fixes failures before reporting. Each output goes to a log file under `.dev/codex/<task>/`; read the exit code, never pipe a long-running command through a filter.
+Codex runs every applicable gate through `scripts/gate.py .dev/codex/<task> <label> -- …` and fixes failures before reporting. Each output goes to a log file under `.dev/codex/<task>/`; read the exit code, never pipe a long-running command through a filter.
 
 - `backend/`: `gofmt -l .` (no output), `go vet ./...`, `golangci-lint run ./...`, `go tool sqlc generate` then `go tool sqlc diff`, `go test ./...` (no `-count=1`: Go reruns only packages whose code or dependencies changed; `mutcheck.sh` forces a real run itself), and the task's protection checks (`scripts/mutchecks.py <manifest> --since main`, see below).
 - `admin/`: `npm run generate:api` then check `app/utils/api.d.ts` changed only if the API did, `npm run lint`, `npm run typecheck`.
@@ -44,7 +44,7 @@ Codex runs every applicable gate and fixes failures before reporting. Each outpu
 - A mutcheck counts as caught only when the failing test names are the tests guarding that protection. A failure caused by the environment (Docker, browser, port) is not a catch: report it as not run.
 - A mutation that moves code (not just deletes it) is easy to get wrong on the command line: build the original and replacement text with a script from the file, and check the log says "caught by". "does not build" or "NOT caught" is not a pass. Run every mutcheck on the final code: one recorded before a later edit (for example, before deleting a query it calls) may no longer build.
 - A protection in the admin UI (no `mutcheck.sh` there): temporarily remove it, run the guarding e2e in the same one-command form, restore it, report both results.
-- Every protection of a P0 ticket lives in one manifest, `.dev/codex/<ticket>/manifest.py`, run by `backend/scripts/mutchecks.py` (its docstring gives the format). Each step, and each fix round, appends or rewrites its entries, runs only the affected ones with `--since main` (entries whose protected file or guard test file the branch changed; go entries run only their guard tests), and runs `--locate` over the whole manifest (seconds): an entry whose original no longer matches is rewritten in the step whose edit moved it. The full manifest runs once per ticket, on main after its last step merges (CLAUDE.md workflow step 10), not in every round.
+- Every protection of a P0 ticket lives in one manifest, `.dev/codex/<ticket>/manifest.py`, run by `backend/scripts/mutchecks.py` (its docstring gives the format). Each step, and each fix round, appends or rewrites its entries, runs only the affected ones with `--since main` (entries whose protected file or guard test file the branch changed; go entries run only their guard tests), and runs `backend/scripts/mutchecks.py --locate` (no manifest) every round, so a change that moves code under another ticket's protections is caught: an entry whose original no longer matches is rewritten in the step whose edit moved it. The full manifest runs once per ticket, on main after its last step merges (CLAUDE.md workflow step 10), not in every round.
 - When a Codex run ends in any way (finished, quota, crash), run `backend/scripts/mutcheck.sh --restore` before reviewing: an interrupted mutation leaves its backup in `.dev/mutcheck-backup/`.
 
 ## Report
