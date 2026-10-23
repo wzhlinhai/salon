@@ -287,6 +287,7 @@ type Order struct {
 	BusinessDate       pgtype.Date
 	OpenedBy           uuid.UUID
 	OpenedAt           pgtype.Timestamptz
+	MergedInto         *uuid.UUID
 }
 
 type OrderItem struct {

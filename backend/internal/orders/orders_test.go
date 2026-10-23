@@ -391,10 +391,11 @@ func TestPermissions(t *testing.T) {
 	o := s.call("open_order", s.opening(), 200)
 	caller := s.MustCaller(s.Owner)
 	delete(caller.Permissions, perm.OrderCreate)
+	delete(caller.Permissions, perm.OrderEdit)
 	for _, tc := range []struct {
 		op string
 		in any
-	}{{"open_order", s.opening()}, {"add_order_item", orders.AddOrderItemInput{OrderID: id(o["id"]), Item: s.line()}}, {"list_open_orders", orders.ListOpenOrdersInput{}}, {"get_order", orders.GetOrderInput{ID: id(o["id"])}}} {
+	}{{"merge_orders", orders.MergeOrdersInput{OrderID: id(o["id"]), MergedOrderIDs: []uuid.UUID{uuid.New()}}}, {"open_order", s.opening()}, {"add_order_item", orders.AddOrderItemInput{OrderID: id(o["id"]), Item: s.line()}}, {"list_open_orders", orders.ListOpenOrdersInput{}}, {"get_order", orders.GetOrderInput{ID: id(o["id"])}}} {
 		t.Run(tc.op, func(t *testing.T) {
 			before := s.snapshot()
 			r := s.HTTP(t, &caller, tc.op, tc.in)
@@ -450,15 +451,15 @@ func TestPermissions(t *testing.T) {
 }
 func TestAIWritesRefused(t *testing.T) {
 	s := open(t)
-	o := s.call("open_order", s.opening(s.line()), 200)
+	o, merged := s.customerOrder(s.line()), s.customerOrder(s.line())
 	before := s.snapshot()
 	for _, tc := range []struct {
 		op string
 		in any
-	}{{"open_order", s.opening(s.line())}, {"add_order_item", orders.AddOrderItemInput{OrderID: id(o["id"]), Item: s.line()}}, {"remove_order_item", editInput(o)}, {"set_order_item_staff", editInput(o)}, {"reprice_order_item", editInput(o)}} {
+	}{{"merge_orders", mergeInput(o, merged)}, {"open_order", s.opening(s.line())}, {"add_order_item", orders.AddOrderItemInput{OrderID: id(o["id"]), Item: s.line()}}, {"remove_order_item", editInput(o)}, {"set_order_item_staff", editInput(o)}, {"reprice_order_item", editInput(o)}} {
 		r := s.AI(t, s.MustCaller(s.Owner), tc.op, editArgs(tc.op, tc.in))
-		if r.Status == 200 || before != s.snapshot() {
-			t.Fatal(r, "AI changed data")
+		if r.Status != 409 || !errors.Is(r.Err, ops.ErrDraftRequired) || r.Err.Error() != "operation requires a draft confirmed by a person" || before != s.snapshot() {
+			t.Fatal(tc.op, r, "expected AI draft refusal and unchanged data")
 		}
 	}
 }

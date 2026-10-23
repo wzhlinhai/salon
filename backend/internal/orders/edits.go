@@ -47,7 +47,7 @@ func checkEdit(ctx context.Context, env ops.Env, order dbgen.Order, now time.Tim
 
 // editView 在单锁内读取改前和项目行；所有编辑都沿用同一条读取路径。
 func editView(ctx context.Context, env ops.Env, orderID, itemID uuid.UUID, guarded bool) (dbgen.Order, *Order, dbgen.OrderItem, error) {
-	order, err := env.Q.LockOrder(ctx, dbgen.LockOrderParams{StoreID: env.Caller.StoreID, ID: orderID})
+	order, err := lockOpenOrder(ctx, env, orderID)
 	if err != nil {
 		return order, nil, dbgen.OrderItem{}, rowError(err)
 	}

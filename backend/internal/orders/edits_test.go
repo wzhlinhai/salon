@@ -364,7 +364,8 @@ func TestEditDatabaseColumns(t *testing.T) {
 	s := open(t)
 	o := s.call("open_order", s.opening(s.line()), 200)
 	for table, cols := range map[string][]string{
-		"order_items":          {"tenant_id", "store_id", "id", "item_id", "order_id", "item_name", "added_by", "added_at"},
+		"order_items":          {"tenant_id", "store_id", "id", "item_id", "item_name", "added_by", "added_at"},
+		"orders":               {"tenant_id", "store_id", "id", "gender", "designated", "settings_snapshot_id", "business_date", "opened_by", "opened_at"},
 		"order_item_positions": {"tenant_id", "store_id", "order_item_id", "slot", "position_id", "required"},
 	} {
 		for _, col := range cols {
@@ -380,7 +381,8 @@ func TestEditDatabaseColumns(t *testing.T) {
 		}
 	}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "UPDATE order_items SET price=price,price_source=price_source,level_id=level_id,reprice_reason=reprice_reason,removed_at=removed_at,removed_by=removed_by")
+	exec(t, tx, "UPDATE orders SET customer_id=customer_id,status=status,merged_into=merged_into")
+	exec(t, tx, "UPDATE order_items SET order_id=order_id,price=price,price_source=price_source,level_id=level_id,reprice_reason=reprice_reason,removed_at=removed_at,removed_by=removed_by")
 	exec(t, tx, "UPDATE order_item_positions SET staff_id=staff_id")
 	if err := tx.Rollback(context.Background()); err != nil {
 		t.Fatal(err)
@@ -538,6 +540,10 @@ func TestOrderEditsMigrationDown(t *testing.T) {
 	o := s.call("open_order", s.opening(s.line(1)), 200)
 	s.edit("reprice_order_item", editInput(o), 200)
 	s.edit("remove_order_item", editInput(o), 200)
+	// 先回滚合并单迁移，再验证改单迁移。
+	if err := db.MigrateDown(context.Background(), s.Pool); err != nil {
+		t.Fatal(err)
+	}
 	if err := db.MigrateDown(context.Background(), s.Pool); err != nil {
 		t.Fatal(err)
 	}
