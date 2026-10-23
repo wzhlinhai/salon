@@ -218,9 +218,7 @@ func TestOrderMergeMigrationDown(t *testing.T) {
 	s := open(t)
 	a, b := s.customerOrder(s.line()), s.customerOrder(s.line())
 	s.call("merge_orders", mergeInput(a, b), 200)
-	if err := db.MigrateDown(context.Background(), s.Pool); err != nil {
-		t.Fatal(err)
-	}
+	dbtest.MigrateDownTo(t, s.Pool, 16)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	var count int
 	if err := tx.QueryRow(context.Background(), "SELECT count(*) FROM orders WHERE status='open'").Scan(&count); err != nil || count != 2 {

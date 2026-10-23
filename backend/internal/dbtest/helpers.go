@@ -8,6 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/wzhlinhai/salon/backend/internal/db"
 )
 
 // Exec 在测试事务里执行 SQL，错误直接归因于调用处。
@@ -55,4 +57,24 @@ func SnapshotTx(t testing.TB, tx pgx.Tx, tables ...string) string {
 		t.Fatal(err)
 	}
 	return out
+}
+
+// MigrateDownTo 将测试数据库回滚到指定迁移版本，越过目标或迁移失败时终止测试。
+func MigrateDownTo(t testing.TB, pool *pgxpool.Pool, version int64) {
+	t.Helper()
+	for {
+		current, err := db.MigrationVersion(context.Background(), pool)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if current < version {
+			t.Fatalf("migration version %d is below target %d", current, version)
+		}
+		if current == version {
+			return
+		}
+		if err := db.MigrateDown(context.Background(), pool); err != nil {
+			t.Fatal(err)
+		}
+	}
 }

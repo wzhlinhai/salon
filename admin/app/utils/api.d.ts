@@ -157,6 +157,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/checkout_orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 一张或几张挂单一起结账并登记支付 */
+        post: operations["checkout_orders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/create_card_type": {
         parameters: {
             query?: never;
@@ -1464,6 +1481,13 @@ export interface components {
             /** @description 新的值，形式见 get_settings 的 kind；null 表示恢复系统默认做法 */
             value: unknown;
         };
+        CheckoutOrderInput: {
+            order_id: string;
+            payments: components["schemas"]["PaymentInput"][];
+        };
+        CheckoutOrdersInput: {
+            orders: components["schemas"]["CheckoutOrderInput"][];
+        };
         ChoiceOption: {
             label: string;
             value: string;
@@ -1824,6 +1848,7 @@ export interface components {
         Order: {
             /** Format: date */
             business_date: string;
+            checkout_id: string | null;
             customer_id: string;
             designated: boolean;
             /** @enum {string} */
@@ -1834,9 +1859,10 @@ export interface components {
             /** Format: date-time */
             opened_at: string;
             opened_by: string;
+            payments: components["schemas"]["OrderPayment"][];
             receivable: string;
             /** @enum {string} */
-            status: "open" | "merged";
+            status: "open" | "merged" | "paid";
         };
         OrderItem: {
             /** Format: date-time */
@@ -1872,6 +1898,17 @@ export interface components {
         };
         OrderList: {
             items: components["schemas"]["Order"][];
+        };
+        OrderPayment: {
+            amount: string;
+            id: string;
+            /** @enum {string} */
+            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt";
+        };
+        PaymentInput: {
+            amount: string;
+            /** @enum {string} */
+            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt";
         };
         PermissionList: {
             permissions: components["schemas"]["Def"][];
@@ -2500,6 +2537,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SettingChange"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    checkout_orders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckoutOrdersInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderList"];
                 };
             };
             /** @description Error */

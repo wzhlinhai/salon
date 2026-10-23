@@ -11,17 +11,19 @@ import (
 
 // Order 是单据视图，只引用顾客 ID，不包含顾客姓名或手机号。
 type Order struct {
-	ID           uuid.UUID   `json:"id"`
-	CustomerID   uuid.UUID   `json:"customer_id"`
-	Gender       string      `json:"gender" enum:"male,female"`
-	Designated   bool        `json:"designated"`
-	Status       string      `json:"status" enum:"open,merged"`
-	MergedInto   *uuid.UUID  `json:"merged_into" nullable:"true"`
-	BusinessDate string      `json:"business_date" format:"date"`
-	OpenedBy     uuid.UUID   `json:"opened_by"`
-	OpenedAt     time.Time   `json:"opened_at"`
-	Items        []OrderItem `json:"items"`
-	Receivable   string      `json:"receivable"`
+	CheckoutID   *uuid.UUID     `json:"checkout_id" nullable:"true"`
+	Payments     []OrderPayment `json:"payments"`
+	ID           uuid.UUID      `json:"id"`
+	CustomerID   uuid.UUID      `json:"customer_id"`
+	Gender       string         `json:"gender" enum:"male,female"`
+	Designated   bool           `json:"designated"`
+	Status       string         `json:"status" enum:"open,merged,paid"`
+	MergedInto   *uuid.UUID     `json:"merged_into" nullable:"true"`
+	BusinessDate string         `json:"business_date" format:"date"`
+	OpenedBy     uuid.UUID      `json:"opened_by"`
+	OpenedAt     time.Time      `json:"opened_at"`
+	Items        []OrderItem    `json:"items"`
+	Receivable   string         `json:"receivable"`
 }
 
 // OrderItem 是只记录一次价格的项目行。
@@ -81,7 +83,7 @@ type GetOrderInput struct {
 	ID uuid.UUID `json:"id"`
 }
 
-// OrderList 是按开单时间排列的挂单列表。
+// OrderList 是单据列表，结账时按输入顺序返回。
 type OrderList struct {
 	Items []Order `json:"items"`
 }
@@ -111,4 +113,28 @@ type RepriceOrderItemInput struct {
 type MergeOrdersInput struct {
 	OrderID        uuid.UUID   `json:"order_id"`
 	MergedOrderIDs []uuid.UUID `json:"merged_order_ids" minItems:"1" maxItems:"10"`
+}
+
+// OrderPayment 是单上的一笔支付，按登记顺序返回。
+type OrderPayment struct {
+	ID     uuid.UUID    `json:"id"`
+	Method string       `json:"method" enum:"cash,unionpay,wechat,alipay,debt"`
+	Amount money.Amount `json:"amount"`
+}
+
+// PaymentInput 是支付方式和登记金额。
+type PaymentInput struct {
+	Method string       `json:"method" enum:"cash,unionpay,wechat,alipay,debt"`
+	Amount money.Amount `json:"amount"`
+}
+
+// CheckoutOrderInput 是一张挂单及其支付。
+type CheckoutOrderInput struct {
+	OrderID  uuid.UUID      `json:"order_id"`
+	Payments []PaymentInput `json:"payments" minItems:"1" maxItems:"10"`
+}
+
+// CheckoutOrdersInput 是一起结账的挂单，各单分别登记支付。
+type CheckoutOrdersInput struct {
+	Orders []CheckoutOrderInput `json:"orders" minItems:"1" maxItems:"10"`
 }

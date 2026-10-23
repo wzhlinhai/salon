@@ -41,9 +41,40 @@ func (q *Queries) AddOrderItemPosition(ctx context.Context, arg AddOrderItemPosi
 	return err
 }
 
+const createCheckout = `-- name: CreateCheckout :one
+INSERT INTO checkouts (tenant_id,store_id,business_date,checked_out_by)
+VALUES ($1,$2,$3,$4) RETURNING tenant_id, store_id, id, business_date, checked_out_by, at
+`
+
+type CreateCheckoutParams struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	BusinessDate pgtype.Date
+	CheckedOutBy uuid.UUID
+}
+
+func (q *Queries) CreateCheckout(ctx context.Context, arg CreateCheckoutParams) (Checkout, error) {
+	row := q.db.QueryRow(ctx, createCheckout,
+		arg.TenantID,
+		arg.StoreID,
+		arg.BusinessDate,
+		arg.CheckedOutBy,
+	)
+	var i Checkout
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.BusinessDate,
+		&i.CheckedOutBy,
+		&i.At,
+	)
+	return i, err
+}
+
 const createOrder = `-- name: CreateOrder :one
 INSERT INTO orders (tenant_id,store_id,customer_id,gender,designated,settings_snapshot_id,business_date,opened_by)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into, checkout_id
 `
 
 type CreateOrderParams struct {
@@ -82,6 +113,7 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		&i.OpenedBy,
 		&i.OpenedAt,
 		&i.MergedInto,
+		&i.CheckoutID,
 	)
 	return i, err
 }
@@ -135,8 +167,34 @@ func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams
 	return i, err
 }
 
+const createOrderPayment = `-- name: CreateOrderPayment :exec
+INSERT INTO order_payments (tenant_id,store_id,checkout_id,order_id,method,amount)
+VALUES ($1,$2,$3,$4,$5,$6)
+`
+
+type CreateOrderPaymentParams struct {
+	TenantID   uuid.UUID
+	StoreID    uuid.UUID
+	CheckoutID uuid.UUID
+	OrderID    uuid.UUID
+	Method     string
+	Amount     money.Amount
+}
+
+func (q *Queries) CreateOrderPayment(ctx context.Context, arg CreateOrderPaymentParams) error {
+	_, err := q.db.Exec(ctx, createOrderPayment,
+		arg.TenantID,
+		arg.StoreID,
+		arg.CheckoutID,
+		arg.OrderID,
+		arg.Method,
+		arg.Amount,
+	)
+	return err
+}
+
 const getOrder = `-- name: GetOrder :one
-SELECT tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into FROM orders WHERE store_id=$1 AND id=$2
+SELECT tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into, checkout_id FROM orders WHERE store_id=$1 AND id=$2
 `
 
 type GetOrderParams struct {
@@ -160,6 +218,7 @@ func (q *Queries) GetOrder(ctx context.Context, arg GetOrderParams) (Order, erro
 		&i.OpenedBy,
 		&i.OpenedAt,
 		&i.MergedInto,
+		&i.CheckoutID,
 	)
 	return i, err
 }
@@ -197,7 +256,7 @@ func (q *Queries) GetOrderItem(ctx context.Context, arg GetOrderItemParams) (Ord
 }
 
 const listOpenOrders = `-- name: ListOpenOrders :many
-SELECT tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into FROM orders WHERE store_id=$1 AND status='open' ORDER BY opened_at,id
+SELECT tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into, checkout_id FROM orders WHERE store_id=$1 AND status='open' ORDER BY opened_at,id
 `
 
 func (q *Queries) ListOpenOrders(ctx context.Context, storeID uuid.UUID) ([]Order, error) {
@@ -222,6 +281,7 @@ func (q *Queries) ListOpenOrders(ctx context.Context, storeID uuid.UUID) ([]Orde
 			&i.OpenedBy,
 			&i.OpenedAt,
 			&i.MergedInto,
+			&i.CheckoutID,
 		); err != nil {
 			return nil, err
 		}
@@ -315,8 +375,45 @@ func (q *Queries) ListOrderItems(ctx context.Context, arg ListOrderItemsParams) 
 	return items, nil
 }
 
+const listOrderPayments = `-- name: ListOrderPayments :many
+SELECT tenant_id, store_id, id, checkout_id, order_id, method, amount FROM order_payments WHERE store_id=$1 AND order_id=ANY($2::uuid[]) ORDER BY id
+`
+
+type ListOrderPaymentsParams struct {
+	StoreID  uuid.UUID
+	OrderIds []uuid.UUID
+}
+
+func (q *Queries) ListOrderPayments(ctx context.Context, arg ListOrderPaymentsParams) ([]OrderPayment, error) {
+	rows, err := q.db.Query(ctx, listOrderPayments, arg.StoreID, arg.OrderIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OrderPayment
+	for rows.Next() {
+		var i OrderPayment
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ID,
+			&i.CheckoutID,
+			&i.OrderID,
+			&i.Method,
+			&i.Amount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockOrder = `-- name: LockOrder :one
-SELECT tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into FROM orders WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
+SELECT tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into, checkout_id FROM orders WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
 `
 
 type LockOrderParams struct {
@@ -340,6 +437,7 @@ func (q *Queries) LockOrder(ctx context.Context, arg LockOrderParams) (Order, er
 		&i.OpenedBy,
 		&i.OpenedAt,
 		&i.MergedInto,
+		&i.CheckoutID,
 	)
 	return i, err
 }
@@ -356,6 +454,21 @@ type MarkOrderMergedParams struct {
 
 func (q *Queries) MarkOrderMerged(ctx context.Context, arg MarkOrderMergedParams) error {
 	_, err := q.db.Exec(ctx, markOrderMerged, arg.MergedInto, arg.StoreID, arg.ID)
+	return err
+}
+
+const markOrderPaid = `-- name: MarkOrderPaid :exec
+UPDATE orders SET status='paid', checkout_id=$1 WHERE store_id=$2 AND id=$3
+`
+
+type MarkOrderPaidParams struct {
+	CheckoutID *uuid.UUID
+	StoreID    uuid.UUID
+	ID         uuid.UUID
+}
+
+func (q *Queries) MarkOrderPaid(ctx context.Context, arg MarkOrderPaidParams) error {
+	_, err := q.db.Exec(ctx, markOrderPaid, arg.CheckoutID, arg.StoreID, arg.ID)
 	return err
 }
 

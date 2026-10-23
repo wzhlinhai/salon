@@ -27,3 +27,6 @@ func (a Total) AddProduct(price Amount, count int64) Total {
 
 // Format 返回累计金额的固定两位小数显示文本。
 func (a Total) Format() string { return a.value.StringFixed(2) }
+
+// CmpTotal 精确比较两个累计金额，依次返回 -1、0 或 1。
+func (a Total) CmpTotal(b Total) int { return a.value.Cmp(b.value) }
