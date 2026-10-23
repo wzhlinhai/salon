@@ -36,12 +36,7 @@ func (s *fixture) countCard(kind string) (map[string]any, string, map[string]any
 	}
 	return s.call("open_card", opening, 200), item, in
 }
-func rollback(t *testing.T, tx interface{ Rollback(context.Context) error }) {
-	t.Helper()
-	if err := tx.Rollback(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-}
+
 func TestCardTypeItemRules(t *testing.T) {
 	s := open(t)
 	item := s.item("剪发")
@@ -57,8 +52,8 @@ func TestCardTypeItemRules(t *testing.T) {
 		s.call("create_card_type", countType(fmt.Sprint("种类", i), tc.kind, tc.items...), tc.status)
 	}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "UPDATE items SET active=false WHERE id=$1", item)
-	commit(t, tx)
+	dbtest.Exec(t, tx, "UPDATE items SET active=false WHERE id=$1", item)
+	dbtest.Commit(t, tx)
 	s.call("create_card_type", countType("停用项目", "count", countItem(item)), 409)
 	for _, id := range []string{item, uuid.NewString()} {
 		in := countType("编辑无效项目", "count", countItem(id))
@@ -105,7 +100,7 @@ func TestCardTypeItemDiff(t *testing.T) {
 		if err := tx.QueryRow(context.Background(), "SELECT xmin::text FROM card_type_items WHERE card_type_id=$1 AND item_id=$2", ct["id"], a).Scan(&x); err != nil {
 			t.Fatal(err)
 		}
-		rollback(t, tx)
+		dbtest.Rollback(t, tx)
 		return x
 	}
 	before := xmin()
@@ -116,8 +111,8 @@ func TestCardTypeItemDiff(t *testing.T) {
 		t.Fatal("unchanged active row rewritten")
 	}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "UPDATE items SET active=false WHERE id=$1", a)
-	commit(t, tx)
+	dbtest.Exec(t, tx, "UPDATE items SET active=false WHERE id=$1", a)
+	dbtest.Commit(t, tx)
 	in["id"], in["active"] = ct["id"], true
 	in["items"] = []any{countItem(a), countItem(c)}
 	out := s.call("update_card_type", in, 200)
@@ -153,7 +148,7 @@ func TestCountOpeningSnapshot(t *testing.T) {
 			tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 			var valid bool
 			err := tx.QueryRow(context.Background(), `SELECT (SELECT count(*)=1 FROM card_items WHERE card_id=$1 AND item_id=$2 AND unit_price=12.34 AND paid_count_opened=10 AND gift_count_opened=3) AND (SELECT count(*)=1 FROM card_count_ledger WHERE card_id=$1 AND kind='open' AND paid_before=0 AND paid_delta=10 AND paid_after=10 AND gift_before=0 AND gift_delta=3 AND gift_after=3) AND (SELECT count(*)=1 FROM card_ledger WHERE card_id=$1 AND kind='open')`, card["id"], item).Scan(&valid)
-			rollback(t, tx)
+			dbtest.Rollback(t, tx)
 			if err != nil || !valid {
 				t.Fatal(valid, err)
 			}
@@ -256,7 +251,7 @@ func TestAdjustCounts(t *testing.T) {
    FROM card_count_ledger WHERE card_id=$1 AND item_id=$2 WINDOW w AS (ORDER BY at,id)
   ) SELECT count(*)=3 AND bool_and(paid_before=p) AND sum(paid_delta)=(array_agg(paid_after ORDER BY at DESC,id DESC))[1] AND (array_agg(paid_after ORDER BY at DESC,id DESC))[1]=$3,
    count(*)=3 AND bool_and(gift_before=g) AND sum(gift_delta)=(array_agg(gift_after ORDER BY at DESC,id DESC))[1] AND (array_agg(gift_after ORDER BY at DESC,id DESC))[1]=$4 FROM chain`, card["id"], want.id, want.paid, want.gift).Scan(&paidValid, &giftValid)
-		rollback(t, tx)
+		dbtest.Rollback(t, tx)
 		if err != nil || !paidValid || !giftValid {
 			t.Fatal(want, paidValid, giftValid, err)
 		}
@@ -319,7 +314,7 @@ func TestAdjustCounts(t *testing.T) {
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	var valid bool
 	err := tx.QueryRow(context.Background(), `SELECT count(*)=1 FROM card_adjustments a JOIN card_ledger l ON l.id=a.ledger_id JOIN card_count_ledger c ON c.adjustment_id=a.id WHERE a.card_id=$1 AND a.reason='合并更正' AND a.expiry_changed AND a.counts_changed`, card["id"]).Scan(&valid)
-	rollback(t, tx)
+	dbtest.Rollback(t, tx)
 	if err != nil || !valid {
 		t.Fatal(valid, err)
 	}
@@ -356,8 +351,8 @@ func TestListCountsScope(t *testing.T) {
 		}
 	}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "UPDATE customers SET responsible_staff_id=$2 WHERE id=$1", s.customer, caller.StaffID)
-	commit(t, tx)
+	dbtest.Exec(t, tx, "UPDATE customers SET responsible_staff_id=$2 WHERE id=$1", s.customer, caller.StaffID)
+	dbtest.Commit(t, tx)
 	for _, ch := range s.Channels() {
 		if r := ch.Call(t, caller, "list_card_counts", map[string]any{"card_id": card["id"]}); r.Status != 200 {
 			t.Fatal(r)
@@ -373,8 +368,8 @@ func TestListCountsStore(t *testing.T) {
 	if err := tx.QueryRow(context.Background(), "INSERT INTO stores (tenant_id,name) VALUES ($1,'二店') RETURNING id", s.Res.TenantID).Scan(&store); err != nil {
 		t.Fatal(err)
 	}
-	exec(t, tx, "UPDATE staff SET store_id=$2 WHERE id=$1", staff, store)
-	commit(t, tx)
+	dbtest.Exec(t, tx, "UPDATE staff SET store_id=$2 WHERE id=$1", staff, store)
+	dbtest.Commit(t, tx)
 	for _, ch := range s.Channels() {
 		if r := ch.Call(t, s.MustCaller(token), "list_card_counts", map[string]any{"card_id": card["id"]}); r.Status != 404 {
 			t.Fatal(r)
@@ -416,27 +411,20 @@ func TestCountWritesPermissionAndAI(t *testing.T) {
 }
 func countSnapshot(t *testing.T, s *fixture) string {
 	t.Helper()
-	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	var out string
-	err := tx.QueryRow(context.Background(), `SELECT jsonb_build_array((SELECT jsonb_agg(t) FROM card_types t),(SELECT jsonb_agg(t) FROM cards t),(SELECT jsonb_agg(t) FROM card_type_items t),(SELECT jsonb_agg(t) FROM card_items t),(SELECT jsonb_agg(t) FROM card_count_ledger t),(SELECT jsonb_agg(t) FROM card_adjustments t),(SELECT jsonb_agg(t) FROM card_ledger t))::text`).Scan(&out)
-	rollback(t, tx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return out
+	return dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "card_types", "cards", "card_type_items", "card_items", "card_count_ledger", "card_adjustments", "card_ledger")
 }
 func TestCountsSerialize(t *testing.T) {
 	s := open(t)
 	card, item, _ := s.countCard("count")
 	held := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, held, "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE", card["id"])
+	dbtest.Exec(t, held, "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE", card["id"])
 	done := make(chan optest.Result, 1)
 	go func() {
 		done <- s.HTTPWithToken(t, s.Owner, "adjust_card", map[string]any{"card_id": card["id"], "counts": []any{target(item, 7, 2)}, "reason": "并发"})
 	}()
 	dbtest.WaitForLockWait(t, s.Pool)
-	exec(t, held, `INSERT INTO card_count_ledger (tenant_id,store_id,card_id,item_id,kind,paid_before,paid_delta,paid_after,gift_before,gift_delta,gift_after,business_date,actor_id) VALUES ($1,$2,$3,$4,'adjust',10,-2,8,3,-2,1,current_date,$5)`, s.Res.TenantID, s.Res.StoreID, card["id"], item, s.Res.OwnerID)
-	commit(t, held)
+	dbtest.Exec(t, held, `INSERT INTO card_count_ledger (tenant_id,store_id,card_id,item_id,kind,paid_before,paid_delta,paid_after,gift_before,gift_delta,gift_after,business_date,actor_id) VALUES ($1,$2,$3,$4,'adjust',10,-2,8,3,-2,1,current_date,$5)`, s.Res.TenantID, s.Res.StoreID, card["id"], item, s.Res.OwnerID)
+	dbtest.Commit(t, held)
 	if r := <-done; r.Status != 200 {
 		t.Fatal(r)
 	}
@@ -458,12 +446,12 @@ func TestOpenCountsWaitsForItem(t *testing.T) {
 	in := s.opening()
 	in["card_type_id"], in["principal"], in["bonus"] = ct["id"], "0.00", "0.00"
 	held := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, held, "SELECT id FROM items WHERE id=$1 FOR NO KEY UPDATE", item)
+	dbtest.Exec(t, held, "SELECT id FROM items WHERE id=$1 FOR NO KEY UPDATE", item)
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "open_card", in) }()
 	dbtest.WaitForLockWait(t, s.Pool)
-	exec(t, held, "UPDATE items SET active=false WHERE id=$1", item)
-	commit(t, held)
+	dbtest.Exec(t, held, "UPDATE items SET active=false WHERE id=$1", item)
+	dbtest.Commit(t, held)
 	if r := <-done; r.Status != 409 {
 		t.Fatal(r)
 	}
@@ -479,7 +467,7 @@ func TestCountsDatabaseProtections(t *testing.T) {
 				sql = fmt.Sprintf("UPDATE %s SET store_id=store_id WHERE card_id=$1", table)
 			}
 			_, err := tx.Exec(context.Background(), sql, card["id"])
-			rollback(t, tx)
+			dbtest.Rollback(t, tx)
 			if err == nil || !strings.Contains(err.Error(), "42501") {
 				t.Fatal(table, verb, err)
 			}
@@ -488,7 +476,7 @@ func TestCountsDatabaseProtections(t *testing.T) {
 	for _, values := range []string{"0,1,0,0,0,0", "0,0,0,0,1,0", "0,-1,-1,0,0,0", "0,0,0,0,-1,-1", "0,10000,10000,0,0,0", "0,0,0,0,10000,10000"} {
 		tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 		_, err := tx.Exec(context.Background(), `INSERT INTO card_count_ledger (tenant_id,store_id,card_id,item_id,kind,paid_before,paid_delta,paid_after,gift_before,gift_delta,gift_after,business_date,actor_id) VALUES ($1,$2,$3,$4,'open',`+values+`,current_date,$5)`, s.Res.TenantID, s.Res.StoreID, card["id"], item, s.Res.OwnerID)
-		rollback(t, tx)
+		dbtest.Rollback(t, tx)
 		if err == nil || !strings.Contains(err.Error(), "23514") {
 			t.Fatal(values, err)
 		}
@@ -502,7 +490,7 @@ func TestCountDatabaseLimits(t *testing.T) {
 	for _, column := range []string{"paid_count", "gift_count"} {
 		tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 		_, err := tx.Exec(context.Background(), "UPDATE card_type_items SET "+column+"=10000 WHERE card_type_id=$1 AND item_id=$2", card["card_type_id"], item)
-		rollback(t, tx)
+		dbtest.Rollback(t, tx)
 		if err == nil || !strings.Contains(err.Error(), "23514") {
 			t.Fatal(column, err)
 		}
@@ -510,7 +498,7 @@ func TestCountDatabaseLimits(t *testing.T) {
 	for _, counts := range [][2]int{{10000, 0}, {1, 10000}} {
 		tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 		_, err := tx.Exec(context.Background(), `INSERT INTO card_items (tenant_id,store_id,card_id,item_id,unit_price,paid_count_opened,gift_count_opened) VALUES ($1,$2,$3,$4,1,$5,$6)`, s.Res.TenantID, s.Res.StoreID, card["id"], second, counts[0], counts[1])
-		rollback(t, tx)
+		dbtest.Rollback(t, tx)
 		if err == nil || !strings.Contains(err.Error(), "23514") {
 			t.Fatal(counts, err)
 		}

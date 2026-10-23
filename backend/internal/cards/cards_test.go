@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
@@ -34,11 +33,7 @@ func typeInput(name string) map[string]any {
 }
 func (s *fixture) call(op string, in any, status int) map[string]any {
 	s.t.Helper()
-	r := s.HTTPWithToken(s.t, s.Owner, op, in)
-	if r.Status != status {
-		s.t.Fatalf("%s got %d %v want %d", op, r.Status, r.Body, status)
-	}
-	return r.Body
+	return s.Call(s.t, s.Owner, op, in, status).Body
 }
 func (s *fixture) opening() map[string]any {
 	return map[string]any{"customer_id": s.customer, "card_type_id": s.cardType, "principal": "1234.56", "bonus": "0.50", "sales_staff_ids": []any{s.Res.OwnerID}}
@@ -46,18 +41,7 @@ func (s *fixture) opening() map[string]any {
 func (s *fixture) recharge(id any) map[string]any {
 	return map[string]any{"card_id": id, "principal": "0.50", "bonus": "1234.56", "sales_staff_ids": []any{s.Res.OwnerID}}
 }
-func exec(t *testing.T, tx pgx.Tx, sql string, args ...any) {
-	t.Helper()
-	if _, err := tx.Exec(context.Background(), sql, args...); err != nil {
-		t.Fatal(err)
-	}
-}
-func commit(t *testing.T, tx pgx.Tx) {
-	t.Helper()
-	if err := tx.Commit(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-}
+
 func TestLedgerChain(t *testing.T) {
 	s := open(t)
 	card := s.call("open_card", s.opening(), 200)
@@ -126,8 +110,8 @@ func TestSalesStaffRules(t *testing.T) {
 			switch mode {
 			case "inactive":
 				tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-				exec(t, tx, "UPDATE staff SET active=false,deactivated_at=clock_timestamp() WHERE id=$1", id)
-				commit(t, tx)
+				dbtest.Exec(t, tx, "UPDATE staff SET active=false,deactivated_at=clock_timestamp() WHERE id=$1", id)
+				dbtest.Commit(t, tx)
 			case "unknown":
 				ids = []any{uuid.New()}
 			case "empty":
@@ -211,16 +195,7 @@ func TestPermissions(t *testing.T) {
 }
 func snapshot(t *testing.T, s *fixture) string {
 	t.Helper()
-	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	var raw []byte
-	err := tx.QueryRow(context.Background(), `SELECT jsonb_build_array((SELECT jsonb_agg(t) FROM card_types t),(SELECT jsonb_agg(c) FROM cards c),(SELECT jsonb_agg(l) FROM card_ledger l),(SELECT jsonb_agg(s) FROM card_ledger_sales s),(SELECT jsonb_agg(a) FROM audit_log a),(SELECT jsonb_agg(p) FROM card_points_ledger p),(SELECT jsonb_agg(a) FROM card_adjustments a))`).Scan(&raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := tx.Rollback(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	return string(raw)
+	return dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "card_types", "cards", "card_ledger", "card_ledger_sales", "audit_log", "card_points_ledger", "card_adjustments")
 }
 func TestAIWritesRefused(t *testing.T) {
 	s := open(t)
@@ -248,8 +223,8 @@ func TestScope(t *testing.T) {
 	for _, own := range []bool{false, true} {
 		if own {
 			tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-			exec(t, tx, "UPDATE customers SET responsible_staff_id=$2 WHERE id=$1", s.customer, caller.StaffID)
-			commit(t, tx)
+			dbtest.Exec(t, tx, "UPDATE customers SET responsible_staff_id=$2 WHERE id=$1", s.customer, caller.StaffID)
+			dbtest.Commit(t, tx)
 		}
 		want := 404
 		if own {
@@ -294,13 +269,13 @@ func TestIssuingStore(t *testing.T) {
 	if err := tx.QueryRow(context.Background(), "INSERT INTO stores (tenant_id,name) VALUES ($1,'二店') RETURNING id", s.Res.TenantID).Scan(&store); err != nil {
 		t.Fatal(err)
 	}
-	exec(t, tx, "UPDATE staff SET store_id=$2 WHERE id=$1", staff, store)
-	commit(t, tx)
+	dbtest.Exec(t, tx, "UPDATE staff SET store_id=$2 WHERE id=$1", staff, store)
+	dbtest.Commit(t, tx)
 	in := s.recharge(card["id"])
 	in["sales_staff_ids"] = []any{staff}
 	// 外店请求连卡锁都不应取得；后续视图也有限定门店，不能让它遮住锁查询漏范围。
 	held := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, held, "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE", card["id"])
+	dbtest.Exec(t, held, "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE", card["id"])
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTPWithToken(t, token, "recharge_card", in) }()
 	select {
@@ -311,7 +286,7 @@ func TestIssuingStore(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("cross-store recharge waited for the issuing store's card lock")
 	}
-	commit(t, held)
+	dbtest.Commit(t, held)
 	for _, ch := range s.Channels() {
 		caller := s.MustCaller(token)
 		r := ch.Call(t, caller, "list_card_ledger", map[string]any{"card_id": card["id"]})
@@ -328,12 +303,12 @@ func TestRechargeSerializes(t *testing.T) {
 	s := open(t)
 	card := s.call("open_card", s.opening(), 200)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE", card["id"])
+	dbtest.Exec(t, tx, "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE", card["id"])
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "recharge_card", s.recharge(card["id"])) }()
 	dbtest.WaitForLockWait(t, s.Pool)
-	exec(t, tx, `INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id) VALUES ($1,$2,$3,'recharge',1234.56,10,1244.56,0.50,10,10.50,current_date,$4)`, s.Res.TenantID, s.Res.StoreID, card["id"], s.Res.OwnerID)
-	commit(t, tx)
+	dbtest.Exec(t, tx, `INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id) VALUES ($1,$2,$3,'recharge',1234.56,10,1244.56,0.50,10,10.50,current_date,$4)`, s.Res.TenantID, s.Res.StoreID, card["id"], s.Res.OwnerID)
+	dbtest.Commit(t, tx)
 	r := <-done
 	if r.Status != 200 || r.Body["principal"] != "1245.06" || r.Body["bonus"] != "1245.06" {
 		t.Fatal(r)
@@ -343,11 +318,11 @@ func TestOpenWaitsForMerge(t *testing.T) {
 	s := open(t)
 	keep := s.call("create_customer", map[string]any{}, 200)["customer"].(map[string]any)["id"]
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "UPDATE customers SET merged_into=$2 WHERE id=$1", s.customer, keep)
+	dbtest.Exec(t, tx, "UPDATE customers SET merged_into=$2 WHERE id=$1", s.customer, keep)
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "open_card", s.opening()) }()
 	dbtest.WaitForLockWait(t, s.Pool)
-	commit(t, tx)
+	dbtest.Commit(t, tx)
 	r := <-done
 	if r.Status != 409 {
 		t.Fatal(r)
@@ -433,14 +408,14 @@ func checkLedgerArithmetic(t *testing.T, principalAfter, bonusAfter int, constra
 func TestCardTypeLocksBeforeAudit(t *testing.T) {
 	s := open(t)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "UPDATE card_types SET name='锁内名称' WHERE id=$1", s.cardType)
+	dbtest.Exec(t, tx, "UPDATE card_types SET name='锁内名称' WHERE id=$1", s.cardType)
 	in := typeInput("改后")
 	in["id"] = s.cardType
 	in["active"] = true
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "update_card_type", in) }()
 	dbtest.WaitForLockWait(t, s.Pool)
-	commit(t, tx)
+	dbtest.Commit(t, tx)
 	if r := <-done; r.Status != 200 {
 		t.Fatal(r)
 	}
@@ -462,14 +437,14 @@ func TestOpenReferenceShareLocks(t *testing.T) {
 			if kind == "staff" {
 				id, _ := s.Hire("员工", "002", "reference")
 				in["sales_staff_ids"] = []any{id}
-				exec(t, tx, "UPDATE staff SET active=false,deactivated_at=clock_timestamp() WHERE id=$1", id)
+				dbtest.Exec(t, tx, "UPDATE staff SET active=false,deactivated_at=clock_timestamp() WHERE id=$1", id)
 			} else {
-				exec(t, tx, "UPDATE card_types SET active=false WHERE id=$1", s.cardType)
+				dbtest.Exec(t, tx, "UPDATE card_types SET active=false WHERE id=$1", s.cardType)
 			}
 			done := make(chan optest.Result, 1)
 			go func() { done <- s.HTTPWithToken(t, s.Owner, "open_card", in) }()
 			dbtest.WaitForLockWait(t, s.Pool)
-			commit(t, tx)
+			dbtest.Commit(t, tx)
 			if r := <-done; r.Status != 409 {
 				t.Fatal(r)
 			}

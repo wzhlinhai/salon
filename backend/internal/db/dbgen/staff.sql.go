@@ -275,6 +275,33 @@ func (q *Queries) SetStaffPassword(ctx context.Context, arg SetStaffPasswordPara
 	return result.RowsAffected(), nil
 }
 
+const shareStaff = `-- name: ShareStaff :one
+SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until FROM staff WHERE id=$1 FOR SHARE
+`
+
+func (q *Queries) ShareStaff(ctx context.Context, id uuid.UUID) (Staff, error) {
+	row := q.db.QueryRow(ctx, shareStaff, id)
+	var i Staff
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Name,
+		&i.Number,
+		&i.LevelID,
+		&i.PositionID,
+		&i.LoginAccount,
+		&i.PasswordHash,
+		&i.Active,
+		&i.DeactivatedAt,
+		&i.CreatedAt,
+		&i.TokenVersion,
+		&i.FailedLogins,
+		&i.LockedUntil,
+	)
+	return i, err
+}
+
 const updateStaffProfile = `-- name: UpdateStaffProfile :one
 UPDATE staff SET name = $2, number = $3, level_id = $4, position_id = $5
 WHERE id = $1

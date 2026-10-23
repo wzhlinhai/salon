@@ -175,6 +175,57 @@ test('切回同一顾客后丢弃第一次卡列表，保留第二次响应', as
   }
 })
 
+test('同一顾客开卡刷新后丢弃迟到的首次卡列表', async ({ page }) => {
+  const { suffix, customer, staff } = await seed()
+  const token = await apiLogin(owner.account, owner.password)
+  const ct = await api(token, 'create_card_type', { name: `刷新卡${suffix}`, kind: 'stored_value', validity_kind: 'none' })
+  let release!: () => void
+  let started!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const pending = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  let first = true
+  await page.route('**/api/ops/list_customer_cards', async (route) => {
+    if (route.request().postDataJSON().customer_id === customer.id && first) {
+      first = false
+      const response = await route.fetch()
+      started()
+      await blocked
+      await route.fulfill({ response })
+    } else await route.continue()
+  })
+  try {
+    await login(page, owner.account, owner.password)
+    await page.goto(`/customers?id=${customer.id}`)
+    await pending
+    const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+    await detail.getByRole('button', { name: '开卡', exact: true }).click()
+    const opening = page.getByRole('dialog', { name: '开卡', exact: true })
+    await opening.getByRole('combobox', { name: '卡类型', exact: true }).click()
+    await page.getByRole('option', { name: ct.name, exact: true }).click()
+    await opening.getByLabel('本金', { exact: true }).fill('123.45')
+    await opening.getByRole('combobox', { name: '业绩归属人', exact: true }).click()
+    await page.getByRole('option', { name: staff.name, exact: true }).click()
+    await page.keyboard.press('Escape')
+    await opening.getByRole('button', { name: '保存', exact: true }).click()
+    await expect(opening).not.toBeVisible()
+    const shown = detail.locator('[data-card]').filter({ hasText: ct.name })
+    await expect(shown).toContainText('本金 123.45')
+    const late = page.waitForResponse(r => r.url().endsWith('/api/ops/list_customer_cards') && r.request().postDataJSON().customer_id === customer.id)
+    release()
+    await (await late).finished()
+    // eslint-disable-next-line no-restricted-syntax -- 丢弃旧响应没有 DOM 变化，等待回调执行后确认新卡仍在。
+    await page.waitForTimeout(500)
+    await expect(shown).toContainText('本金 123.45')
+    await expect(detail).not.toContainText('暂无卡')
+  } finally {
+    release()
+  }
+})
+
 test('调整余额、记录原因并清除有效期', async ({ page }) => {
   const { token, suffix, customer } = await seed()
   const ct = await api(token, 'create_card_type', { name: `调整卡${suffix}`, kind: 'stored_value', validity_kind: 'fixed_date', validity_date: '2030-01-01' })
@@ -212,10 +263,10 @@ test('调整余额、记录原因并清除有效期', async ({ page }) => {
 
 test('调整记录切走再切回同一卡丢弃旧响应', async ({ page }) => {
   const { token, suffix, customer: a } = await seed()
-  const b = (await api(token, 'create_customer', { name: `调整乙${suffix}` })).customer
   const ct = await api(token, 'create_card_type', { name: `回切调整${suffix}`, kind: 'stored_value', validity_kind: 'none' })
   const me = await api(token, 'get_me', {})
   const card = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '100.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
+  const b = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '100.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
   await api(token, 'adjust_card', { card_id: card.id, principal: '90.00', reason: '第一次更正' })
   let release!: () => void
   let started!: () => void
@@ -241,17 +292,13 @@ test('调整记录切走再切回同一卡丢弃旧响应', async ({ page }) => 
     const shown = page.locator(`[data-card="${card.id}"]`)
     await shown.getByRole('button', { name: '调整记录', exact: true }).click()
     await pending
-    await page.evaluate((id) => {
-      window.history.pushState({}, '', `/customers?id=${id}`)
-      window.dispatchEvent(new PopStateEvent('popstate'))
-    }, b.id)
-    const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
-    await expect(detail.locator('dd').filter({ hasText: b.name })).toBeVisible()
+    // 保持同一个卡面板，切到另一张卡再切回，才能验证游标列表的请求代次保护。
+    const other = page.locator(`[data-card="${b.id}"]`)
+    const otherResponse = page.waitForResponse(r => r.url().endsWith('/api/ops/list_card_adjustments') && r.request().postDataJSON().card_id === b.id)
+    await other.getByRole('button', { name: '调整记录', exact: true }).click()
+    await (await otherResponse).finished()
+    await expect(shown.getByTestId('card-adjustment-entry')).toHaveCount(0)
     await api(token, 'adjust_card', { card_id: card.id, principal: '80.00', reason: '第二次更正' })
-    await page.evaluate((id) => {
-      window.history.pushState({}, '', `/customers?id=${id}`)
-      window.dispatchEvent(new PopStateEvent('popstate'))
-    }, a.id)
     await shown.getByRole('button', { name: '调整记录', exact: true }).click()
     await expect(shown.getByTestId('card-adjustment-entry')).toHaveCount(2)
     await expect(shown.getByTestId('card-adjustment-entry').first()).toContainText('第二次更正')
@@ -327,11 +374,11 @@ test('次卡和套餐：两个项目、开卡、调整赠送次数及记录', as
 
 test('次数流水 A→B→A 丢弃旧响应', async ({ page }) => {
   const { token, suffix, customer: a } = await seed()
-  const b = (await api(token, 'create_customer', { name: `调整乙${suffix}` })).customer
   const project = await api(token, 'create_item', { name: `次数项目${suffix}`, price: '12.34', discountable: true, labor_fee_amount: null, labor_fee_percent: null, positions: [], level_prices: [] })
   const ct = await api(token, 'create_card_type', { name: `回切调整${suffix}`, kind: 'count', validity_kind: 'none', items: [{ item_id: project.id, paid_count: 10, gift_count: 3, unit_price: '12.34' }] })
   const me = await api(token, 'get_me', {})
   const card = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '0.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
+  const b = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '0.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
   await api(token, 'adjust_card', { card_id: card.id, counts: [{ item_id: project.id, paid: 10, gift: 2 }], reason: '第一次更正' })
   let release!: () => void
   let started!: () => void
@@ -357,17 +404,13 @@ test('次数流水 A→B→A 丢弃旧响应', async ({ page }) => {
     const shown = page.locator(`[data-card="${card.id}"]`)
     await shown.getByRole('button', { name: '次数流水', exact: true }).click()
     await pending
-    await page.evaluate((id) => {
-      window.history.pushState({}, '', `/customers?id=${id}`)
-      window.dispatchEvent(new PopStateEvent('popstate'))
-    }, b.id)
-    const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
-    await expect(detail.locator('dd').filter({ hasText: b.name })).toBeVisible()
+    // 保持同一个卡面板，切到另一张卡再切回，才能验证游标列表的请求代次保护。
+    const other = page.locator(`[data-card="${b.id}"]`)
+    const otherResponse = page.waitForResponse(r => r.url().endsWith('/api/ops/list_card_counts') && r.request().postDataJSON().card_id === b.id)
+    await other.getByRole('button', { name: '次数流水', exact: true }).click()
+    await (await otherResponse).finished()
+    await expect(shown.getByTestId('card-count-entry')).toHaveCount(0)
     await api(token, 'adjust_card', { card_id: card.id, counts: [{ item_id: project.id, paid: 10, gift: 1 }], reason: '第二次更正' })
-    await page.evaluate((id) => {
-      window.history.pushState({}, '', `/customers?id=${id}`)
-      window.dispatchEvent(new PopStateEvent('popstate'))
-    }, a.id)
     await shown.getByRole('button', { name: '次数流水', exact: true }).click()
     await expect(shown.getByTestId('card-count-entry')).toHaveCount(3)
     await expect(shown.getByTestId('card-count-entry').first()).toContainText('第二次更正')
@@ -459,11 +502,11 @@ test('升级规则累计充值、自动升级、补差价升级及转余额流�
 
 test('升级记录 A→B→A 丢弃旧响应', async ({ page }) => {
   const { token, suffix, customer: a } = await seed()
-  const b = (await api(token, 'create_customer', { name: `升级乙${suffix}` })).customer
   const types = []
   for (const name of ['基础', '银卡', '金卡']) types.push(await api(token, 'create_card_type', { name: `${name}${suffix}`, kind: 'stored_value', validity_kind: 'none' }))
   const me = await api(token, 'get_me', {})
   const card = await api(token, 'open_card', { customer_id: a.id, card_type_id: types[0].id, principal: '100.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
+  const b = await api(token, 'open_card', { customer_id: a.id, card_type_id: types[0].id, principal: '100.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
   await api(token, 'upgrade_card', { card_id: card.id, to_type_id: types[1].id, principal: '0.00', bonus: '0.00' })
   let release!: () => void
   let started!: () => void
@@ -489,17 +532,13 @@ test('升级记录 A→B→A 丢弃旧响应', async ({ page }) => {
     const shown = page.locator(`[data-card="${card.id}"]`)
     await shown.getByRole('button', { name: '升级记录', exact: true }).click()
     await pending
-    await page.evaluate((id) => {
-      window.history.pushState({}, '', `/customers?id=${id}`)
-      window.dispatchEvent(new PopStateEvent('popstate'))
-    }, b.id)
-    const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
-    await expect(detail.locator('dd').filter({ hasText: b.name })).toBeVisible()
+    // 保持同一个卡面板，切到另一张卡再切回，才能验证游标列表的请求代次保护。
+    const other = page.locator(`[data-card="${b.id}"]`)
+    const otherResponse = page.waitForResponse(r => r.url().endsWith('/api/ops/list_card_upgrades') && r.request().postDataJSON().card_id === b.id)
+    await other.getByRole('button', { name: '升级记录', exact: true }).click()
+    await (await otherResponse).finished()
+    await expect(shown.getByTestId('card-upgrade-entry')).toHaveCount(0)
     await api(token, 'upgrade_card', { card_id: card.id, to_type_id: types[2].id, principal: '0.00', bonus: '0.00' })
-    await page.evaluate((id) => {
-      window.history.pushState({}, '', `/customers?id=${id}`)
-      window.dispatchEvent(new PopStateEvent('popstate'))
-    }, a.id)
     await shown.getByRole('button', { name: '升级记录', exact: true }).click()
     await expect(shown.getByTestId('card-upgrade-entry')).toHaveCount(2)
     await expect(shown.getByTestId('card-upgrade-entry').first()).toContainText(types[2].name)
@@ -517,10 +556,10 @@ test('升级记录 A→B→A 丢弃旧响应', async ({ page }) => {
 
 test('积分流水 A→B→A 丢弃旧响应', async ({ page }) => {
   const { token, suffix, customer: a } = await seed()
-  const b = (await api(token, 'create_customer', { name: `调整乙${suffix}` })).customer
   const ct = await api(token, 'create_card_type', { name: `回切调整${suffix}`, kind: 'stored_value', validity_kind: 'none' })
   const me = await api(token, 'get_me', {})
   const card = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '0.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
+  const b = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '0.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
   await api(token, 'adjust_card', { card_id: card.id, points: 90, reason: '第一次更正' })
   let release!: () => void
   let started!: () => void
@@ -546,17 +585,13 @@ test('积分流水 A→B→A 丢弃旧响应', async ({ page }) => {
     const shown = page.locator(`[data-card="${card.id}"]`)
     await shown.getByRole('button', { name: '积分流水', exact: true }).click()
     await pending
-    await page.evaluate((id) => {
-      window.history.pushState({}, '', `/customers?id=${id}`)
-      window.dispatchEvent(new PopStateEvent('popstate'))
-    }, b.id)
-    const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
-    await expect(detail.locator('dd').filter({ hasText: b.name })).toBeVisible()
+    // 保持同一个卡面板，切到另一张卡再切回，才能验证游标列表的请求代次保护。
+    const other = page.locator(`[data-card="${b.id}"]`)
+    const otherResponse = page.waitForResponse(r => r.url().endsWith('/api/ops/list_card_points') && r.request().postDataJSON().card_id === b.id)
+    await other.getByRole('button', { name: '积分流水', exact: true }).click()
+    await (await otherResponse).finished()
+    await expect(shown.getByTestId('card-points-entry')).toHaveCount(0)
     await api(token, 'adjust_card', { card_id: card.id, points: 80, reason: '第二次更正' })
-    await page.evaluate((id) => {
-      window.history.pushState({}, '', `/customers?id=${id}`)
-      window.dispatchEvent(new PopStateEvent('popstate'))
-    }, a.id)
     await shown.getByRole('button', { name: '积分流水', exact: true }).click()
     await expect(shown.getByTestId('card-points-entry')).toHaveCount(2)
     await expect(shown.getByTestId('card-points-entry').first()).toContainText('第二次更正')

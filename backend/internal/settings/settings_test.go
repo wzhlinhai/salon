@@ -156,7 +156,7 @@ func TestSnapshotKeepsRulesInForceWhenTaken(t *testing.T) {
 	s := open(t)
 	// 已安排但还没生效的修改不进入今天的快照。
 	s.change(s.owner, "business_day_end", "05:00", day(30), http.StatusOK)
-	var before, again uuid.UUID
+	var before, again settings.Snapshot
 	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
 		var err error
 		if before, err = settings.TakeSnapshot(ctx, q, s.Res.TenantID, s.Res.StoreID, time.Now()); err != nil {
@@ -165,15 +165,18 @@ func TestSnapshotKeepsRulesInForceWhenTaken(t *testing.T) {
 		again, err = settings.TakeSnapshot(ctx, q, s.Res.TenantID, s.Res.StoreID, time.Now())
 		return err
 	})
-	if again != before {
-		t.Fatalf("identical rules gave snapshots %s and %s, want one shared snapshot", before, again)
+	if before.BusinessDate.Format(settings.DateLayout) != day(0) || before.Rules.BusinessDayEnd() != "00:00" {
+		t.Fatal(before)
+	}
+	if again.ID != before.ID {
+		t.Fatalf("identical rules gave snapshots %s and %s, want one shared snapshot", before.ID, again.ID)
 	}
 
 	// 下单之后，把今天起执行的设置改掉。
 	s.change(s.owner, "business_hours", map[string]any{"open": "10:00", "close": "21:00"}, day(0), http.StatusOK)
 
 	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
-		rules, err := settings.LoadSnapshot(ctx, q, s.Res.StoreID, before)
+		rules, err := settings.LoadSnapshot(ctx, q, s.Res.StoreID, before.ID)
 		if err != nil {
 			return err
 		}
@@ -187,10 +190,13 @@ func TestSnapshotKeepsRulesInForceWhenTaken(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if after == before {
-			t.Errorf("snapshot after the change reused %s, want a new one", before)
+		if got := after.Rules.BusinessHours(); got != (settings.TimeRange{Open: "10:00", Close: "21:00"}) {
+			t.Fatalf("returned rules = %v", got)
 		}
-		if rules, err = settings.LoadSnapshot(ctx, q, s.Res.StoreID, after); err != nil {
+		if after.ID == before.ID {
+			t.Errorf("snapshot after the change reused %s, want a new one", before.ID)
+		}
+		if rules, err = settings.LoadSnapshot(ctx, q, s.Res.StoreID, after.ID); err != nil {
 			return err
 		}
 		if got := rules.BusinessHours(); got != (settings.TimeRange{Open: "10:00", Close: "21:00"}) {
@@ -364,7 +370,8 @@ func TestChangesAndSnapshotsCannotBeAlteredOrDeleted(t *testing.T) {
 
 func TestSnapshotOfAnotherStoreIsNotFound(t *testing.T) {
 	s := open(t)
-	var other, snap uuid.UUID
+	var other uuid.UUID
+	var snap settings.Snapshot
 	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
 		st, err := q.CreateStore(ctx, dbgen.CreateStoreParams{TenantID: s.Res.TenantID, Name: "二店"})
 		if err != nil {
@@ -375,7 +382,7 @@ func TestSnapshotOfAnotherStoreIsNotFound(t *testing.T) {
 		return err
 	})
 	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
-		if _, err := settings.LoadSnapshot(ctx, q, s.Res.StoreID, snap); !errors.Is(err, ops.ErrNotFound) {
+		if _, err := settings.LoadSnapshot(ctx, q, s.Res.StoreID, snap.ID); !errors.Is(err, ops.ErrNotFound) {
 			t.Fatalf("loading another store's snapshot: err = %v, want not found", err)
 		}
 		return nil
@@ -448,7 +455,7 @@ func TestChoiceAndIntegerRulesAndSnapshot(t *testing.T) {
 	})
 	s.change(s.owner, settings.KeyMemberPriceRule, "lowest", day(0), 200)
 	s.change(s.owner, settings.KeyPointsPerRechargeYuan, 100000, day(0), 200)
-	var snapshot uuid.UUID
+	var snapshot settings.Snapshot
 	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
 		var err error
 		snapshot, err = settings.TakeSnapshot(ctx, q, s.Res.TenantID, s.Res.StoreID, time.Now())
@@ -457,7 +464,7 @@ func TestChoiceAndIntegerRulesAndSnapshot(t *testing.T) {
 	s.change(s.owner, settings.KeyMemberPriceRule, "member_first", day(0), 200)
 	s.change(s.owner, settings.KeyPointsPerRechargeYuan, 1, day(0), 200)
 	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
-		r, err := settings.LoadSnapshot(ctx, q, s.Res.StoreID, snapshot)
+		r, err := settings.LoadSnapshot(ctx, q, s.Res.StoreID, snapshot.ID)
 		if err != nil {
 			return err
 		}

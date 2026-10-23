@@ -3,7 +3,6 @@ package cards
 import (
 	"context"
 	"errors"
-	"slices"
 	"strings"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/wzhlinhai/salon/backend/internal/audit"
+	"github.com/wzhlinhai/salon/backend/internal/catalog"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 )
@@ -111,14 +111,11 @@ func updateCardType(ctx context.Context, env ops.Env, in *UpdateCardTypeInput) (
 	for i, item := range in.Items {
 		itemIDs[i] = item.ItemID
 	}
-	slices.SortFunc(itemIDs, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
-	for _, id := range itemIDs {
-		if _, err := env.Q.ShareCatalogItem(ctx, dbgen.ShareCatalogItemParams{StoreID: env.Caller.StoreID, ID: id}); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return nil, ops.Rule("项目必须是本店启用的项目")
-			}
-			return nil, err
+	if _, err := catalog.LockItems(ctx, env.Q, env.Caller.StoreID, itemIDs...); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ops.Rule("项目必须是本店启用的项目")
 		}
+		return nil, err
 	}
 	before, err := env.Q.LockCardType(ctx, dbgen.LockCardTypeParams{StoreID: env.Caller.StoreID, ID: in.ID})
 	if err != nil {

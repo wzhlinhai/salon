@@ -40,10 +40,9 @@ async function load() {
 
 onMounted(load)
 
-const editorGuard = useRequestGuard()
-const open = ref(false)
+const editor = useModalForm()
+const { open, saving } = editor
 const editing = ref<Item | null>(null)
-const saving = ref(false)
 const name = ref('')
 const price = ref('0.00')
 const discountable = ref(true)
@@ -61,24 +60,19 @@ function positionOptions(index: number) {
 }
 
 function openEditor(item: Item | null) {
-  editorGuard.next()
-  saving.value = false
-  editing.value = item
-  name.value = item?.name ?? ''
-  price.value = item?.price ?? '0.00'
-  discountable.value = item?.discountable ?? true
-  active.value = item?.active ?? true
-  feeKind.value = item?.labor_fee_amount != null ? 'amount' : item?.labor_fee_percent != null ? 'percent' : 'none'
-  feeValue.value = item?.labor_fee_amount ?? item?.labor_fee_percent ?? '0.00'
-  positionRows.value = item?.positions.map(p => ({ position_id: p.position_id, required: p.required })) ?? []
-  memberRows.value = item?.member_prices.map(m => ({ ...m })) ?? []
-  levelRows.value = item?.level_prices.map(l => ({ ...l })) ?? []
-  open.value = true
+  editor.begin(() => {
+    editing.value = item
+    name.value = item?.name ?? ''
+    price.value = item?.price ?? '0.00'
+    discountable.value = item?.discountable ?? true
+    active.value = item?.active ?? true
+    feeKind.value = item?.labor_fee_amount != null ? 'amount' : item?.labor_fee_percent != null ? 'percent' : 'none'
+    feeValue.value = item?.labor_fee_amount ?? item?.labor_fee_percent ?? '0.00'
+    positionRows.value = item?.positions.map(p => ({ position_id: p.position_id, required: p.required })) ?? []
+    memberRows.value = item?.member_prices.map(m => ({ ...m })) ?? []
+    levelRows.value = item?.level_prices.map(l => ({ ...l })) ?? []
+  })
 }
-
-watch(open, (value) => {
-  if (!value) editorGuard.next()
-})
 
 function move(index: number, offset: number) {
   const rows = positionRows.value
@@ -88,9 +82,6 @@ function move(index: number, offset: number) {
 }
 
 async function save() {
-  if (saving.value) return
-  const current = editorGuard.hold()
-  saving.value = true
   const body = {
     name: name.value, price: price.value, discountable: discountable.value,
     labor_fee_amount: feeKind.value === 'amount' ? feeValue.value : null,
@@ -99,7 +90,7 @@ async function save() {
     member_prices: memberRows.value.map(m => ({ ...m })),
     level_prices: levelRows.value.map(l => ({ ...l }))
   }
-  try {
+  await editor.save(async (current) => {
     const result = editing.value
       ? await api.POST('/api/ops/update_item', { body: { ...body, id: editing.value.id, active: active.value } })
       : await api.POST('/api/ops/create_item', { body })
@@ -109,9 +100,7 @@ async function save() {
       toast.add({ title: '已保存', color: 'success' })
       await load()
     } else toast.add({ title: errorText(result.error), color: 'error' })
-  } finally {
-    if (current() || !open.value) saving.value = false
-  }
+  })
 }
 
 function laborFee(item: Item) {

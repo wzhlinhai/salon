@@ -22,7 +22,7 @@ func TestValidityUsesBusinessDate(t *testing.T) {
 	in["validity_days"] = 30
 	ct := s.call("create_card_type", in, 200)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, `INSERT INTO setting_changes (tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES ($1,$2,'business_day_end','"02:00"',false,'"00:00"',true,'2020-01-01',$3)`, s.Res.TenantID, s.Res.StoreID, s.Res.OwnerID)
+	dbtest.Exec(t, tx, `INSERT INTO setting_changes (tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES ($1,$2,'business_day_end','"02:00"',false,'"00:00"',true,'2020-01-01',$3)`, s.Res.TenantID, s.Res.StoreID, s.Res.OwnerID)
 	now := time.Date(2030, 1, 2, 1, 30, 0, 0, settings.Location)
 	out, err := cards.OpenCardAtForTest(context.Background(), ops.Env{Q: dbgen.New(tx), Caller: s.MustCaller(s.Owner)}, &cards.OpenCardInput{CustomerID: uuid.MustParse(s.customer), CardTypeID: uuid.MustParse(ct["id"].(string)), TopUpInput: cards.TopUpInput{Principal: money.Amount{}, Bonus: money.Amount{}, SalesStaffIDs: []uuid.UUID{s.Res.OwnerID}}}, now)
 	if err != nil {
@@ -43,8 +43,8 @@ func TestPointsUseBusinessDateRate(t *testing.T) {
 	later := settings.Date(time.Now())
 	earlier := later.AddDate(0, 0, -1)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, `INSERT INTO setting_changes (tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES ($1,$2,'business_day_end','"02:00"',false,'"00:00"',true,$3,$4)`, s.Res.TenantID, s.Res.StoreID, earlier, caller.StaffID)
-	exec(t, tx, `INSERT INTO setting_changes (tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES ($1,$2,'points_per_recharge_yuan','10',false,'0',true,$3,$4),($1,$2,'points_per_recharge_yuan','1',false,'10',false,$5,$4)`, s.Res.TenantID, s.Res.StoreID, earlier, caller.StaffID, later)
+	dbtest.Exec(t, tx, `INSERT INTO setting_changes (tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES ($1,$2,'business_day_end','"02:00"',false,'"00:00"',true,$3,$4)`, s.Res.TenantID, s.Res.StoreID, earlier, caller.StaffID)
+	dbtest.Exec(t, tx, `INSERT INTO setting_changes (tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES ($1,$2,'points_per_recharge_yuan','10',false,'0',true,$3,$4),($1,$2,'points_per_recharge_yuan','1',false,'10',false,$5,$4)`, s.Res.TenantID, s.Res.StoreID, earlier, caller.StaffID, later)
 	now := time.Date(later.Year(), later.Month(), later.Day(), 1, 0, 0, 0, settings.Location)
 	var principal money.Amount
 	if err := principal.Scan("25.99"); err != nil {

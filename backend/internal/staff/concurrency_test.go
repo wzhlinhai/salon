@@ -59,20 +59,6 @@ func awaitPaused(t *testing.T, paused <-chan struct{}) {
 	}
 }
 
-func staffResult(t *testing.T, done <-chan optest.Result, want int) optest.Result {
-	t.Helper()
-	select {
-	case r := <-done:
-		if r.Status != want {
-			t.Fatalf("operation = %d %v (%v), want %d", r.Status, r.Body, r.Err, want)
-		}
-		return r
-	case <-time.After(10 * time.Second):
-		t.Fatal("operation did not finish")
-	}
-	return optest.Result{}
-}
-
 func TestRoleEscalationSerializesStaffAuthorization(t *testing.T) {
 	for _, action := range []string{"set_staff_roles", "create_staff", "set_staff_login"} {
 		t.Run(action, func(t *testing.T) {
@@ -100,10 +86,10 @@ func TestRoleEscalationSerializesStaffAuthorization(t *testing.T) {
 			done := make(chan optest.Result, 1)
 			go func() { done <- s.HTTPWithToken(t, manager, action, args) }()
 			dbtest.WaitForLockWait(t, s.Pool)
-			assertWaiting(t, done)
+			optest.AssertWaiting(t, done)
 			release()
-			staffResult(t, updated, http.StatusOK)
-			staffResult(t, done, http.StatusForbidden)
+			optest.WaitResult(t, updated, http.StatusOK)
+			optest.WaitResult(t, done, http.StatusForbidden)
 			var count int
 			if err := s.Pool.QueryRow(context.Background(), "SELECT count(*) FROM staff WHERE number='004' OR login_account='taken-over'").Scan(&count); err != nil {
 				t.Fatal(err)
@@ -151,11 +137,11 @@ func TestInactiveLevelAndPositionWaitBeforeAssignment(t *testing.T) {
 				done := make(chan optest.Result, 1)
 				go func() { done <- s.HTTPWithToken(t, s.Owner, action, args) }()
 				dbtest.WaitForLockWait(t, s.Pool)
-				assertWaiting(t, done)
+				optest.AssertWaiting(t, done)
 				if err := tx.Commit(ctx); err != nil {
 					t.Fatal(err)
 				}
-				staffResult(t, done, http.StatusConflict)
+				optest.WaitResult(t, done, http.StatusConflict)
 				rows := s.call(s.Owner, "list_staff", map[string]any{}, 200).Body["staff"].([]any)
 				for _, row := range rows {
 					st := row.(map[string]any)
@@ -193,7 +179,7 @@ func TestListRolesUsesOneRoleCollection(t *testing.T) {
 			awaitPaused(t, paused)
 			s.call(s.Owner, "create_role", map[string]any{"name": "并发新增", "permissions": []any{}}, 200)
 			release()
-			result := staffResult(t, done, http.StatusOK)
+			result := optest.WaitResult(t, done, http.StatusOK)
 			roles := result.Body["roles"].([]any)
 			if len(roles) != 5 {
 				t.Fatalf("roles = %v, want original five roles", roles)

@@ -14,29 +14,6 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/optest"
 )
 
-// waitLockResult 检查操作在有限等待内成功返回。
-func waitLockResult(t *testing.T, done <-chan optest.Result) {
-	t.Helper()
-	select {
-	case r := <-done:
-		if r.Status != 200 {
-			t.Fatalf("HTTP request: %d %v %v, want 200", r.Status, r.Body, r.Err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("HTTP request timed out while KEY SHARE lock was held")
-	}
-}
-
-// assertWaiting 检查操作在占锁事务释放前仍在等待。
-func assertWaiting(t *testing.T, done <-chan optest.Result) {
-	t.Helper()
-	select {
-	case r := <-done:
-		t.Fatalf("request returned while transaction holds lock: %+v", r)
-	case <-time.After(300 * time.Millisecond):
-	}
-}
-
 func TestStaffOperationLockLevels(t *testing.T) {
 	for _, action := range []string{"deactivate_staff", "reactivate_staff", "set_staff_roles", "update_staff"} {
 		t.Run(action, func(t *testing.T) {
@@ -60,12 +37,12 @@ func TestStaffOperationLockLevels(t *testing.T) {
 			go func() { done <- s.HTTPWithToken(t, s.Owner, action, args) }()
 			if action == "update_staff" {
 				dbtest.WaitForLockWait(t, s.Pool)
-				assertWaiting(t, done)
+				optest.AssertWaiting(t, done)
 				if err := tx.Rollback(context.Background()); err != nil {
 					t.Fatal(err)
 				}
 			}
-			waitLockResult(t, done)
+			optest.WaitResult(t, done, 200)
 		})
 	}
 }
@@ -81,7 +58,7 @@ func TestOwnerQueueLockAllowsKeyShare(t *testing.T) {
 	go func() {
 		done <- s.HTTPWithToken(t, s.Owner, "deactivate_staff", map[string]any{"staff_id": id})
 	}()
-	waitLockResult(t, done)
+	optest.WaitResult(t, done, 200)
 }
 
 func TestOwnerQueueWaitDoesNotLockStaff(t *testing.T) {
@@ -108,7 +85,7 @@ func TestOwnerQueueWaitDoesNotLockStaff(t *testing.T) {
 	if err := tx1.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	waitLockResult(t, done)
+	optest.WaitResult(t, done, 200)
 }
 
 func TestSetStaffRolesDoesNotRewriteKeptRole(t *testing.T) {

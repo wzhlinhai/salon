@@ -40,16 +40,7 @@ func assertSQL(t *testing.T, s *fixture, sql string, args ...any) {
 }
 func upgradeSnapshot(t *testing.T, s *fixture) string {
 	t.Helper()
-	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	var raw string
-	err := tx.QueryRow(context.Background(), `SELECT jsonb_build_array((SELECT jsonb_agg(t ORDER BY id) FROM card_upgrade_rules t),(SELECT jsonb_agg(t ORDER BY id) FROM card_upgrades t),(SELECT jsonb_agg(t ORDER BY id) FROM card_transfers t))::text`).Scan(&raw)
-	if e := tx.Rollback(context.Background()); e != nil {
-		t.Fatal(e)
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	return snapshot(t, s) + raw
+	return snapshot(t, s) + dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "card_upgrade_rules", "card_upgrades", "card_transfers")
 }
 func TestManualUpgrade(t *testing.T) {
 	s := open(t)
@@ -294,14 +285,14 @@ func TestUpgradeSerializes(t *testing.T) {
 	card := s.call("open_card", s.opening(), 200)
 	to := s.call("create_card_type", typeInput("高级"), 200)
 	held := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, held, "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE", card["id"])
+	dbtest.Exec(t, held, "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE", card["id"])
 	done := make(chan optest.Result, 1)
 	in := upgrade(card["id"], to["id"])
 	in["principal"], in["sales_staff_ids"] = "1.00", []any{s.Res.OwnerID}
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "upgrade_card", in) }()
 	dbtest.WaitForLockWait(t, s.Pool)
-	exec(t, held, `INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id) VALUES ($1,$2,$3,'recharge',1234.56,10,1244.56,0.50,0,0.50,current_date,$4)`, s.Res.TenantID, s.Res.StoreID, card["id"], s.Res.OwnerID)
-	commit(t, held)
+	dbtest.Exec(t, held, `INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id) VALUES ($1,$2,$3,'recharge',1234.56,10,1244.56,0.50,0,0.50,current_date,$4)`, s.Res.TenantID, s.Res.StoreID, card["id"], s.Res.OwnerID)
+	dbtest.Commit(t, held)
 	r := <-done
 	if r.Status != 200 || r.Body["principal"] != "1245.56" {
 		t.Fatal(r)
@@ -416,8 +407,8 @@ func TestTransferScope(t *testing.T) {
 	caller.Permissions = perm.All()
 	caller.Permissions[perm.CustomerView] = ops.Grant{Scope: ops.ScopeSelf}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "UPDATE customers SET responsible_staff_id=$2 WHERE id=$1", s.customer, caller.StaffID)
-	commit(t, tx)
+	dbtest.Exec(t, tx, "UPDATE customers SET responsible_staff_id=$2 WHERE id=$1", s.customer, caller.StaffID)
+	dbtest.Commit(t, tx)
 	before := upgradeSnapshot(t, s)
 	for _, in := range []map[string]any{transfer(a["id"], b["id"]), transfer(b["id"], a["id"])} {
 		if r := s.HTTP(t, &caller, "transfer_card_balance", in); r.Status != 404 {
@@ -428,8 +419,8 @@ func TestTransferScope(t *testing.T) {
 		t.Fatal("hidden customer transfer wrote rows")
 	}
 	tx = dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "UPDATE customers SET responsible_staff_id=$2 WHERE id=$1", other, caller.StaffID)
-	commit(t, tx)
+	dbtest.Exec(t, tx, "UPDATE customers SET responsible_staff_id=$2 WHERE id=$1", other, caller.StaffID)
+	dbtest.Commit(t, tx)
 	if r := s.HTTP(t, &caller, "transfer_card_balance", transfer(a["id"], b["id"])); r.Status != 200 {
 		t.Fatal(r)
 	}
@@ -459,8 +450,8 @@ func TestUpgradeScopeAndAudit(t *testing.T) {
 		}
 	}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "UPDATE customers SET responsible_staff_id=$2 WHERE id=$1", s.customer, caller.StaffID)
-	commit(t, tx)
+	dbtest.Exec(t, tx, "UPDATE customers SET responsible_staff_id=$2 WHERE id=$1", s.customer, caller.StaffID)
+	dbtest.Commit(t, tx)
 	for _, ch := range s.Channels() {
 		r := ch.Call(t, caller, "list_card_upgrades", map[string]any{"card_id": card["id"]})
 		if r.Status != 200 || len(r.Body["entries"].([]any)) != 1 {
@@ -478,8 +469,8 @@ func TestUpgradeTransferStore(t *testing.T) {
 	if err := tx.QueryRow(context.Background(), "INSERT INTO stores (tenant_id,name) VALUES ($1,'二店') RETURNING id", s.Res.TenantID).Scan(&store); err != nil {
 		t.Fatal(err)
 	}
-	exec(t, tx, "UPDATE staff SET store_id=$2 WHERE id=$1", staff, store)
-	commit(t, tx)
+	dbtest.Exec(t, tx, "UPDATE staff SET store_id=$2 WHERE id=$1", staff, store)
+	dbtest.Commit(t, tx)
 	to := s.call("create_card_type", typeInput("高级"), 200)
 	if r := s.HTTPWithToken(t, token, "upgrade_card", upgrade(a["id"], to["id"])); r.Status != 404 {
 		t.Fatal(r)
@@ -496,8 +487,8 @@ func TestUpgradeTransferStore(t *testing.T) {
 	}
 	// 同租户外店的单张卡也不能作为转出或转入卡。
 	tx = dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "UPDATE cards SET store_id=$2 WHERE id=$1", b["id"], store)
-	commit(t, tx)
+	dbtest.Exec(t, tx, "UPDATE cards SET store_id=$2 WHERE id=$1", b["id"], store)
+	dbtest.Commit(t, tx)
 	for _, in := range []map[string]any{transfer(a["id"], b["id"]), transfer(b["id"], a["id"])} {
 		s.call("transfer_card_balance", in, 404)
 	}
@@ -538,14 +529,14 @@ func TestOppositeTransfersOrderedLocks(t *testing.T) {
 		low, high = high, low
 	}
 	held := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, held, "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE", low)
+	dbtest.Exec(t, held, "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE", low)
 	done := make(chan optest.Result, 2)
 	// 低→高先排队；突变的高→低会持高卡排在它后面，释放低卡后形成死锁。
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "transfer_card_balance", transfer(low, high)) }()
 	waitCardWaiters(t, s, 1)
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "transfer_card_balance", transfer(high, low)) }()
 	waitCardWaiters(t, s, 2)
-	commit(t, held)
+	dbtest.Commit(t, held)
 	resultWithin(t, done)
 	resultWithin(t, done)
 }
@@ -560,14 +551,14 @@ func TestMergeTransferOrderedLocks(t *testing.T) {
 	keep := s.call("create_customer", map[string]any{}, 200)["customer"].(map[string]any)["id"]
 	// 改动索引列再改回，避免 HOT 保留低卡的旧索引位置，使堆扫描及顾客索引都先遇高卡。
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "UPDATE cards SET customer_id=$2 WHERE id=$1", low, keep)
-	commit(t, tx)
+	dbtest.Exec(t, tx, "UPDATE cards SET customer_id=$2 WHERE id=$1", low, keep)
+	dbtest.Commit(t, tx)
 	tx = dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "UPDATE cards SET customer_id=$2 WHERE id=$1", low, s.customer)
-	commit(t, tx)
+	dbtest.Exec(t, tx, "UPDATE cards SET customer_id=$2 WHERE id=$1", low, s.customer)
+	dbtest.Commit(t, tx)
 	assertSQL(t, s, `SELECT (array_agg(id))[1]=$2 FROM cards WHERE customer_id=$1`, s.customer, high)
 	held := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, held, "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE", low)
+	dbtest.Exec(t, held, "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE", low)
 	done := make(chan optest.Result, 2)
 	// 转余额先排低卡；无预锁的合并持高卡排在后面，释放低卡后形成死锁。
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "transfer_card_balance", transfer(low, high)) }()
@@ -576,7 +567,7 @@ func TestMergeTransferOrderedLocks(t *testing.T) {
 		done <- s.HTTPWithToken(t, s.Owner, "merge_customers", map[string]any{"keep_id": keep, "merged_id": s.customer})
 	}()
 	waitCardWaiters(t, s, 2)
-	commit(t, held)
+	dbtest.Commit(t, held)
 	resultWithin(t, done)
 	resultWithin(t, done)
 	assertSQL(t, s, `SELECT count(*)=2 AND bool_and(customer_id=$1) FROM cards`, keep)
@@ -596,16 +587,16 @@ func TestUpgradeReferenceLocks(t *testing.T) {
 			in := upgrade(card["id"], to["id"])
 			held := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 			if kind == "target" {
-				exec(t, held, "UPDATE card_types SET active=false WHERE id=$1", to["id"])
+				dbtest.Exec(t, held, "UPDATE card_types SET active=false WHERE id=$1", to["id"])
 			} else {
 				id, _ := s.Hire("员工", "002", "seller")
 				in["principal"], in["sales_staff_ids"] = "1.00", []any{id}
-				exec(t, held, "UPDATE staff SET active=false,deactivated_at=clock_timestamp() WHERE id=$1", id)
+				dbtest.Exec(t, held, "UPDATE staff SET active=false,deactivated_at=clock_timestamp() WHERE id=$1", id)
 			}
 			done := make(chan optest.Result, 1)
 			go func() { done <- s.HTTPWithToken(t, s.Owner, "upgrade_card", in) }()
 			dbtest.WaitForLockWait(t, s.Pool)
-			commit(t, held)
+			dbtest.Commit(t, held)
 			if r := <-done; r.Status != 409 {
 				t.Fatal(r)
 			}
@@ -616,7 +607,7 @@ func TestUpgradeRulesConcurrentCycle(t *testing.T) {
 	s := open(t)
 	to := s.call("create_card_type", typeInput("高级"), 200)
 	held := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, held, "SELECT pg_advisory_xact_lock(hashtextextended($1::text,130031))", s.Res.StoreID.String())
+	dbtest.Exec(t, held, "SELECT pg_advisory_xact_lock(hashtextextended($1::text,130031))", s.Res.StoreID.String())
 	done := make(chan optest.Result, 2)
 	go func() {
 		done <- s.HTTPWithToken(t, s.Owner, "create_card_upgrade_rule", rule(s.cardType, to["id"], "single_recharge", "1.00"))
@@ -625,7 +616,7 @@ func TestUpgradeRulesConcurrentCycle(t *testing.T) {
 		done <- s.HTTPWithToken(t, s.Owner, "create_card_upgrade_rule", rule(to["id"], s.cardType, "single_recharge", "1.00"))
 	}()
 	dbtest.WaitForLockWait(t, s.Pool)
-	commit(t, held)
+	dbtest.Commit(t, held)
 	counts := map[int]int{}
 	for range 2 {
 		select {
@@ -665,16 +656,16 @@ func TestUpgradeRuleReferenceLocks(t *testing.T) {
 			if target {
 				id = to["id"]
 			}
-			exec(t, held, "SELECT id FROM card_types WHERE id=$1 FOR NO KEY UPDATE", id)
+			dbtest.Exec(t, held, "SELECT id FROM card_types WHERE id=$1 FOR NO KEY UPDATE", id)
 			done := make(chan optest.Result, 1)
 			go func() {
 				done <- s.HTTPWithToken(t, s.Owner, "create_card_upgrade_rule", rule(s.cardType, to["id"], "single_recharge", "1.00"))
 			}()
 			dbtest.WaitForLockWait(t, s.Pool)
 			if target {
-				exec(t, held, "UPDATE card_types SET active=false WHERE id=$1", id)
+				dbtest.Exec(t, held, "UPDATE card_types SET active=false WHERE id=$1", id)
 			}
-			commit(t, held)
+			dbtest.Commit(t, held)
 			r := <-done
 			want := 200
 			if target {
@@ -692,11 +683,11 @@ func TestAutoUpgradeTargetLock(t *testing.T) {
 	to := s.call("create_card_type", typeInput("高级"), 200)
 	s.call("create_card_upgrade_rule", rule(s.cardType, to["id"], "single_recharge", "0.50"), 200)
 	held := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, held, "UPDATE card_types SET active=false WHERE id=$1", to["id"])
+	dbtest.Exec(t, held, "UPDATE card_types SET active=false WHERE id=$1", to["id"])
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "recharge_card", s.recharge(card["id"])) }()
 	dbtest.WaitForLockWait(t, s.Pool)
-	commit(t, held)
+	dbtest.Commit(t, held)
 	r := <-done
 	if r.Status != 200 || r.Body["card_type_id"] != s.cardType || r.Body["upgraded_to"] != nil {
 		t.Fatal(r)
@@ -711,8 +702,8 @@ func TestTransferAuditScope(t *testing.T) {
 	b := s.call("open_card", in, 200)
 	s.call("transfer_card_balance", transfer(a["id"], b["id"]), 200)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "UPDATE customers SET responsible_staff_id=$2 WHERE id=$1", s.customer, s.Res.OwnerID)
-	commit(t, tx)
+	dbtest.Exec(t, tx, "UPDATE customers SET responsible_staff_id=$2 WHERE id=$1", s.customer, s.Res.OwnerID)
+	dbtest.Commit(t, tx)
 	caller := s.MustCaller(s.Owner)
 	caller.Permissions = perm.All()
 	caller.Permissions[perm.CustomerView] = ops.Grant{Scope: ops.ScopeSelf}
@@ -748,8 +739,8 @@ func TestUpgradeRuleStore(t *testing.T) {
 	if err := tx.QueryRow(context.Background(), "INSERT INTO stores (tenant_id,name) VALUES ($1,'二店') RETURNING id", s.Res.TenantID).Scan(&store); err != nil {
 		t.Fatal(err)
 	}
-	exec(t, tx, "UPDATE staff SET store_id=$2 WHERE id=$1", staff, store)
-	commit(t, tx)
+	dbtest.Exec(t, tx, "UPDATE staff SET store_id=$2 WHERE id=$1", staff, store)
+	dbtest.Commit(t, tx)
 	for _, tc := range []struct {
 		op string
 		in any
@@ -760,5 +751,29 @@ func TestUpgradeRuleStore(t *testing.T) {
 		if got := s.HTTPWithToken(t, token, tc.op, tc.in); got.Status != 404 {
 			t.Fatal(got)
 		}
+	}
+}
+
+func TestTransferLocksAscending(t *testing.T) {
+	s := open(t)
+	a := s.call("open_card", s.opening(), 200)
+	b := s.call("open_card", s.opening(), 200)
+	low, high := a["id"].(string), b["id"].(string)
+	if low > high {
+		low, high = high, low
+	}
+	held := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	dbtest.Exec(t, held, "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE", low)
+	done := make(chan optest.Result, 1)
+	go func() { done <- s.HTTPWithToken(t, s.Owner, "transfer_card_balance", transfer(high, low)) }()
+	waitCardWaiters(t, s, 1)
+	// 等低卡时不能已持有高卡，否则会与按升序锁卡的顾客合并发生反向等待。
+	probe := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	_, lockErr := probe.Exec(context.Background(), "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE NOWAIT", high)
+	dbtest.Rollback(t, probe)
+	dbtest.Commit(t, held)
+	optest.WaitResult(t, done, 200)
+	if lockErr != nil {
+		t.Fatal("transfer locked the higher UUID before the lower UUID", lockErr)
 	}
 }

@@ -406,6 +406,33 @@ func (q *Queries) LockItem(ctx context.Context, arg LockItemParams) (Item, error
 	return i, err
 }
 
+const shareItem = `-- name: ShareItem :one
+SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at FROM items WHERE store_id=$1 AND id=$2 FOR SHARE
+`
+
+type ShareItemParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) ShareItem(ctx context.Context, arg ShareItemParams) (Item, error) {
+	row := q.db.QueryRow(ctx, shareItem, arg.StoreID, arg.ID)
+	var i Item
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Name,
+		&i.Price,
+		&i.Discountable,
+		&i.LaborFeeAmount,
+		&i.LaborFeePercent,
+		&i.Active,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const shareItemCardType = `-- name: ShareItemCardType :one
 SELECT id, tenant_id, store_id, name, kind, validity_kind, validity_date, validity_days, active, created_at FROM card_types WHERE store_id=$1 AND id=$2 FOR SHARE
 `

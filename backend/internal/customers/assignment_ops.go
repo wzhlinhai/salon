@@ -11,6 +11,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
+	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 
 // AssignCustomerResponsibleInput 是批量分配负责人或清空负责人的参数。
@@ -72,16 +73,12 @@ func registerAssignments(r *ops.Registry) {
 			if in.FromStaffID == in.ToStaffID {
 				return nil, ops.Rule("交接的两名员工不能相同")
 			}
-			ids := []uuid.UUID{in.FromStaffID, in.ToStaffID}
-			slices.SortFunc(ids, func(a, b uuid.UUID) int { return bytes.Compare(a[:], b[:]) })
-			for _, id := range ids {
-				st, err := env.Q.ShareCustomerStaff(ctx, id)
-				if err != nil {
-					return nil, rowError(err)
-				}
-				if id == in.ToStaffID && !st.Active {
-					return nil, ops.Rule("负责人必须是在职员工")
-				}
+			rows, err := staff.LockReferences(ctx, env.Q, env.Caller.StoreID, in.FromStaffID, in.ToStaffID)
+			if err != nil {
+				return nil, err
+			}
+			if !rows[in.ToStaffID].Active {
+				return nil, ops.Rule("负责人必须是在职员工")
 			}
 			items, err := change(ctx, env, "hand_over_customers", responsibleOf(in.FromStaffID), func(rows []dbgen.Customer) error {
 				for i := range rows {

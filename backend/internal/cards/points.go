@@ -51,14 +51,12 @@ func earnPoints(ctx context.Context, env ops.Env, ledger dbgen.CardLedger, princ
 	if earned < 1 {
 		return nil
 	}
-	before, err := env.Q.LatestCardPoints(ctx, ledger.CardID)
+	current, err := cardView(ctx, env, ledger.CardID)
 	if err != nil {
 		return err
 	}
-	if int64(before)+earned > 99999999 {
-		return ops.Rule("积分超过上限")
-	}
-	return env.Q.AddCardPoints(ctx, dbgen.AddCardPointsParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: ledger.CardID, Kind: ledger.Kind, Before: before, Delta: int32(earned), After: before + int32(earned), CardLedgerID: &ledger.ID, BusinessDate: ledger.BusinessDate, ActorID: env.Caller.StaffID})
+	before := current.Points
+	return writePoints(ctx, env, dbgen.AddCardPointsParams{CardID: ledger.CardID, Kind: ledger.Kind, CardLedgerID: &ledger.ID, BusinessDate: ledger.BusinessDate}, before, before+int32(earned))
 }
 
 func fillPoints(ctx context.Context, env ops.Env, cards []Card) error {
@@ -103,5 +101,5 @@ func listCardPoints(ctx context.Context, env ops.Env, in *ListCardPointsInput) (
 }
 
 func adjustPoints(ctx context.Context, env ops.Env, cardID, adjustmentID uuid.UUID, before, after int32, day time.Time) error {
-	return env.Q.AddCardPoints(ctx, dbgen.AddCardPointsParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: cardID, Kind: "adjust", Before: before, Delta: after - before, After: after, AdjustmentID: &adjustmentID, BusinessDate: pgtype.Date{Time: day, Valid: true}, ActorID: env.Caller.StaffID})
+	return writePoints(ctx, env, dbgen.AddCardPointsParams{CardID: cardID, Kind: "adjust", AdjustmentID: &adjustmentID, BusinessDate: pgtype.Date{Time: day, Valid: true}}, before, after)
 }

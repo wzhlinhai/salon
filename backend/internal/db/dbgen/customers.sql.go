@@ -509,6 +509,35 @@ func (q *Queries) SearchCustomers(ctx context.Context, arg SearchCustomersParams
 	return items, nil
 }
 
+const shareCustomer = `-- name: ShareCustomer :one
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at FROM customers WHERE store_id=$1 AND id=$2 FOR SHARE
+`
+
+type ShareCustomerParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) ShareCustomer(ctx context.Context, arg ShareCustomerParams) (Customer, error) {
+	row := q.db.QueryRow(ctx, shareCustomer, arg.StoreID, arg.ID)
+	var i Customer
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Name,
+		&i.Phone,
+		&i.Gender,
+		&i.SourceID,
+		&i.ResponsibleStaffID,
+		&i.Note,
+		&i.MergedInto,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const shareCustomerSource = `-- name: ShareCustomerSource :one
 SELECT id, tenant_id, store_id, name, active FROM customer_sources WHERE id = $1 FOR SHARE
 `
@@ -523,34 +552,6 @@ func (q *Queries) ShareCustomerSource(ctx context.Context, id uuid.UUID) (Custom
 		&i.StoreID,
 		&i.Name,
 		&i.Active,
-	)
-	return i, err
-}
-
-const shareCustomerStaff = `-- name: ShareCustomerStaff :one
-SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until FROM staff WHERE id = $1 FOR SHARE
-`
-
-// 共享锁阻止并发停用，同时兼容审计和顾客外键检查的 KEY SHARE 锁。
-func (q *Queries) ShareCustomerStaff(ctx context.Context, id uuid.UUID) (Staff, error) {
-	row := q.db.QueryRow(ctx, shareCustomerStaff, id)
-	var i Staff
-	err := row.Scan(
-		&i.ID,
-		&i.TenantID,
-		&i.StoreID,
-		&i.Name,
-		&i.Number,
-		&i.LevelID,
-		&i.PositionID,
-		&i.LoginAccount,
-		&i.PasswordHash,
-		&i.Active,
-		&i.DeactivatedAt,
-		&i.CreatedAt,
-		&i.TokenVersion,
-		&i.FailedLogins,
-		&i.LockedUntil,
 	)
 	return i, err
 }

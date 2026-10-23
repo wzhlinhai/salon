@@ -38,3 +38,10 @@ func (c *Change) Scan(src any) error { return scanDecimal(&c.value, src, changeR
 
 // Sub 返回目标金额与原金额的精确差额。
 func (a Amount) Sub(before Amount) Change { return Change{value: a.value.Sub(before.value)} }
+
+// Apply 将有符号变动加到金额上，结果为负或超过金额上限时返回错误。
+func (a Amount) Apply(delta Change) (Amount, error) {
+	var out Amount
+	err := out.Scan(a.value.Add(delta.value).StringFixed(2))
+	return out, err
+}

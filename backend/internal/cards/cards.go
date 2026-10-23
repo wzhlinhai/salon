@@ -3,8 +3,6 @@ package cards
 import (
 	"context"
 	"errors"
-	"slices"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,6 +16,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
+	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 
 // Register 声明卡类型、开卡、充值和卡流水操作。
@@ -51,22 +50,25 @@ func listCardTypes(ctx context.Context, env ops.Env, _ *ListCardTypesInput) (*Ca
 	return out, nil
 }
 func lockSalesStaff(ctx context.Context, env ops.Env, ids []uuid.UUID) error {
-	ordered := slices.Clone(ids)
-	slices.SortFunc(ordered, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
-	if len(ids) < 1 || len(ids) > 10 || len(slices.Compact(ordered)) != len(ids) {
+	if len(ids) < 1 || len(ids) > 10 {
 		return ops.Rule("请选择一到十名不同的业绩归属人")
 	}
-	for _, id := range ordered {
-		staff, err := env.Q.ShareCustomerStaff(ctx, id)
-		if errors.Is(err, pgx.ErrNoRows) || (err == nil && (!staff.Active || staff.StoreID != env.Caller.StoreID)) {
+	seen := map[uuid.UUID]bool{}
+	for _, id := range ids {
+		if seen[id] {
+			return ops.Rule("请选择一到十名不同的业绩归属人")
+		}
+		seen[id] = true
+	}
+	if err := staff.LockAssignable(ctx, env.Q, env.Caller.StoreID, ids...); err != nil {
+		if errors.Is(err, staff.ErrNotAssignable) {
 			return ops.Rule("业绩归属人必须是本店在职员工")
 		}
-		if err != nil {
-			return err
-		}
+		return err
 	}
 	return nil
 }
+
 func canView(ctx context.Context, env ops.Env, id uuid.UUID) error {
 	c, err := env.Q.GetCustomer(ctx, id)
 	if err != nil {
@@ -100,18 +102,12 @@ func openCardAt(ctx context.Context, env ops.Env, in *OpenCardInput, now time.Ti
 	if err := lockSalesStaff(ctx, env, in.SalesStaffIDs); err != nil {
 		return nil, err
 	}
-	customer, err := env.Q.ShareCardCustomer(ctx, dbgen.ShareCardCustomerParams{StoreID: env.Caller.StoreID, ID: in.CustomerID})
+	_, err := customers.LockReference(ctx, env, in.CustomerID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ops.Rule("没有本店顾客")
 	}
 	if err != nil {
 		return nil, err
-	}
-	if !customers.CanView(env.Caller, customer) {
-		return nil, ops.ErrNotFound
-	}
-	if customer.MergedInto != nil {
-		return nil, ops.Rule("该顾客已合并到另一位顾客")
 	}
 	ct, err := env.Q.ShareCardType(ctx, dbgen.ShareCardTypeParams{StoreID: env.Caller.StoreID, ID: in.CardTypeID})
 	if err != nil {
@@ -157,58 +153,28 @@ func rechargeCard(ctx context.Context, env ops.Env, in *RechargeInput) (*Recharg
 	if err := lockSalesStaff(ctx, env, in.SalesStaffIDs); err != nil {
 		return nil, err
 	}
-	card, err := env.Q.LockCard(ctx, dbgen.LockCardParams{StoreID: env.Caller.StoreID, ID: in.CardID})
+	var upgraded *CardUpgradeType
+	out, err := changeOne(ctx, env, "recharge_card", in.CardID, func(c cardChange, day time.Time) error {
+		if c.before.Kind == CountCard {
+			return ops.Rule("次卡不能充值")
+		}
+		if in.Principal.Cmp(money.Amount{}) == 0 && in.Bonus.Cmp(money.Amount{}) == 0 {
+			return ops.Rule("充值本金与赠送金合计必须大于零")
+		}
+		ledger, err := appendLedger(ctx, env, c.row.ID, "recharge", c.before.Principal, c.before.Bonus, in.TopUpInput, day)
+		if err != nil {
+			return err
+		}
+		upgraded, err = autoUpgradeCard(ctx, env, c.row, in.Principal, ledger.ID, day)
+		return err
+	})
 	if err != nil {
-		return nil, rowError(err)
-	}
-	if err := canView(ctx, env, card.CustomerID); err != nil {
-		return nil, err
-	}
-	before, err := cardView(ctx, env, card.ID)
-	if err != nil {
-		return nil, err
-	}
-	if before.Kind == CountCard {
-		return nil, ops.Rule("次卡不能充值")
-	}
-	if in.Principal.Cmp(money.Amount{}) == 0 && in.Bonus.Cmp(money.Amount{}) == 0 {
-		return nil, ops.Rule("充值本金与赠送金合计必须大于零")
-	}
-	previous, err := env.Q.LatestCardLedger(ctx, card.ID)
-	if err != nil {
-		return nil, err
-	}
-	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
-	if err != nil {
-		return nil, err
-	}
-	ledger, err := appendLedger(ctx, env, card.ID, "recharge", previous.PrincipalAfter, previous.BonusAfter, in.TopUpInput, day)
-	if err != nil {
-		return nil, err
-	}
-	upgraded, err := autoUpgradeCard(ctx, env, card, in.Principal, ledger.ID, day)
-	if err != nil {
-		return nil, err
-	}
-	out, err := cardView(ctx, env, card.ID)
-	if err != nil {
-		return nil, err
-	}
-	if err := audit.Record(ctx, env, "recharge_card", audit.CardTarget(card.ID, card.CustomerID), before, out); err != nil {
 		return nil, err
 	}
 	return &RechargeResult{Card: *out, UpgradedTo: upgraded}, nil
 }
 func appendLedger(ctx context.Context, env ops.Env, id uuid.UUID, kind string, principal, bonus money.Amount, in TopUpInput, day time.Time) (dbgen.CardLedger, error) {
-	pa, err := principal.Add(in.Principal)
-	if err != nil {
-		return dbgen.CardLedger{}, ops.Rule("卡余额超过上限")
-	}
-	ba, err := bonus.Add(in.Bonus)
-	if err != nil {
-		return dbgen.CardLedger{}, ops.Rule("卡余额超过上限")
-	}
-	row, err := env.Q.AddCardLedger(ctx, dbgen.AddCardLedgerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: id, Kind: kind, PrincipalBefore: principal, PrincipalDelta: in.Principal.Sub(money.Amount{}), PrincipalAfter: pa, BonusBefore: bonus, BonusDelta: in.Bonus.Sub(money.Amount{}), BonusAfter: ba, BusinessDate: pgtype.Date{Time: day, Valid: true}, ActorID: env.Caller.StaffID})
+	row, err := writeBalance(ctx, env, id, kind, principal, bonus, in.Principal.Sub(money.Amount{}), in.Bonus.Sub(money.Amount{}), day)
 	if err != nil {
 		return dbgen.CardLedger{}, err
 	}

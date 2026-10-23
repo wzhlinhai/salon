@@ -259,8 +259,8 @@ func (s *fixture) openAt(caller ops.Caller, at time.Time, line orders.OrderItemI
 func TestEditWindow(t *testing.T) {
 	s := open(t)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, `INSERT INTO setting_changes (tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES ($1,$2,'business_day_end','"02:00"',false,'"00:00"',true,'2000-01-01',$3)`, s.Res.TenantID, s.Res.StoreID, s.Res.OwnerID)
-	commit(t, tx)
+	dbtest.Exec(t, tx, `INSERT INTO setting_changes (tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES ($1,$2,'business_day_end','"02:00"',false,'"00:00"',true,'2000-01-01',$3)`, s.Res.TenantID, s.Res.StoreID, s.Res.OwnerID)
+	dbtest.Commit(t, tx)
 	tx = dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	today, err := settings.BusinessDate(context.Background(), dbgen.New(tx), s.Res.StoreID, time.Now())
 	if err != nil {
@@ -381,9 +381,9 @@ func TestEditDatabaseColumns(t *testing.T) {
 		}
 	}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "UPDATE orders SET customer_id=customer_id,status=status,merged_into=merged_into")
-	exec(t, tx, "UPDATE order_items SET order_id=order_id,price=price,price_source=price_source,level_id=level_id,reprice_reason=reprice_reason,removed_at=removed_at,removed_by=removed_by")
-	exec(t, tx, "UPDATE order_item_positions SET staff_id=staff_id")
+	dbtest.Exec(t, tx, "UPDATE orders SET customer_id=customer_id,status=status,merged_into=merged_into")
+	dbtest.Exec(t, tx, "UPDATE order_items SET order_id=order_id,price=price,price_source=price_source,level_id=level_id,reprice_reason=reprice_reason,removed_at=removed_at,removed_by=removed_by")
+	dbtest.Exec(t, tx, "UPDATE order_item_positions SET staff_id=staff_id")
 	if err := tx.Rollback(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -406,8 +406,8 @@ func TestEditItemLock(t *testing.T) {
 	in := editInput(o)
 	in["staff"] = []orders.OrderItemStaffInput{{Slot: 1, StaffID: s.employee}}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "SELECT id FROM items WHERE id=$1 FOR NO KEY UPDATE", s.item)
-	exec(t, tx, "UPDATE item_level_prices SET price=222.22 WHERE item_id=$1 AND level_id=$2", s.item, s.level)
+	dbtest.Exec(t, tx, "SELECT id FROM items WHERE id=$1 FOR NO KEY UPDATE", s.item)
+	dbtest.Exec(t, tx, "UPDATE item_level_prices SET price=222.22 WHERE item_id=$1 AND level_id=$2", s.item, s.level)
 	done := make(chan optest.Result, 1)
 	caller := s.MustCaller(s.Owner)
 	go func() { done <- s.HTTP(t, &caller, "set_order_item_staff", editArgs("set_order_item_staff", in)) }()
@@ -417,7 +417,7 @@ func TestEditItemLock(t *testing.T) {
 		t.Fatal("edit did not wait for item", r)
 	default:
 	}
-	commit(t, tx)
+	dbtest.Commit(t, tx)
 	r := <-done
 	if r.Status != 200 || firstLine(r.Body)["price"] != "222.22" {
 		t.Fatal(r)
@@ -434,7 +434,7 @@ func TestEditOrderLock(t *testing.T) {
 	in := editInput(o)
 	in["staff"] = []orders.OrderItemStaffInput{{Slot: 1, StaffID: s.employee}}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "SELECT id FROM items WHERE id=$1 FOR NO KEY UPDATE", s.item)
+	dbtest.Exec(t, tx, "SELECT id FROM items WHERE id=$1 FOR NO KEY UPDATE", s.item)
 	done := make(chan optest.Result, 2)
 	caller := s.MustCaller(s.Owner)
 	go func() { done <- s.HTTP(t, &caller, "set_order_item_staff", editArgs("set_order_item_staff", in)) }()
@@ -460,7 +460,7 @@ func TestEditOrderLock(t *testing.T) {
 		case <-ticker.C:
 		}
 	}
-	commit(t, tx)
+	dbtest.Commit(t, tx)
 	for range 2 {
 		if r := <-done; r.Status != 200 {
 			t.Fatal(r)
@@ -490,9 +490,9 @@ func TestEditAvoidsUnchangedLocks(t *testing.T) {
 		}
 		caller := s.MustCaller(s.Owner)
 		tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-		exec(t, tx, "SELECT id FROM items WHERE id=$1 FOR NO KEY UPDATE", s.item)
+		dbtest.Exec(t, tx, "SELECT id FROM items WHERE id=$1 FOR NO KEY UPDATE", s.item)
 		if !manual {
-			exec(t, tx, "SELECT slot FROM order_item_positions WHERE order_item_id=$1 AND slot=1 FOR NO KEY UPDATE", firstLine(o)["id"])
+			dbtest.Exec(t, tx, "SELECT slot FROM order_item_positions WHERE order_item_id=$1 AND slot=1 FOR NO KEY UPDATE", firstLine(o)["id"])
 		}
 		done := make(chan optest.Result, 1)
 		go func() { done <- s.HTTP(t, &caller, "set_order_item_staff", editArgs("set_order_item_staff", in)) }()
@@ -520,12 +520,12 @@ func TestEditStaffLock(t *testing.T) {
 	in["staff"] = []orders.OrderItemStaffInput{{Slot: 2, StaffID: s.employee}}
 	caller := s.MustCaller(s.Owner)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "SELECT id FROM staff WHERE id=$1 FOR NO KEY UPDATE", s.employee)
-	exec(t, tx, "UPDATE staff SET active=false,deactivated_at=clock_timestamp() WHERE id=$1", s.employee)
+	dbtest.Exec(t, tx, "SELECT id FROM staff WHERE id=$1 FOR NO KEY UPDATE", s.employee)
+	dbtest.Exec(t, tx, "UPDATE staff SET active=false,deactivated_at=clock_timestamp() WHERE id=$1", s.employee)
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTP(t, &caller, "set_order_item_staff", editArgs("set_order_item_staff", in)) }()
 	dbtest.WaitForLockWait(t, s.Pool)
-	commit(t, tx)
+	dbtest.Commit(t, tx)
 	if r := <-done; r.Status != 409 {
 		t.Fatal(r)
 	}
@@ -586,8 +586,8 @@ func TestEditWindowBusinessDate(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, `INSERT INTO setting_changes (tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES ($1,$2,'business_day_end','"02:00"',false,'"00:00"',true,'2000-01-01',$3)`, s.Res.TenantID, s.Res.StoreID, s.Res.OwnerID)
-	commit(t, tx)
+	dbtest.Exec(t, tx, `INSERT INTO setting_changes (tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES ($1,$2,'business_day_end','"02:00"',false,'"00:00"',true,'2000-01-01',$3)`, s.Res.TenantID, s.Res.StoreID, s.Res.OwnerID)
+	dbtest.Commit(t, tx)
 	yesterday := time.Date(2026, time.May, 9, 12, 0, 0, 0, settings.Location)
 	caller := s.MustCaller(s.Owner)
 	o := s.openAt(caller, yesterday, s.line())
@@ -615,7 +615,7 @@ func TestEditWindowBusinessDate(t *testing.T) {
 			if tc.hour == 1 && now.UTC().Format(time.DateOnly) == now.In(settings.Location).Format(time.DateOnly) {
 				t.Fatal("fixture must cross UTC/local dates", now)
 			}
-			if err := orders.CheckEditForTest(ctx, ops.Env{Caller: caller, Q: q}, order, now); !errors.Is(err, tc.want) {
+			if err := orders.CheckEditForTest(ctx, ops.Env{Caller: caller, Grant: caller.Grant(perm.OrderEdit), Q: q}, order, now); !errors.Is(err, tc.want) {
 				t.Fatalf("checkEdit at %s: got %v, want %v", now, err, tc.want)
 			}
 		})
@@ -633,7 +633,7 @@ func TestRequoteLockOrder(t *testing.T) {
 	caller := s.MustCaller(s.Owner)
 	ctx := context.Background()
 	itemTx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, itemTx, "SELECT id FROM items WHERE id=$1 FOR NO KEY UPDATE", s.item)
+	dbtest.Exec(t, itemTx, "SELECT id FROM items WHERE id=$1 FOR NO KEY UPDATE", s.item)
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTP(t, &caller, "set_order_item_staff", editArgs("set_order_item_staff", in)) }()
 	dbtest.WaitForLockWait(t, s.Pool)
@@ -642,7 +642,7 @@ func TestRequoteLockOrder(t *testing.T) {
 	if err := staffTx.Rollback(ctx); err != nil {
 		t.Fatal(err)
 	}
-	commit(t, itemTx)
+	dbtest.Commit(t, itemTx)
 	r := <-done
 	if staffLockErr != nil {
 		t.Fatalf("staff locked before the item lock was acquired: %v", staffLockErr)
@@ -650,4 +650,20 @@ func TestRequoteLockOrder(t *testing.T) {
 	if r.Status != 200 || firstLine(r.Body)["price"] != "150.00" || firstLine(r.Body)["positions"].([]any)[0].(map[string]any)["staff_id"] != s.employee.String() {
 		t.Fatal(r)
 	}
+}
+
+func TestAddUsesCreateGrant(t *testing.T) {
+	s := open(t)
+	o := s.openAt(s.MustCaller(s.Owner), time.Now().AddDate(0, 0, -10), s.line())
+	caller := s.MustCaller(s.Owner)
+	caller.StaffID = s.employee
+	caller.Permissions = map[ops.Permission]ops.Grant{
+		perm.OrderCreate: {},
+		perm.OrderEdit:   {Scope: ops.ScopeSelf, WindowDays: new(0)},
+	}
+	r := s.HTTP(t, &caller, "add_order_item", orders.AddOrderItemInput{OrderID: id(o["id"]), Item: s.line()})
+	if r.Status != 200 || len(lines(r.Body)) != 2 {
+		t.Fatal(r)
+	}
+	s.assertEditAudit("add_order_item", o, r.Body)
 }

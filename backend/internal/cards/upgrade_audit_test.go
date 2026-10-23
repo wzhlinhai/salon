@@ -49,8 +49,8 @@ func checkCardUpgradeAudit(t *testing.T, automatic bool) {
 		assertSQL(t, s, `SELECT count(*)=1 AND bool_and(target_kind='card' AND target_id=$2 AND customer_id=$3 AND before->>'card_type_id'=$4 AND after->>'card_type_id'=$5) FROM audit_log WHERE action=$1 AND target_id=$2`, action, card["id"], card["customer_id"], s.cardType, target["id"])
 	}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "UPDATE customers SET responsible_staff_id=$2 WHERE id=$1", s.customer, s.Res.OwnerID)
-	commit(t, tx)
+	dbtest.Exec(t, tx, "UPDATE customers SET responsible_staff_id=$2 WHERE id=$1", s.customer, s.Res.OwnerID)
+	dbtest.Commit(t, tx)
 	owner := s.MustCaller(s.Owner)
 	self := s.MustCaller(s.Owner)
 	self.Permissions = perm.All()

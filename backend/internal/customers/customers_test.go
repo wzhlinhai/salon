@@ -28,11 +28,7 @@ func open(t *testing.T) *shop { return &shop{optest.OpenShop(t), t} }
 
 func (s *shop) call(op string, args any, status int) map[string]any {
 	s.t.Helper()
-	r := s.HTTPWithToken(s.t, s.Owner, op, args)
-	if r.Status != status {
-		s.t.Fatalf("%s = %d %v, want %d", op, r.Status, r.Body, status)
-	}
-	return r.Body
+	return s.Call(s.t, s.Owner, op, args, status).Body
 }
 
 func (s *shop) create(args map[string]any) map[string]any {
@@ -319,16 +315,7 @@ func TestCustomerSources(t *testing.T) {
 
 func snapshot(t *testing.T, s *shop) string {
 	t.Helper()
-	var state string
-	err := s.Pool.QueryRow(context.Background(), `SELECT jsonb_build_array(
- (SELECT coalesce(jsonb_agg(to_jsonb(c) ORDER BY id),'[]') FROM customers c),
- (SELECT coalesce(jsonb_agg(to_jsonb(l) ORDER BY id),'[]') FROM customer_safety_labels l),
- (SELECT coalesce(jsonb_agg(to_jsonb(s) ORDER BY id),'[]') FROM customer_sources s),
- (SELECT coalesce(jsonb_agg(to_jsonb(a) ORDER BY id),'[]') FROM audit_log a))::text`).Scan(&state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return state
+	return dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "customers", "customer_safety_labels", "customer_sources", "audit_log")
 }
 
 func TestCustomerWritePermissionsAndAI(t *testing.T) {
@@ -526,6 +513,36 @@ func TestCustomerDefaultRolePermissions(t *testing.T) {
 			if g, ok := c.Permissions[p]; ok && (g.Scope != "" || g.WindowDays != nil) {
 				t.Fatalf("%s %s: unexpected limits %+v", name, p, g)
 			}
+		}
+	}
+}
+
+func TestResponsibleMustBeFromThisStore(t *testing.T) {
+	s := open(t)
+	store := uuid.New()
+	if _, err := s.Pool.Exec(context.Background(), "INSERT INTO stores (id,tenant_id,name) VALUES ($1,$2,'另一门店')", store, s.Res.TenantID); err != nil {
+		t.Fatal(err)
+	}
+	caller := s.MustCaller(s.Owner)
+	caller.StoreID = store
+	foreign := s.HTTP(t, &caller, "create_staff", map[string]any{"name": "外店员工", "number": "002", "role_ids": []uuid.UUID{}})
+	if foreign.Status != 200 {
+		t.Fatal(foreign)
+	}
+	customer := s.create(map[string]any{})
+	for _, tc := range []struct {
+		op     string
+		in     any
+		status int
+	}{
+		{"assign_customer_responsible", map[string]any{"customer_ids": []any{customer["id"]}, "staff_id": foreign.Body["id"]}, 409},
+		{"hand_over_customers", map[string]any{"from_staff_id": s.Res.OwnerID, "to_staff_id": foreign.Body["id"]}, 404},
+		{"hand_over_customers", map[string]any{"from_staff_id": foreign.Body["id"], "to_staff_id": s.Res.OwnerID}, 404},
+	} {
+		before := snapshot(t, s)
+		s.call(tc.op, tc.in, tc.status)
+		if snapshot(t, s) != before {
+			t.Fatal("refused cross-store assignment changed data", tc.op)
 		}
 	}
 }

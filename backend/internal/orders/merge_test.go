@@ -109,8 +109,8 @@ func TestMergeRules(t *testing.T) {
 	different := s.call("open_order", s.opening(s.line()), 200)
 	old := s.openAt(caller, time.Now().AddDate(0, 0, -2), s.line())
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "UPDATE orders SET customer_id=$1 WHERE id=$2", s.customer, old["id"])
-	commit(t, tx)
+	dbtest.Exec(t, tx, "UPDATE orders SET customer_id=$1 WHERE id=$2", s.customer, old["id"])
+	dbtest.Commit(t, tx)
 	foreignCaller := caller
 	foreignCaller.StoreID = s.otherStore()
 	foreign := s.HTTP(t, &foreignCaller, "open_order", s.opening())
@@ -176,8 +176,8 @@ func TestMergeEditScopeWindow(t *testing.T) {
 	caller = s.MustCaller(s.Owner)
 	old := s.openAt(caller, time.Now().AddDate(0, 0, -2), s.line())
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "UPDATE orders SET customer_id=$1 WHERE id=$2", s.customer, old["id"])
-	commit(t, tx)
+	dbtest.Exec(t, tx, "UPDATE orders SET customer_id=$1 WHERE id=$2", s.customer, old["id"])
+	dbtest.Commit(t, tx)
 	caller.Permissions[perm.OrderEdit] = ops.Grant{Scope: ops.ScopeStore, WindowDays: new(0)}
 	// 只放旧单在列表里；先检查窗口，不能先报营业日不同。
 	s.assertMergeRefused(caller, mergeInput(a, old), 403, "")
@@ -210,8 +210,8 @@ func TestMergeDatabaseConstraints(t *testing.T) {
 		}
 	}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "UPDATE order_items SET order_id=$1 WHERE order_id=$2", b["id"], a["id"])
-	commit(t, tx)
+	dbtest.Exec(t, tx, "UPDATE order_items SET order_id=$1 WHERE order_id=$2", b["id"], a["id"])
+	dbtest.Commit(t, tx)
 }
 
 func TestOrderMergeMigrationDown(t *testing.T) {
@@ -226,7 +226,7 @@ func TestOrderMergeMigrationDown(t *testing.T) {
 	if err := tx.QueryRow(context.Background(), "SELECT count(*) FROM orders WHERE status='open'").Scan(&count); err != nil || count != 2 {
 		t.Fatal(count, err)
 	}
-	exec(t, tx, "UPDATE orders SET gender=gender")
+	dbtest.Exec(t, tx, "UPDATE orders SET gender=gender")
 	if err := tx.QueryRow(context.Background(), "SELECT count(*) FROM information_schema.columns WHERE table_name='orders' AND column_name='merged_into'").Scan(&count); err != nil || count != 0 {
 		t.Fatal(count, err)
 	}
@@ -271,14 +271,14 @@ func TestConcurrentMerges(t *testing.T) {
 		a, b = b, a
 	}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "SELECT id FROM orders WHERE id=$1 FOR NO KEY UPDATE", a["id"])
+	dbtest.Exec(t, tx, "SELECT id FROM orders WHERE id=$1 FOR NO KEY UPDATE", a["id"])
 	caller := s.MustCaller(s.Owner)
 	done := make(chan optest.Result, 2)
 	go func() { done <- s.HTTP(t, &caller, "merge_orders", mergeInput(a, b)) }()
 	waitCount(t, s, 1)
 	go func() { done <- s.HTTP(t, &caller, "merge_orders", mergeInput(b, a)) }()
 	waitCount(t, s, 2)
-	commit(t, tx)
+	dbtest.Commit(t, tx)
 	statuses := map[int]int{}
 	for range 2 {
 		select {
@@ -304,7 +304,7 @@ func TestMergeBlocksAdd(t *testing.T) {
 		a, b = b, a
 	}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "SELECT id FROM orders WHERE id=$1 FOR NO KEY UPDATE", a["id"])
+	dbtest.Exec(t, tx, "SELECT id FROM orders WHERE id=$1 FOR NO KEY UPDATE", a["id"])
 	caller := s.MustCaller(s.Owner)
 	mergeDone, addDone := make(chan optest.Result, 1), make(chan optest.Result, 1)
 	go func() { mergeDone <- s.HTTP(t, &caller, "merge_orders", mergeInput(a, b)) }()
@@ -313,7 +313,7 @@ func TestMergeBlocksAdd(t *testing.T) {
 		addDone <- s.HTTP(t, &caller, "add_order_item", orders.AddOrderItemInput{OrderID: id(b["id"]), Item: s.line()})
 	}()
 	waitCount(t, s, 2)
-	commit(t, tx)
+	dbtest.Commit(t, tx)
 	if r := <-mergeDone; r.Status != 200 {
 		t.Fatal(r)
 	}
@@ -350,7 +350,7 @@ func TestMergeWaitsForAdd(t *testing.T) {
 	s := open(t)
 	a, b := s.customerOrder(), s.customerOrder()
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "SELECT id FROM items WHERE id=$1 FOR NO KEY UPDATE", s.item)
+	dbtest.Exec(t, tx, "SELECT id FROM items WHERE id=$1 FOR NO KEY UPDATE", s.item)
 	caller := s.MustCaller(s.Owner)
 	addDone, mergeDone := make(chan optest.Result, 1), make(chan optest.Result, 1)
 	go func() {
@@ -359,7 +359,7 @@ func TestMergeWaitsForAdd(t *testing.T) {
 	waitCount(t, s, 1)
 	go func() { mergeDone <- s.HTTP(t, &caller, "merge_orders", mergeInput(a, b)) }()
 	waitCount(t, s, 2)
-	commit(t, tx)
+	dbtest.Commit(t, tx)
 	if r := <-addDone; r.Status != 200 {
 		t.Fatal(r)
 	}
@@ -377,7 +377,7 @@ func TestMergeLineStore(t *testing.T) {
 	if err := tx.QueryRow(context.Background(), `INSERT INTO order_items (tenant_id,store_id,order_id,item_id,item_name,price,price_source,added_by) VALUES ($1,$2,$3,$4,'别店项目',1,'standard',$5) RETURNING id`, s.Res.TenantID, store, b["id"], s.item, s.Res.OwnerID).Scan(&lineID); err != nil {
 		t.Fatal(err)
 	}
-	commit(t, tx)
+	dbtest.Commit(t, tx)
 	s.call("merge_orders", mergeInput(a, b), 200)
 	tx = dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	var orderID uuid.UUID
@@ -398,7 +398,7 @@ func TestCustomerMergeOrderLockOrder(t *testing.T) {
 	customer := s.call("create_customer", map[string]any{"name": "保留顾客"}, 200)["customer"].(map[string]any)["id"]
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	// 两条路径都应先等较小的单；顾客改挂不能提前拿较大的单锁。
-	exec(t, tx, "SELECT id FROM orders WHERE id=$1 FOR NO KEY UPDATE", a["id"])
+	dbtest.Exec(t, tx, "SELECT id FROM orders WHERE id=$1 FOR NO KEY UPDATE", a["id"])
 	caller := s.MustCaller(s.Owner)
 	customersDone, ordersDone := make(chan optest.Result, 1), make(chan optest.Result, 1)
 	go func() {
@@ -412,7 +412,7 @@ func TestCustomerMergeOrderLockOrder(t *testing.T) {
 	}
 	go func() { ordersDone <- s.HTTP(t, &caller, "merge_orders", mergeInput(a, b)) }()
 	waitCount(t, s, 2)
-	commit(t, tx)
+	dbtest.Commit(t, tx)
 	cr, or := <-customersDone, <-ordersDone
 	if lockErr != nil || cr.Status != 200 || or.Status != 200 || or.Body["customer_id"] != customer {
 		t.Fatal(lockErr, cr, or)

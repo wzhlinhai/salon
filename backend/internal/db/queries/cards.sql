@@ -17,9 +17,6 @@ SELECT * FROM card_types WHERE store_id=$1 AND id=$2 FOR SHARE;
 -- name: UpdateCardType :one
 UPDATE card_types SET name=$2,kind=$3,validity_kind=$4,validity_date=$5,validity_days=$6,active=$7 WHERE id=$1 RETURNING *;
 
--- name: ShareCardCustomer :one
-SELECT * FROM customers WHERE store_id=$1 AND id=$2 FOR SHARE;
-
 -- name: CreateCard :one
 INSERT INTO cards (tenant_id,store_id,customer_id,card_type_id,opened_at,expires_on,created_by)
 VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *;
@@ -29,9 +26,6 @@ SELECT * FROM cards WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE;
 
 -- name: GetCard :one
 SELECT * FROM cards WHERE store_id=$1 AND id=$2;
-
--- name: LatestCardLedger :one
-SELECT * FROM card_ledger WHERE card_id=$1 ORDER BY at DESC,id DESC LIMIT 1;
 
 -- name: AddCardLedger :one
 INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id)
@@ -88,9 +82,6 @@ ORDER BY a.at DESC,a.id DESC LIMIT sqlc.arg(row_limit);
 -- name: ListCardTypeItems :many
 SELECT sqlc.embed(ci), i.name AS item_name FROM card_type_items ci JOIN items i ON i.id=ci.item_id
 WHERE ci.card_type_id=ANY(sqlc.arg(type_ids)::uuid[]) ORDER BY ci.card_type_id,ci.item_id;
-
--- name: ShareCatalogItem :one
-SELECT * FROM items WHERE store_id=$1 AND id=$2 FOR SHARE;
 
 -- name: CardTypeHasCards :one
 SELECT EXISTS(SELECT 1 FROM cards WHERE card_type_id=$1);
@@ -174,19 +165,12 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9);
 -- name: LockMergedCustomerCards :many
 SELECT id FROM cards WHERE customer_id=$1 ORDER BY id FOR NO KEY UPDATE;
 
--- name: AddCardTransferLedger :one
-INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id)
-VALUES (sqlc.arg(tenant_id),sqlc.arg(store_id),sqlc.arg(card_id),sqlc.arg(kind),sqlc.arg(principal_before),sqlc.arg(principal_delta),sqlc.arg(principal_before)::numeric+sqlc.arg(principal_delta)::numeric,sqlc.arg(bonus_before),sqlc.arg(bonus_delta),sqlc.arg(bonus_before)::numeric+sqlc.arg(bonus_delta)::numeric,sqlc.arg(business_date),sqlc.arg(actor_id)) RETURNING *;
-
 -- name: CardTypeHasUpgradeRules :one
 SELECT EXISTS(SELECT 1 FROM card_upgrade_rules WHERE from_type_id=$1 OR to_type_id=$1);
 
 -- name: CardPoints :many
 SELECT DISTINCT ON (card_id) card_id,after FROM card_points_ledger
 WHERE card_id=ANY(sqlc.arg(card_ids)::uuid[]) ORDER BY card_id,at DESC,id DESC;
-
--- name: LatestCardPoints :one
-SELECT COALESCE((SELECT after FROM card_points_ledger WHERE card_id=$1 ORDER BY at DESC,id DESC LIMIT 1),0)::int AS points;
 
 -- name: AddCardPoints :exec
 INSERT INTO card_points_ledger (tenant_id,store_id,card_id,kind,before,delta,after,card_ledger_id,adjustment_id,business_date,actor_id)

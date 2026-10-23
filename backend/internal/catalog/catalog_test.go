@@ -23,11 +23,7 @@ type fixture struct {
 func open(t *testing.T) *fixture { return &fixture{optest.OpenShop(t), t} }
 func (s *fixture) call(op string, in any, want int) map[string]any {
 	s.t.Helper()
-	r := s.HTTPWithToken(s.t, s.Owner, op, in)
-	if r.Status != want {
-		s.t.Fatalf("%s got %d %v, want %d", op, r.Status, r.Body, want)
-	}
-	return r.Body
+	return s.Call(s.t, s.Owner, op, in, want).Body
 }
 func input(name string) map[string]any {
 	return map[string]any{"name": name, "price": "1234.56", "discountable": false, "labor_fee_amount": "0.50", "labor_fee_percent": nil, "positions": []any{}, "level_prices": []any{}}
@@ -542,5 +538,40 @@ func TestChildQueriesSelectItemIDs(t *testing.T) {
 		if len(view["level_prices"].([]any)) != 1 || len(view["positions"].([]any)) != 1 {
 			t.Fatal(view)
 		}
+	}
+}
+
+func TestQuoteLocksReferences(t *testing.T) {
+	for _, reference := range []string{"item", "staff"} {
+		t.Run(reference, func(t *testing.T) {
+			s := open(t)
+			level := s.level(true)
+			s.call("update_staff", map[string]any{"staff_id": s.Res.OwnerID, "name": "王老板", "number": "001", "level_id": level, "position_id": nil}, 200)
+			in := input("并发报价")
+			in["level_prices"] = []any{map[string]any{"level_id": level, "price": "150.00"}}
+			item := s.call("create_item", in, 200)
+			tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+			var want string
+			if reference == "item" {
+				dbtest.Exec(t, tx, "SELECT id FROM items WHERE id=$1 FOR NO KEY UPDATE", item["id"])
+				dbtest.Exec(t, tx, "UPDATE item_level_prices SET price=222.22 WHERE item_id=$1", item["id"])
+				want = "222.22"
+			} else {
+				dbtest.Exec(t, tx, "UPDATE staff SET level_id=NULL WHERE id=$1", s.Res.OwnerID)
+				want = "1234.56"
+			}
+			done := make(chan optest.Result, 1)
+			caller := s.MustCaller(s.Owner)
+			go func() {
+				done <- s.HTTP(t, &caller, "quote_item_price", map[string]any{"item_id": item["id"], "staff_id": s.Res.OwnerID})
+			}()
+			dbtest.WaitForLockWait(t, s.Pool)
+			optest.AssertWaiting(t, done)
+			dbtest.Commit(t, tx)
+			result := optest.WaitResult(t, done, 200)
+			if result.Body["price"] != want {
+				t.Fatal(result)
+			}
+		})
 	}
 }

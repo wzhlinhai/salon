@@ -16,6 +16,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
 	"github.com/wzhlinhai/salon/backend/internal/privacy"
+	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 
 // CustomerRef 是来源或负责员工的名称引用。
@@ -195,8 +196,8 @@ func checkSource(ctx context.Context, env ops.Env, id, current *uuid.UUID) error
 
 // activeStaff 共享锁住负责员工并检查其在职状态。
 func activeStaff(ctx context.Context, env ops.Env, id uuid.UUID) error {
-	s, err := env.Q.ShareCustomerStaff(ctx, id)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !s.Active) {
+	err := staff.LockAssignable(ctx, env.Q, env.Caller.StoreID, id)
+	if errors.Is(err, staff.ErrNotAssignable) {
 		return ops.Rule("负责人必须是在职员工")
 	}
 	return err

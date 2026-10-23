@@ -18,6 +18,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
+	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 
 // LevelPrice 是项目的级别价。
@@ -419,24 +420,19 @@ func writeChildren(ctx context.Context, env ops.Env, id uuid.UUID, before *Item,
 	return nil
 }
 
-// Quote 按给定规则计算员工做项目时适用的标准价、级别价或会员价。
+// Quote 先共享锁住项目和员工，再按给定规则计算标准价、级别价或会员价。
 func Quote(ctx context.Context, q *dbgen.Queries, storeID, itemID uuid.UUID, staffID, cardTypeID *uuid.UUID, rules settings.Rules) (*ItemPrice, error) {
-	item, err := q.GetItem(ctx, dbgen.GetItemParams{StoreID: storeID, ID: itemID})
+	item, err := LockReference(ctx, q, storeID, itemID)
 	if err != nil {
 		return nil, rowError(err)
 	}
 	var employee dbgen.Staff
 	if staffID != nil {
-		employee, err = q.GetStaff(ctx, *staffID)
-		if err != nil {
-			return nil, rowError(err)
+		rows, lockErr := staff.LockReferences(ctx, q, storeID, *staffID)
+		if lockErr != nil {
+			return nil, lockErr
 		}
-		if employee.StoreID != storeID {
-			return nil, ops.ErrNotFound
-		}
-	}
-	if !item.Active {
-		return nil, ops.Rule("项目已停用")
+		employee = rows[*staffID]
 	}
 	out := &ItemPrice{Price: item.Price, Source: "standard"}
 	if staffID != nil && employee.LevelID != nil {
@@ -451,7 +447,7 @@ func Quote(ctx context.Context, q *dbgen.Queries, storeID, itemID uuid.UUID, sta
 		}
 	}
 	if cardTypeID != nil {
-		if _, err := q.GetCardType(ctx, dbgen.GetCardTypeParams{StoreID: storeID, ID: *cardTypeID}); err != nil {
+		if _, err := q.ShareCardType(ctx, dbgen.ShareCardTypeParams{StoreID: storeID, ID: *cardTypeID}); err != nil {
 			return nil, rowError(err)
 		}
 		member, err := q.GetItemMemberPrice(ctx, dbgen.GetItemMemberPriceParams{ItemID: itemID, CardTypeID: *cardTypeID})

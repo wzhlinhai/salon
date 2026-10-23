@@ -41,3 +41,6 @@ WHERE id = @id;
 
 -- name: ResetFailedLogins :exec
 UPDATE staff SET failed_logins = 0 WHERE id = $1;
+
+-- name: ShareStaff :one
+SELECT * FROM staff WHERE id=$1 FOR SHARE;

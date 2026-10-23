@@ -217,16 +217,16 @@ func TestAdjustmentScope(t *testing.T) {
 	s.call("adjust_card", map[string]any{"card_id": card["id"], "principal": "1100.00", "reason": "初次更正"}, 200)
 	other, _ := s.Hire("另一负责人", "002", "other")
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, tx, "UPDATE customers SET responsible_staff_id=$2 WHERE id=$1", s.customer, other)
-	commit(t, tx)
+	dbtest.Exec(t, tx, "UPDATE customers SET responsible_staff_id=$2 WHERE id=$1", s.customer, other)
+	dbtest.Commit(t, tx)
 	caller := s.MustCaller(s.Owner)
 	caller.Permissions = perm.All()
 	caller.Permissions[perm.CustomerView] = ops.Grant{Scope: ops.ScopeSelf}
 	for _, own := range []bool{false, true} {
 		if own {
 			tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-			exec(t, tx, "UPDATE customers SET responsible_staff_id=$2 WHERE id=$1", s.customer, caller.StaffID)
-			commit(t, tx)
+			dbtest.Exec(t, tx, "UPDATE customers SET responsible_staff_id=$2 WHERE id=$1", s.customer, caller.StaffID)
+			dbtest.Commit(t, tx)
 		}
 		want := 404
 		if own {
@@ -264,10 +264,10 @@ func TestAdjustmentIssuingStore(t *testing.T) {
 	if err := tx.QueryRow(context.Background(), "INSERT INTO stores (tenant_id,name) VALUES ($1,'二店') RETURNING id", s.Res.TenantID).Scan(&store); err != nil {
 		t.Fatal(err)
 	}
-	exec(t, tx, "UPDATE staff SET store_id=$2 WHERE id=$1", staff, store)
-	commit(t, tx)
+	dbtest.Exec(t, tx, "UPDATE staff SET store_id=$2 WHERE id=$1", staff, store)
+	dbtest.Commit(t, tx)
 	held := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, held, "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE", card["id"])
+	dbtest.Exec(t, held, "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE", card["id"])
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTPWithToken(t, token, "adjust_card", adjustment(card["id"])) }()
 	select {
@@ -278,7 +278,7 @@ func TestAdjustmentIssuingStore(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("cross-store adjustment waited for card lock")
 	}
-	commit(t, held)
+	dbtest.Commit(t, held)
 	for _, ch := range s.Channels() {
 		if r := ch.Call(t, s.MustCaller(token), "list_card_adjustments", map[string]any{"card_id": card["id"]}); r.Status != 404 {
 			t.Fatal(r)
@@ -290,12 +290,12 @@ func TestAdjustmentSerializes(t *testing.T) {
 	s := open(t)
 	card := s.call("open_card", s.opening(), 200)
 	held := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, held, "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE", card["id"])
+	dbtest.Exec(t, held, "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE", card["id"])
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "adjust_card", adjustment(card["id"])) }()
 	dbtest.WaitForLockWait(t, s.Pool)
-	exec(t, held, `INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id) VALUES ($1,$2,$3,'recharge',1234.56,10,1244.56,0.50,10,10.50,current_date,$4)`, s.Res.TenantID, s.Res.StoreID, card["id"], s.Res.OwnerID)
-	commit(t, held)
+	dbtest.Exec(t, held, `INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id) VALUES ($1,$2,$3,'recharge',1234.56,10,1244.56,0.50,10,10.50,current_date,$4)`, s.Res.TenantID, s.Res.StoreID, card["id"], s.Res.OwnerID)
+	dbtest.Commit(t, held)
 	if r := <-done; r.Status != 200 {
 		t.Fatal(r)
 	}
@@ -315,14 +315,14 @@ func TestAdjustmentWaitsForType(t *testing.T) {
 	card := s.call("open_card", s.opening(), 200)
 	ct := s.call("create_card_type", typeInput("待停用"), 200)
 	held := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	exec(t, held, "SELECT id FROM card_types WHERE id=$1 FOR NO KEY UPDATE", ct["id"])
-	exec(t, held, "UPDATE card_types SET active=false WHERE id=$1", ct["id"])
+	dbtest.Exec(t, held, "SELECT id FROM card_types WHERE id=$1 FOR NO KEY UPDATE", ct["id"])
+	dbtest.Exec(t, held, "UPDATE card_types SET active=false WHERE id=$1", ct["id"])
 	done := make(chan optest.Result, 1)
 	go func() {
 		done <- s.HTTPWithToken(t, s.Owner, "adjust_card", map[string]any{"card_id": card["id"], "card_type_id": ct["id"], "reason": "更正"})
 	}()
 	dbtest.WaitForLockWait(t, s.Pool)
-	commit(t, held)
+	dbtest.Commit(t, held)
 	if r := <-done; r.Status != 409 {
 		t.Fatal(r)
 	}
