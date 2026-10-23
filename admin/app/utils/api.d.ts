@@ -888,6 +888,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/remove_order_item": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 去掉项目并保留记录 */
+        post: operations["remove_order_item"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/rename_store": {
         parameters: {
             query?: never;
@@ -899,6 +916,23 @@ export interface paths {
         put?: never;
         /** 修改当前门店的名称 */
         post: operations["rename_store"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/reprice_order_item": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 改价并记录原因 */
+        post: operations["reprice_order_item"];
         delete?: never;
         options?: never;
         head?: never;
@@ -933,6 +967,23 @@ export interface paths {
         put?: never;
         /** 按手机号、后四位或姓名查找顾客 */
         post: operations["search_customers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/set_order_item_staff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 更换项目岗位员工 */
+        post: operations["set_order_item_staff"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1775,7 +1826,11 @@ export interface components {
             positions: components["schemas"]["OrderItemPosition"][];
             price: string;
             /** @enum {string} */
-            price_source: "standard" | "level";
+            price_source: "standard" | "level" | "manual";
+            /** Format: date-time */
+            removed_at: string | null;
+            removed_by: string | null;
+            reprice_reason: string | null;
         };
         OrderItemInput: {
             item_id: string;
@@ -1866,9 +1921,19 @@ export interface components {
             paid_remaining: number;
             unit_price: string;
         };
+        RemoveOrderItemInput: {
+            order_id: string;
+            order_item_id: string;
+        };
         RenameStoreInput: {
             /** @description 新的门店名称 */
             name: string;
+        };
+        RepriceOrderItemInput: {
+            order_id: string;
+            order_item_id: string;
+            price: string;
+            reason: string;
         };
         RevokeSafetyLabelInput: {
             customer_id: string;
@@ -1924,6 +1989,11 @@ export interface components {
             offset?: number;
             query?: string;
             responsible_staff_id?: string;
+        };
+        SetOrderItemStaffInput: {
+            order_id: string;
+            order_item_id: string;
+            staff: components["schemas"]["OrderItemStaffInput"][];
         };
         SetStaffLoginInput: {
             /** @description 登录账号，全系统唯一 */
@@ -3840,6 +3910,39 @@ export interface operations {
             };
         };
     };
+    remove_order_item: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemoveOrderItemInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     rename_store: {
         parameters: {
             query?: never;
@@ -3860,6 +3963,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Store"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    reprice_order_item: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RepriceOrderItemInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
                 };
             };
             /** @description Error */
@@ -3926,6 +4062,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CustomerList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    set_order_item_staff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetOrderItemStaffInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
                 };
             };
             /** @description Error */
