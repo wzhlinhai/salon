@@ -37,3 +37,27 @@ UPDATE orders SET customer_id=sqlc.arg(keep_id) WHERE customer_id=sqlc.arg(merge
 
 -- name: ShareOrderStaff :one
 SELECT * FROM staff WHERE id=$1 FOR SHARE;
+
+-- name: GetOrderItem :one
+SELECT * FROM order_items WHERE store_id=$1 AND order_id=$2 AND id=$3;
+
+-- name: OrderInvolvesStaff :one
+SELECT EXISTS (
+ SELECT 1 FROM orders o WHERE o.store_id=$1 AND o.id=$2 AND
+ (o.opened_by=sqlc.arg(staff_id) OR EXISTS (
+  SELECT 1 FROM order_items i JOIN order_item_positions p ON p.order_item_id=i.id
+  WHERE i.store_id=o.store_id AND i.order_id=o.id AND p.staff_id=sqlc.arg(staff_id)
+ ))
+)::boolean;
+
+-- name: RemoveOrderItem :exec
+UPDATE order_items SET removed_at=clock_timestamp(), removed_by=$2 WHERE id=$1;
+
+-- name: SetOrderItemStaff :exec
+UPDATE order_item_positions SET staff_id=$3 WHERE order_item_id=$1 AND slot=$2;
+
+-- name: RequoteOrderItem :exec
+UPDATE order_items SET price=$2, price_source=$3, level_id=$4 WHERE id=$1;
+
+-- name: RepriceOrderItem :exec
+UPDATE order_items SET price=$2, price_source='manual', level_id=NULL, reprice_reason=$3 WHERE id=$1;

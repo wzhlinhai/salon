@@ -413,16 +413,50 @@ func TestPermissions(t *testing.T) {
 			}
 		})
 	}
+	editable := s.call("open_order", s.opening(s.line()), 200)
+	for _, permission := range []ops.Permission{perm.OrderEdit, perm.OrderReprice} {
+		role := s.call("create_role", map[string]any{"name": string(permission), "permissions": []any{map[string]any{"permission": permission}}}, 200)
+		_, token := s.Hire(string(permission), string(permission), string(permission), id(role["id"]))
+		for _, op := range []string{"remove_order_item", "set_order_item_staff", "reprice_order_item"} {
+			want := 403
+			if (permission == perm.OrderReprice) == (op == "reprice_order_item") {
+				want = 200
+			}
+			before := s.snapshot()
+			r := s.HTTPWithToken(t, token, op, editArgs(op, editInput(editable)))
+			if r.Status != want {
+				t.Fatal(permission, op, r)
+			}
+			if want == 403 && before != s.snapshot() {
+				t.Fatal("forbidden edit changed data")
+			}
+			if want == 200 {
+				editable = s.call("open_order", s.opening(s.line()), 200)
+			}
+		}
+	}
+	caller = s.MustCaller(s.Owner)
+	delete(caller.Permissions, perm.OrderEdit)
+	delete(caller.Permissions, perm.OrderReprice)
+	for _, op := range []string{"remove_order_item", "set_order_item_staff", "reprice_order_item"} {
+		before := s.snapshot()
+		if r := s.HTTP(t, &caller, op, editArgs(op, editInput(editable))); r.Status != 403 {
+			t.Fatal(op, r)
+		}
+		if before != s.snapshot() {
+			t.Fatal("forbidden edit wrote data")
+		}
+	}
 }
 func TestAIWritesRefused(t *testing.T) {
 	s := open(t)
-	o := s.call("open_order", s.opening(), 200)
+	o := s.call("open_order", s.opening(s.line()), 200)
 	before := s.snapshot()
 	for _, tc := range []struct {
 		op string
 		in any
-	}{{"open_order", s.opening(s.line())}, {"add_order_item", orders.AddOrderItemInput{OrderID: id(o["id"]), Item: s.line()}}} {
-		r := s.AI(t, s.MustCaller(s.Owner), tc.op, tc.in)
+	}{{"open_order", s.opening(s.line())}, {"add_order_item", orders.AddOrderItemInput{OrderID: id(o["id"]), Item: s.line()}}, {"remove_order_item", editInput(o)}, {"set_order_item_staff", editInput(o)}, {"reprice_order_item", editInput(o)}} {
+		r := s.AI(t, s.MustCaller(s.Owner), tc.op, editArgs(tc.op, tc.in))
 		if r.Status == 200 || before != s.snapshot() {
 			t.Fatal(r, "AI changed data")
 		}
@@ -508,27 +542,17 @@ func TestDatabaseProtections(t *testing.T) {
 	s := open(t)
 	o := s.call("open_order", s.opening(s.line(1)), 200)
 	for _, table := range []string{"orders", "order_items", "order_item_positions"} {
-		for _, verb := range []string{"DELETE", "UPDATE"} {
-			if table == "orders" && verb == "UPDATE" {
-				continue
+		t.Run("DELETE"+table, func(t *testing.T) {
+			tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+			_, err := tx.Exec(context.Background(), "DELETE FROM "+table)
+			var pgErr interface{ SQLState() string }
+			if !errors.As(err, &pgErr) || pgErr.SQLState() != "42501" {
+				t.Fatal(err)
 			}
-			t.Run(verb+table, func(t *testing.T) {
-				tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-				sql := "DELETE FROM " + table
-				if verb == "UPDATE" {
-					sql = "UPDATE " + table + " SET store_id=store_id"
-				}
-				_, err := tx.Exec(context.Background(), sql)
-				if err == nil {
-					t.Fatal("mutation allowed", sql)
-				}
-				var pgErr interface{ SQLState() string }
-				if !errors.As(err, &pgErr) || pgErr.SQLState() != "42501" {
-					t.Fatal(err)
-				}
-				_ = tx.Rollback(context.Background())
-			})
-		}
+			if err := tx.Rollback(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 	for _, tc := range []struct {
 		source string

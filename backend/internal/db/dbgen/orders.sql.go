@@ -87,7 +87,7 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 
 const createOrderItem = `-- name: CreateOrderItem :one
 INSERT INTO order_items (tenant_id,store_id,order_id,item_id,item_name,price,price_source,level_id,added_by)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING tenant_id, store_id, id, order_id, item_id, item_name, price, price_source, level_id, added_by, added_at
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING tenant_id, store_id, id, order_id, item_id, item_name, price, price_source, level_id, added_by, added_at, removed_at, removed_by, reprice_reason
 `
 
 type CreateOrderItemParams struct {
@@ -127,6 +127,9 @@ func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams
 		&i.LevelID,
 		&i.AddedBy,
 		&i.AddedAt,
+		&i.RemovedAt,
+		&i.RemovedBy,
+		&i.RepriceReason,
 	)
 	return i, err
 }
@@ -155,6 +158,38 @@ func (q *Queries) GetOrder(ctx context.Context, arg GetOrderParams) (Order, erro
 		&i.BusinessDate,
 		&i.OpenedBy,
 		&i.OpenedAt,
+	)
+	return i, err
+}
+
+const getOrderItem = `-- name: GetOrderItem :one
+SELECT tenant_id, store_id, id, order_id, item_id, item_name, price, price_source, level_id, added_by, added_at, removed_at, removed_by, reprice_reason FROM order_items WHERE store_id=$1 AND order_id=$2 AND id=$3
+`
+
+type GetOrderItemParams struct {
+	StoreID uuid.UUID
+	OrderID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) GetOrderItem(ctx context.Context, arg GetOrderItemParams) (OrderItem, error) {
+	row := q.db.QueryRow(ctx, getOrderItem, arg.StoreID, arg.OrderID, arg.ID)
+	var i OrderItem
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.OrderID,
+		&i.ItemID,
+		&i.ItemName,
+		&i.Price,
+		&i.PriceSource,
+		&i.LevelID,
+		&i.AddedBy,
+		&i.AddedAt,
+		&i.RemovedAt,
+		&i.RemovedBy,
+		&i.RepriceReason,
 	)
 	return i, err
 }
@@ -233,7 +268,7 @@ func (q *Queries) ListOrderItemPositions(ctx context.Context, arg ListOrderItemP
 }
 
 const listOrderItems = `-- name: ListOrderItems :many
-SELECT oi.tenant_id, oi.store_id, oi.id, oi.order_id, oi.item_id, oi.item_name, oi.price, oi.price_source, oi.level_id, oi.added_by, oi.added_at FROM order_items oi
+SELECT oi.tenant_id, oi.store_id, oi.id, oi.order_id, oi.item_id, oi.item_name, oi.price, oi.price_source, oi.level_id, oi.added_by, oi.added_at, oi.removed_at, oi.removed_by, oi.reprice_reason FROM order_items oi
 WHERE oi.store_id=$1 AND oi.order_id=ANY($2::uuid[]) ORDER BY oi.added_at,oi.id
 `
 
@@ -263,6 +298,9 @@ func (q *Queries) ListOrderItems(ctx context.Context, arg ListOrderItemsParams) 
 			&i.LevelID,
 			&i.AddedBy,
 			&i.AddedAt,
+			&i.RemovedAt,
+			&i.RemovedBy,
+			&i.RepriceReason,
 		); err != nil {
 			return nil, err
 		}
@@ -313,6 +351,94 @@ type MergeCustomerOrdersParams struct {
 
 func (q *Queries) MergeCustomerOrders(ctx context.Context, arg MergeCustomerOrdersParams) error {
 	_, err := q.db.Exec(ctx, mergeCustomerOrders, arg.KeepID, arg.MergedID)
+	return err
+}
+
+const orderInvolvesStaff = `-- name: OrderInvolvesStaff :one
+SELECT EXISTS (
+ SELECT 1 FROM orders o WHERE o.store_id=$1 AND o.id=$2 AND
+ (o.opened_by=$3 OR EXISTS (
+  SELECT 1 FROM order_items i JOIN order_item_positions p ON p.order_item_id=i.id
+  WHERE i.store_id=o.store_id AND i.order_id=o.id AND p.staff_id=$3
+ ))
+)::boolean
+`
+
+type OrderInvolvesStaffParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+	StaffID uuid.UUID
+}
+
+func (q *Queries) OrderInvolvesStaff(ctx context.Context, arg OrderInvolvesStaffParams) (bool, error) {
+	row := q.db.QueryRow(ctx, orderInvolvesStaff, arg.StoreID, arg.ID, arg.StaffID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const removeOrderItem = `-- name: RemoveOrderItem :exec
+UPDATE order_items SET removed_at=clock_timestamp(), removed_by=$2 WHERE id=$1
+`
+
+type RemoveOrderItemParams struct {
+	ID        uuid.UUID
+	RemovedBy *uuid.UUID
+}
+
+func (q *Queries) RemoveOrderItem(ctx context.Context, arg RemoveOrderItemParams) error {
+	_, err := q.db.Exec(ctx, removeOrderItem, arg.ID, arg.RemovedBy)
+	return err
+}
+
+const repriceOrderItem = `-- name: RepriceOrderItem :exec
+UPDATE order_items SET price=$2, price_source='manual', level_id=NULL, reprice_reason=$3 WHERE id=$1
+`
+
+type RepriceOrderItemParams struct {
+	ID            uuid.UUID
+	Price         money.Amount
+	RepriceReason *string
+}
+
+func (q *Queries) RepriceOrderItem(ctx context.Context, arg RepriceOrderItemParams) error {
+	_, err := q.db.Exec(ctx, repriceOrderItem, arg.ID, arg.Price, arg.RepriceReason)
+	return err
+}
+
+const requoteOrderItem = `-- name: RequoteOrderItem :exec
+UPDATE order_items SET price=$2, price_source=$3, level_id=$4 WHERE id=$1
+`
+
+type RequoteOrderItemParams struct {
+	ID          uuid.UUID
+	Price       money.Amount
+	PriceSource string
+	LevelID     *uuid.UUID
+}
+
+func (q *Queries) RequoteOrderItem(ctx context.Context, arg RequoteOrderItemParams) error {
+	_, err := q.db.Exec(ctx, requoteOrderItem,
+		arg.ID,
+		arg.Price,
+		arg.PriceSource,
+		arg.LevelID,
+	)
+	return err
+}
+
+const setOrderItemStaff = `-- name: SetOrderItemStaff :exec
+UPDATE order_item_positions SET staff_id=$3 WHERE order_item_id=$1 AND slot=$2
+`
+
+type SetOrderItemStaffParams struct {
+	OrderItemID uuid.UUID
+	Slot        int16
+	StaffID     *uuid.UUID
+}
+
+func (q *Queries) SetOrderItemStaff(ctx context.Context, arg SetOrderItemStaffParams) error {
+	_, err := q.db.Exec(ctx, setOrderItemStaff, arg.OrderItemID, arg.Slot, arg.StaffID)
 	return err
 }
 

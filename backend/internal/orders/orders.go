@@ -21,8 +21,9 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
-// Register 声明开单、加项目和挂单读操作。
+// Register 声明开单、项目行修改和挂单读操作。
 func Register(r *ops.Registry) {
+	registerEdits(r)
 	ops.Register(r, ops.Operation[OpenOrderInput, Order]{Name: "open_order", Summary: "开单并保存规则快照", Kind: ops.Write, Permission: perm.OrderCreate, AI: ops.AIDraft, Handle: openOrder})
 	ops.Register(r, ops.Operation[AddOrderItemInput, Order]{Name: "add_order_item", Summary: "向单添加项目行", Kind: ops.Write, Permission: perm.OrderCreate, AI: ops.AIDraft, Handle: addOrderItem})
 	ops.Register(r, ops.Operation[ListOpenOrdersInput, OrderList]{Name: "list_open_orders", Summary: "列出本店挂单", Kind: ops.Read, Permission: perm.OrderCreate, AI: ops.AIDirect, Handle: listOpenOrders})
@@ -134,27 +135,9 @@ func addItem(ctx context.Context, env ops.Env, orderID uuid.UUID, in OrderItemIn
 	for _, p := range positions {
 		slots[p.Slot] = true
 	}
-	assigned := map[int16]*uuid.UUID{}
-	ids := []uuid.UUID{}
-	for _, s := range in.Staff {
-		if !slots[s.Slot] {
-			return ops.Rule("项目没有这个岗位")
-		}
-		if assigned[s.Slot] != nil {
-			return ops.Rule("同一岗位不能重复填员工")
-		}
-		assigned[s.Slot] = new(s.StaffID)
-		ids = append(ids, s.StaffID)
-	}
-	slices.SortFunc(ids, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
-	for _, id := range slices.Compact(ids) {
-		staff, err := env.Q.ShareOrderStaff(ctx, id)
-		if errors.Is(err, pgx.ErrNoRows) || (err == nil && (!staff.Active || staff.StoreID != env.Caller.StoreID)) {
-			return ops.Rule("岗位上的员工必须是本店在职员工")
-		}
-		if err != nil {
-			return err
-		}
+	assigned, err := validateStaff(ctx, env, slots, in.Staff)
+	if err != nil {
+		return err
 	}
 	price, err := catalog.Quote(ctx, env.Q, env.Caller.StoreID, item.ID, assigned[1], nil, rules)
 	if err != nil {
@@ -225,8 +208,10 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 		if p == nil {
 			p = []OrderItemPosition{}
 		}
-		byOrder[i.OrderID] = append(byOrder[i.OrderID], OrderItem{ID: i.ID, ItemID: i.ItemID, ItemName: i.ItemName, Price: i.Price, PriceSource: i.PriceSource, LevelID: i.LevelID, AddedAt: i.AddedAt.Time, Positions: p})
-		totals[i.OrderID] = totals[i.OrderID].AddProduct(i.Price, 1)
+		byOrder[i.OrderID] = append(byOrder[i.OrderID], OrderItem{ID: i.ID, ItemID: i.ItemID, ItemName: i.ItemName, Price: i.Price, PriceSource: i.PriceSource, LevelID: i.LevelID, AddedAt: i.AddedAt.Time, RemovedAt: removedTime(i.RemovedAt), RemovedBy: i.RemovedBy, RepriceReason: i.RepriceReason, Positions: p})
+		if !i.RemovedAt.Valid {
+			totals[i.OrderID] = totals[i.OrderID].AddProduct(i.Price, 1)
+		}
 	}
 	out := make([]Order, 0, len(rows))
 	for _, r := range rows {
@@ -237,4 +222,37 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 		out = append(out, Order{ID: r.ID, CustomerID: r.CustomerID, Gender: r.Gender, Designated: r.Designated, Status: r.Status, BusinessDate: r.BusinessDate.Time.Format(time.DateOnly), OpenedBy: r.OpenedBy, OpenedAt: r.OpenedAt.Time, Items: items, Receivable: totals[r.ID].Format()})
 	}
 	return out, nil
+}
+
+func validateStaff(ctx context.Context, env ops.Env, slots map[int16]bool, staffInput []OrderItemStaffInput) (map[int16]*uuid.UUID, error) {
+	assigned := map[int16]*uuid.UUID{}
+	ids := []uuid.UUID{}
+	for _, s := range staffInput {
+		if !slots[s.Slot] {
+			return nil, ops.Rule("项目没有这个岗位")
+		}
+		if assigned[s.Slot] != nil {
+			return nil, ops.Rule("同一岗位不能重复填员工")
+		}
+		assigned[s.Slot] = new(s.StaffID)
+		ids = append(ids, s.StaffID)
+	}
+	slices.SortFunc(ids, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
+	for _, id := range slices.Compact(ids) {
+		staff, err := env.Q.ShareOrderStaff(ctx, id)
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && (!staff.Active || staff.StoreID != env.Caller.StoreID)) {
+			return nil, ops.Rule("岗位上的员工必须是本店在职员工")
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	return assigned, nil
+}
+
+func removedTime(t pgtype.Timestamptz) *time.Time {
+	if !t.Valid {
+		return nil
+	}
+	return &t.Time
 }

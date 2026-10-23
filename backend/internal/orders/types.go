@@ -25,14 +25,17 @@ type Order struct {
 
 // OrderItem 是只记录一次价格的项目行。
 type OrderItem struct {
-	ID          uuid.UUID           `json:"id"`
-	ItemID      uuid.UUID           `json:"item_id"`
-	ItemName    string              `json:"item_name"`
-	Price       money.Amount        `json:"price"`
-	PriceSource string              `json:"price_source" enum:"standard,level"`
-	LevelID     *uuid.UUID          `json:"level_id" nullable:"true"`
-	AddedAt     time.Time           `json:"added_at"`
-	Positions   []OrderItemPosition `json:"positions"`
+	ID            uuid.UUID           `json:"id"`
+	ItemID        uuid.UUID           `json:"item_id"`
+	ItemName      string              `json:"item_name"`
+	Price         money.Amount        `json:"price"`
+	PriceSource   string              `json:"price_source" enum:"standard,level,manual"`
+	LevelID       *uuid.UUID          `json:"level_id" nullable:"true"`
+	RemovedAt     *time.Time          `json:"removed_at" nullable:"true"`
+	RemovedBy     *uuid.UUID          `json:"removed_by" nullable:"true"`
+	RepriceReason *string             `json:"reprice_reason" nullable:"true"`
+	AddedAt       time.Time           `json:"added_at"`
+	Positions     []OrderItemPosition `json:"positions"`
 }
 
 // OrderItemPosition 是项目行保留的岗位及参与员工。
@@ -80,4 +83,25 @@ type GetOrderInput struct {
 // OrderList 是按开单时间排列的挂单列表。
 type OrderList struct {
 	Items []Order `json:"items"`
+}
+
+// RemoveOrderItemInput 是去掉项目行的参数。
+type RemoveOrderItemInput struct {
+	OrderID     uuid.UUID `json:"order_id"`
+	OrderItemID uuid.UUID `json:"order_item_id"`
+}
+
+// SetOrderItemStaffInput 是替换项目行全部岗位员工的参数。
+type SetOrderItemStaffInput struct {
+	OrderID     uuid.UUID             `json:"order_id"`
+	OrderItemID uuid.UUID             `json:"order_item_id"`
+	Staff       []OrderItemStaffInput `json:"staff" maxItems:"20"`
+}
+
+// RepriceOrderItemInput 是项目行改价的金额和原因。
+type RepriceOrderItemInput struct {
+	OrderID     uuid.UUID    `json:"order_id"`
+	OrderItemID uuid.UUID    `json:"order_item_id"`
+	Price       money.Amount `json:"price"`
+	Reason      string       `json:"reason" minLength:"1" maxLength:"200"`
 }
