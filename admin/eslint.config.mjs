@@ -28,6 +28,9 @@ export default withNuxt(
       'no-restricted-syntax': ['error', {
         selector: 'CallExpression[callee.property.name="waitForTimeout"]',
         message: '等一个可观察的同步点（例如按钮从 loading 恢复、请求的 finished()、元素出现），不要固定等待'
+      }, {
+        selector: 'MemberExpression[computed=false][property.name=/^(__vueParentComponent|__vue_app__|setupState|exposed)$/], MemberExpression[computed=true][property.value=/^(__vueParentComponent|__vue_app__|setupState|exposed)$/], ObjectPattern > Property[key.name=/^(__vueParentComponent|__vue_app__|setupState|exposed)$/]',
+        message: '经真实页面操作或 API 触发要测的场景，不要改组件内部状态'
       }]
     }
   },
