@@ -190,6 +190,15 @@ type CardUpgradeRule struct {
 	CreatedAt     pgtype.Timestamptz
 }
 
+type Checkout struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	ID           uuid.UUID
+	BusinessDate pgtype.Date
+	CheckedOutBy uuid.UUID
+	At           pgtype.Timestamptz
+}
+
 type Customer struct {
 	ID                 uuid.UUID
 	TenantID           uuid.UUID
@@ -288,6 +297,7 @@ type Order struct {
 	OpenedBy           uuid.UUID
 	OpenedAt           pgtype.Timestamptz
 	MergedInto         *uuid.UUID
+	CheckoutID         *uuid.UUID
 }
 
 type OrderItem struct {
@@ -315,6 +325,16 @@ type OrderItemPosition struct {
 	PositionID  uuid.UUID
 	Required    bool
 	StaffID     *uuid.UUID
+}
+
+type OrderPayment struct {
+	TenantID   uuid.UUID
+	StoreID    uuid.UUID
+	ID         uuid.UUID
+	CheckoutID uuid.UUID
+	OrderID    uuid.UUID
+	Method     string
+	Amount     money.Amount
 }
 
 type Position struct {

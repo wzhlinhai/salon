@@ -62,3 +62,17 @@ WHERE store_id=sqlc.arg(store_id) AND order_id=ANY(sqlc.arg(merged_order_ids)::u
 
 -- name: MarkOrderMerged :exec
 UPDATE orders SET status='merged', merged_into=sqlc.arg(merged_into) WHERE store_id=sqlc.arg(store_id) AND id=sqlc.arg(id);
+
+-- name: CreateCheckout :one
+INSERT INTO checkouts (tenant_id,store_id,business_date,checked_out_by)
+VALUES ($1,$2,$3,$4) RETURNING *;
+
+-- name: CreateOrderPayment :exec
+INSERT INTO order_payments (tenant_id,store_id,checkout_id,order_id,method,amount)
+VALUES ($1,$2,$3,$4,$5,$6);
+
+-- name: ListOrderPayments :many
+SELECT * FROM order_payments WHERE store_id=$1 AND order_id=ANY(sqlc.arg(order_ids)::uuid[]) ORDER BY id;
+
+-- name: MarkOrderPaid :exec
+UPDATE orders SET status='paid', checkout_id=sqlc.arg(checkout_id) WHERE store_id=sqlc.arg(store_id) AND id=sqlc.arg(id);

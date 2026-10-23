@@ -26,7 +26,7 @@ func mergeOrders(ctx context.Context, env ops.Env, in *MergeOrdersInput) (*Order
 		seen[id] = true
 		ids = append(ids, id)
 	}
-	return change(ctx, env, "merge_orders", ids, func(rows []dbgen.Order) error {
+	after, err := change(ctx, env, "merge_orders", ids, func(rows []dbgen.Order) error {
 		kept := rows[0]
 		for _, row := range rows {
 			if row.CustomerID != kept.CustomerID {
@@ -51,4 +51,8 @@ func mergeOrders(ctx context.Context, env ops.Env, in *MergeOrdersInput) (*Order
 		}
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	return &after[0], nil
 }

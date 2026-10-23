@@ -540,13 +540,7 @@ func TestOrderEditsMigrationDown(t *testing.T) {
 	o := s.call("open_order", s.opening(s.line(1)), 200)
 	s.edit("reprice_order_item", editInput(o), 200)
 	s.edit("remove_order_item", editInput(o), 200)
-	// 先回滚合并单迁移，再验证改单迁移。
-	if err := db.MigrateDown(context.Background(), s.Pool); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.MigrateDown(context.Background(), s.Pool); err != nil {
-		t.Fatal(err)
-	}
+	dbtest.MigrateDownTo(t, s.Pool, 15)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	var source string
 	var level *uuid.UUID
