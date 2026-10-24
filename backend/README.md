@@ -86,7 +86,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 结账需要 payment.collect，一张或几张挂单通过 change 按 UUID 锁单后一起登记支付；有效项目行的必填岗位须有员工，各单的支付合计须等于各自实收（应收减持卡折扣）。结账后单标为 paid 并引用同一个 checkout_id，拒绝再次结账、加项目、改单、改价和合并。结账的营业日取调用时刻的 settings.BusinessDate，各单保留原顾客和营业日。checkouts 和 order_payments 仅授予 SELECT、INSERT，支付只追加；挂账是支付方式 debt。卡余额支付为 card，每笔通过 order_payments.card_ledger_id 关联一条 consume 卡流水，按单的规则快照中的 card_deduction_order 拆扣本金、赠送金，不足则整次结账回滚；不累计积分。卡须本店发行、持卡顾客在调用者查看范围内、非次卡、未过期（到期当天仍可用），用别人卡须单的快照中 others_card_payment 允许。
 
-结账锁顺序为按 UUID 排序的单 → 卡（FOR NO KEY UPDATE）→ 计价卡类型（FOR SHARE）→ 有计价卡的单上的有效项目（FOR SHARE）。没有计价卡的单不加载计价数据、不锁项目。每张单第一笔卡余额支付的卡是计价卡；按该卡类型和单的规则快照读取会员价，与行上已记录价格比较，不重取标准价和级别价。改过价的行保持原价，取会员价的行不打折，其余可打折行按卡类型 discount_percent 逐行四舍五入算持卡折扣。结账将新价格、来源、卡类型和折扣写回变动的有效行，去掉的行不改。preview_checkout 需要 payment.collect，HTTP 和 AI 均可直接试算同一套计价规则；它使用只读事务，不加业务行锁、不检查必填岗位或支付、不写任何数据。
+结账锁顺序为按 UUID 排序的单 → 卡（FOR NO KEY UPDATE）→ 计价卡类型（FOR SHARE）→ 有计价卡的单上的有效项目（FOR SHARE）。没有计价卡的单不加载计价数据、不锁项目。每张单第一笔卡余额支付的卡是计价卡；按该卡类型和单的规则快照读取会员价，与行上已记录价格比较，不重取标准价和级别价。改过价的行保持原价；不打折项目行既不取会员价，也不享受持卡折扣，按行上已记录价格扣卡；取会员价的行不打折，其余可打折行按卡类型 discount_percent 逐行四舍五入算持卡折扣。结账将新价格、来源、卡类型和折扣写回变动的有效行，去掉的行不改。preview_checkout 需要 payment.collect，HTTP 和 AI 均可直接试算同一套计价规则；它使用只读事务，不加业务行锁、不检查必填岗位或支付、不写任何数据。
 
 ## 操作日志
 

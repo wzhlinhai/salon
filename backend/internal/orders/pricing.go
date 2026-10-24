@@ -29,7 +29,7 @@ func priceCheckout(order Order, lines map[uuid.UUID]linePricing, cardTypeID *uui
 		line.Discount = money.Amount{}
 		if cardTypeID != nil && line.PriceSource != "manual" {
 			pricing := lines[line.ItemID]
-			if pricing.member != nil && (memberPriceRule == "member_first" || pricing.member.Cmp(line.Price) <= 0) {
+			if pricing.discountable && pricing.member != nil && (memberPriceRule == "member_first" || pricing.member.Cmp(line.Price) <= 0) {
 				line.Price = *pricing.member
 				line.PriceSource = "member"
 				line.CardTypeID = cardTypeID

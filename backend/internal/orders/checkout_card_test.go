@@ -191,6 +191,36 @@ func TestCardCheckoutDiscount(t *testing.T) {
 		t.Fatal(after)
 	}
 }
+func TestCardCheckoutNonDiscountableMemberPrice(t *testing.T) {
+	s := open(t)
+	ct := s.paymentType("折扣卡", "88")
+	c := s.paymentCard(ct, "1000", "0")
+	in := s.itemInput("不打折会员价项目", 0)
+	in["discountable"] = false
+	in["member_prices"] = []any{map[string]any{"card_type_id": ct["id"], "price": "80"}}
+	item := s.call("create_item", in, 200)
+	o := s.customerOrder(orders.OrderItemInput{ItemID: id(item["id"]), Staff: []orders.OrderItemStaffInput{}})
+	recorded := firstLine(o)
+	if recorded["price"] != "100.00" || recorded["price_source"] != "standard" || recorded["card_type_id"] != nil || recorded["discount"] != "0.00" {
+		t.Fatal(o)
+	}
+	before := s.cardSnapshot()
+	for _, ch := range s.Channels() {
+		got := ch.Call(t, s.MustCaller(s.Owner), "preview_checkout", orders.PreviewCheckoutInput{OrderID: id(o["id"]), CardID: new(id(c["id"]))})
+		if got.Status != 200 || !reflect.DeepEqual(firstLine(got.Body), recorded) || got.Body["receivable"] != "100.00" || got.Body["discount"] != "0.00" || got.Body["net"] != "100.00" || before != s.cardSnapshot() {
+			t.Fatal(ch.Name, got)
+		}
+	}
+	after := s.paid(o, cardPayment(c, "100"))
+	if !reflect.DeepEqual(firstLine(after), recorded) || after["receivable"] != "100.00" || after["discount"] != "0.00" || after["net"] != "100.00" {
+		t.Fatal(after)
+	}
+	entries := s.consumeEntries(c)
+	l := entries[0].(map[string]any)
+	if len(entries) != 2 || l["kind"] != "consume" || l["order_id"] != o["id"] || l["principal_delta"] != "-100.00" || l["principal_after"] != "900.00" || l["bonus_delta"] != "0.00" {
+		t.Fatal(entries)
+	}
+}
 func TestCheckoutSnapshotRules(t *testing.T) {
 	for _, key := range []string{"member_price_rule", "others_card_payment", "card_deduction_order"} {
 		t.Run(key, func(t *testing.T) {
