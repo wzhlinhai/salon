@@ -122,6 +122,7 @@ type MergeOrdersInput struct {
 
 // OrderPayment 是单上的一笔支付，按登记顺序返回。
 type OrderPayment struct {
+	DebtID *uuid.UUID         `json:"debt_id" nullable:"true"`
 	Count  *OrderPaymentCount `json:"count"`
 	Card   *OrderPaymentCard  `json:"card"`
 	ID     uuid.UUID          `json:"id"`

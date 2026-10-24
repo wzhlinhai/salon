@@ -77,7 +77,9 @@ func TestCheckoutOrder(t *testing.T) {
 		{payment("cash", "0.10"), payment("wechat", "0.20"), payment("debt", "99.70")},
 		{payment("unionpay", "30"), payment("alipay", "70")},
 	} {
-		before := s.call("open_order", s.opening(line), 200)
+		in := s.opening(line)
+		in.CustomerID = &s.customer
+		before := s.call("open_order", in, 200)
 		if before["checkout_id"] != nil || len(before["payments"].([]any)) != 0 {
 			t.Fatal(before)
 		}
@@ -125,6 +127,7 @@ func TestCheckoutTogether(t *testing.T) {
 	line := s.checkoutLine()
 	a := s.customerOrder(line)
 	b := s.openAt(s.MustCaller(s.Owner), time.Now().AddDate(0, 0, -5), line)
+	s.call("add_customer_phone", map[string]any{"id": b["customer_id"], "phone": "13800000002"}, 200)
 	if a["customer_id"] == b["customer_id"] || a["business_date"] == b["business_date"] {
 		t.Fatal(a, b)
 	}

@@ -238,6 +238,32 @@ type CustomerSource struct {
 	Active   bool
 }
 
+type Debt struct {
+	TenantID       uuid.UUID
+	StoreID        uuid.UUID
+	ID             uuid.UUID
+	CustomerID     uuid.UUID
+	Amount         money.Amount
+	BusinessDate   pgtype.Date
+	OrderID        *uuid.UUID
+	OrderPaymentID *uuid.UUID
+	Note           *string
+	RecordedBy     uuid.UUID
+	At             pgtype.Timestamptz
+}
+
+type DebtRepayment struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	ID           uuid.UUID
+	DebtID       uuid.UUID
+	Amount       money.Amount
+	Method       string
+	BusinessDate pgtype.Date
+	RepaidBy     uuid.UUID
+	At           pgtype.Timestamptz
+}
+
 type Item struct {
 	ID              uuid.UUID
 	TenantID        uuid.UUID
