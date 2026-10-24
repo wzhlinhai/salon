@@ -48,6 +48,9 @@ func previewCheckout(ctx context.Context, env ops.Env, in *PreviewCheckoutInput)
 			return nil, err
 		}
 		card := used[*in.CardID]
+		if err := card.CheckBalancePayment(); err != nil {
+			return nil, err
+		}
 		if err := card.CheckHolder(row.CustomerID, rules); err != nil {
 			return nil, err
 		}

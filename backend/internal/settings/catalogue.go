@@ -55,6 +55,7 @@ type Def struct {
 // 设置项的 Key。
 const (
 	KeyCardDeductionOrder    = "card_deduction_order"
+	KeyCardCountOrder        = "card_count_order"
 	KeyOthersCardPayment     = "others_card_payment"
 	KeyMemberPriceRule       = "member_price_rule"
 	KeyPointsPerRechargeYuan = "points_per_recharge_yuan"
@@ -76,6 +77,7 @@ var Catalogue = []Def{
 	},
 	{Key: KeyCardDeductionOrder, Label: "扣款顺序", Hint: "用卡余额付钱时先扣本金还是先扣赠送金，先扣的不够再扣另一部分", Kind: KindChoice, Default: "principal_first", Options: []ChoiceOption{{Value: "principal_first", Label: "先扣本金"}, {Value: "bonus_first", Label: "先扣赠送金"}}},
 	{Key: KeyOthersCardPayment, Label: "用别人的卡", Hint: "顾客能否用别人（例如家人）的卡余额付自己的单", Kind: KindChoice, Default: "not_allowed", Options: []ChoiceOption{{Value: "not_allowed", Label: "不允许"}, {Value: "allowed", Label: "允许"}}},
+	{Key: KeyCardCountOrder, Label: "扣次顺序", Hint: "扣次时先扣购买次数还是赠送次数，先扣的用完再扣另一种", Kind: KindChoice, Default: "paid_first", Options: []ChoiceOption{{Value: "paid_first", Label: "先扣购买次数"}, {Value: "gift_first", Label: "先扣赠送次数"}}},
 	{
 		Key: KeyBusinessHours, Label: "营业时段", Kind: KindTimeRange,
 		Hint:    "每天开门和关门的时间，预约等按它限制",

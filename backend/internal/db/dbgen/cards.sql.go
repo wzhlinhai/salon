@@ -546,6 +546,46 @@ func (q *Queries) CardView(ctx context.Context, arg CardViewParams) (CardViewRow
 	return i, err
 }
 
+const consumeCardCount = `-- name: ConsumeCardCount :one
+INSERT INTO card_count_ledger (tenant_id,store_id,card_id,item_id,kind,paid_before,paid_delta,paid_after,gift_before,gift_delta,gift_after,business_date,actor_id)
+VALUES ($1,$2,$3,$4,'consume',$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id
+`
+
+type ConsumeCardCountParams struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	CardID       uuid.UUID
+	ItemID       uuid.UUID
+	PaidBefore   int32
+	PaidDelta    int32
+	PaidAfter    int32
+	GiftBefore   int32
+	GiftDelta    int32
+	GiftAfter    int32
+	BusinessDate pgtype.Date
+	ActorID      uuid.UUID
+}
+
+func (q *Queries) ConsumeCardCount(ctx context.Context, arg ConsumeCardCountParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, consumeCardCount,
+		arg.TenantID,
+		arg.StoreID,
+		arg.CardID,
+		arg.ItemID,
+		arg.PaidBefore,
+		arg.PaidDelta,
+		arg.PaidAfter,
+		arg.GiftBefore,
+		arg.GiftDelta,
+		arg.GiftAfter,
+		arg.BusinessDate,
+		arg.ActorID,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const createCard = `-- name: CreateCard :one
 INSERT INTO cards (tenant_id,store_id,customer_id,card_type_id,opened_at,expires_on,created_by)
 VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, tenant_id, store_id, customer_id, card_type_id, opened_at, expires_on, family_group_id, created_by
@@ -842,8 +882,9 @@ func (q *Queries) ListCardAdjustments(ctx context.Context, arg ListCardAdjustmen
 }
 
 const listCardCounts = `-- name: ListCardCounts :many
-SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.item_id, l.kind, l.paid_before, l.paid_delta, l.paid_after, l.gift_before, l.gift_delta, l.gift_after, l.adjustment_id, l.business_date, l.actor_id, l.at, i.name AS item_name, s.name AS actor_name, COALESCE(a.reason,'')::text AS reason
+SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.item_id, l.kind, l.paid_before, l.paid_delta, l.paid_after, l.gift_before, l.gift_delta, l.gift_after, l.adjustment_id, l.business_date, l.actor_id, l.at, i.name AS item_name, s.name AS actor_name, COALESCE(a.reason,'')::text AS reason, p.order_id
 FROM card_count_ledger l JOIN items i ON i.id=l.item_id JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.id=l.adjustment_id
+LEFT JOIN order_payments p ON p.card_count_ledger_id=l.id
 WHERE l.card_id=$1 AND ($2::uuid IS NULL OR l.item_id=$2)
 AND ($3::uuid IS NULL OR (l.at,l.id) < (SELECT at,id FROM card_count_ledger WHERE id=$3 AND card_id=$1))
 ORDER BY l.at DESC,l.id DESC LIMIT $4
@@ -861,6 +902,7 @@ type ListCardCountsRow struct {
 	ItemName        string
 	ActorName       string
 	Reason          string
+	OrderID         *uuid.UUID
 }
 
 func (q *Queries) ListCardCounts(ctx context.Context, arg ListCardCountsParams) ([]ListCardCountsRow, error) {
@@ -897,6 +939,7 @@ func (q *Queries) ListCardCounts(ctx context.Context, arg ListCardCountsParams) 
 			&i.ItemName,
 			&i.ActorName,
 			&i.Reason,
+			&i.OrderID,
 		); err != nil {
 			return nil, err
 		}
@@ -1005,6 +1048,7 @@ func (q *Queries) ListCardLedgerSales(ctx context.Context, ledgerIds []uuid.UUID
 const listCardPoints = `-- name: ListCardPoints :many
 SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.kind, l.before, l.delta, l.after, l.card_ledger_id, l.adjustment_id, l.business_date, l.actor_id, l.at,s.name AS actor_name,COALESCE(a.reason,'')::text AS reason
 FROM card_points_ledger l JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.id=l.adjustment_id
+LEFT JOIN order_payments p ON p.card_count_ledger_id=l.id
 WHERE l.card_id=$1 AND ($2::uuid IS NULL OR (l.at,l.id) < (SELECT at,id FROM card_points_ledger WHERE id=$2 AND card_id=$1))
 ORDER BY l.at DESC,l.id DESC LIMIT $3
 `

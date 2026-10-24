@@ -122,17 +122,19 @@ type MergeOrdersInput struct {
 
 // OrderPayment 是单上的一笔支付，按登记顺序返回。
 type OrderPayment struct {
-	Card   *OrderPaymentCard `json:"card"`
-	ID     uuid.UUID         `json:"id"`
-	Method string            `json:"method" enum:"cash,unionpay,wechat,alipay,debt,card"`
-	Amount money.Amount      `json:"amount"`
+	Count  *OrderPaymentCount `json:"count"`
+	Card   *OrderPaymentCard  `json:"card"`
+	ID     uuid.UUID          `json:"id"`
+	Method string             `json:"method" enum:"cash,unionpay,wechat,alipay,debt,card,count"`
+	Amount money.Amount       `json:"amount"`
 }
 
 // PaymentInput 是支付方式和登记金额。
 type PaymentInput struct {
-	CardID *uuid.UUID   `json:"card_id,omitempty"`
-	Method string       `json:"method" enum:"cash,unionpay,wechat,alipay,debt,card"`
-	Amount money.Amount `json:"amount"`
+	OrderItemID *uuid.UUID   `json:"order_item_id,omitempty"`
+	CardID      *uuid.UUID   `json:"card_id,omitempty"`
+	Method      string       `json:"method" enum:"cash,unionpay,wechat,alipay,debt,card,count"`
+	Amount      money.Amount `json:"amount"`
 }
 
 // CheckoutOrderInput 是一张挂单及其支付。
@@ -159,8 +161,18 @@ type PreviewCheckoutInput struct {
 	CardID  *uuid.UUID `json:"card_id,omitempty"`
 }
 
-// TransformSchema 声明支付卡对象或空值，兼容 Huma 的对象引用格式。
+// TransformSchema 声明支付卡和扣次对象或空值，兼容 Huma 的对象引用格式。
 func (OrderPayment) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
+	s.Properties["count"] = &huma.Schema{AnyOf: []*huma.Schema{s.Properties["count"], {Type: "null"}}}
 	s.Properties["card"] = &huma.Schema{AnyOf: []*huma.Schema{s.Properties["card"], {Type: "null"}}}
 	return s
+}
+
+// OrderPaymentCount 是一笔扣次支付所用的卡、项目行和购买或赠送次数。
+type OrderPaymentCount struct {
+	CardID      uuid.UUID `json:"card_id"`
+	OrderItemID uuid.UUID `json:"order_item_id"`
+	ItemID      uuid.UUID `json:"item_id"`
+	Paid        int32     `json:"paid"`
+	Gift        int32     `json:"gift"`
 }

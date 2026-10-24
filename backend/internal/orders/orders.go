@@ -166,6 +166,9 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 		if p.Method == "card" {
 			payment.Card = &OrderPaymentCard{CardID: *p.CardID, Principal: *p.Principal, Bonus: *p.Bonus}
 		}
+		if p.Method == "count" {
+			payment.Count = &OrderPaymentCount{CardID: *p.CardID, OrderItemID: *p.OrderItemID, ItemID: *p.CountItemID, Paid: p.Paid, Gift: p.Gift}
+		}
 		byPaymentOrder[p.OrderID] = append(byPaymentOrder[p.OrderID], payment)
 	}
 	itemIDs := make([]uuid.UUID, len(items))

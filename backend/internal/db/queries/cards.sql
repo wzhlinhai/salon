@@ -109,8 +109,9 @@ JOIN LATERAL (SELECT paid_after,gift_after FROM card_count_ledger WHERE card_id=
 WHERE ci.card_id=ANY(sqlc.arg(card_ids)::uuid[]) ORDER BY ci.card_id,ci.item_id;
 
 -- name: ListCardCounts :many
-SELECT sqlc.embed(l), i.name AS item_name, s.name AS actor_name, COALESCE(a.reason,'')::text AS reason
+SELECT sqlc.embed(l), i.name AS item_name, s.name AS actor_name, COALESCE(a.reason,'')::text AS reason, p.order_id
 FROM card_count_ledger l JOIN items i ON i.id=l.item_id JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.id=l.adjustment_id
+LEFT JOIN order_payments p ON p.card_count_ledger_id=l.id
 WHERE l.card_id=$1 AND (sqlc.narg(item_id)::uuid IS NULL OR l.item_id=sqlc.narg(item_id))
 AND (sqlc.narg(before_id)::uuid IS NULL OR (l.at,l.id) < (SELECT at,id FROM card_count_ledger WHERE id=sqlc.narg(before_id) AND card_id=$1))
 ORDER BY l.at DESC,l.id DESC LIMIT sqlc.arg(row_limit);
@@ -180,5 +181,10 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11);
 -- name: ListCardPoints :many
 SELECT sqlc.embed(l),s.name AS actor_name,COALESCE(a.reason,'')::text AS reason
 FROM card_points_ledger l JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.id=l.adjustment_id
+LEFT JOIN order_payments p ON p.card_count_ledger_id=l.id
 WHERE l.card_id=$1 AND (sqlc.narg(before_id)::uuid IS NULL OR (l.at,l.id) < (SELECT at,id FROM card_points_ledger WHERE id=sqlc.narg(before_id) AND card_id=$1))
 ORDER BY l.at DESC,l.id DESC LIMIT sqlc.arg(row_limit);
+
+-- name: ConsumeCardCount :one
+INSERT INTO card_count_ledger (tenant_id,store_id,card_id,item_id,kind,paid_before,paid_delta,paid_after,gift_before,gift_delta,gift_after,business_date,actor_id)
+VALUES ($1,$2,$3,$4,'consume',$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id;

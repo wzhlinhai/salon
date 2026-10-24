@@ -195,19 +195,21 @@ func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams
 }
 
 const createOrderPayment = `-- name: CreateOrderPayment :exec
-INSERT INTO order_payments (tenant_id,store_id,checkout_id,order_id,method,amount,card_id,card_ledger_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+INSERT INTO order_payments (tenant_id,store_id,checkout_id,order_id,method,amount,card_id,card_ledger_id,order_item_id,card_count_ledger_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 `
 
 type CreateOrderPaymentParams struct {
-	TenantID     uuid.UUID
-	StoreID      uuid.UUID
-	CheckoutID   uuid.UUID
-	OrderID      uuid.UUID
-	Method       string
-	Amount       money.Amount
-	CardID       *uuid.UUID
-	CardLedgerID *uuid.UUID
+	TenantID          uuid.UUID
+	StoreID           uuid.UUID
+	CheckoutID        uuid.UUID
+	OrderID           uuid.UUID
+	Method            string
+	Amount            money.Amount
+	CardID            *uuid.UUID
+	CardLedgerID      *uuid.UUID
+	OrderItemID       *uuid.UUID
+	CardCountLedgerID *uuid.UUID
 }
 
 func (q *Queries) CreateOrderPayment(ctx context.Context, arg CreateOrderPaymentParams) error {
@@ -220,6 +222,8 @@ func (q *Queries) CreateOrderPayment(ctx context.Context, arg CreateOrderPayment
 		arg.Amount,
 		arg.CardID,
 		arg.CardLedgerID,
+		arg.OrderItemID,
+		arg.CardCountLedgerID,
 	)
 	return err
 }
@@ -411,8 +415,9 @@ func (q *Queries) ListOrderItems(ctx context.Context, arg ListOrderItemsParams) 
 }
 
 const listOrderPayments = `-- name: ListOrderPayments :many
-SELECT p.tenant_id, p.store_id, p.id, p.checkout_id, p.order_id, p.method, p.amount, p.card_id, p.card_ledger_id, (-l.principal_delta)::numeric AS principal, (-l.bonus_delta)::numeric AS bonus
+SELECT p.tenant_id, p.store_id, p.id, p.checkout_id, p.order_id, p.method, p.amount, p.card_id, p.card_ledger_id, p.order_item_id, p.card_count_ledger_id, (-l.principal_delta)::numeric AS principal, (-l.bonus_delta)::numeric AS bonus, c.item_id AS count_item_id, (-COALESCE(c.paid_delta,0))::int AS paid, (-COALESCE(c.gift_delta,0))::int AS gift
 FROM order_payments p LEFT JOIN card_ledger l ON l.id = p.card_ledger_id
+LEFT JOIN card_count_ledger c ON c.id = p.card_count_ledger_id
 WHERE p.store_id=$1 AND p.order_id=ANY($2::uuid[]) ORDER BY p.id
 `
 
@@ -422,17 +427,22 @@ type ListOrderPaymentsParams struct {
 }
 
 type ListOrderPaymentsRow struct {
-	TenantID     uuid.UUID
-	StoreID      uuid.UUID
-	ID           uuid.UUID
-	CheckoutID   uuid.UUID
-	OrderID      uuid.UUID
-	Method       string
-	Amount       money.Amount
-	CardID       *uuid.UUID
-	CardLedgerID *uuid.UUID
-	Principal    *money.Amount
-	Bonus        *money.Amount
+	TenantID          uuid.UUID
+	StoreID           uuid.UUID
+	ID                uuid.UUID
+	CheckoutID        uuid.UUID
+	OrderID           uuid.UUID
+	Method            string
+	Amount            money.Amount
+	CardID            *uuid.UUID
+	CardLedgerID      *uuid.UUID
+	OrderItemID       *uuid.UUID
+	CardCountLedgerID *uuid.UUID
+	Principal         *money.Amount
+	Bonus             *money.Amount
+	CountItemID       *uuid.UUID
+	Paid              int32
+	Gift              int32
 }
 
 func (q *Queries) ListOrderPayments(ctx context.Context, arg ListOrderPaymentsParams) ([]ListOrderPaymentsRow, error) {
@@ -454,8 +464,13 @@ func (q *Queries) ListOrderPayments(ctx context.Context, arg ListOrderPaymentsPa
 			&i.Amount,
 			&i.CardID,
 			&i.CardLedgerID,
+			&i.OrderItemID,
+			&i.CardCountLedgerID,
 			&i.Principal,
 			&i.Bonus,
+			&i.CountItemID,
+			&i.Paid,
+			&i.Gift,
 		); err != nil {
 			return nil, err
 		}

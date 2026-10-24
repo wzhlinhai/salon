@@ -168,3 +168,10 @@ func (r Rules) OthersCardPayment() string {
 	r.decode(KeyOthersCardPayment, &v)
 	return v
 }
+
+// CardCountOrder 返回扣次时先扣购买次数还是赠送次数。
+func (r Rules) CardCountOrder() string {
+	var v string
+	r.decode(KeyCardCountOrder, &v)
+	return v
+}

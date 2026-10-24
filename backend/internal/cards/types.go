@@ -245,6 +245,7 @@ type CardCountItem struct {
 
 // CardCountEntry 是购买次数与赠送次数的一次变动。
 type CardCountEntry struct {
+	OrderID      *uuid.UUID      `json:"order_id" nullable:"true"`
 	ID           uuid.UUID       `json:"id"`
 	Item         CardCountItem   `json:"item"`
 	Kind         string          `json:"kind"`
