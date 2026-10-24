@@ -30,3 +30,11 @@ func (a Total) Format() string { return a.value.StringFixed(2) }
 
 // CmpTotal 精确比较两个累计金额，依次返回 -1、0 或 1。
 func (a Total) CmpTotal(b Total) int { return a.value.Cmp(b.value) }
+
+// Limit 返回累计金额与单笔上限中较小的金额。
+func (a Total) Limit(limit Amount) Amount {
+	if a.Cmp(limit) < 0 {
+		return Amount(a)
+	}
+	return limit
+}

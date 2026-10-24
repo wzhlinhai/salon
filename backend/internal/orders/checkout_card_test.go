@@ -285,8 +285,9 @@ func TestCardCheckoutChecks(t *testing.T) {
 		p      orders.PaymentInput
 		detail string
 	}{{payment("card", "100"), "卡余额支付要选卡"}, {func() orders.PaymentInput { p := cardPayment(c, "100"); p.Method = "cash"; return p }(), "只有卡余额支付和扣次要选卡"}} {
+		valid := s.customerOrder(line)
 		before := s.cardSnapshot()
-		r := s.HTTPWithToken(t, s.Owner, "checkout_orders", checkoutInput(orders.CheckoutOrderInput{OrderID: uuid.New(), Payments: []orders.PaymentInput{tc.p}}))
+		r := s.HTTPWithToken(t, s.Owner, "checkout_orders", checkoutInput(orders.CheckoutOrderInput{OrderID: id(valid["id"]), Payments: []orders.PaymentInput{tc.p}}))
 		if r.Status != 409 || r.Body["detail"] != tc.detail || before != s.cardSnapshot() {
 			t.Fatal(r)
 		}
@@ -309,6 +310,7 @@ func TestPreviewCheckout(t *testing.T) {
 			t.Fatal(ch.Name, got)
 		}
 		got = ch.Call(t, caller, "preview_checkout", orders.PreviewCheckoutInput{OrderID: id(o["id"])})
+		delete(got.Body, "pricing_card_id")
 		if got.Status != 200 || !reflect.DeepEqual(got.Body, o) || before != s.cardSnapshot() {
 			t.Fatal(ch.Name, got)
 		}
