@@ -38,3 +38,6 @@ func (a Total) Limit(limit Amount) Amount {
 	}
 	return limit
 }
+
+// AddTotal 精确相加两份不受单笔上限限制的累计金额。
+func (a Total) AddTotal(b Total) Total { return Total{value: a.value.Add(b.value)} }

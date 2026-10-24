@@ -32,6 +32,9 @@ var customerReferences = []customerReference{
 	{"orders", "customer_id", func(ctx context.Context, q *dbgen.Queries, from, to uuid.UUID) error {
 		return q.MergeCustomerOrders(ctx, dbgen.MergeCustomerOrdersParams{MergedID: from, KeepID: to})
 	}},
+	{"debts", "customer_id", func(ctx context.Context, q *dbgen.Queries, from, to uuid.UUID) error {
+		return q.MergeCustomerDebts(ctx, dbgen.MergeCustomerDebtsParams{MergedID: from, KeepID: to})
+	}},
 	{"cards", "customer_id", func(ctx context.Context, q *dbgen.Queries, from, to uuid.UUID) error {
 		// 与 transfer_card_balance 一样按卡 ID 加锁，避免合并与转余额交错死锁。
 		if _, err := q.LockMergedCustomerCards(ctx, from); err != nil {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/wzhlinhai/salon/backend/internal/cards"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
+	"github.com/wzhlinhai/salon/backend/internal/debts"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
@@ -72,6 +73,22 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 		day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, now)
 		if err != nil {
 			return err
+		}
+		for i, row := range rows {
+			for _, payment := range in.Orders[i].Payments {
+				if payment.Method != "debt" {
+					continue
+				}
+				// 结账先锁单，合并先锁顾客再改挂单；这里锁顾客会倒置锁序。
+				// 补手机号只会让顾客变为已识别，无锁读取不会放过未识别挂账。
+				customer, err := env.Q.GetCustomer(ctx, row.CustomerID)
+				if err != nil {
+					return err
+				}
+				if customer.Phone == nil {
+					return ops.Rule("未识别顾客不能挂账，请先补手机号")
+				}
+			}
 		}
 		rules := make([]settings.Rules, len(rows))
 		cardIDs := []uuid.UUID{}
@@ -229,8 +246,14 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 						}
 						ledgerID = &id
 					}
-					if err := env.Q.CreateOrderPayment(ctx, dbgen.CreateOrderPaymentParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CheckoutID: checkout.ID, OrderID: rows[i].ID, Method: payment.Method, Amount: payment.Amount, CardID: payment.CardID, CardLedgerID: ledgerID, OrderItemID: payment.OrderItemID, CardCountLedgerID: countLedgerID}); err != nil {
+					paymentID, err := env.Q.CreateOrderPayment(ctx, dbgen.CreateOrderPaymentParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CheckoutID: checkout.ID, OrderID: rows[i].ID, Method: payment.Method, Amount: payment.Amount, CardID: payment.CardID, CardLedgerID: ledgerID, OrderItemID: payment.OrderItemID, CardCountLedgerID: countLedgerID})
+					if err != nil {
 						return err
+					}
+					if payment.Method == "debt" {
+						if err := debts.RecordOrderDebt(ctx, env, rows[i].CustomerID, rows[i].ID, paymentID, payment.Amount, day); err != nil {
+							return err
+						}
 					}
 				}
 			}

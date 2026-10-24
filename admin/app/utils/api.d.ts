@@ -344,6 +344,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/debt_summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 本店挂账、历史欠款、已还及未还对账 */
+        post: operations["debt_summary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/delete_role": {
         parameters: {
             query?: never;
@@ -610,6 +627,23 @@ export interface paths {
         put?: never;
         /** 查看顾客在发行门店的卡 */
         post: operations["list_customer_cards"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_customer_debts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看顾客逐笔欠款和还款 */
+        post: operations["list_customer_debts"];
         delete?: never;
         options?: never;
         head?: never;
@@ -939,6 +973,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/register_historical_debt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 登记不关联单的历史欠款 */
+        post: operations["register_historical_debt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/remove_order_item": {
         parameters: {
             query?: never;
@@ -967,6 +1018,23 @@ export interface paths {
         put?: never;
         /** 修改当前门店的名称 */
         post: operations["rename_store"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/repay_debt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 偿还一笔欠款的全部或部分 */
+        post: operations["repay_debt"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1597,6 +1665,10 @@ export interface components {
         CustomerAssignmentResult: {
             items: components["schemas"]["Customer"][];
         };
+        CustomerDebtList: {
+            items: components["schemas"]["Debt"][];
+            totals: components["schemas"]["Totals"];
+        };
         CustomerHandoverResult: {
             /** Format: int64 */
             count: number;
@@ -1625,6 +1697,23 @@ export interface components {
         CustomerSourceList: {
             items: components["schemas"]["CustomerSource"][];
         };
+        Debt: {
+            amount: string;
+            /** Format: date-time */
+            at: string;
+            /** Format: date */
+            business_date: string;
+            id: string;
+            /** @enum {string} */
+            kind: "order" | "historical";
+            note: string | null;
+            order_id: string | null;
+            outstanding: string;
+            recorded_by: string;
+            repaid: string;
+            repayments: components["schemas"]["Repayment"][];
+        };
+        DebtSummaryInput: Record<string, never>;
         Def: {
             label: string;
             name: string;
@@ -1803,6 +1892,10 @@ export interface components {
         ListCustomerCardsInput: {
             customer_id: string;
         };
+        ListCustomerDebtsInput: {
+            customer_id: string;
+            outstanding_only?: boolean;
+        };
         ListCustomerSourcesInput: Record<string, never>;
         ListInput: Record<string, never>;
         ListItemsInput: Record<string, never>;
@@ -1928,6 +2021,7 @@ export interface components {
             amount: string;
             card: components["schemas"]["OrderPaymentCard"] | null;
             count: components["schemas"]["OrderPaymentCount"] | null;
+            debt_id: string | null;
             id: string;
             /** @enum {string} */
             method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "card" | "count";
@@ -2041,6 +2135,13 @@ export interface components {
             id: string;
             name: string;
         };
+        RegisterHistoricalDebtInput: {
+            amount: string;
+            customer_id: string;
+            /** Format: date */
+            incurred_on: string;
+            note?: string;
+        };
         RemainingCounts: {
             /** Format: int32 */
             gift_remaining: number;
@@ -2057,6 +2158,23 @@ export interface components {
         RenameStoreInput: {
             /** @description 新的门店名称 */
             name: string;
+        };
+        RepayDebtInput: {
+            amount: string;
+            debt_id: string;
+            /** @enum {string} */
+            method: "cash" | "unionpay" | "wechat" | "alipay";
+        };
+        Repayment: {
+            amount: string;
+            /** Format: date-time */
+            at: string;
+            /** Format: date */
+            business_date: string;
+            id: string;
+            /** @enum {string} */
+            method: "cash" | "unionpay" | "wechat" | "alipay";
+            repaid_by: string;
         };
         RepriceOrderItemInput: {
             order_id: string;
@@ -2228,6 +2346,20 @@ export interface components {
             id: string;
             /** @description 门店名称 */
             name: string;
+        };
+        Summary: {
+            amount: string;
+            historical: components["schemas"]["Totals"];
+            order: components["schemas"]["Totals"];
+            outstanding: string;
+            /** Format: int64 */
+            outstanding_count: number;
+            repaid: string;
+        };
+        Totals: {
+            amount: string;
+            outstanding: string;
+            repaid: string;
         };
         TransferCardBalanceInput: {
             bonus: string;
@@ -2984,6 +3116,39 @@ export interface operations {
             };
         };
     };
+    debt_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DebtSummaryInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Summary"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     delete_role: {
         parameters: {
             query?: never;
@@ -3499,6 +3664,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_customer_debts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListCustomerDebtsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerDebtList"];
                 };
             };
             /** @description Error */
@@ -4139,6 +4337,39 @@ export interface operations {
             };
         };
     };
+    register_historical_debt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterHistoricalDebtInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Debt"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     remove_order_item: {
         parameters: {
             query?: never;
@@ -4192,6 +4423,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Store"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    repay_debt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RepayDebtInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Debt"];
                 };
             };
             /** @description Error */
