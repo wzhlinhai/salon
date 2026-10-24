@@ -107,3 +107,12 @@ sql:
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money
               type: Amount
+          - column: red_packets.face_value
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: red_packets.price
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+              pointer: true

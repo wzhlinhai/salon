@@ -68,8 +68,8 @@ INSERT INTO checkouts (tenant_id,store_id,business_date,checked_out_by)
 VALUES ($1,$2,$3,$4) RETURNING *;
 
 -- name: CreateOrderPayment :one
-INSERT INTO order_payments (tenant_id,store_id,checkout_id,order_id,method,amount,card_id,card_ledger_id,order_item_id,card_count_ledger_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id;
+INSERT INTO order_payments (tenant_id,store_id,checkout_id,order_id,method,amount,card_id,card_ledger_id,order_item_id,card_count_ledger_id,red_packet_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id;
 
 -- name: ListOrderPayments :many
 SELECT p.*, d.id AS debt_id, (-l.principal_delta)::numeric AS principal, (-l.bonus_delta)::numeric AS bonus, c.item_id AS count_item_id, (-COALESCE(c.paid_delta,0))::int AS paid, (-COALESCE(c.gift_delta,0))::int AS gift

@@ -368,6 +368,7 @@ type OrderPayment struct {
 	CardLedgerID      *uuid.UUID
 	OrderItemID       *uuid.UUID
 	CardCountLedgerID *uuid.UUID
+	RedPacketID       *uuid.UUID
 }
 
 type Position struct {
@@ -377,6 +378,31 @@ type Position struct {
 	Name      string
 	Active    bool
 	CreatedAt pgtype.Timestamptz
+}
+
+type RedPacket struct {
+	TenantID       uuid.UUID
+	StoreID        uuid.UUID
+	ID             uuid.UUID
+	CustomerID     uuid.UUID
+	Kind           string
+	FaceValue      money.Amount
+	Price          *money.Amount
+	ExpiresOn      pgtype.Date
+	BusinessDate   pgtype.Date
+	IssuedBy       uuid.UUID
+	At             pgtype.Timestamptz
+	OrderPaymentID *uuid.UUID
+	RevokedBy      *uuid.UUID
+	RevokedAt      pgtype.Timestamptz
+	RevokeReason   *string
+}
+
+type RedPacketSale struct {
+	TenantID    uuid.UUID
+	StoreID     uuid.UUID
+	RedPacketID uuid.UUID
+	StaffID     uuid.UUID
 }
 
 type Role struct {

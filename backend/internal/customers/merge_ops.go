@@ -42,6 +42,13 @@ var customerReferences = []customerReference{
 		}
 		return q.MergeCustomerCards(ctx, dbgen.MergeCustomerCardsParams{MergedID: from, KeepID: to})
 	}},
+	{"red_packets", "customer_id", func(ctx context.Context, q *dbgen.Queries, from, to uuid.UUID) error {
+		// 合并按顾客→单→欠款→卡→红包加锁，与结账的卡→红包一致；不回锁顾客。
+		if _, err := q.LockMergedCustomerRedPackets(ctx, from); err != nil {
+			return err
+		}
+		return q.MergeCustomerRedPackets(ctx, dbgen.MergeCustomerRedPacketsParams{MergedID: from, KeepID: to})
+	}},
 	{"customer_safety_labels", "customer_id", func(ctx context.Context, q *dbgen.Queries, from, to uuid.UUID) error {
 		return q.MergeCustomerSafetyLabels(ctx, dbgen.MergeCustomerSafetyLabelsParams{MergedID: from, KeepID: to})
 	}},

@@ -480,6 +480,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/issue_red_packet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 卖或送红包给顾客 */
+        post: operations["issue_red_packet"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_audit_log": {
         parameters: {
             query?: never;
@@ -644,6 +661,23 @@ export interface paths {
         put?: never;
         /** 查看顾客逐笔欠款和还款 */
         post: operations["list_customer_debts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_customer_red_packets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看顾客红包 */
+        post: operations["list_customer_red_packets"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1052,6 +1086,23 @@ export interface paths {
         put?: never;
         /** 改价并记录原因 */
         post: operations["reprice_order_item"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/revoke_red_packet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 撤回未用的红包 */
+        post: operations["revoke_red_packet"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1802,6 +1853,16 @@ export interface components {
             from_staff_id: string;
             to_staff_id: string;
         };
+        IssueRedPacketInput: {
+            customer_id: string;
+            /** Format: date */
+            expires_on: string;
+            face_value: string;
+            /** @enum {string} */
+            kind: "sold" | "gift";
+            price?: string;
+            sales_staff_ids?: string[];
+        };
         Item: {
             active: boolean;
             /** Format: date-time */
@@ -1895,6 +1956,9 @@ export interface components {
         ListCustomerDebtsInput: {
             customer_id: string;
             outstanding_only?: boolean;
+        };
+        ListCustomerRedPacketsInput: {
+            customer_id: string;
         };
         ListCustomerSourcesInput: Record<string, never>;
         ListInput: Record<string, never>;
@@ -2024,7 +2088,8 @@ export interface components {
             debt_id: string | null;
             id: string;
             /** @enum {string} */
-            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "card" | "count";
+            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "card" | "count" | "red_packet";
+            red_packet_id: string | null;
         };
         OrderPaymentCard: {
             bonus: string;
@@ -2044,8 +2109,9 @@ export interface components {
             amount: string;
             card_id?: string;
             /** @enum {string} */
-            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "card" | "count";
+            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "card" | "count" | "red_packet";
             order_item_id?: string;
+            red_packet_id?: string;
         };
         PermissionList: {
             permissions: components["schemas"]["Def"][];
@@ -2131,6 +2197,36 @@ export interface components {
             principal: string;
             upgraded_to?: components["schemas"]["CardUpgradeType"];
         };
+        RedPacket: {
+            /** Format: date-time */
+            at: string;
+            /** Format: date */
+            business_date: string;
+            /** Format: date */
+            expires_on: string;
+            face_value: string;
+            id: string;
+            issued_by: string;
+            /** @enum {string} */
+            kind: "sold" | "gift";
+            order_id: string | null;
+            price: string | null;
+            revoke_reason: string | null;
+            /** Format: date-time */
+            revoked_at: string | null;
+            revoked_by: string | null;
+            sales_staff: components["schemas"]["RedPacketSalesStaff"][];
+            /** @enum {string} */
+            status: "available" | "used" | "revoked" | "expired";
+            used_amount: string | null;
+        };
+        RedPacketList: {
+            items: components["schemas"]["RedPacket"][];
+        };
+        RedPacketSalesStaff: {
+            id: string;
+            name: string;
+        };
         Ref: {
             id: string;
             name: string;
@@ -2181,6 +2277,10 @@ export interface components {
             order_item_id: string;
             price: string;
             reason: string;
+        };
+        RevokeRedPacketInput: {
+            reason: string;
+            red_packet_id: string;
         };
         RevokeSafetyLabelInput: {
             customer_id: string;
@@ -3380,6 +3480,39 @@ export interface operations {
             };
         };
     };
+    issue_red_packet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssueRedPacketInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RedPacket"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     list_audit_log: {
         parameters: {
             query?: never;
@@ -3697,6 +3830,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CustomerDebtList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_customer_red_packets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListCustomerRedPacketsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RedPacketList"];
                 };
             };
             /** @description Error */
@@ -4489,6 +4655,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Order"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    revoke_red_packet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevokeRedPacketInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RedPacket"];
                 };
             };
             /** @description Error */
