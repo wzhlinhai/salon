@@ -331,15 +331,17 @@ type OrderItemPosition struct {
 }
 
 type OrderPayment struct {
-	TenantID     uuid.UUID
-	StoreID      uuid.UUID
-	ID           uuid.UUID
-	CheckoutID   uuid.UUID
-	OrderID      uuid.UUID
-	Method       string
-	Amount       money.Amount
-	CardID       *uuid.UUID
-	CardLedgerID *uuid.UUID
+	TenantID          uuid.UUID
+	StoreID           uuid.UUID
+	ID                uuid.UUID
+	CheckoutID        uuid.UUID
+	OrderID           uuid.UUID
+	Method            string
+	Amount            money.Amount
+	CardID            *uuid.UUID
+	CardLedgerID      *uuid.UUID
+	OrderItemID       *uuid.UUID
+	CardCountLedgerID *uuid.UUID
 }
 
 type Position struct {

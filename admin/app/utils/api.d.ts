@@ -1358,6 +1358,7 @@ export interface components {
             id: string;
             item: components["schemas"]["CardCountItem"];
             kind: string;
+            order_id: string | null;
             /** Format: int32 */
             paid_after: number;
             /** Format: int32 */
@@ -1926,20 +1927,31 @@ export interface components {
         OrderPayment: {
             amount: string;
             card: components["schemas"]["OrderPaymentCard"] | null;
+            count: components["schemas"]["OrderPaymentCount"] | null;
             id: string;
             /** @enum {string} */
-            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "card";
+            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "card" | "count";
         };
         OrderPaymentCard: {
             bonus: string;
             card_id: string;
             principal: string;
         };
+        OrderPaymentCount: {
+            card_id: string;
+            /** Format: int32 */
+            gift: number;
+            item_id: string;
+            order_item_id: string;
+            /** Format: int32 */
+            paid: number;
+        };
         PaymentInput: {
             amount: string;
             card_id?: string;
             /** @enum {string} */
-            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "card";
+            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "card" | "count";
+            order_item_id?: string;
         };
         PermissionList: {
             permissions: components["schemas"]["Def"][];

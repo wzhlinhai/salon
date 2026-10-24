@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
@@ -31,7 +32,7 @@ func (c *PaymentCard) CheckHolder(customerID uuid.UUID, rules settings.Rules) er
 	return nil
 }
 
-// PaymentCards 按 UUID 锁卡并检查查看范围、种类和营业日有效期；试算时只读，不加锁。
+// PaymentCards 按 UUID 锁卡并检查查看范围和营业日有效期；试算时只读，不加锁。
 func PaymentCards(ctx context.Context, env ops.Env, ids []uuid.UUID, day time.Time, lock bool) (map[uuid.UUID]*PaymentCard, error) {
 	ordered := slices.Clone(ids)
 	slices.SortFunc(ordered, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
@@ -53,9 +54,6 @@ func PaymentCards(ctx context.Context, env ops.Env, ids []uuid.UUID, day time.Ti
 		before, err := cardView(ctx, env, id)
 		if err != nil {
 			return nil, err
-		}
-		if before.Kind == CountCard {
-			return nil, ops.Rule("次卡不能用卡余额支付")
 		}
 		if row.ExpiresOn.Valid && row.ExpiresOn.Time.Before(day) {
 			return nil, ops.Rule("卡已过期")
@@ -108,4 +106,37 @@ func AuditPaymentCards(ctx context.Context, env ops.Env, used map[uuid.UUID]*Pay
 		}
 	}
 	return nil
+}
+
+// CheckBalancePayment 检查卡是否可以用于卡余额支付或作为计价卡。
+func (c *PaymentCard) CheckBalancePayment() error {
+	if c.before.Kind == CountCard {
+		return ops.Rule("次卡不能用卡余额支付")
+	}
+	return nil
+}
+
+// ConsumeCount 在已持卡锁下读取当前次数并按快照顺序扣一次，接续同卡同项目的前笔流水。
+func (c *PaymentCard) ConsumeCount(ctx context.Context, env ops.Env, itemID uuid.UUID, order string, day time.Time) (uuid.UUID, error) {
+	rows, err := env.Q.RemainingCounts(ctx, []uuid.UUID{c.row.ID})
+	if err != nil {
+		return uuid.Nil, err
+	}
+	for _, row := range rows {
+		if row.CardItem.ItemID != itemID {
+			continue
+		}
+		paid, gift := row.PaidAfter, row.GiftAfter
+		if paid == 0 && gift == 0 {
+			return uuid.Nil, ops.Rule("次数不足")
+		}
+		var pd, gd int32
+		if order == "paid_first" && paid > 0 || order == "gift_first" && gift == 0 {
+			pd = -1
+		} else {
+			gd = -1
+		}
+		return env.Q.ConsumeCardCount(ctx, dbgen.ConsumeCardCountParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: c.row.ID, ItemID: itemID, PaidBefore: paid, PaidDelta: pd, PaidAfter: paid + pd, GiftBefore: gift, GiftDelta: gd, GiftAfter: gift + gd, BusinessDate: pgtype.Date{Time: day, Valid: true}, ActorID: env.Caller.StaffID})
+	}
+	return uuid.Nil, ops.Rule("卡上没有这个项目")
 }

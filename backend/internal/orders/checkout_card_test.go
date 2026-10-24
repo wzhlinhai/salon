@@ -19,7 +19,7 @@ import (
 )
 
 func (s *fixture) cardSnapshot() string {
-	return dbtest.Snapshot(s.t, s.Pool, s.Res.TenantID, "checkouts", "order_payments", "orders", "order_items", "order_item_positions", "cards", "card_ledger", "card_points_ledger", "audit_log", "customers", "settings_snapshots")
+	return dbtest.Snapshot(s.t, s.Pool, s.Res.TenantID, "checkouts", "order_payments", "orders", "order_items", "order_item_positions", "cards", "card_ledger", "card_count_ledger", "card_points_ledger", "audit_log", "customers", "settings_snapshots")
 }
 func (s *fixture) paymentType(name string, discount any) map[string]any {
 	return s.call("create_card_type", map[string]any{"name": name, "kind": "stored_value", "validity_kind": "none", "discount_percent": discount}, 200)
@@ -284,7 +284,7 @@ func TestCardCheckoutChecks(t *testing.T) {
 	for _, tc := range []struct {
 		p      orders.PaymentInput
 		detail string
-	}{{payment("card", "100"), "卡余额支付要选卡"}, {func() orders.PaymentInput { p := cardPayment(c, "100"); p.Method = "cash"; return p }(), "只有卡余额支付要选卡"}} {
+	}{{payment("card", "100"), "卡余额支付要选卡"}, {func() orders.PaymentInput { p := cardPayment(c, "100"); p.Method = "cash"; return p }(), "只有卡余额支付和扣次要选卡"}} {
 		before := s.cardSnapshot()
 		r := s.HTTPWithToken(t, s.Owner, "checkout_orders", checkoutInput(orders.CheckoutOrderInput{OrderID: uuid.New(), Payments: []orders.PaymentInput{tc.p}}))
 		if r.Status != 409 || r.Body["detail"] != tc.detail || before != s.cardSnapshot() {

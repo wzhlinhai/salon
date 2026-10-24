@@ -34,10 +34,26 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 		seen[order.OrderID] = true
 		ids[i] = order.OrderID
 	}
+	countLines := map[uuid.UUID]bool{}
 	for _, order := range in.Orders {
 		for _, payment := range order.Payments {
-			if payment.Method != "card" && payment.CardID != nil {
-				return nil, ops.Rule("只有卡余额支付要选卡")
+			if payment.Method != "count" && payment.OrderItemID != nil {
+				return nil, ops.Rule("只有扣次要选项目行")
+			}
+			if payment.Method == "count" {
+				if payment.OrderItemID == nil {
+					return nil, ops.Rule("扣次要选项目行")
+				}
+				if payment.CardID == nil {
+					return nil, ops.Rule("扣次要选卡")
+				}
+				if countLines[*payment.OrderItemID] {
+					return nil, ops.Rule("同一项目行不能重复扣次")
+				}
+				countLines[*payment.OrderItemID] = true
+			}
+			if payment.Method != "card" && payment.Method != "count" && payment.CardID != nil {
+				return nil, ops.Rule("只有卡余额支付和扣次要选卡")
 			}
 			if payment.Method == "card" && payment.CardID == nil {
 				return nil, ops.Rule("卡余额支付要选卡")
@@ -81,7 +97,12 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 				if err := card.CheckHolder(row.CustomerID, rules[i]); err != nil {
 					return err
 				}
-				if pricingTypes[i] == nil {
+				if payment.Method == "card" {
+					if err := card.CheckBalancePayment(); err != nil {
+						return err
+					}
+				}
+				if payment.Method == "card" && pricingTypes[i] == nil {
 					pricingTypes[i] = new(card.CardTypeID())
 					typeIDs = append(typeIDs, *pricingTypes[i])
 				}
@@ -111,6 +132,9 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 				prices = members[*pricingTypes[i]]
 			}
 			priced[i] = priceCheckout(order, pricingLines(lines, prices), pricingTypes[i], percent, rules[i].MemberPriceRule())
+			if err := checkCountPayments(priced[i], in.Orders[i].Payments); err != nil {
+				return err
+			}
 			if err := checkCheckout(priced[i], in.Orders[i].Payments); err != nil {
 				return err
 			}
@@ -130,15 +154,29 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 				}
 			}
 			for _, payment := range in.Orders[i].Payments {
-				var ledgerID *uuid.UUID
-				if payment.CardID != nil {
+				var ledgerID, countLedgerID *uuid.UUID
+				if payment.Method == "count" {
+					var itemID uuid.UUID
+					for _, line := range priced[i].Items {
+						if line.ID == *payment.OrderItemID {
+							itemID = line.ItemID
+							break
+						}
+					}
+					id, err := used[*payment.CardID].ConsumeCount(ctx, env, itemID, rules[i].CardCountOrder(), day)
+					if err != nil {
+						return err
+					}
+					countLedgerID = &id
+				}
+				if payment.Method == "card" {
 					id, err := used[*payment.CardID].Consume(ctx, env, payment.Amount, rules[i].CardDeductionOrder(), day)
 					if err != nil {
 						return err
 					}
 					ledgerID = &id
 				}
-				if err := env.Q.CreateOrderPayment(ctx, dbgen.CreateOrderPaymentParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CheckoutID: checkout.ID, OrderID: rows[i].ID, Method: payment.Method, Amount: payment.Amount, CardID: payment.CardID, CardLedgerID: ledgerID}); err != nil {
+				if err := env.Q.CreateOrderPayment(ctx, dbgen.CreateOrderPaymentParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CheckoutID: checkout.ID, OrderID: rows[i].ID, Method: payment.Method, Amount: payment.Amount, CardID: payment.CardID, CardLedgerID: ledgerID, OrderItemID: payment.OrderItemID, CardCountLedgerID: countLedgerID}); err != nil {
 					return err
 				}
 			}
@@ -188,6 +226,30 @@ func checkCheckout(order Order, payments []PaymentInput) error {
 	}
 	if total.CmpTotal(net) != 0 {
 		return ops.Rule("支付合计须等于实收")
+	}
+	return nil
+}
+
+func checkCountPayments(order Order, payments []PaymentInput) error {
+	for _, payment := range payments {
+		if payment.Method != "count" {
+			continue
+		}
+		found := false
+		for _, line := range order.Items {
+			if line.ID != *payment.OrderItemID || line.RemovedAt != nil {
+				continue
+			}
+			found = true
+			net, _ := line.Price.Apply(money.Amount{}.Sub(line.Discount))
+			if payment.Amount.Cmp(net) != 0 {
+				return ops.Rule("扣次金额须等于这一行的实收")
+			}
+			break
+		}
+		if !found {
+			return ops.Rule("扣次的项目行不在这张单上")
+		}
 	}
 	return nil
 }

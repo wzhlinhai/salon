@@ -155,7 +155,9 @@ func listCardCounts(ctx context.Context, env ops.Env, in *ListCardCountsInput) (
 	}
 	out := &CardCountList{Entries: []CardCountEntry{}}
 	for _, r := range rows {
-		out.Entries = append(out.Entries, countEntry(r.CardCountLedger, r.ItemName, r.ActorName, r.Reason))
+		entry := countEntry(r.CardCountLedger, r.ItemName, r.ActorName, r.Reason)
+		entry.OrderID = r.OrderID
+		out.Entries = append(out.Entries, entry)
 	}
 	return out, nil
 }

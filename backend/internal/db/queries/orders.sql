@@ -68,12 +68,13 @@ INSERT INTO checkouts (tenant_id,store_id,business_date,checked_out_by)
 VALUES ($1,$2,$3,$4) RETURNING *;
 
 -- name: CreateOrderPayment :exec
-INSERT INTO order_payments (tenant_id,store_id,checkout_id,order_id,method,amount,card_id,card_ledger_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8);
+INSERT INTO order_payments (tenant_id,store_id,checkout_id,order_id,method,amount,card_id,card_ledger_id,order_item_id,card_count_ledger_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10);
 
 -- name: ListOrderPayments :many
-SELECT p.*, (-l.principal_delta)::numeric AS principal, (-l.bonus_delta)::numeric AS bonus
+SELECT p.*, (-l.principal_delta)::numeric AS principal, (-l.bonus_delta)::numeric AS bonus, c.item_id AS count_item_id, (-COALESCE(c.paid_delta,0))::int AS paid, (-COALESCE(c.gift_delta,0))::int AS gift
 FROM order_payments p LEFT JOIN card_ledger l ON l.id = p.card_ledger_id
+LEFT JOIN card_count_ledger c ON c.id = p.card_count_ledger_id
 WHERE p.store_id=$1 AND p.order_id=ANY(sqlc.arg(order_ids)::uuid[]) ORDER BY p.id;
 
 -- name: MarkOrderPaid :exec
