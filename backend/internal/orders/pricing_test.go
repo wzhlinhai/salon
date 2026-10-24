@@ -33,6 +33,7 @@ func TestPriceCheckout(t *testing.T) {
 		{"lowest below", "level", "100", "80", "lowest", "80.00", "member", "0.00", "80.00", true, true, false},
 		{"discount", "standard", "100", "", "member_first", "100.00", "standard", "12.00", "88.00", true, true, false},
 		{"not discountable", "standard", "100", "", "member_first", "100.00", "standard", "0.00", "100.00", false, true, false},
+		{"not discountable with member price", "level", "100", "80", "member_first", "100.00", "level", "0.00", "100.00", false, true, false},
 		{"half up", "standard", "0.25", "", "member_first", "0.25", "standard", "0.02", "0.23", true, true, false},
 		{"removed", "standard", "100", "80", "member_first", "100.00", "standard", "0.00", "0.00", true, true, true},
 	} {
@@ -66,6 +67,9 @@ func TestPriceCheckout(t *testing.T) {
 			}
 			if result.PriceSource == "member" && (result.LevelID != nil || result.CardTypeID == nil || *result.CardTypeID != typeID) {
 				t.Fatal(result)
+			}
+			if !tc.discountable && !reflect.DeepEqual(result, line) {
+				t.Fatal("rewrote non-discountable line", result)
 			}
 			if !reflect.DeepEqual(input.Items[0], line) {
 				t.Fatal("modified input")
