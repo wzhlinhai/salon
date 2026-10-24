@@ -162,7 +162,7 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 	}
 	byPaymentOrder := map[uuid.UUID][]OrderPayment{}
 	for _, p := range payments {
-		payment := OrderPayment{DebtID: p.DebtID, ID: p.ID, Method: p.Method, Amount: p.Amount}
+		payment := OrderPayment{RedPacketID: p.RedPacketID, DebtID: p.DebtID, ID: p.ID, Method: p.Method, Amount: p.Amount}
 		if p.Method == "card" {
 			payment.Card = &OrderPaymentCard{CardID: *p.CardID, Principal: *p.Principal, Bonus: *p.Bonus}
 		}

@@ -50,3 +50,24 @@ func LockAssignable(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, id
 	}
 	return nil
 }
+
+// LockSalesStaff 校验一到十名不同的本店在职业绩归属人，并按 UUID 共享锁住员工。
+func LockSalesStaff(ctx context.Context, env ops.Env, ids []uuid.UUID) error {
+	if len(ids) < 1 || len(ids) > 10 {
+		return ops.Rule("请选择一到十名不同的业绩归属人")
+	}
+	seen := map[uuid.UUID]bool{}
+	for _, id := range ids {
+		if seen[id] {
+			return ops.Rule("请选择一到十名不同的业绩归属人")
+		}
+		seen[id] = true
+	}
+	if err := LockAssignable(ctx, env.Q, env.Caller.StoreID, ids...); err != nil {
+		if errors.Is(err, ErrNotAssignable) {
+			return ops.Rule("业绩归属人必须是本店在职员工")
+		}
+		return err
+	}
+	return nil
+}

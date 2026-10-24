@@ -122,19 +122,21 @@ type MergeOrdersInput struct {
 
 // OrderPayment 是单上的一笔支付，按登记顺序返回。
 type OrderPayment struct {
-	DebtID *uuid.UUID         `json:"debt_id" nullable:"true"`
-	Count  *OrderPaymentCount `json:"count"`
-	Card   *OrderPaymentCard  `json:"card"`
-	ID     uuid.UUID          `json:"id"`
-	Method string             `json:"method" enum:"cash,unionpay,wechat,alipay,debt,card,count"`
-	Amount money.Amount       `json:"amount"`
+	RedPacketID *uuid.UUID         `json:"red_packet_id" nullable:"true"`
+	DebtID      *uuid.UUID         `json:"debt_id" nullable:"true"`
+	Count       *OrderPaymentCount `json:"count"`
+	Card        *OrderPaymentCard  `json:"card"`
+	ID          uuid.UUID          `json:"id"`
+	Method      string             `json:"method" enum:"cash,unionpay,wechat,alipay,debt,card,count,red_packet"`
+	Amount      money.Amount       `json:"amount"`
 }
 
 // PaymentInput 是支付方式和登记金额。
 type PaymentInput struct {
+	RedPacketID *uuid.UUID   `json:"red_packet_id,omitempty"`
 	OrderItemID *uuid.UUID   `json:"order_item_id,omitempty"`
 	CardID      *uuid.UUID   `json:"card_id,omitempty"`
-	Method      string       `json:"method" enum:"cash,unionpay,wechat,alipay,debt,card,count"`
+	Method      string       `json:"method" enum:"cash,unionpay,wechat,alipay,debt,card,count,red_packet"`
 	Amount      money.Amount `json:"amount"`
 }
 

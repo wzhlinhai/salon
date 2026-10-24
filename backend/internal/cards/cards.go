@@ -49,25 +49,6 @@ func listCardTypes(ctx context.Context, env ops.Env, _ *ListCardTypesInput) (*Ca
 	}
 	return out, nil
 }
-func lockSalesStaff(ctx context.Context, env ops.Env, ids []uuid.UUID) error {
-	if len(ids) < 1 || len(ids) > 10 {
-		return ops.Rule("请选择一到十名不同的业绩归属人")
-	}
-	seen := map[uuid.UUID]bool{}
-	for _, id := range ids {
-		if seen[id] {
-			return ops.Rule("请选择一到十名不同的业绩归属人")
-		}
-		seen[id] = true
-	}
-	if err := staff.LockAssignable(ctx, env.Q, env.Caller.StoreID, ids...); err != nil {
-		if errors.Is(err, staff.ErrNotAssignable) {
-			return ops.Rule("业绩归属人必须是本店在职员工")
-		}
-		return err
-	}
-	return nil
-}
 
 func canView(ctx context.Context, env ops.Env, id uuid.UUID) error {
 	c, err := env.Q.GetCustomer(ctx, id)
@@ -99,7 +80,7 @@ func openCard(ctx context.Context, env ops.Env, in *OpenCardInput) (*Card, error
 	return openCardAt(ctx, env, in, time.Now())
 }
 func openCardAt(ctx context.Context, env ops.Env, in *OpenCardInput, now time.Time) (*Card, error) {
-	if err := lockSalesStaff(ctx, env, in.SalesStaffIDs); err != nil {
+	if err := staff.LockSalesStaff(ctx, env, in.SalesStaffIDs); err != nil {
 		return nil, err
 	}
 	_, err := customers.LockReference(ctx, env, in.CustomerID)
@@ -150,7 +131,7 @@ func openCardAt(ctx context.Context, env ops.Env, in *OpenCardInput, now time.Ti
 	return out, nil
 }
 func rechargeCard(ctx context.Context, env ops.Env, in *RechargeInput) (*RechargeResult, error) {
-	if err := lockSalesStaff(ctx, env, in.SalesStaffIDs); err != nil {
+	if err := staff.LockSalesStaff(ctx, env, in.SalesStaffIDs); err != nil {
 		return nil, err
 	}
 	var upgraded *CardUpgradeType

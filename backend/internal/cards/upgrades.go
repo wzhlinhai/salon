@@ -16,6 +16,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
+	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 
 // CreateCardUpgradeRuleInput 是新建升级规则的参数，条件种类后续可扩展。
@@ -231,7 +232,7 @@ func updateCardUpgradeRule(ctx context.Context, env ops.Env, in *UpdateCardUpgra
 }
 func upgradeCard(ctx context.Context, env ops.Env, in *UpgradeCardInput) (*Card, error) {
 	if in.Principal.Cmp(money.Amount{}) != 0 || in.Bonus.Cmp(money.Amount{}) != 0 || len(in.SalesStaffIDs) > 0 {
-		if err := lockSalesStaff(ctx, env, in.SalesStaffIDs); err != nil {
+		if err := staff.LockSalesStaff(ctx, env, in.SalesStaffIDs); err != nil {
 			return nil, err
 		}
 	}

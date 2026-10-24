@@ -406,6 +406,7 @@ onBeforeUnmount(() => {
           </div>
         </UCard>
         <CustomerCards v-if="can('customer.view')" :id="id" :merged="!!customer.merged_into" />
+        <CustomerRedPackets v-if="can('customer.view')" :id="customer.id" :merged="!!customer.merged_into" />
         <UCard v-if="can('audit_log.view')">
           <template #header>
             <h3 class="font-medium">修改记录</h3>

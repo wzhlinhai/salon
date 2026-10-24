@@ -14,6 +14,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
+	"github.com/wzhlinhai/salon/backend/internal/redpackets"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
@@ -35,10 +36,25 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 		seen[order.OrderID] = true
 		ids[i] = order.OrderID
 	}
+	packetIDs := []uuid.UUID{}
+	packetSeen := map[uuid.UUID]bool{}
 	countLines := map[uuid.UUID]bool{}
 	for _, order := range in.Orders {
 		unspecified := 0
 		for _, payment := range order.Payments {
+			if payment.Method != "red_packet" && payment.RedPacketID != nil {
+				return nil, ops.Rule("只有红包支付要选红包")
+			}
+			if payment.Method == "red_packet" {
+				if payment.RedPacketID == nil {
+					return nil, ops.Rule("红包支付要选红包")
+				}
+				if packetSeen[*payment.RedPacketID] {
+					return nil, ops.Rule("同一个红包只能用一次")
+				}
+				packetSeen[*payment.RedPacketID] = true
+				packetIDs = append(packetIDs, *payment.RedPacketID)
+			}
 			if payment.Method != "count" && payment.OrderItemID != nil {
 				return nil, ops.Rule("只有扣次要选项目行")
 			}
@@ -122,6 +138,10 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 			}
 		}
 		used, err := cards.PaymentCards(ctx, env, cardIDs, day, true, candidateIDs...)
+		if err != nil {
+			return err
+		}
+		packets, err := redpackets.LockPayments(ctx, env, packetIDs)
 		if err != nil {
 			return err
 		}
@@ -224,6 +244,15 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 					}
 				}
 				for _, payment := range payments {
+					if payment.Method == "red_packet" {
+						packet := packets[*payment.RedPacketID]
+						if err := redpackets.CheckUsable(ctx, env, packet, rows[i].CustomerID, day); err != nil {
+							return err
+						}
+						if payment.Amount.Cmp(packet.FaceValue) > 0 {
+							return ops.Rule("红包抵扣不能超过面额")
+						}
+					}
 					var ledgerID, countLedgerID *uuid.UUID
 					if payment.Method == "count" {
 						var itemID uuid.UUID
@@ -246,9 +275,14 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 						}
 						ledgerID = &id
 					}
-					paymentID, err := env.Q.CreateOrderPayment(ctx, dbgen.CreateOrderPaymentParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CheckoutID: checkout.ID, OrderID: rows[i].ID, Method: payment.Method, Amount: payment.Amount, CardID: payment.CardID, CardLedgerID: ledgerID, OrderItemID: payment.OrderItemID, CardCountLedgerID: countLedgerID})
+					paymentID, err := env.Q.CreateOrderPayment(ctx, dbgen.CreateOrderPaymentParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CheckoutID: checkout.ID, OrderID: rows[i].ID, Method: payment.Method, Amount: payment.Amount, CardID: payment.CardID, CardLedgerID: ledgerID, OrderItemID: payment.OrderItemID, CardCountLedgerID: countLedgerID, RedPacketID: payment.RedPacketID})
 					if err != nil {
 						return err
+					}
+					if payment.Method == "red_packet" {
+						if err := redpackets.MarkUsed(ctx, env, *payment.RedPacketID, paymentID); err != nil {
+							return err
+						}
 					}
 					if payment.Method == "debt" {
 						if err := debts.RecordOrderDebt(ctx, env, rows[i].CustomerID, rows[i].ID, paymentID, payment.Amount, day); err != nil {
