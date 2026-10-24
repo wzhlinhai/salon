@@ -41,6 +41,31 @@ func (q *Queries) AddOrderItemPosition(ctx context.Context, arg AddOrderItemPosi
 	return err
 }
 
+const checkoutOrderItem = `-- name: CheckoutOrderItem :exec
+UPDATE order_items SET price=$2,price_source=$3,level_id=$4,card_type_id=$5,discount=$6 WHERE id=$1
+`
+
+type CheckoutOrderItemParams struct {
+	ID          uuid.UUID
+	Price       money.Amount
+	PriceSource string
+	LevelID     *uuid.UUID
+	CardTypeID  *uuid.UUID
+	Discount    money.Amount
+}
+
+func (q *Queries) CheckoutOrderItem(ctx context.Context, arg CheckoutOrderItemParams) error {
+	_, err := q.db.Exec(ctx, checkoutOrderItem,
+		arg.ID,
+		arg.Price,
+		arg.PriceSource,
+		arg.LevelID,
+		arg.CardTypeID,
+		arg.Discount,
+	)
+	return err
+}
+
 const createCheckout = `-- name: CreateCheckout :one
 INSERT INTO checkouts (tenant_id,store_id,business_date,checked_out_by)
 VALUES ($1,$2,$3,$4) RETURNING tenant_id, store_id, id, business_date, checked_out_by, at
@@ -120,7 +145,7 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 
 const createOrderItem = `-- name: CreateOrderItem :one
 INSERT INTO order_items (tenant_id,store_id,order_id,item_id,item_name,price,price_source,level_id,added_by)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING tenant_id, store_id, id, order_id, item_id, item_name, price, price_source, level_id, added_by, added_at, removed_at, removed_by, reprice_reason
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING tenant_id, store_id, id, order_id, item_id, item_name, price, price_source, level_id, added_by, added_at, removed_at, removed_by, reprice_reason, card_type_id, discount
 `
 
 type CreateOrderItemParams struct {
@@ -163,22 +188,26 @@ func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams
 		&i.RemovedAt,
 		&i.RemovedBy,
 		&i.RepriceReason,
+		&i.CardTypeID,
+		&i.Discount,
 	)
 	return i, err
 }
 
 const createOrderPayment = `-- name: CreateOrderPayment :exec
-INSERT INTO order_payments (tenant_id,store_id,checkout_id,order_id,method,amount)
-VALUES ($1,$2,$3,$4,$5,$6)
+INSERT INTO order_payments (tenant_id,store_id,checkout_id,order_id,method,amount,card_id,card_ledger_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 `
 
 type CreateOrderPaymentParams struct {
-	TenantID   uuid.UUID
-	StoreID    uuid.UUID
-	CheckoutID uuid.UUID
-	OrderID    uuid.UUID
-	Method     string
-	Amount     money.Amount
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	CheckoutID   uuid.UUID
+	OrderID      uuid.UUID
+	Method       string
+	Amount       money.Amount
+	CardID       *uuid.UUID
+	CardLedgerID *uuid.UUID
 }
 
 func (q *Queries) CreateOrderPayment(ctx context.Context, arg CreateOrderPaymentParams) error {
@@ -189,6 +218,8 @@ func (q *Queries) CreateOrderPayment(ctx context.Context, arg CreateOrderPayment
 		arg.OrderID,
 		arg.Method,
 		arg.Amount,
+		arg.CardID,
+		arg.CardLedgerID,
 	)
 	return err
 }
@@ -224,7 +255,7 @@ func (q *Queries) GetOrder(ctx context.Context, arg GetOrderParams) (Order, erro
 }
 
 const getOrderItem = `-- name: GetOrderItem :one
-SELECT tenant_id, store_id, id, order_id, item_id, item_name, price, price_source, level_id, added_by, added_at, removed_at, removed_by, reprice_reason FROM order_items WHERE store_id=$1 AND order_id=$2 AND id=$3
+SELECT tenant_id, store_id, id, order_id, item_id, item_name, price, price_source, level_id, added_by, added_at, removed_at, removed_by, reprice_reason, card_type_id, discount FROM order_items WHERE store_id=$1 AND order_id=$2 AND id=$3
 `
 
 type GetOrderItemParams struct {
@@ -251,6 +282,8 @@ func (q *Queries) GetOrderItem(ctx context.Context, arg GetOrderItemParams) (Ord
 		&i.RemovedAt,
 		&i.RemovedBy,
 		&i.RepriceReason,
+		&i.CardTypeID,
+		&i.Discount,
 	)
 	return i, err
 }
@@ -331,7 +364,7 @@ func (q *Queries) ListOrderItemPositions(ctx context.Context, arg ListOrderItemP
 }
 
 const listOrderItems = `-- name: ListOrderItems :many
-SELECT oi.tenant_id, oi.store_id, oi.id, oi.order_id, oi.item_id, oi.item_name, oi.price, oi.price_source, oi.level_id, oi.added_by, oi.added_at, oi.removed_at, oi.removed_by, oi.reprice_reason FROM order_items oi
+SELECT oi.tenant_id, oi.store_id, oi.id, oi.order_id, oi.item_id, oi.item_name, oi.price, oi.price_source, oi.level_id, oi.added_by, oi.added_at, oi.removed_at, oi.removed_by, oi.reprice_reason, oi.card_type_id, oi.discount FROM order_items oi
 WHERE oi.store_id=$1 AND oi.order_id=ANY($2::uuid[]) ORDER BY oi.added_at,oi.id
 `
 
@@ -364,6 +397,8 @@ func (q *Queries) ListOrderItems(ctx context.Context, arg ListOrderItemsParams) 
 			&i.RemovedAt,
 			&i.RemovedBy,
 			&i.RepriceReason,
+			&i.CardTypeID,
+			&i.Discount,
 		); err != nil {
 			return nil, err
 		}
@@ -376,7 +411,9 @@ func (q *Queries) ListOrderItems(ctx context.Context, arg ListOrderItemsParams) 
 }
 
 const listOrderPayments = `-- name: ListOrderPayments :many
-SELECT tenant_id, store_id, id, checkout_id, order_id, method, amount FROM order_payments WHERE store_id=$1 AND order_id=ANY($2::uuid[]) ORDER BY id
+SELECT p.tenant_id, p.store_id, p.id, p.checkout_id, p.order_id, p.method, p.amount, p.card_id, p.card_ledger_id, (-l.principal_delta)::numeric AS principal, (-l.bonus_delta)::numeric AS bonus
+FROM order_payments p LEFT JOIN card_ledger l ON l.id = p.card_ledger_id
+WHERE p.store_id=$1 AND p.order_id=ANY($2::uuid[]) ORDER BY p.id
 `
 
 type ListOrderPaymentsParams struct {
@@ -384,15 +421,29 @@ type ListOrderPaymentsParams struct {
 	OrderIds []uuid.UUID
 }
 
-func (q *Queries) ListOrderPayments(ctx context.Context, arg ListOrderPaymentsParams) ([]OrderPayment, error) {
+type ListOrderPaymentsRow struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	ID           uuid.UUID
+	CheckoutID   uuid.UUID
+	OrderID      uuid.UUID
+	Method       string
+	Amount       money.Amount
+	CardID       *uuid.UUID
+	CardLedgerID *uuid.UUID
+	Principal    *money.Amount
+	Bonus        *money.Amount
+}
+
+func (q *Queries) ListOrderPayments(ctx context.Context, arg ListOrderPaymentsParams) ([]ListOrderPaymentsRow, error) {
 	rows, err := q.db.Query(ctx, listOrderPayments, arg.StoreID, arg.OrderIds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []OrderPayment
+	var items []ListOrderPaymentsRow
 	for rows.Next() {
-		var i OrderPayment
+		var i ListOrderPaymentsRow
 		if err := rows.Scan(
 			&i.TenantID,
 			&i.StoreID,
@@ -401,6 +452,10 @@ func (q *Queries) ListOrderPayments(ctx context.Context, arg ListOrderPaymentsPa
 			&i.OrderID,
 			&i.Method,
 			&i.Amount,
+			&i.CardID,
+			&i.CardLedgerID,
+			&i.Principal,
+			&i.Bonus,
 		); err != nil {
 			return nil, err
 		}

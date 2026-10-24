@@ -54,6 +54,8 @@ type Def struct {
 
 // 设置项的 Key。
 const (
+	KeyCardDeductionOrder    = "card_deduction_order"
+	KeyOthersCardPayment     = "others_card_payment"
 	KeyMemberPriceRule       = "member_price_rule"
 	KeyPointsPerRechargeYuan = "points_per_recharge_yuan"
 	KeyBusinessHours         = "business_hours"
@@ -62,6 +64,7 @@ const (
 
 // Catalogue 是全部门店设置，顺序即设置页面的显示顺序。后续模块的业务规则在这里添加。
 var Catalogue = []Def{
+
 	{
 		Key: KeyMemberPriceRule, Label: "会员价取价", Kind: KindChoice,
 		Hint: "持卡顾客做有级别价的项目时，会员价和级别价取哪个", Default: "member_first",
@@ -71,6 +74,8 @@ var Catalogue = []Def{
 		Key: KeyPointsPerRechargeYuan, Label: "充值积分", Kind: KindInteger, Min: 0, Max: 100000,
 		Hint: "每充值多少元本金积 1 分，0 为不积分，不足一分的部分不计", Default: 0,
 	},
+	{Key: KeyCardDeductionOrder, Label: "扣款顺序", Hint: "用卡余额付钱时先扣本金还是先扣赠送金，先扣的不够再扣另一部分", Kind: KindChoice, Default: "principal_first", Options: []ChoiceOption{{Value: "principal_first", Label: "先扣本金"}, {Value: "bonus_first", Label: "先扣赠送金"}}},
+	{Key: KeyOthersCardPayment, Label: "用别人的卡", Hint: "顾客能否用别人（例如家人）的卡余额付自己的单", Kind: KindChoice, Default: "not_allowed", Options: []ChoiceOption{{Value: "not_allowed", Label: "不允许"}, {Value: "allowed", Label: "允许"}}},
 	{
 		Key: KeyBusinessHours, Label: "营业时段", Kind: KindTimeRange,
 		Hint:    "每天开门和关门的时间，预约等按它限制",

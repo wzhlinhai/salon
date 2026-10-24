@@ -4,6 +4,7 @@ package orders
 import (
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 
 	"github.com/wzhlinhai/salon/backend/internal/money"
@@ -23,16 +24,20 @@ type Order struct {
 	OpenedBy     uuid.UUID      `json:"opened_by"`
 	OpenedAt     time.Time      `json:"opened_at"`
 	Items        []OrderItem    `json:"items"`
+	Discount     string         `json:"discount"`
+	Net          string         `json:"net"`
 	Receivable   string         `json:"receivable"`
 }
 
 // OrderItem 是只记录一次价格的项目行。
 type OrderItem struct {
+	CardTypeID    *uuid.UUID          `json:"card_type_id" nullable:"true"`
+	Discount      money.Amount        `json:"discount"`
 	ID            uuid.UUID           `json:"id"`
 	ItemID        uuid.UUID           `json:"item_id"`
 	ItemName      string              `json:"item_name"`
 	Price         money.Amount        `json:"price"`
-	PriceSource   string              `json:"price_source" enum:"standard,level,manual"`
+	PriceSource   string              `json:"price_source" enum:"standard,level,manual,member"`
 	LevelID       *uuid.UUID          `json:"level_id" nullable:"true"`
 	RemovedAt     *time.Time          `json:"removed_at" nullable:"true"`
 	RemovedBy     *uuid.UUID          `json:"removed_by" nullable:"true"`
@@ -117,14 +122,16 @@ type MergeOrdersInput struct {
 
 // OrderPayment 是单上的一笔支付，按登记顺序返回。
 type OrderPayment struct {
-	ID     uuid.UUID    `json:"id"`
-	Method string       `json:"method" enum:"cash,unionpay,wechat,alipay,debt"`
-	Amount money.Amount `json:"amount"`
+	Card   *OrderPaymentCard `json:"card"`
+	ID     uuid.UUID         `json:"id"`
+	Method string            `json:"method" enum:"cash,unionpay,wechat,alipay,debt,card"`
+	Amount money.Amount      `json:"amount"`
 }
 
 // PaymentInput 是支付方式和登记金额。
 type PaymentInput struct {
-	Method string       `json:"method" enum:"cash,unionpay,wechat,alipay,debt"`
+	CardID *uuid.UUID   `json:"card_id,omitempty"`
+	Method string       `json:"method" enum:"cash,unionpay,wechat,alipay,debt,card"`
 	Amount money.Amount `json:"amount"`
 }
 
@@ -137,4 +144,23 @@ type CheckoutOrderInput struct {
 // CheckoutOrdersInput 是一起结账的挂单，各单分别登记支付。
 type CheckoutOrdersInput struct {
 	Orders []CheckoutOrderInput `json:"orders" minItems:"1" maxItems:"10"`
+}
+
+// OrderPaymentCard 是一笔卡余额支付扣除的本金与赠送金。
+type OrderPaymentCard struct {
+	CardID    uuid.UUID    `json:"card_id"`
+	Principal money.Amount `json:"principal"`
+	Bonus     money.Amount `json:"bonus"`
+}
+
+// PreviewCheckoutInput 是试算一张挂单及可选计价卡的参数。
+type PreviewCheckoutInput struct {
+	OrderID uuid.UUID  `json:"order_id"`
+	CardID  *uuid.UUID `json:"card_id,omitempty"`
+}
+
+// TransformSchema 声明支付卡对象或空值，兼容 Huma 的对象引用格式。
+func (OrderPayment) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
+	s.Properties["card"] = &huma.Schema{AnyOf: []*huma.Schema{s.Properties["card"], {Type: "null"}}}
+	return s
 }

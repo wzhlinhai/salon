@@ -2,8 +2,8 @@
 SELECT * FROM card_types WHERE store_id=$1 ORDER BY active DESC, created_at, id;
 
 -- name: CreateCardType :one
-INSERT INTO card_types (tenant_id,store_id,name,kind,validity_kind,validity_date,validity_days)
-VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *;
+INSERT INTO card_types (tenant_id,store_id,name,kind,validity_kind,validity_date,validity_days,discount_percent)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *;
 
 -- name: GetCardType :one
 SELECT * FROM card_types WHERE store_id=$1 AND id=$2;
@@ -15,7 +15,7 @@ SELECT * FROM card_types WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE;
 SELECT * FROM card_types WHERE store_id=$1 AND id=$2 FOR SHARE;
 
 -- name: UpdateCardType :one
-UPDATE card_types SET name=$2,kind=$3,validity_kind=$4,validity_date=$5,validity_days=$6,active=$7 WHERE id=$1 RETURNING *;
+UPDATE card_types SET name=$2,kind=$3,validity_kind=$4,validity_date=$5,validity_days=$6,active=$7,discount_percent=$8 WHERE id=$1 RETURNING *;
 
 -- name: CreateCard :one
 INSERT INTO cards (tenant_id,store_id,customer_id,card_type_id,opened_at,expires_on,created_by)
@@ -48,9 +48,10 @@ WHERE c.store_id=$1 AND c.id=$2;
 
 -- name: ListCardLedger :many
 SELECT sqlc.embed(l), s.name AS actor_name, COALESCE(a.reason,tr.reason,'')::text AS reason,
- CASE WHEN tr.from_ledger_id=l.id THEN tr.to_card_id ELSE tr.from_card_id END::uuid AS other_card_id
+ CASE WHEN tr.from_ledger_id=l.id THEN tr.to_card_id ELSE tr.from_card_id END::uuid AS other_card_id, p.order_id
 FROM card_ledger l JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.ledger_id=l.id
 LEFT JOIN card_transfers tr ON tr.from_ledger_id=l.id OR tr.to_ledger_id=l.id
+LEFT JOIN order_payments p ON p.card_ledger_id=l.id
 WHERE l.card_id=$1 AND (sqlc.narg(before_id)::uuid IS NULL OR (l.at,l.id) < (SELECT at,id FROM card_ledger WHERE id=sqlc.narg(before_id) AND card_id=$1))
 ORDER BY l.at DESC,l.id DESC LIMIT sqlc.arg(row_limit);
 

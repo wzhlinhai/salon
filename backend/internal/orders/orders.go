@@ -24,6 +24,7 @@ func Register(r *ops.Registry) {
 	registerEdits(r)
 	registerMerge(r)
 	registerCheckout(r)
+	registerPreview(r)
 	ops.Register(r, ops.Operation[OpenOrderInput, Order]{Name: "open_order", Summary: "开单并保存规则快照", Kind: ops.Write, Permission: perm.OrderCreate, AI: ops.AIDraft, Handle: openOrder})
 	ops.Register(r, ops.Operation[AddOrderItemInput, Order]{Name: "add_order_item", Summary: "向单添加项目行", Kind: ops.Write, Permission: perm.OrderCreate, AI: ops.AIDraft, Handle: addOrderItem})
 	ops.Register(r, ops.Operation[ListOpenOrdersInput, OrderList]{Name: "list_open_orders", Summary: "列出本店挂单", Kind: ops.Read, Permission: perm.OrderCreate, AI: ops.AIDirect, Handle: listOpenOrders})
@@ -161,7 +162,11 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 	}
 	byPaymentOrder := map[uuid.UUID][]OrderPayment{}
 	for _, p := range payments {
-		byPaymentOrder[p.OrderID] = append(byPaymentOrder[p.OrderID], OrderPayment{ID: p.ID, Method: p.Method, Amount: p.Amount})
+		payment := OrderPayment{ID: p.ID, Method: p.Method, Amount: p.Amount}
+		if p.Method == "card" {
+			payment.Card = &OrderPaymentCard{CardID: *p.CardID, Principal: *p.Principal, Bonus: *p.Bonus}
+		}
+		byPaymentOrder[p.OrderID] = append(byPaymentOrder[p.OrderID], payment)
 	}
 	itemIDs := make([]uuid.UUID, len(items))
 	for i, row := range items {
@@ -177,14 +182,22 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 	}
 	byOrder := map[uuid.UUID][]OrderItem{}
 	totals := map[uuid.UUID]money.Total{}
+	discounts := map[uuid.UUID]money.Total{}
+	nets := map[uuid.UUID]money.Total{}
 	for _, i := range items {
 		p := byItem[i.ID]
 		if p == nil {
 			p = []OrderItemPosition{}
 		}
-		byOrder[i.OrderID] = append(byOrder[i.OrderID], OrderItem{ID: i.ID, ItemID: i.ItemID, ItemName: i.ItemName, Price: i.Price, PriceSource: i.PriceSource, LevelID: i.LevelID, AddedAt: i.AddedAt.Time, RemovedAt: removedTime(i.RemovedAt), RemovedBy: i.RemovedBy, RepriceReason: i.RepriceReason, Positions: p})
+		byOrder[i.OrderID] = append(byOrder[i.OrderID], OrderItem{ID: i.ID, ItemID: i.ItemID, ItemName: i.ItemName, Price: i.Price, PriceSource: i.PriceSource, CardTypeID: i.CardTypeID, Discount: i.Discount, LevelID: i.LevelID, AddedAt: i.AddedAt.Time, RemovedAt: removedTime(i.RemovedAt), RemovedBy: i.RemovedBy, RepriceReason: i.RepriceReason, Positions: p})
 		if !i.RemovedAt.Valid {
 			totals[i.OrderID] = totals[i.OrderID].AddProduct(i.Price, 1)
+			discounts[i.OrderID] = discounts[i.OrderID].AddProduct(i.Discount, 1)
+			net, err := i.Price.Apply(money.Amount{}.Sub(i.Discount))
+			if err != nil {
+				return nil, err
+			}
+			nets[i.OrderID] = nets[i.OrderID].AddProduct(net, 1)
 		}
 	}
 	out := make([]Order, 0, len(rows))
@@ -197,7 +210,7 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 		if ps == nil {
 			ps = []OrderPayment{}
 		}
-		out = append(out, Order{CheckoutID: r.CheckoutID, Payments: ps, ID: r.ID, CustomerID: r.CustomerID, Gender: r.Gender, Designated: r.Designated, Status: r.Status, MergedInto: r.MergedInto, BusinessDate: r.BusinessDate.Time.Format(time.DateOnly), OpenedBy: r.OpenedBy, OpenedAt: r.OpenedAt.Time, Items: items, Receivable: totals[r.ID].Format()})
+		out = append(out, Order{CheckoutID: r.CheckoutID, Payments: ps, ID: r.ID, CustomerID: r.CustomerID, Gender: r.Gender, Designated: r.Designated, Status: r.Status, MergedInto: r.MergedInto, BusinessDate: r.BusinessDate.Time.Format(time.DateOnly), OpenedBy: r.OpenedBy, OpenedAt: r.OpenedAt.Time, Items: items, Receivable: totals[r.ID].Format(), Discount: discounts[r.ID].Format(), Net: nets[r.ID].Format()})
 	}
 	return out, nil
 }

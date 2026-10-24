@@ -24,7 +24,7 @@ func dateView(d pgtype.Date) *string {
 	return new(d.Time.Format(time.DateOnly))
 }
 func typeView(r dbgen.CardType) CardType {
-	return CardType{ID: r.ID, Name: r.Name, Kind: r.Kind, ValidityKind: r.ValidityKind, ValidityDate: dateView(r.ValidityDate), ValidityDays: r.ValidityDays, Active: r.Active, CreatedAt: r.CreatedAt.Time}
+	return CardType{DiscountPercent: r.DiscountPercent, ID: r.ID, Name: r.Name, Kind: r.Kind, ValidityKind: r.ValidityKind, ValidityDate: dateView(r.ValidityDate), ValidityDays: r.ValidityDays, Active: r.Active, CreatedAt: r.CreatedAt.Time}
 }
 func rowError(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -38,6 +38,14 @@ func rowError(err error) error {
 }
 func validateType(in *CreateCardTypeInput) (pgtype.Date, error) {
 	var date pgtype.Date
+	if in.DiscountPercent != nil {
+		if in.Kind == CountCard {
+			return date, ops.Rule("次卡不能设折扣率")
+		}
+		if !in.DiscountPercent.IsDiscount() {
+			return date, ops.Rule("折扣率须大于 0 折、小于 10 折")
+		}
+	}
 	if in.Kind != StoredValue && in.Kind != CountCard && in.Kind != Package {
 		return date, ops.Rule("卡种类无效")
 	}
@@ -83,7 +91,7 @@ func createCardType(ctx context.Context, env ops.Env, in *CreateCardTypeInput) (
 	if err != nil {
 		return nil, err
 	}
-	row, err := env.Q.CreateCardType(ctx, dbgen.CreateCardTypeParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Name: in.Name, Kind: in.Kind, ValidityKind: in.ValidityKind, ValidityDate: date, ValidityDays: in.ValidityDays})
+	row, err := env.Q.CreateCardType(ctx, dbgen.CreateCardTypeParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Name: in.Name, Kind: in.Kind, ValidityKind: in.ValidityKind, ValidityDate: date, ValidityDays: in.ValidityDays, DiscountPercent: in.DiscountPercent})
 	if err != nil {
 		return nil, rowError(err)
 	}
@@ -144,7 +152,7 @@ func updateCardType(ctx context.Context, env ops.Env, in *UpdateCardTypeInput) (
 	if err := changeTypeItems(ctx, env, in.ID, beforeViews[0].Items, in.Items); err != nil {
 		return nil, err
 	}
-	row, err := env.Q.UpdateCardType(ctx, dbgen.UpdateCardTypeParams{ID: in.ID, Name: in.Name, Kind: in.Kind, ValidityKind: in.ValidityKind, ValidityDate: date, ValidityDays: in.ValidityDays, Active: in.Active})
+	row, err := env.Q.UpdateCardType(ctx, dbgen.UpdateCardTypeParams{ID: in.ID, Name: in.Name, Kind: in.Kind, ValidityKind: in.ValidityKind, ValidityDate: date, ValidityDays: in.ValidityDays, Active: in.Active, DiscountPercent: in.DiscountPercent})
 	if err != nil {
 		return nil, rowError(err)
 	}

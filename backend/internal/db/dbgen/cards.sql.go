@@ -587,18 +587,19 @@ func (q *Queries) CreateCard(ctx context.Context, arg CreateCardParams) (Card, e
 }
 
 const createCardType = `-- name: CreateCardType :one
-INSERT INTO card_types (tenant_id,store_id,name,kind,validity_kind,validity_date,validity_days)
-VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, tenant_id, store_id, name, kind, validity_kind, validity_date, validity_days, active, created_at
+INSERT INTO card_types (tenant_id,store_id,name,kind,validity_kind,validity_date,validity_days,discount_percent)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, tenant_id, store_id, name, kind, validity_kind, validity_date, validity_days, active, created_at, discount_percent
 `
 
 type CreateCardTypeParams struct {
-	TenantID     uuid.UUID
-	StoreID      uuid.UUID
-	Name         string
-	Kind         string
-	ValidityKind string
-	ValidityDate pgtype.Date
-	ValidityDays *int32
+	TenantID        uuid.UUID
+	StoreID         uuid.UUID
+	Name            string
+	Kind            string
+	ValidityKind    string
+	ValidityDate    pgtype.Date
+	ValidityDays    *int32
+	DiscountPercent *money.Percent
 }
 
 func (q *Queries) CreateCardType(ctx context.Context, arg CreateCardTypeParams) (CardType, error) {
@@ -610,6 +611,7 @@ func (q *Queries) CreateCardType(ctx context.Context, arg CreateCardTypeParams) 
 		arg.ValidityKind,
 		arg.ValidityDate,
 		arg.ValidityDays,
+		arg.DiscountPercent,
 	)
 	var i CardType
 	err := row.Scan(
@@ -623,6 +625,7 @@ func (q *Queries) CreateCardType(ctx context.Context, arg CreateCardTypeParams) 
 		&i.ValidityDays,
 		&i.Active,
 		&i.CreatedAt,
+		&i.DiscountPercent,
 	)
 	return i, err
 }
@@ -707,7 +710,7 @@ func (q *Queries) GetCard(ctx context.Context, arg GetCardParams) (Card, error) 
 }
 
 const getCardType = `-- name: GetCardType :one
-SELECT id, tenant_id, store_id, name, kind, validity_kind, validity_date, validity_days, active, created_at FROM card_types WHERE store_id=$1 AND id=$2
+SELECT id, tenant_id, store_id, name, kind, validity_kind, validity_date, validity_days, active, created_at, discount_percent FROM card_types WHERE store_id=$1 AND id=$2
 `
 
 type GetCardTypeParams struct {
@@ -729,6 +732,7 @@ func (q *Queries) GetCardType(ctx context.Context, arg GetCardTypeParams) (CardT
 		&i.ValidityDays,
 		&i.Active,
 		&i.CreatedAt,
+		&i.DiscountPercent,
 	)
 	return i, err
 }
@@ -906,9 +910,10 @@ func (q *Queries) ListCardCounts(ctx context.Context, arg ListCardCountsParams) 
 
 const listCardLedger = `-- name: ListCardLedger :many
 SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.kind, l.principal_before, l.principal_delta, l.principal_after, l.bonus_before, l.bonus_delta, l.bonus_after, l.business_date, l.actor_id, l.at, s.name AS actor_name, COALESCE(a.reason,tr.reason,'')::text AS reason,
- CASE WHEN tr.from_ledger_id=l.id THEN tr.to_card_id ELSE tr.from_card_id END::uuid AS other_card_id
+ CASE WHEN tr.from_ledger_id=l.id THEN tr.to_card_id ELSE tr.from_card_id END::uuid AS other_card_id, p.order_id
 FROM card_ledger l JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.ledger_id=l.id
 LEFT JOIN card_transfers tr ON tr.from_ledger_id=l.id OR tr.to_ledger_id=l.id
+LEFT JOIN order_payments p ON p.card_ledger_id=l.id
 WHERE l.card_id=$1 AND ($2::uuid IS NULL OR (l.at,l.id) < (SELECT at,id FROM card_ledger WHERE id=$2 AND card_id=$1))
 ORDER BY l.at DESC,l.id DESC LIMIT $3
 `
@@ -924,6 +929,7 @@ type ListCardLedgerRow struct {
 	ActorName   string
 	Reason      string
 	OtherCardID uuid.UUID
+	OrderID     *uuid.UUID
 }
 
 func (q *Queries) ListCardLedger(ctx context.Context, arg ListCardLedgerParams) ([]ListCardLedgerRow, error) {
@@ -953,6 +959,7 @@ func (q *Queries) ListCardLedger(ctx context.Context, arg ListCardLedgerParams) 
 			&i.ActorName,
 			&i.Reason,
 			&i.OtherCardID,
+			&i.OrderID,
 		); err != nil {
 			return nil, err
 		}
@@ -1090,7 +1097,7 @@ func (q *Queries) ListCardTypeItems(ctx context.Context, typeIds []uuid.UUID) ([
 }
 
 const listCardTypes = `-- name: ListCardTypes :many
-SELECT id, tenant_id, store_id, name, kind, validity_kind, validity_date, validity_days, active, created_at FROM card_types WHERE store_id=$1 ORDER BY active DESC, created_at, id
+SELECT id, tenant_id, store_id, name, kind, validity_kind, validity_date, validity_days, active, created_at, discount_percent FROM card_types WHERE store_id=$1 ORDER BY active DESC, created_at, id
 `
 
 func (q *Queries) ListCardTypes(ctx context.Context, storeID uuid.UUID) ([]CardType, error) {
@@ -1113,6 +1120,7 @@ func (q *Queries) ListCardTypes(ctx context.Context, storeID uuid.UUID) ([]CardT
 			&i.ValidityDays,
 			&i.Active,
 			&i.CreatedAt,
+			&i.DiscountPercent,
 		); err != nil {
 			return nil, err
 		}
@@ -1315,7 +1323,7 @@ func (q *Queries) LockCard(ctx context.Context, arg LockCardParams) (Card, error
 }
 
 const lockCardType = `-- name: LockCardType :one
-SELECT id, tenant_id, store_id, name, kind, validity_kind, validity_date, validity_days, active, created_at FROM card_types WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
+SELECT id, tenant_id, store_id, name, kind, validity_kind, validity_date, validity_days, active, created_at, discount_percent FROM card_types WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
 `
 
 type LockCardTypeParams struct {
@@ -1337,6 +1345,7 @@ func (q *Queries) LockCardType(ctx context.Context, arg LockCardTypeParams) (Car
 		&i.ValidityDays,
 		&i.Active,
 		&i.CreatedAt,
+		&i.DiscountPercent,
 	)
 	return i, err
 }
@@ -1433,7 +1442,7 @@ func (q *Queries) RemainingCounts(ctx context.Context, cardIds []uuid.UUID) ([]R
 }
 
 const shareCardType = `-- name: ShareCardType :one
-SELECT id, tenant_id, store_id, name, kind, validity_kind, validity_date, validity_days, active, created_at FROM card_types WHERE store_id=$1 AND id=$2 FOR SHARE
+SELECT id, tenant_id, store_id, name, kind, validity_kind, validity_date, validity_days, active, created_at, discount_percent FROM card_types WHERE store_id=$1 AND id=$2 FOR SHARE
 `
 
 type ShareCardTypeParams struct {
@@ -1455,6 +1464,7 @@ func (q *Queries) ShareCardType(ctx context.Context, arg ShareCardTypeParams) (C
 		&i.ValidityDays,
 		&i.Active,
 		&i.CreatedAt,
+		&i.DiscountPercent,
 	)
 	return i, err
 }
@@ -1487,17 +1497,18 @@ func (q *Queries) UpdateAdjustedCard(ctx context.Context, arg UpdateAdjustedCard
 }
 
 const updateCardType = `-- name: UpdateCardType :one
-UPDATE card_types SET name=$2,kind=$3,validity_kind=$4,validity_date=$5,validity_days=$6,active=$7 WHERE id=$1 RETURNING id, tenant_id, store_id, name, kind, validity_kind, validity_date, validity_days, active, created_at
+UPDATE card_types SET name=$2,kind=$3,validity_kind=$4,validity_date=$5,validity_days=$6,active=$7,discount_percent=$8 WHERE id=$1 RETURNING id, tenant_id, store_id, name, kind, validity_kind, validity_date, validity_days, active, created_at, discount_percent
 `
 
 type UpdateCardTypeParams struct {
-	ID           uuid.UUID
-	Name         string
-	Kind         string
-	ValidityKind string
-	ValidityDate pgtype.Date
-	ValidityDays *int32
-	Active       bool
+	ID              uuid.UUID
+	Name            string
+	Kind            string
+	ValidityKind    string
+	ValidityDate    pgtype.Date
+	ValidityDays    *int32
+	Active          bool
+	DiscountPercent *money.Percent
 }
 
 func (q *Queries) UpdateCardType(ctx context.Context, arg UpdateCardTypeParams) (CardType, error) {
@@ -1509,6 +1520,7 @@ func (q *Queries) UpdateCardType(ctx context.Context, arg UpdateCardTypeParams) 
 		arg.ValidityDate,
 		arg.ValidityDays,
 		arg.Active,
+		arg.DiscountPercent,
 	)
 	var i CardType
 	err := row.Scan(
@@ -1522,6 +1534,7 @@ func (q *Queries) UpdateCardType(ctx context.Context, arg UpdateCardTypeParams) 
 		&i.ValidityDays,
 		&i.Active,
 		&i.CreatedAt,
+		&i.DiscountPercent,
 	)
 	return i, err
 }

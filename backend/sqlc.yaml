@@ -10,6 +10,12 @@ sql:
         sql_package: pgx/v5
         emit_pointers_for_null_types: true
         overrides:
+          # 消费流水的负增量转为非负支付金额；LEFT JOIN 的空值保留为 nil。
+          - db_type: pg_catalog.numeric
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+              pointer: true
           - db_type: uuid
             go_type: github.com/google/uuid.UUID
           - db_type: uuid
@@ -81,6 +87,15 @@ sql:
               import: github.com/wzhlinhai/salon/backend/internal/money
               type: Amount
           - column: order_payments.amount
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: card_types.discount_percent
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Percent
+              pointer: true
+          - column: order_items.discount
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money
               type: Amount

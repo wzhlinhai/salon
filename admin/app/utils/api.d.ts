@@ -871,6 +871,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/preview_checkout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按计价卡试算一张挂单的价格、持卡折扣和实收 */
+        post: operations["preview_checkout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/quote_item_price": {
         parameters: {
             query?: never;
@@ -1381,6 +1398,7 @@ export interface components {
             business_date: string;
             id: string;
             kind: string;
+            order_id: string | null;
             other_card_id?: string;
             principal_after: string;
             principal_before: string;
@@ -1402,6 +1420,7 @@ export interface components {
             active: boolean;
             /** Format: date-time */
             created_at: string;
+            discount_percent: string | null;
             id: string;
             items: components["schemas"]["CardTypeItem"][];
             kind: string;
@@ -1493,6 +1512,7 @@ export interface components {
             value: string;
         };
         CreateCardTypeInput: {
+            discount_percent?: string | null;
             items?: components["schemas"]["CardTypeItemInput"][];
             /** @enum {string} */
             kind: "stored_value" | "count" | "package";
@@ -1851,11 +1871,13 @@ export interface components {
             checkout_id: string | null;
             customer_id: string;
             designated: boolean;
+            discount: string;
             /** @enum {string} */
             gender: "male" | "female";
             id: string;
             items: components["schemas"]["OrderItem"][];
             merged_into: string | null;
+            net: string;
             /** Format: date-time */
             opened_at: string;
             opened_by: string;
@@ -1867,6 +1889,8 @@ export interface components {
         OrderItem: {
             /** Format: date-time */
             added_at: string;
+            card_type_id: string | null;
+            discount: string;
             id: string;
             item_id: string;
             item_name: string;
@@ -1874,7 +1898,7 @@ export interface components {
             positions: components["schemas"]["OrderItemPosition"][];
             price: string;
             /** @enum {string} */
-            price_source: "standard" | "level" | "manual";
+            price_source: "standard" | "level" | "manual" | "member";
             /** Format: date-time */
             removed_at: string | null;
             removed_by: string | null;
@@ -1901,14 +1925,21 @@ export interface components {
         };
         OrderPayment: {
             amount: string;
+            card: components["schemas"]["OrderPaymentCard"] | null;
             id: string;
             /** @enum {string} */
-            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt";
+            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "card";
+        };
+        OrderPaymentCard: {
+            bonus: string;
+            card_id: string;
+            principal: string;
         };
         PaymentInput: {
             amount: string;
+            card_id?: string;
             /** @enum {string} */
-            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt";
+            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "card";
         };
         PermissionList: {
             permissions: components["schemas"]["Def"][];
@@ -1938,6 +1969,10 @@ export interface components {
         };
         PositionList: {
             items: components["schemas"]["Position"][];
+        };
+        PreviewCheckoutInput: {
+            card_id?: string;
+            order_id: string;
         };
         QuoteItemPriceInput: {
             card_type_id?: string;
@@ -2168,6 +2203,7 @@ export interface components {
         };
         UpdateCardTypeInput: {
             active: boolean;
+            discount_percent?: string | null;
             id: string;
             items?: components["schemas"]["CardTypeItemInput"][];
             /** @enum {string} */
@@ -3913,6 +3949,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["OpenOrderInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    preview_checkout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewCheckoutInput"];
             };
         };
         responses: {
