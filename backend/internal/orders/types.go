@@ -31,6 +31,7 @@ type Order struct {
 
 // OrderItem 是只记录一次价格的项目行。
 type OrderItem struct {
+	ItemKind      string              `json:"item_kind" enum:"service,goods"`
 	CardTypeID    *uuid.UUID          `json:"card_type_id" nullable:"true"`
 	Discount      money.Amount        `json:"discount"`
 	ID            uuid.UUID           `json:"id"`

@@ -48,6 +48,7 @@ type ItemPosition struct {
 
 // Item 是本店项目及其完整价格规则。
 type Item struct {
+	Kind            string         `json:"kind" enum:"service,goods"`
 	MemberPrices    []MemberPrice  `json:"member_prices"`
 	ID              uuid.UUID      `json:"id"`
 	Name            string         `json:"name"`
@@ -71,6 +72,7 @@ type ListItemsInput struct{}
 
 // CreateItemInput 是新建项目的完整价格规则。
 type CreateItemInput struct {
+	Kind            string              `json:"kind,omitempty" enum:"service,goods" doc:"项目的种类，不填时为服务"`
 	MemberPrices    []MemberPrice       `json:"member_prices,omitempty" maxItems:"20"`
 	Name            string              `json:"name" minLength:"1" maxLength:"40"`
 	Price           money.Amount        `json:"price"`
@@ -106,7 +108,7 @@ type ItemPrice struct {
 // Register 声明项目目录与价格操作。
 func Register(r *ops.Registry) {
 	ops.Register(r, ops.Operation[ListItemsInput, ItemList]{
-		Name: "list_items", Summary: "列出本店项目及标准价、级别价、会员价和项目岗位", Kind: ops.Read,
+		Name: "list_items", Summary: "列出本店项目及种类、标准价、级别价、会员价和项目岗位", Kind: ops.Read,
 		Permission: ops.LoggedIn, AI: ops.AIDirect,
 		Handle: func(ctx context.Context, env ops.Env, _ *ListItemsInput) (*ItemList, error) {
 			rows, err := env.Q.ListItems(ctx, env.Caller.StoreID)
@@ -118,11 +120,11 @@ func Register(r *ops.Registry) {
 		},
 	})
 	ops.Register(r, ops.Operation[CreateItemInput, Item]{
-		Name: "create_item", Summary: "新建项目，设置标准价、级别价、会员价、手工费和项目岗位", Kind: ops.Write,
+		Name: "create_item", Summary: "新建项目，设置种类、标准价、级别价、会员价、手工费和项目岗位", Kind: ops.Write,
 		Permission: perm.SettingsManage, AI: ops.AIDraft, Handle: createItem,
 	})
 	ops.Register(r, ops.Operation[UpdateItemInput, Item]{
-		Name: "update_item", Summary: "修改项目价格规则、项目岗位或停用项目", Kind: ops.Write,
+		Name: "update_item", Summary: "修改项目种类、价格规则、项目岗位或停用项目", Kind: ops.Write,
 		Permission: perm.SettingsManage, AI: ops.AIDraft, Handle: updateItem,
 	})
 	ops.Register(r, ops.Operation[QuoteItemPriceInput, ItemPrice]{
@@ -163,7 +165,7 @@ func views(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, rows []dbge
 	indices := map[uuid.UUID]int{}
 	for _, r := range rows {
 		indices[r.ID] = len(out)
-		out = append(out, Item{ID: r.ID, Name: r.Name, Price: r.Price, Discountable: r.Discountable, LaborFeeAmount: r.LaborFeeAmount, LaborFeePercent: r.LaborFeePercent, Active: r.Active, CreatedAt: r.CreatedAt.Time, MemberPrices: []MemberPrice{}, LevelPrices: []LevelPrice{}, Positions: []ItemPosition{}})
+		out = append(out, Item{ID: r.ID, Name: r.Name, Kind: r.Kind, Price: r.Price, Discountable: r.Discountable, LaborFeeAmount: r.LaborFeeAmount, LaborFeePercent: r.LaborFeePercent, Active: r.Active, CreatedAt: r.CreatedAt.Time, MemberPrices: []MemberPrice{}, LevelPrices: []LevelPrice{}, Positions: []ItemPosition{}})
 	}
 	for _, m := range members {
 		if i, ok := indices[m.ItemID]; ok {
@@ -203,6 +205,9 @@ func rowError(err error) error {
 }
 
 func validate(in *CreateItemInput) error {
+	if in.Kind == "" {
+		in.Kind = "service"
+	}
 	if in.LaborFeeAmount != nil && in.LaborFeePercent != nil {
 		return ops.Rule("手工费只能选择固定金额或售价百分比")
 	}
@@ -230,7 +235,7 @@ func createItem(ctx context.Context, env ops.Env, in *CreateItemInput) (*Item, e
 	if err := shareReferences(ctx, env, in, &Item{}); err != nil {
 		return nil, err
 	}
-	row, err := env.Q.CreateItem(ctx, dbgen.CreateItemParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Name: in.Name, Price: in.Price, Discountable: in.Discountable, LaborFeeAmount: in.LaborFeeAmount, LaborFeePercent: in.LaborFeePercent})
+	row, err := env.Q.CreateItem(ctx, dbgen.CreateItemParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Name: in.Name, Kind: in.Kind, Price: in.Price, Discountable: in.Discountable, LaborFeeAmount: in.LaborFeeAmount, LaborFeePercent: in.LaborFeePercent})
 	if err != nil {
 		return nil, rowError(err)
 	}
@@ -262,7 +267,7 @@ func updateItem(ctx context.Context, env ops.Env, in *UpdateItemInput) (*Item, e
 	if err := shareReferences(ctx, env, &in.CreateItemInput, before); err != nil {
 		return nil, err
 	}
-	row, err = env.Q.UpdateItem(ctx, dbgen.UpdateItemParams{ID: in.ID, Name: in.Name, Price: in.Price, Discountable: in.Discountable, LaborFeeAmount: in.LaborFeeAmount, LaborFeePercent: in.LaborFeePercent, Active: in.Active})
+	row, err = env.Q.UpdateItem(ctx, dbgen.UpdateItemParams{ID: in.ID, Name: in.Name, Kind: in.Kind, Price: in.Price, Discountable: in.Discountable, LaborFeeAmount: in.LaborFeeAmount, LaborFeePercent: in.LaborFeePercent, Active: in.Active})
 	if err != nil {
 		return nil, rowError(err)
 	}

@@ -372,7 +372,7 @@ func TestMergeLineStore(t *testing.T) {
 	store := s.otherStore()
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	var lineID uuid.UUID
-	if err := tx.QueryRow(context.Background(), `INSERT INTO order_items (tenant_id,store_id,order_id,item_id,item_name,price,price_source,added_by) VALUES ($1,$2,$3,$4,'别店项目',1,'standard',$5) RETURNING id`, s.Res.TenantID, store, b["id"], s.item, s.Res.OwnerID).Scan(&lineID); err != nil {
+	if err := tx.QueryRow(context.Background(), `INSERT INTO order_items (tenant_id,store_id,order_id,item_id,item_name,item_kind,price,price_source,added_by) VALUES ($1,$2,$3,$4,'别店项目','service',1,'standard',$5) RETURNING id`, s.Res.TenantID, store, b["id"], s.item, s.Res.OwnerID).Scan(&lineID); err != nil {
 		t.Fatal(err)
 	}
 	dbtest.Commit(t, tx)
