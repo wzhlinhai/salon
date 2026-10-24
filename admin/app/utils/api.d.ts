@@ -1982,7 +1982,30 @@ export interface components {
         PositionList: {
             items: components["schemas"]["Position"][];
         };
+        PreviewCheckout: {
+            /** Format: date */
+            business_date: string;
+            checkout_id: string | null;
+            customer_id: string;
+            designated: boolean;
+            discount: string;
+            /** @enum {string} */
+            gender: "male" | "female";
+            id: string;
+            items: components["schemas"]["OrderItem"][];
+            merged_into: string | null;
+            net: string;
+            /** Format: date-time */
+            opened_at: string;
+            opened_by: string;
+            payments: components["schemas"]["OrderPayment"][];
+            pricing_card_id: string | null;
+            receivable: string;
+            /** @enum {string} */
+            status: "open" | "merged" | "paid";
+        };
         PreviewCheckoutInput: {
+            auto_card?: boolean;
             card_id?: string;
             order_id: string;
         };
@@ -4003,7 +4026,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Order"];
+                    "application/json": components["schemas"]["PreviewCheckout"];
                 };
             };
             /** @description Error */

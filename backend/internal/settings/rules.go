@@ -175,3 +175,10 @@ func (r Rules) CardCountOrder() string {
 	r.decode(KeyCardCountOrder, &v)
 	return v
 }
+
+// CardSelection 返回未指定卡余额支付的选卡规则。
+func (r Rules) CardSelection() string {
+	var v string
+	r.decode(KeyCardSelection, &v)
+	return v
+}

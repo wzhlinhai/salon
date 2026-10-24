@@ -157,8 +157,9 @@ type OrderPaymentCard struct {
 
 // PreviewCheckoutInput 是试算一张挂单及可选计价卡的参数。
 type PreviewCheckoutInput struct {
-	OrderID uuid.UUID  `json:"order_id"`
-	CardID  *uuid.UUID `json:"card_id,omitempty"`
+	AutoCard bool       `json:"auto_card,omitempty"`
+	OrderID  uuid.UUID  `json:"order_id"`
+	CardID   *uuid.UUID `json:"card_id,omitempty"`
 }
 
 // TransformSchema 声明支付卡和扣次对象或空值，兼容 Huma 的对象引用格式。
@@ -175,4 +176,10 @@ type OrderPaymentCount struct {
 	ItemID      uuid.UUID `json:"item_id"`
 	Paid        int32     `json:"paid"`
 	Gift        int32     `json:"gift"`
+}
+
+// PreviewCheckout 是保留单据字段和本次计价卡的试算视图。
+type PreviewCheckout struct {
+	Order
+	PricingCardID *uuid.UUID `json:"pricing_card_id" nullable:"true"`
 }
