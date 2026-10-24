@@ -84,8 +84,8 @@ func (q *Queries) AddItemPosition(ctx context.Context, arg AddItemPositionParams
 }
 
 const createItem = `-- name: CreateItem :one
-INSERT INTO items (tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent)
-VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at
+INSERT INTO items (tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, kind)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind
 `
 
 type CreateItemParams struct {
@@ -96,6 +96,7 @@ type CreateItemParams struct {
 	Discountable    bool
 	LaborFeeAmount  *money.Amount
 	LaborFeePercent *money.Percent
+	Kind            string
 }
 
 func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (Item, error) {
@@ -107,6 +108,7 @@ func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (Item, e
 		arg.Discountable,
 		arg.LaborFeeAmount,
 		arg.LaborFeePercent,
+		arg.Kind,
 	)
 	var i Item
 	err := row.Scan(
@@ -120,6 +122,7 @@ func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (Item, e
 		&i.LaborFeePercent,
 		&i.Active,
 		&i.CreatedAt,
+		&i.Kind,
 	)
 	return i, err
 }
@@ -167,7 +170,7 @@ func (q *Queries) DeleteItemPosition(ctx context.Context, arg DeleteItemPosition
 }
 
 const getItem = `-- name: GetItem :one
-SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at FROM items WHERE store_id = $1 AND id = $2
+SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind FROM items WHERE store_id = $1 AND id = $2
 `
 
 type GetItemParams struct {
@@ -189,6 +192,7 @@ func (q *Queries) GetItem(ctx context.Context, arg GetItemParams) (Item, error) 
 		&i.LaborFeePercent,
 		&i.Active,
 		&i.CreatedAt,
+		&i.Kind,
 	)
 	return i, err
 }
@@ -344,7 +348,7 @@ func (q *Queries) ListItemPositions(ctx context.Context, arg ListItemPositionsPa
 }
 
 const listItems = `-- name: ListItems :many
-SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at FROM items WHERE store_id = $1 ORDER BY active DESC, created_at, id
+SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind FROM items WHERE store_id = $1 ORDER BY active DESC, created_at, id
 `
 
 func (q *Queries) ListItems(ctx context.Context, storeID uuid.UUID) ([]Item, error) {
@@ -367,6 +371,7 @@ func (q *Queries) ListItems(ctx context.Context, storeID uuid.UUID) ([]Item, err
 			&i.LaborFeePercent,
 			&i.Active,
 			&i.CreatedAt,
+			&i.Kind,
 		); err != nil {
 			return nil, err
 		}
@@ -379,7 +384,7 @@ func (q *Queries) ListItems(ctx context.Context, storeID uuid.UUID) ([]Item, err
 }
 
 const lockItem = `-- name: LockItem :one
-SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at FROM items WHERE store_id = $1 AND id = $2 FOR NO KEY UPDATE
+SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind FROM items WHERE store_id = $1 AND id = $2 FOR NO KEY UPDATE
 `
 
 type LockItemParams struct {
@@ -402,12 +407,13 @@ func (q *Queries) LockItem(ctx context.Context, arg LockItemParams) (Item, error
 		&i.LaborFeePercent,
 		&i.Active,
 		&i.CreatedAt,
+		&i.Kind,
 	)
 	return i, err
 }
 
 const shareItem = `-- name: ShareItem :one
-SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at FROM items WHERE store_id=$1 AND id=$2 FOR SHARE
+SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind FROM items WHERE store_id=$1 AND id=$2 FOR SHARE
 `
 
 type ShareItemParams struct {
@@ -429,6 +435,7 @@ func (q *Queries) ShareItem(ctx context.Context, arg ShareItemParams) (Item, err
 		&i.LaborFeePercent,
 		&i.Active,
 		&i.CreatedAt,
+		&i.Kind,
 	)
 	return i, err
 }
@@ -462,8 +469,8 @@ func (q *Queries) ShareItemCardType(ctx context.Context, arg ShareItemCardTypePa
 }
 
 const updateItem = `-- name: UpdateItem :one
-UPDATE items SET name=$2, price=$3, discountable=$4, labor_fee_amount=$5, labor_fee_percent=$6, active=$7
-WHERE id=$1 RETURNING id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at
+UPDATE items SET name=$2, price=$3, discountable=$4, labor_fee_amount=$5, labor_fee_percent=$6, active=$7, kind=$8
+WHERE id=$1 RETURNING id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind
 `
 
 type UpdateItemParams struct {
@@ -474,6 +481,7 @@ type UpdateItemParams struct {
 	LaborFeeAmount  *money.Amount
 	LaborFeePercent *money.Percent
 	Active          bool
+	Kind            string
 }
 
 func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) (Item, error) {
@@ -485,6 +493,7 @@ func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) (Item, e
 		arg.LaborFeeAmount,
 		arg.LaborFeePercent,
 		arg.Active,
+		arg.Kind,
 	)
 	var i Item
 	err := row.Scan(
@@ -498,6 +507,7 @@ func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) (Item, e
 		&i.LaborFeePercent,
 		&i.Active,
 		&i.CreatedAt,
+		&i.Kind,
 	)
 	return i, err
 }

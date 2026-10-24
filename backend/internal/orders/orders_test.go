@@ -537,7 +537,7 @@ func TestDatabaseProtections(t *testing.T) {
 	}{{"level", nil}, {"standard", s.level}, {"member", nil}} {
 		t.Run(fmt.Sprint(tc.source, tc.level), func(t *testing.T) {
 			tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-			_, err := tx.Exec(context.Background(), `INSERT INTO order_items (tenant_id,store_id,order_id,item_id,item_name,price,price_source,level_id,added_by) VALUES ($1,$2,$3,$4,'剪发',1,$5,$6,$7)`, s.Res.TenantID, s.Res.StoreID, o["id"], s.item, tc.source, tc.level, s.Res.OwnerID)
+			_, err := tx.Exec(context.Background(), `INSERT INTO order_items (tenant_id,store_id,order_id,item_id,item_name,item_kind,price,price_source,level_id,added_by) VALUES ($1,$2,$3,$4,'剪发','service',1,$5,$6,$7)`, s.Res.TenantID, s.Res.StoreID, o["id"], s.item, tc.source, tc.level, s.Res.OwnerID)
 			if err == nil {
 				t.Fatal("invalid price source accepted")
 			}
@@ -707,7 +707,7 @@ func TestItemNameConstraints(t *testing.T) {
 		code string
 	}{{nil, "23502"}, {"", "23514"}} {
 		tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-		_, err := tx.Exec(context.Background(), `INSERT INTO order_items (tenant_id,store_id,order_id,item_id,item_name,price,price_source,added_by) VALUES ($1,$2,$3,$4,$5,1,'standard',$6)`, s.Res.TenantID, s.Res.StoreID, opened["id"], s.item, tc.name, s.Res.OwnerID)
+		_, err := tx.Exec(context.Background(), `INSERT INTO order_items (tenant_id,store_id,order_id,item_id,item_name,item_kind,price,price_source,added_by) VALUES ($1,$2,$3,$4,$5,'service',1,'standard',$6)`, s.Res.TenantID, s.Res.StoreID, opened["id"], s.item, tc.name, s.Res.OwnerID)
 		var pgErr interface{ SQLState() string }
 		if !errors.As(err, &pgErr) || pgErr.SQLState() != tc.code {
 			t.Fatal(tc, err)

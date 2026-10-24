@@ -275,6 +275,7 @@ type Item struct {
 	LaborFeePercent *money.Percent
 	Active          bool
 	CreatedAt       pgtype.Timestamptz
+	Kind            string
 }
 
 type ItemLevelPrice struct {
@@ -344,6 +345,7 @@ type OrderItem struct {
 	RepriceReason *string
 	CardTypeID    *uuid.UUID
 	Discount      money.Amount
+	ItemKind      string
 }
 
 type OrderItemPosition struct {

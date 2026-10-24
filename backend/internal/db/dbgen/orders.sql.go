@@ -144,8 +144,8 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 }
 
 const createOrderItem = `-- name: CreateOrderItem :one
-INSERT INTO order_items (tenant_id,store_id,order_id,item_id,item_name,price,price_source,level_id,added_by)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING tenant_id, store_id, id, order_id, item_id, item_name, price, price_source, level_id, added_by, added_at, removed_at, removed_by, reprice_reason, card_type_id, discount
+INSERT INTO order_items (tenant_id,store_id,order_id,item_id,item_name,price,price_source,level_id,added_by,item_kind)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING tenant_id, store_id, id, order_id, item_id, item_name, price, price_source, level_id, added_by, added_at, removed_at, removed_by, reprice_reason, card_type_id, discount, item_kind
 `
 
 type CreateOrderItemParams struct {
@@ -158,6 +158,7 @@ type CreateOrderItemParams struct {
 	PriceSource string
 	LevelID     *uuid.UUID
 	AddedBy     uuid.UUID
+	ItemKind    string
 }
 
 func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams) (OrderItem, error) {
@@ -171,6 +172,7 @@ func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams
 		arg.PriceSource,
 		arg.LevelID,
 		arg.AddedBy,
+		arg.ItemKind,
 	)
 	var i OrderItem
 	err := row.Scan(
@@ -190,6 +192,7 @@ func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams
 		&i.RepriceReason,
 		&i.CardTypeID,
 		&i.Discount,
+		&i.ItemKind,
 	)
 	return i, err
 }
@@ -263,7 +266,7 @@ func (q *Queries) GetOrder(ctx context.Context, arg GetOrderParams) (Order, erro
 }
 
 const getOrderItem = `-- name: GetOrderItem :one
-SELECT tenant_id, store_id, id, order_id, item_id, item_name, price, price_source, level_id, added_by, added_at, removed_at, removed_by, reprice_reason, card_type_id, discount FROM order_items WHERE store_id=$1 AND order_id=$2 AND id=$3
+SELECT tenant_id, store_id, id, order_id, item_id, item_name, price, price_source, level_id, added_by, added_at, removed_at, removed_by, reprice_reason, card_type_id, discount, item_kind FROM order_items WHERE store_id=$1 AND order_id=$2 AND id=$3
 `
 
 type GetOrderItemParams struct {
@@ -292,6 +295,7 @@ func (q *Queries) GetOrderItem(ctx context.Context, arg GetOrderItemParams) (Ord
 		&i.RepriceReason,
 		&i.CardTypeID,
 		&i.Discount,
+		&i.ItemKind,
 	)
 	return i, err
 }
@@ -372,7 +376,7 @@ func (q *Queries) ListOrderItemPositions(ctx context.Context, arg ListOrderItemP
 }
 
 const listOrderItems = `-- name: ListOrderItems :many
-SELECT oi.tenant_id, oi.store_id, oi.id, oi.order_id, oi.item_id, oi.item_name, oi.price, oi.price_source, oi.level_id, oi.added_by, oi.added_at, oi.removed_at, oi.removed_by, oi.reprice_reason, oi.card_type_id, oi.discount FROM order_items oi
+SELECT oi.tenant_id, oi.store_id, oi.id, oi.order_id, oi.item_id, oi.item_name, oi.price, oi.price_source, oi.level_id, oi.added_by, oi.added_at, oi.removed_at, oi.removed_by, oi.reprice_reason, oi.card_type_id, oi.discount, oi.item_kind FROM order_items oi
 WHERE oi.store_id=$1 AND oi.order_id=ANY($2::uuid[]) ORDER BY oi.added_at,oi.id
 `
 
@@ -407,6 +411,7 @@ func (q *Queries) ListOrderItems(ctx context.Context, arg ListOrderItemsParams) 
 			&i.RepriceReason,
 			&i.CardTypeID,
 			&i.Discount,
+			&i.ItemKind,
 		); err != nil {
 			return nil, err
 		}

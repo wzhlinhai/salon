@@ -9,11 +9,11 @@ SELECT * FROM items WHERE store_id = $1 AND id = $2;
 SELECT * FROM items WHERE store_id = $1 AND id = $2 FOR NO KEY UPDATE;
 
 -- name: CreateItem :one
-INSERT INTO items (tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent)
-VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *;
+INSERT INTO items (tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, kind)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *;
 
 -- name: UpdateItem :one
-UPDATE items SET name=$2, price=$3, discountable=$4, labor_fee_amount=$5, labor_fee_percent=$6, active=$7
+UPDATE items SET name=$2, price=$3, discountable=$4, labor_fee_amount=$5, labor_fee_percent=$6, active=$7, kind=$8
 WHERE id=$1 RETURNING *;
 
 -- name: ListItemLevelPrices :many

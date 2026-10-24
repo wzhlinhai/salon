@@ -575,3 +575,38 @@ func TestQuoteLocksReferences(t *testing.T) {
 		})
 	}
 }
+
+func TestItemKind(t *testing.T) {
+	s := open(t)
+	in := input("洗发水")
+	created := s.call("create_item", in, 200)
+	if created["kind"] != "service" {
+		t.Fatal(created)
+	}
+	in["kind"] = "goods"
+	after := s.call("update_item", update(in, created["id"]), 200)
+	if after["kind"] != "goods" {
+		t.Fatal(after)
+	}
+	for _, ch := range s.Channels() {
+		r := ch.Call(t, s.MustCaller(s.Owner), "list_items", map[string]any{})
+		if r.Status != 200 || !reflect.DeepEqual(r.Body["items"], []any{after}) {
+			t.Fatal(ch.Name, r)
+		}
+		r = ch.Call(t, s.MustCaller(s.Owner), "list_audit_log", map[string]any{"target_id": created["id"]})
+		if r.Status != 200 {
+			t.Fatal(r)
+		}
+		entry := r.Body["entries"].([]any)[0].(map[string]any)
+		if entry["action"] != "update_item" || entry["before"].(map[string]any)["kind"] != "service" || entry["after"].(map[string]any)["kind"] != "goods" {
+			t.Fatal(entry)
+		}
+	}
+	in["kind"] = "other"
+	before := dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "items", "audit_log")
+	s.call("create_item", in, 422)
+	s.call("update_item", update(in, created["id"]), 422)
+	if before != dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "items", "audit_log") {
+		t.Fatal("invalid kind changed data")
+	}
+}

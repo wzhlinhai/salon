@@ -44,6 +44,7 @@ const editor = useModalForm()
 const { open, saving } = editor
 const editing = ref<Item | null>(null)
 const name = ref('')
+const kind = ref<Item['kind']>('service')
 const price = ref('0.00')
 const discountable = ref(true)
 const active = ref(true)
@@ -63,6 +64,7 @@ function openEditor(item: Item | null) {
   editor.begin(() => {
     editing.value = item
     name.value = item?.name ?? ''
+    kind.value = item?.kind ?? 'service'
     price.value = item?.price ?? '0.00'
     discountable.value = item?.discountable ?? true
     active.value = item?.active ?? true
@@ -83,7 +85,7 @@ function move(index: number, offset: number) {
 
 async function save() {
   const body = {
-    name: name.value, price: price.value, discountable: discountable.value,
+    name: name.value, kind: kind.value, price: price.value, discountable: discountable.value,
     labor_fee_amount: feeKind.value === 'amount' ? feeValue.value : null,
     labor_fee_percent: feeKind.value === 'percent' ? feeValue.value : null,
     positions: positionRows.value.map(p => ({ ...p })),
@@ -123,6 +125,7 @@ function laborFee(item: Item) {
           <span class="font-medium">{{ item.name }}</span>
           <UBadge v-if="!item.discountable" class="ml-2">不打折项目</UBadge>
           <UBadge class="ml-2" color="neutral">{{ item.active ? '启用' : '停用' }}</UBadge>
+          <p>种类 {{ item.kind === 'goods' ? '卖品' : '服务' }}</p>
           <p>标准价 {{ item.price }} 元 · 手工费 {{ laborFee(item) }}</p>
         </div>
         <UButton variant="ghost" @click="openEditor(item)">编辑</UButton>
@@ -132,6 +135,7 @@ function laborFee(item: Item) {
       <template #body>
         <div class="space-y-4">
           <UFormField label="项目名称"><UInput v-model="name" aria-label="项目名称" :maxlength="40" /></UFormField>
+          <UFormField label="种类"><USelect v-model="kind" aria-label="种类" :items="[{ label: '服务', value: 'service' }, { label: '卖品', value: 'goods' }]" /></UFormField>
           <UFormField label="标准价"><UInput v-model="price" aria-label="标准价" inputmode="decimal" /></UFormField>
           <USwitch v-model="discountable" label="可以打折" />
           <UFormField label="手工费">

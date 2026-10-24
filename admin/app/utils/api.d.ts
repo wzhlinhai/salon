@@ -251,7 +251,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 新建项目，设置标准价、级别价、会员价、手工费和项目岗位 */
+        /** 新建项目，设置种类、标准价、级别价、会员价、手工费和项目岗位 */
         post: operations["create_item"];
         delete?: never;
         options?: never;
@@ -710,7 +710,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 列出本店项目及标准价、级别价、会员价和项目岗位 */
+        /** 列出本店项目及种类、标准价、级别价、会员价和项目岗位 */
         post: operations["list_items"];
         delete?: never;
         options?: never;
@@ -1288,7 +1288,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 修改项目价格规则、项目岗位或停用项目 */
+        /** 修改项目种类、价格规则、项目岗位或停用项目 */
         post: operations["update_item"];
         delete?: never;
         options?: never;
@@ -1667,6 +1667,11 @@ export interface components {
         };
         CreateItemInput: {
             discountable: boolean;
+            /**
+             * @description 项目的种类，不填时为服务
+             * @enum {string}
+             */
+            kind?: "service" | "goods";
             labor_fee_amount: string | null;
             labor_fee_percent: string | null;
             level_prices: components["schemas"]["LevelPrice"][];
@@ -1869,6 +1874,8 @@ export interface components {
             created_at: string;
             discountable: boolean;
             id: string;
+            /** @enum {string} */
+            kind: "service" | "goods";
             labor_fee_amount: string | null;
             labor_fee_percent: string | null;
             level_prices: components["schemas"]["LevelPrice"][];
@@ -2051,6 +2058,8 @@ export interface components {
             discount: string;
             id: string;
             item_id: string;
+            /** @enum {string} */
+            item_kind: "service" | "goods";
             item_name: string;
             level_id: string | null;
             positions: components["schemas"]["OrderItemPosition"][];
@@ -2504,6 +2513,11 @@ export interface components {
             active: boolean;
             discountable: boolean;
             id: string;
+            /**
+             * @description 项目的种类，不填时为服务
+             * @enum {string}
+             */
+            kind?: "service" | "goods";
             labor_fee_amount: string | null;
             labor_fee_percent: string | null;
             level_prices: components["schemas"]["LevelPrice"][];
