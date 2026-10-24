@@ -158,16 +158,16 @@ func TestCheckoutSumRules(t *testing.T) {
 	line := s.checkoutLine()
 	a, b := s.customerOrder(line), s.customerOrder(line)
 	for _, amount := range []string{"99.99", "100.01"} {
-		s.assertCheckoutRefused(checkoutInput(checkoutOrder(a, payment("cash", amount))), 409, "支付合计须等于应收")
+		s.assertCheckoutRefused(checkoutInput(checkoutOrder(a, payment("cash", amount))), 409, "支付合计须等于实收")
 	}
 	for _, ps := range [][]orders.PaymentInput{
 		{payment("cash", "60"), payment("debt", "39.99")},
 		{payment("cash", "60"), payment("debt", "40.01")},
 		{payment("cash", "99999999.99"), payment("debt", "99999999.99")},
 	} {
-		s.assertCheckoutRefused(checkoutInput(checkoutOrder(a, ps...)), 409, "支付合计须等于应收")
+		s.assertCheckoutRefused(checkoutInput(checkoutOrder(a, ps...)), 409, "支付合计须等于实收")
 	}
-	s.assertCheckoutRefused(checkoutInput(checkoutOrder(a, payment("cash", "100")), checkoutOrder(b, payment("cash", "99.99"))), 409, "支付合计须等于应收")
+	s.assertCheckoutRefused(checkoutInput(checkoutOrder(a, payment("cash", "100")), checkoutOrder(b, payment("cash", "99.99"))), 409, "支付合计须等于实收")
 }
 
 func TestCheckoutRemovedLines(t *testing.T) {
@@ -337,7 +337,7 @@ func TestCheckoutWaitsForOrder(t *testing.T) {
 	optest.AssertWaiting(t, done)
 	dbtest.Commit(t, tx)
 	r := optest.WaitResult(t, done, 409)
-	if r.Body["detail"] != "支付合计须等于应收" || expected != s.checkoutSnapshot() {
+	if r.Body["detail"] != "支付合计须等于实收" || expected != s.checkoutSnapshot() {
 		t.Fatal(r)
 	}
 }

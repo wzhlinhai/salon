@@ -154,3 +154,17 @@ func Date(t time.Time) time.Time {
 }
 
 func pgDate(d time.Time) pgtype.Date { return pgtype.Date{Time: d, Valid: true} }
+
+// CardDeductionOrder 返回卡余额支付先扣本金还是赠送金。
+func (r Rules) CardDeductionOrder() string {
+	var v string
+	r.decode(KeyCardDeductionOrder, &v)
+	return v
+}
+
+// OthersCardPayment 返回是否允许用别人的卡余额支付。
+func (r Rules) OthersCardPayment() string {
+	var v string
+	r.decode(KeyOthersCardPayment, &v)
+	return v
+}

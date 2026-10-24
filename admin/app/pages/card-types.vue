@@ -43,6 +43,7 @@ const { open, saving } = editor
 const editing = ref<CardType | null>(null)
 const name = ref('')
 const active = ref(true)
+const discount = ref('')
 const validity = ref<'none' | 'fixed_date' | 'days_after_open'>('none')
 const date = ref('')
 const days = ref(30)
@@ -56,6 +57,7 @@ function edit(item: CardType | null) {
   editor.begin(() => {
     editing.value = item
     name.value = item?.name ?? ''
+    discount.value = item?.discount_percent ? String(Number(item.discount_percent) / 10) : ''
     kind.value = item?.kind as typeof kind.value ?? 'stored_value'
     definition.value = item?.items.map(x => ({ item_id: x.item_id, paid_count: x.paid_count, gift_count: x.gift_count, unit_price: x.unit_price })) ?? []
     active.value = item?.active ?? true
@@ -66,8 +68,13 @@ function edit(item: CardType | null) {
 }
 
 async function save() {
+  if (kind.value !== 'count' && discount.value !== '' && (!/^[0-9](\.[0-9])?$/.test(String(discount.value)) || Number(discount.value) <= 0)) {
+    toast.add({ title: '折扣率须大于 0 折、小于 10 折，最多一位小数', color: 'error' })
+    return
+  }
   const body = {
     name: name.value, kind: kind.value, validity_kind: validity.value,
+    discount_percent: kind.value === 'count' || discount.value === '' ? null : (Number(discount.value) * 10).toFixed(2),
     items: kind.value === 'stored_value' ? [] : definition.value.map(x => ({ ...x, paid_count: Number(x.paid_count), gift_count: Number(x.gift_count) })),
     validity_date: validity.value === 'fixed_date' ? date.value : undefined,
     validity_days: validity.value === 'days_after_open' ? Number(days.value) : undefined
@@ -133,7 +140,7 @@ async function saveRule() {
     <p v-if="loading">加载中</p>
     <UCard v-for="item in items" :key="item.id" :data-card-type="item.name">
       <div class="flex justify-between items-center">
-        <div>{{ item.name }} · {{ kindItems.find(k => k.value === item.kind)?.label }} · 有效期：{{ validityText(item) }} · {{ item.active ? '启用' : '停用' }}</div>
+        <div>{{ item.name }} · {{ kindItems.find(k => k.value === item.kind)?.label }} · 有效期：{{ validityText(item) }} · {{ item.active ? '启用' : '停用' }}<span v-if="item.discount_percent"> · {{ Number(item.discount_percent) / 10 }} 折</span></div>
         <UButton variant="outline" @click="edit(item)">编辑</UButton>
       </div>
     </UCard>
@@ -163,6 +170,7 @@ async function saveRule() {
         <div class="space-y-3">
           <UFormField label="卡类型名称"><UInput v-model="name" class="w-full" /></UFormField>
           <UFormField label="种类"><USelect v-model="kind" :items="kindItems" class="w-full" /></UFormField>
+          <UFormField v-if="kind !== 'count'" label="折扣率" hint="以折填写，留空为不打折"><UInput v-model="discount" type="number" :min="0.1" :max="9.9" :step="0.1" placeholder="不打折" class="w-full" /></UFormField>
           <div v-if="kind !== 'stored_value'" class="space-y-3">
             <div v-for="(row, index) in definition" :key="index" data-testid="card-type-item" class="space-y-2">
               <UFormField label="项目"><USelect v-model="row.item_id" :items="catalog.filter(i => i.active || definition.some(x => x.item_id === i.id)).map(i => ({ label: i.name, value: i.id }))" class="w-full" /></UFormField>

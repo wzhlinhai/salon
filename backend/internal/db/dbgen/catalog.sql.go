@@ -434,7 +434,7 @@ func (q *Queries) ShareItem(ctx context.Context, arg ShareItemParams) (Item, err
 }
 
 const shareItemCardType = `-- name: ShareItemCardType :one
-SELECT id, tenant_id, store_id, name, kind, validity_kind, validity_date, validity_days, active, created_at FROM card_types WHERE store_id=$1 AND id=$2 FOR SHARE
+SELECT id, tenant_id, store_id, name, kind, validity_kind, validity_date, validity_days, active, created_at, discount_percent FROM card_types WHERE store_id=$1 AND id=$2 FOR SHARE
 `
 
 type ShareItemCardTypeParams struct {
@@ -456,6 +456,7 @@ func (q *Queries) ShareItemCardType(ctx context.Context, arg ShareItemCardTypePa
 		&i.ValidityDays,
 		&i.Active,
 		&i.CreatedAt,
+		&i.DiscountPercent,
 	)
 	return i, err
 }

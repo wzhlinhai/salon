@@ -116,3 +116,14 @@ func (a Amount) WholeDiv(n int64) int64 {
 	quotient, _ := a.value.QuoRem(decimal.NewFromInt(n), 0)
 	return quotient.IntPart()
 }
+
+// Discount 返回按折扣率收取并四舍五入到分后减免的金额。
+func (a Amount) Discount(percent Percent) Amount {
+	net := a.value.Mul(percent.value).Div(decimal.NewFromInt(100)).Round(2)
+	return Amount{value: a.value.Sub(net)}
+}
+
+// IsDiscount 判断折扣率是否大于零且小于一百。
+func (a Percent) IsDiscount() bool {
+	return a.value.IsPositive() && a.value.LessThan(decimal.NewFromInt(100))
+}

@@ -11,25 +11,27 @@ import (
 
 // CardType 是门店定义的卡类型及有效期规则。
 type CardType struct {
-	Items        []CardTypeItem `json:"items"`
-	ID           uuid.UUID      `json:"id"`
-	Name         string         `json:"name"`
-	Kind         string         `json:"kind"`
-	ValidityKind string         `json:"validity_kind"`
-	ValidityDate *string        `json:"validity_date,omitempty"`
-	ValidityDays *int32         `json:"validity_days,omitempty"`
-	Active       bool           `json:"active"`
-	CreatedAt    time.Time      `json:"created_at"`
+	DiscountPercent *money.Percent `json:"discount_percent" nullable:"true"`
+	Items           []CardTypeItem `json:"items"`
+	ID              uuid.UUID      `json:"id"`
+	Name            string         `json:"name"`
+	Kind            string         `json:"kind"`
+	ValidityKind    string         `json:"validity_kind"`
+	ValidityDate    *string        `json:"validity_date,omitempty"`
+	ValidityDays    *int32         `json:"validity_days,omitempty"`
+	Active          bool           `json:"active"`
+	CreatedAt       time.Time      `json:"created_at"`
 }
 
 // CreateCardTypeInput 是新建卡类型的参数。
 type CreateCardTypeInput struct {
-	Items        []CardTypeItemInput `json:"items,omitempty" maxItems:"20"`
-	Name         string              `json:"name" minLength:"1" maxLength:"40"`
-	Kind         string              `json:"kind" enum:"stored_value,count,package"`
-	ValidityKind string              `json:"validity_kind" enum:"none,fixed_date,days_after_open"`
-	ValidityDate *string             `json:"validity_date,omitempty"`
-	ValidityDays *int32              `json:"validity_days,omitempty"`
+	DiscountPercent *money.Percent      `json:"discount_percent,omitempty" nullable:"true"`
+	Items           []CardTypeItemInput `json:"items,omitempty" maxItems:"20"`
+	Name            string              `json:"name" minLength:"1" maxLength:"40"`
+	Kind            string              `json:"kind" enum:"stored_value,count,package"`
+	ValidityKind    string              `json:"validity_kind" enum:"none,fixed_date,days_after_open"`
+	ValidityDate    *string             `json:"validity_date,omitempty"`
+	ValidityDays    *int32              `json:"validity_days,omitempty"`
 }
 
 // UpdateCardTypeInput 是编辑或停用卡类型的参数。
@@ -107,6 +109,7 @@ type CardLedgerActor struct {
 
 // CardLedgerEntry 是本金和赠送金的一次变动。
 type CardLedgerEntry struct {
+	OrderID         *uuid.UUID      `json:"order_id" nullable:"true"`
 	OtherCardID     *uuid.UUID      `json:"other_card_id,omitempty"`
 	ID              uuid.UUID       `json:"id"`
 	Kind            string          `json:"kind"`

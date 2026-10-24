@@ -242,7 +242,7 @@ func listCardLedger(ctx context.Context, env ops.Env, in *ListCardLedgerInput) (
 		if staff == nil {
 			staff = []SalesStaff{}
 		}
-		out.Entries = append(out.Entries, CardLedgerEntry{ID: l.ID, Kind: l.Kind, Reason: r.Reason, OtherCardID: optionalCardID(r.OtherCardID), PrincipalBefore: l.PrincipalBefore, PrincipalDelta: l.PrincipalDelta, PrincipalAfter: l.PrincipalAfter, BonusBefore: l.BonusBefore, BonusDelta: l.BonusDelta, BonusAfter: l.BonusAfter, BusinessDate: l.BusinessDate.Time.Format(time.DateOnly), At: l.At.Time, Actor: CardLedgerActor{ID: l.ActorID, Name: r.ActorName}, SalesStaff: staff})
+		out.Entries = append(out.Entries, CardLedgerEntry{OrderID: r.OrderID, ID: l.ID, Kind: l.Kind, Reason: r.Reason, OtherCardID: optionalCardID(r.OtherCardID), PrincipalBefore: l.PrincipalBefore, PrincipalDelta: l.PrincipalDelta, PrincipalAfter: l.PrincipalAfter, BonusBefore: l.BonusBefore, BonusDelta: l.BonusDelta, BonusAfter: l.BonusAfter, BusinessDate: l.BusinessDate.Time.Format(time.DateOnly), At: l.At.Time, Actor: CardLedgerActor{ID: l.ActorID, Name: r.ActorName}, SalesStaff: staff})
 	}
 	return out, nil
 }

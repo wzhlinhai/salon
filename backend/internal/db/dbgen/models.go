@@ -140,16 +140,17 @@ type CardTransfer struct {
 }
 
 type CardType struct {
-	ID           uuid.UUID
-	TenantID     uuid.UUID
-	StoreID      uuid.UUID
-	Name         string
-	Kind         string
-	ValidityKind string
-	ValidityDate pgtype.Date
-	ValidityDays *int32
-	Active       bool
-	CreatedAt    pgtype.Timestamptz
+	ID              uuid.UUID
+	TenantID        uuid.UUID
+	StoreID         uuid.UUID
+	Name            string
+	Kind            string
+	ValidityKind    string
+	ValidityDate    pgtype.Date
+	ValidityDays    *int32
+	Active          bool
+	CreatedAt       pgtype.Timestamptz
+	DiscountPercent *money.Percent
 }
 
 type CardTypeItem struct {
@@ -315,6 +316,8 @@ type OrderItem struct {
 	RemovedAt     pgtype.Timestamptz
 	RemovedBy     *uuid.UUID
 	RepriceReason *string
+	CardTypeID    *uuid.UUID
+	Discount      money.Amount
 }
 
 type OrderItemPosition struct {
@@ -328,13 +331,15 @@ type OrderItemPosition struct {
 }
 
 type OrderPayment struct {
-	TenantID   uuid.UUID
-	StoreID    uuid.UUID
-	ID         uuid.UUID
-	CheckoutID uuid.UUID
-	OrderID    uuid.UUID
-	Method     string
-	Amount     money.Amount
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	ID           uuid.UUID
+	CheckoutID   uuid.UUID
+	OrderID      uuid.UUID
+	Method       string
+	Amount       money.Amount
+	CardID       *uuid.UUID
+	CardLedgerID *uuid.UUID
 }
 
 type Position struct {
