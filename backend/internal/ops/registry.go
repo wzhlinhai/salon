@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"regexp"
 	"sort"
 
@@ -47,6 +48,9 @@ func NewRegistry(pool *pgxpool.Pool, api huma.API) *Registry {
 // Register 声明一个操作，并生成它的 HTTP 接口。声明不合规时 panic，在启动时暴露错误。
 func Register[I, O any](r *Registry, op Operation[I, O]) {
 	if err := validate(op.Name, op.Kind, op.Permission, op.AI, op.Handle != nil); err != nil {
+		panic(fmt.Sprintf("ops: invalid operation %q: %v", op.Name, err))
+	}
+	if err := validateInputDefaults(reflect.TypeFor[I]()); err != nil {
 		panic(fmt.Sprintf("ops: invalid operation %q: %v", op.Name, err))
 	}
 	if _, dup := r.ops[op.Name]; dup {
@@ -109,6 +113,42 @@ func validate(name string, kind Kind, perm Permission, ai AIMode, hasHandler boo
 		return errors.New("handler is required")
 	}
 	return nil
+}
+
+// validateInputDefaults 拒绝只在 HTTP 路径生效的 huma 默认值。
+func validateInputDefaults(input reflect.Type) error {
+	seen := map[reflect.Type]bool{}
+	var walk func(reflect.Type, string) error
+	walk = func(t reflect.Type, path string) error {
+		if seen[t] {
+			return nil
+		}
+		seen[t] = true
+		switch t.Kind() {
+		case reflect.Pointer:
+			return walk(t.Elem(), path)
+		case reflect.Slice, reflect.Array:
+			return walk(t.Elem(), path+"[]")
+		case reflect.Map:
+			return walk(t.Elem(), path+"[value]")
+		case reflect.Struct:
+			for i := 0; i < t.NumField(); i++ {
+				field := t.Field(i)
+				fieldPath := field.Name
+				if path != "" {
+					fieldPath = path + "." + field.Name
+				}
+				if _, ok := field.Tag.Lookup("default"); ok {
+					return fmt.Errorf("field %s: default must be set in the handler because the AI path does not apply huma defaults", fieldPath)
+				}
+				if err := walk(field.Type, fieldPath); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	return walk(input, "")
 }
 
 // invoke 是所有调用的共同路径：渠道检查、权限检查、在调用者租户的事务中执行。

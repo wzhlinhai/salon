@@ -48,6 +48,47 @@ func TestInvalidDeclarationsPanicAtRegistration(t *testing.T) {
 	}
 }
 
+type defaultFields struct {
+	Kind string `json:"kind,omitempty" default:"service"`
+}
+
+type recursiveDefaultInput struct {
+	Next   *recursiveDefaultInput `json:"next,omitempty"`
+	Fields defaultFields          `json:"fields"`
+}
+
+func registerInput[I any](t *testing.T) {
+	t.Helper()
+	ops.Register(newRegistry(t), ops.Operation[I, out]{
+		Name: "do_thing", Summary: "示例", Kind: ops.Read, Permission: "thing.view", AI: ops.AIDirect,
+		Handle: func(context.Context, ops.Env, *I) (*out, error) { return &out{}, nil },
+	})
+}
+
+func TestInputDefaultsPanicAtRegistration(t *testing.T) {
+	cases := map[string]struct {
+		register func(*testing.T)
+		path     string
+	}{
+		"top level":  {registerInput[defaultFields], "Kind"},
+		"embedded":   {registerInput[struct{ defaultFields }], "defaultFields.Kind"},
+		"pointer":    {registerInput[struct{ Fields *defaultFields }], "Fields.Kind"},
+		"slice":      {registerInput[struct{ Fields []defaultFields }], "Fields[].Kind"},
+		"array":      {registerInput[struct{ Fields [2]defaultFields }], "Fields[].Kind"},
+		"map values": {registerInput[struct{ Fields map[string]*defaultFields }], "Fields[value].Kind"},
+		"recursive":  {registerInput[recursiveDefaultInput], "Fields.Kind"},
+		"empty default": {registerInput[struct {
+			Kind string `default:""`
+		}], "Kind"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			want := `ops: invalid operation "do_thing": field ` + c.path + ": default must be set in the handler because the AI path does not apply huma defaults"
+			assertPanics(t, want, func() { c.register(t) })
+		})
+	}
+}
+
 func TestDuplicateNamePanics(t *testing.T) {
 	r := newRegistry(t)
 	ops.Register(r, valid())
