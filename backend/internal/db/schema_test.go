@@ -67,3 +67,69 @@ func TestEveryTableIsTenantIsolated(t *testing.T) {
 		t.Fatal("no tables found")
 	}
 }
+
+// TestBusinessForeignKeysIncludeTenant 检查业务外键按列位置将 tenant_id 引用到 tenant_id。
+func TestBusinessForeignKeysIncludeTenant(t *testing.T) {
+	ctx := context.Background()
+	pool := dbtest.NewPool(t)
+
+	exceptions := map[string]string{
+		"card_count_ledger_card_id_item_id_fkey": "card_count_ledger 和 card_items 都通过 (tenant_id, card_id) → cards 和 (tenant_id, item_id) → items 将两列绑定到本租户",
+	}
+	rows, err := pool.Query(ctx, `
+		SELECT src.relname, k.conname, dst.relname,
+		       string_agg(sa.attname, ', ' ORDER BY cols.position),
+		       string_agg(da.attname, ', ' ORDER BY cols.position),
+		       bool_or(sa.attname = 'tenant_id' AND da.attname = 'tenant_id')
+		FROM pg_constraint k
+		JOIN pg_class src ON src.oid = k.conrelid
+		JOIN pg_namespace sn ON sn.oid = src.relnamespace
+		JOIN pg_class dst ON dst.oid = k.confrelid
+		JOIN pg_namespace dn ON dn.oid = dst.relnamespace
+		CROSS JOIN LATERAL unnest(k.conkey, k.confkey) WITH ORDINALITY AS cols(srcnum, dstnum, position)
+		JOIN pg_attribute sa ON sa.attrelid = src.oid AND sa.attnum = cols.srcnum
+		JOIN pg_attribute da ON da.attrelid = dst.oid AND da.attnum = cols.dstnum
+		WHERE k.contype = 'f' AND sn.nspname = 'public' AND dn.nspname = 'public'
+		GROUP BY src.relname, k.oid, k.conname, dst.relname
+		ORDER BY src.relname, k.conname`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	seen := 0
+	for rows.Next() {
+		var table, constraint, target, columns, targetColumns string
+		var tenantPaired bool
+		if err := rows.Scan(&table, &constraint, &target, &columns, &targetColumns, &tenantPaired); err != nil {
+			t.Fatal(err)
+		}
+		reason, exception := exceptions[constraint]
+		exception = exception && table == "card_count_ledger"
+		if structuralTables[table] || (structuralTables[target] && target != "stores" && !exception) {
+			continue
+		}
+		seen++
+		t.Logf("%s: %s (%s) → %s (%s); tenant paired=%v", table, constraint, columns, target, targetColumns, tenantPaired)
+		if exception {
+			if target != "card_items" || columns != "card_id, item_id" || targetColumns != "card_id, item_id" {
+				t.Errorf("%s: %s FOREIGN KEY (%s) REFERENCES %s (%s): shape does not match exception: %s", table, constraint, columns, target, targetColumns, reason)
+			} else {
+				delete(exceptions, constraint)
+			}
+			continue
+		}
+		if !tenantPaired {
+			t.Errorf("%s: %s FOREIGN KEY (%s) REFERENCES %s (%s): tenant_id must reference tenant_id", table, constraint, columns, target, targetColumns)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if seen == 0 {
+		t.Fatal("no business foreign keys found")
+	}
+	for constraint, reason := range exceptions {
+		t.Errorf("unused foreign key exception %s: %s", constraint, reason)
+	}
+}
