@@ -16,7 +16,7 @@ import (
 
 // change 按 UUID 锁住全部单并检查状态，再按操作声明的权限限制检查窗口和范围。
 // edit 收到的顺序与 ids 相同；修改后的行状态也在此切片更新，返回全部单的改后视图。
-func change(ctx context.Context, env ops.Env, action string, ids []uuid.UUID, edit func([]dbgen.Order) error) ([]Order, error) {
+func change(ctx context.Context, env ops.Env, action, requiredStatus string, ids []uuid.UUID, edit func([]dbgen.Order) error, now time.Time) ([]Order, error) {
 	ordered := slices.Clone(ids)
 	slices.SortFunc(ordered, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
 	locked := make(map[uuid.UUID]dbgen.Order, len(ids))
@@ -28,16 +28,21 @@ func change(ctx context.Context, env ops.Env, action string, ids []uuid.UUID, ed
 		if row.Status == "merged" {
 			return nil, ops.Rule("单已合并，请在合并后的单上操作")
 		}
-		if row.Status == "paid" {
+		if row.Status == "voided" {
+			return nil, ops.Rule("单已撤")
+		}
+		if row.Status == "paid" && requiredStatus != "paid" {
 			return nil, ops.Rule("单已结账")
 		}
-		if row.Status != "open" {
+		if row.Status != requiredStatus {
+			if requiredStatus == "paid" {
+				return nil, ops.Rule("只能撤已结账的单")
+			}
 			return nil, ops.Rule("单当前状态不允许操作")
 		}
 		locked[id] = row
 	}
 	rows := make([]dbgen.Order, len(ids))
-	now := time.Now()
 	for i, id := range ids {
 		rows[i] = locked[id]
 		if err := checkEdit(ctx, env, rows[i], now); err != nil {
@@ -86,7 +91,7 @@ func checkEdit(ctx context.Context, env ops.Env, order dbgen.Order, now time.Tim
 }
 
 func changeOne(ctx context.Context, env ops.Env, action string, id uuid.UUID, edit func(*dbgen.Order) error) (*Order, error) {
-	after, err := change(ctx, env, action, []uuid.UUID{id}, func(rows []dbgen.Order) error { return edit(&rows[0]) })
+	after, err := change(ctx, env, action, "open", []uuid.UUID{id}, func(rows []dbgen.Order) error { return edit(&rows[0]) }, time.Now())
 	if err != nil {
 		return nil, err
 	}

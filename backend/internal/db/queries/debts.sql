@@ -25,4 +25,10 @@ SELECT (d.order_id IS NOT NULL)::boolean AS is_order,
  count(*) FILTER (WHERE d.amount>COALESCE(r.repaid,0))::bigint AS outstanding_count
 FROM debts d LEFT JOIN (
  SELECT debt_id,sum(amount) AS repaid FROM debt_repayments GROUP BY debt_id
-) r ON r.debt_id=d.id WHERE d.store_id=$1 GROUP BY (d.order_id IS NOT NULL);
+) r ON r.debt_id=d.id WHERE d.store_id=$1 AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.id=d.order_id AND o.status='voided') GROUP BY (d.order_id IS NOT NULL);
+
+-- name: LockOrderDebts :many
+SELECT * FROM debts WHERE store_id=$1 AND order_id=$2 ORDER BY id FOR NO KEY UPDATE;
+
+-- name: VoidedDebts :many
+SELECT d.id FROM debts d JOIN orders o ON o.id=d.order_id WHERE d.store_id=$1 AND d.id=ANY(sqlc.arg(debt_ids)::uuid[]) AND o.status='voided';

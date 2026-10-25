@@ -132,8 +132,8 @@ func (q *Queries) AddCardAdjustment(ctx context.Context, arg AddCardAdjustmentPa
 }
 
 const addCardCountEntry = `-- name: AddCardCountEntry :exec
-INSERT INTO card_count_ledger (tenant_id,store_id,card_id,item_id,kind,paid_before,paid_delta,paid_after,gift_before,gift_delta,gift_after,adjustment_id,business_date,actor_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+INSERT INTO card_count_ledger (tenant_id,store_id,card_id,item_id,kind,paid_before,paid_delta,paid_after,gift_before,gift_delta,gift_after,adjustment_id,business_date,actor_id,reverses_id,order_void_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
 `
 
 type AddCardCountEntryParams struct {
@@ -151,6 +151,8 @@ type AddCardCountEntryParams struct {
 	AdjustmentID *uuid.UUID
 	BusinessDate pgtype.Date
 	ActorID      uuid.UUID
+	ReversesID   *uuid.UUID
+	OrderVoidID  *uuid.UUID
 }
 
 func (q *Queries) AddCardCountEntry(ctx context.Context, arg AddCardCountEntryParams) error {
@@ -169,6 +171,8 @@ func (q *Queries) AddCardCountEntry(ctx context.Context, arg AddCardCountEntryPa
 		arg.AdjustmentID,
 		arg.BusinessDate,
 		arg.ActorID,
+		arg.ReversesID,
+		arg.OrderVoidID,
 	)
 	return err
 }
@@ -201,8 +205,8 @@ func (q *Queries) AddCardItem(ctx context.Context, arg AddCardItemParams) error 
 }
 
 const addCardLedger = `-- name: AddCardLedger :one
-INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, tenant_id, store_id, card_id, kind, principal_before, principal_delta, principal_after, bonus_before, bonus_delta, bonus_after, business_date, actor_id, at
+INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id,reverses_id,order_void_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id, tenant_id, store_id, card_id, kind, principal_before, principal_delta, principal_after, bonus_before, bonus_delta, bonus_after, business_date, actor_id, at, reverses_id, order_void_id
 `
 
 type AddCardLedgerParams struct {
@@ -218,6 +222,8 @@ type AddCardLedgerParams struct {
 	BonusAfter      money.Amount
 	BusinessDate    pgtype.Date
 	ActorID         uuid.UUID
+	ReversesID      *uuid.UUID
+	OrderVoidID     *uuid.UUID
 }
 
 func (q *Queries) AddCardLedger(ctx context.Context, arg AddCardLedgerParams) (CardLedger, error) {
@@ -234,6 +240,8 @@ func (q *Queries) AddCardLedger(ctx context.Context, arg AddCardLedgerParams) (C
 		arg.BonusAfter,
 		arg.BusinessDate,
 		arg.ActorID,
+		arg.ReversesID,
+		arg.OrderVoidID,
 	)
 	var i CardLedger
 	err := row.Scan(
@@ -251,6 +259,8 @@ func (q *Queries) AddCardLedger(ctx context.Context, arg AddCardLedgerParams) (C
 		&i.BusinessDate,
 		&i.ActorID,
 		&i.At,
+		&i.ReversesID,
+		&i.OrderVoidID,
 	)
 	return i, err
 }
@@ -406,7 +416,7 @@ func (q *Queries) AddCardUpgrade(ctx context.Context, arg AddCardUpgradeParams) 
 }
 
 const adjustmentCounts = `-- name: AdjustmentCounts :many
-SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.item_id, l.kind, l.paid_before, l.paid_delta, l.paid_after, l.gift_before, l.gift_delta, l.gift_after, l.adjustment_id, l.business_date, l.actor_id, l.at, i.name AS item_name FROM card_count_ledger l JOIN items i ON i.id=l.item_id
+SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.item_id, l.kind, l.paid_before, l.paid_delta, l.paid_after, l.gift_before, l.gift_delta, l.gift_after, l.adjustment_id, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id, i.name AS item_name FROM card_count_ledger l JOIN items i ON i.id=l.item_id
 WHERE l.adjustment_id=ANY($1::uuid[]) ORDER BY l.adjustment_id,l.item_id
 `
 
@@ -441,6 +451,8 @@ func (q *Queries) AdjustmentCounts(ctx context.Context, adjustmentIds []uuid.UUI
 			&i.CardCountLedger.BusinessDate,
 			&i.CardCountLedger.ActorID,
 			&i.CardCountLedger.At,
+			&i.CardCountLedger.ReversesID,
+			&i.CardCountLedger.OrderVoidID,
 			&i.ItemName,
 		); err != nil {
 			return nil, err
@@ -977,7 +989,7 @@ func (q *Queries) ListCardAdjustments(ctx context.Context, arg ListCardAdjustmen
 }
 
 const listCardCounts = `-- name: ListCardCounts :many
-SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.item_id, l.kind, l.paid_before, l.paid_delta, l.paid_after, l.gift_before, l.gift_delta, l.gift_after, l.adjustment_id, l.business_date, l.actor_id, l.at, i.name AS item_name, s.name AS actor_name, COALESCE(a.reason,'')::text AS reason, p.order_id
+SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.item_id, l.kind, l.paid_before, l.paid_delta, l.paid_after, l.gift_before, l.gift_delta, l.gift_after, l.adjustment_id, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id, i.name AS item_name, s.name AS actor_name, COALESCE(a.reason,'')::text AS reason, p.order_id
 FROM card_count_ledger l JOIN items i ON i.id=l.item_id JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.id=l.adjustment_id
 LEFT JOIN order_payments p ON p.card_count_ledger_id=l.id
 WHERE l.card_id=$1 AND ($2::uuid IS NULL OR l.item_id=$2)
@@ -1031,6 +1043,8 @@ func (q *Queries) ListCardCounts(ctx context.Context, arg ListCardCountsParams) 
 			&i.CardCountLedger.BusinessDate,
 			&i.CardCountLedger.ActorID,
 			&i.CardCountLedger.At,
+			&i.CardCountLedger.ReversesID,
+			&i.CardCountLedger.OrderVoidID,
 			&i.ItemName,
 			&i.ActorName,
 			&i.Reason,
@@ -1047,7 +1061,7 @@ func (q *Queries) ListCardCounts(ctx context.Context, arg ListCardCountsParams) 
 }
 
 const listCardLedger = `-- name: ListCardLedger :many
-SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.kind, l.principal_before, l.principal_delta, l.principal_after, l.bonus_before, l.bonus_delta, l.bonus_after, l.business_date, l.actor_id, l.at, s.name AS actor_name, COALESCE(a.reason,tr.reason,'')::text AS reason,
+SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.kind, l.principal_before, l.principal_delta, l.principal_after, l.bonus_before, l.bonus_delta, l.bonus_after, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id, s.name AS actor_name, COALESCE(a.reason,tr.reason,'')::text AS reason,
  CASE WHEN tr.from_ledger_id=l.id THEN tr.to_card_id ELSE tr.from_card_id END::uuid AS other_card_id, p.order_id
 FROM card_ledger l JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.ledger_id=l.id
 LEFT JOIN card_transfers tr ON tr.from_ledger_id=l.id OR tr.to_ledger_id=l.id
@@ -1094,6 +1108,8 @@ func (q *Queries) ListCardLedger(ctx context.Context, arg ListCardLedgerParams) 
 			&i.CardLedger.BusinessDate,
 			&i.CardLedger.ActorID,
 			&i.CardLedger.At,
+			&i.CardLedger.ReversesID,
+			&i.CardLedger.OrderVoidID,
 			&i.ActorName,
 			&i.Reason,
 			&i.OtherCardID,
@@ -1741,4 +1757,98 @@ type UpdateUpgradedCardParams struct {
 func (q *Queries) UpdateUpgradedCard(ctx context.Context, arg UpdateUpgradedCardParams) error {
 	_, err := q.db.Exec(ctx, updateUpgradedCard, arg.ID, arg.CardTypeID)
 	return err
+}
+
+const voidBalanceConsumes = `-- name: VoidBalanceConsumes :many
+SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.kind, l.principal_before, l.principal_delta, l.principal_after, l.bonus_before, l.bonus_delta, l.bonus_after, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id FROM card_ledger l JOIN order_payments p ON p.card_ledger_id=l.id WHERE p.store_id=$1 AND p.order_id=$2 ORDER BY p.id
+`
+
+type VoidBalanceConsumesParams struct {
+	StoreID uuid.UUID
+	OrderID uuid.UUID
+}
+
+func (q *Queries) VoidBalanceConsumes(ctx context.Context, arg VoidBalanceConsumesParams) ([]CardLedger, error) {
+	rows, err := q.db.Query(ctx, voidBalanceConsumes, arg.StoreID, arg.OrderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CardLedger
+	for rows.Next() {
+		var i CardLedger
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.StoreID,
+			&i.CardID,
+			&i.Kind,
+			&i.PrincipalBefore,
+			&i.PrincipalDelta,
+			&i.PrincipalAfter,
+			&i.BonusBefore,
+			&i.BonusDelta,
+			&i.BonusAfter,
+			&i.BusinessDate,
+			&i.ActorID,
+			&i.At,
+			&i.ReversesID,
+			&i.OrderVoidID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const voidCountConsumes = `-- name: VoidCountConsumes :many
+SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.item_id, l.kind, l.paid_before, l.paid_delta, l.paid_after, l.gift_before, l.gift_delta, l.gift_after, l.adjustment_id, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id FROM card_count_ledger l JOIN order_payments p ON p.card_count_ledger_id=l.id WHERE p.store_id=$1 AND p.order_id=$2 ORDER BY p.id
+`
+
+type VoidCountConsumesParams struct {
+	StoreID uuid.UUID
+	OrderID uuid.UUID
+}
+
+func (q *Queries) VoidCountConsumes(ctx context.Context, arg VoidCountConsumesParams) ([]CardCountLedger, error) {
+	rows, err := q.db.Query(ctx, voidCountConsumes, arg.StoreID, arg.OrderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CardCountLedger
+	for rows.Next() {
+		var i CardCountLedger
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.StoreID,
+			&i.CardID,
+			&i.ItemID,
+			&i.Kind,
+			&i.PaidBefore,
+			&i.PaidDelta,
+			&i.PaidAfter,
+			&i.GiftBefore,
+			&i.GiftDelta,
+			&i.GiftAfter,
+			&i.AdjustmentID,
+			&i.BusinessDate,
+			&i.ActorID,
+			&i.At,
+			&i.ReversesID,
+			&i.OrderVoidID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

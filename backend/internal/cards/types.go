@@ -109,6 +109,8 @@ type CardLedgerActor struct {
 
 // CardLedgerEntry 是本金和赠送金的一次变动。
 type CardLedgerEntry struct {
+	ReversesID      *uuid.UUID      `json:"reverses_id" nullable:"true"`
+	OrderVoidID     *uuid.UUID      `json:"order_void_id" nullable:"true"`
 	OrderID         *uuid.UUID      `json:"order_id" nullable:"true"`
 	OtherCardID     *uuid.UUID      `json:"other_card_id,omitempty"`
 	ID              uuid.UUID       `json:"id"`
@@ -245,6 +247,8 @@ type CardCountItem struct {
 
 // CardCountEntry 是购买次数与赠送次数的一次变动。
 type CardCountEntry struct {
+	ReversesID   *uuid.UUID      `json:"reverses_id" nullable:"true"`
+	OrderVoidID  *uuid.UUID      `json:"order_void_id" nullable:"true"`
 	OrderID      *uuid.UUID      `json:"order_id" nullable:"true"`
 	ID           uuid.UUID       `json:"id"`
 	Item         CardCountItem   `json:"item"`

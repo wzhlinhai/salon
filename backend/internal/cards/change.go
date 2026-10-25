@@ -86,7 +86,7 @@ func recordChange(ctx context.Context, env ops.Env, action string, row dbgen.Car
 }
 
 // writeBalance 以同一种当前余额视图计算流水前值、差额和目标余额。
-func writeBalance(ctx context.Context, env ops.Env, id uuid.UUID, kind string, principal, bonus money.Amount, principalDelta, bonusDelta money.Change, day time.Time) (dbgen.CardLedger, error) {
+func writeBalance(ctx context.Context, env ops.Env, id uuid.UUID, kind string, principal, bonus money.Amount, principalDelta, bonusDelta money.Change, day time.Time, reversesID, orderVoidID *uuid.UUID) (dbgen.CardLedger, error) {
 	pa, err := principal.Apply(principalDelta)
 	if err != nil {
 		return dbgen.CardLedger{}, ops.Rule("卡余额超过上限")
@@ -95,7 +95,7 @@ func writeBalance(ctx context.Context, env ops.Env, id uuid.UUID, kind string, p
 	if err != nil {
 		return dbgen.CardLedger{}, ops.Rule("卡余额超过上限")
 	}
-	return env.Q.AddCardLedger(ctx, dbgen.AddCardLedgerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: id, Kind: kind, PrincipalBefore: principal, PrincipalDelta: principalDelta, PrincipalAfter: pa, BonusBefore: bonus, BonusDelta: bonusDelta, BonusAfter: ba, BusinessDate: pgtype.Date{Time: day, Valid: true}, ActorID: env.Caller.StaffID})
+	return env.Q.AddCardLedger(ctx, dbgen.AddCardLedgerParams{ReversesID: reversesID, OrderVoidID: orderVoidID, TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: id, Kind: kind, PrincipalBefore: principal, PrincipalDelta: principalDelta, PrincipalAfter: pa, BonusBefore: bonus, BonusDelta: bonusDelta, BonusAfter: ba, BusinessDate: pgtype.Date{Time: day, Valid: true}, ActorID: env.Caller.StaffID})
 }
 
 // writePoints 将积分前值、差额和目标值收在同一处，充值与调整共用。

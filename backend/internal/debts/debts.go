@@ -97,6 +97,9 @@ func listCustomerDebts(ctx context.Context, env ops.Env, in *ListCustomerDebtsIn
 			continue
 		}
 		out.Items = append(out.Items, d)
+		if d.Status == "voided" {
+			continue
+		}
 		amount = amount.AddProduct(d.Amount, 1)
 		repaid = repaid.AddProduct(d.Repaid, 1)
 		outstanding = outstanding.AddProduct(d.Outstanding, 1)
@@ -113,6 +116,14 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Debt) ([]Debt, error) 
 	repayments, err := env.Q.ListDebtRepayments(ctx, dbgen.ListDebtRepaymentsParams{StoreID: env.Caller.StoreID, DebtIds: ids})
 	if err != nil {
 		return nil, err
+	}
+	voided, err := env.Q.VoidedDebts(ctx, dbgen.VoidedDebtsParams{StoreID: env.Caller.StoreID, DebtIds: ids})
+	if err != nil {
+		return nil, err
+	}
+	voidedIDs := map[uuid.UUID]bool{}
+	for _, id := range voided {
+		voidedIDs[id] = true
 	}
 	byID := map[uuid.UUID][]Repayment{}
 	for _, r := range repayments {
@@ -135,11 +146,19 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Debt) ([]Debt, error) 
 		if err != nil {
 			return nil, err
 		}
+		status := "outstanding"
+		if outstanding.Cmp(money.Amount{}) == 0 {
+			status = "repaid"
+		}
+		if voidedIDs[r.ID] {
+			status = "voided"
+			outstanding = money.Amount{}
+		}
 		kind := "historical"
 		if r.OrderID != nil {
 			kind = "order"
 		}
-		out = append(out, Debt{ID: r.ID, Kind: kind, OrderID: r.OrderID, BusinessDate: r.BusinessDate.Time.Format(time.DateOnly), Amount: r.Amount, Repaid: repaid, Outstanding: outstanding, Note: r.Note, RecordedBy: r.RecordedBy, At: r.At.Time, Repayments: ps})
+		out = append(out, Debt{Status: status, ID: r.ID, Kind: kind, OrderID: r.OrderID, BusinessDate: r.BusinessDate.Time.Format(time.DateOnly), Amount: r.Amount, Repaid: repaid, Outstanding: outstanding, Note: r.Note, RecordedBy: r.RecordedBy, At: r.At.Time, Repayments: ps})
 	}
 	return out, nil
 }
@@ -170,6 +189,9 @@ func repayDebtAt(ctx context.Context, env ops.Env, in *RepayDebtInput, now time.
 	before, err := view(ctx, env, row)
 	if err != nil {
 		return nil, err
+	}
+	if before.Status == "voided" {
+		return nil, ops.Rule("这笔欠款已撤单")
 	}
 	if before.Outstanding.Cmp(money.Amount{}) == 0 {
 		return nil, ops.Rule("这笔欠款已还清")
@@ -227,4 +249,24 @@ func debtSummary(ctx context.Context, env ops.Env, _ *DebtSummaryInput) (*Summar
 	}
 	out.Totals = Totals{Amount: amount.Format(), Repaid: repaid.Format(), Outstanding: outstanding.Format()}
 	return out, nil
+}
+
+// LockOrderForVoid 按 UUID 锁住单上的欠款并拒绝已有还款的撤单。
+func LockOrderForVoid(ctx context.Context, env ops.Env, orderID uuid.UUID) error {
+	rows, err := env.Q.LockOrderDebts(ctx, dbgen.LockOrderDebtsParams{StoreID: env.Caller.StoreID, OrderID: &orderID})
+	if err != nil {
+		return err
+	}
+	ids := make([]uuid.UUID, len(rows))
+	for i, row := range rows {
+		ids[i] = row.ID
+	}
+	repayments, err := env.Q.ListDebtRepayments(ctx, dbgen.ListDebtRepaymentsParams{StoreID: env.Caller.StoreID, DebtIds: ids})
+	if err != nil {
+		return err
+	}
+	if len(repayments) != 0 {
+		return ops.Rule("这张单的挂账已有还款，不能撤单")
+	}
+	return nil
 }

@@ -251,7 +251,7 @@ async function saveBalance() {
   })
 }
 
-const ledgerKinds: Record<string, string> = { open: '开卡', recharge: '充值', adjust: '调整', upgrade: '升级', transfer_out: '转出', transfer_in: '转入' }
+const ledgerKinds: Record<string, string> = { open: '开卡', recharge: '充值', adjust: '调整', upgrade: '升级', transfer_out: '转出', transfer_in: '转入', consume: '消费', void: '撤单退回' }
 
 // 所有写操作刷新同一组已展开的明细，避免某个弹窗漏掉积分或升级记录。
 async function refreshCards() {
@@ -312,7 +312,7 @@ onMounted(cardLoad)
         <div v-if="countCard === card.id" data-testid="card-counts" class="space-y-2 text-sm">
           <p v-if="cardCounts.loading.value">正在读取次数流水…</p>
           <p v-for="entry in cardCounts.items.value" :key="entry.id" data-testid="card-count-entry">
-            {{ entry.item.name }} · {{ entry.kind === 'open' ? '开卡' : '调整' }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN') }} · {{ entry.actor.name }}
+            {{ entry.item.name }} · {{ ledgerKinds[entry.kind] || entry.kind }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN') }} · {{ entry.actor.name }}
             购买 {{ entry.paid_before }} + {{ entry.paid_delta }} = {{ entry.paid_after }}；赠送 {{ entry.gift_before }} + {{ entry.gift_delta }} = {{ entry.gift_after }}
             <span v-if="entry.reason">· 原因：{{ entry.reason }}</span>
           </p>

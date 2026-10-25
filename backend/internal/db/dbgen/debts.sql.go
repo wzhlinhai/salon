@@ -94,7 +94,7 @@ SELECT (d.order_id IS NOT NULL)::boolean AS is_order,
  count(*) FILTER (WHERE d.amount>COALESCE(r.repaid,0))::bigint AS outstanding_count
 FROM debts d LEFT JOIN (
  SELECT debt_id,sum(amount) AS repaid FROM debt_repayments GROUP BY debt_id
-) r ON r.debt_id=d.id WHERE d.store_id=$1 GROUP BY (d.order_id IS NOT NULL)
+) r ON r.debt_id=d.id WHERE d.store_id=$1 AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.id=d.order_id AND o.status='voided') GROUP BY (d.order_id IS NOT NULL)
 `
 
 type DebtSummaryRow struct {
@@ -239,6 +239,47 @@ func (q *Queries) LockDebt(ctx context.Context, arg LockDebtParams) (Debt, error
 	return i, err
 }
 
+const lockOrderDebts = `-- name: LockOrderDebts :many
+SELECT tenant_id, store_id, id, customer_id, amount, business_date, order_id, order_payment_id, note, recorded_by, at FROM debts WHERE store_id=$1 AND order_id=$2 ORDER BY id FOR NO KEY UPDATE
+`
+
+type LockOrderDebtsParams struct {
+	StoreID uuid.UUID
+	OrderID *uuid.UUID
+}
+
+func (q *Queries) LockOrderDebts(ctx context.Context, arg LockOrderDebtsParams) ([]Debt, error) {
+	rows, err := q.db.Query(ctx, lockOrderDebts, arg.StoreID, arg.OrderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Debt
+	for rows.Next() {
+		var i Debt
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ID,
+			&i.CustomerID,
+			&i.Amount,
+			&i.BusinessDate,
+			&i.OrderID,
+			&i.OrderPaymentID,
+			&i.Note,
+			&i.RecordedBy,
+			&i.At,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const mergeCustomerDebts = `-- name: MergeCustomerDebts :exec
 UPDATE debts SET customer_id=$1 WHERE customer_id=$2
 `
@@ -251,4 +292,33 @@ type MergeCustomerDebtsParams struct {
 func (q *Queries) MergeCustomerDebts(ctx context.Context, arg MergeCustomerDebtsParams) error {
 	_, err := q.db.Exec(ctx, mergeCustomerDebts, arg.KeepID, arg.MergedID)
 	return err
+}
+
+const voidedDebts = `-- name: VoidedDebts :many
+SELECT d.id FROM debts d JOIN orders o ON o.id=d.order_id WHERE d.store_id=$1 AND d.id=ANY($2::uuid[]) AND o.status='voided'
+`
+
+type VoidedDebtsParams struct {
+	StoreID uuid.UUID
+	DebtIds []uuid.UUID
+}
+
+func (q *Queries) VoidedDebts(ctx context.Context, arg VoidedDebtsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, voidedDebts, arg.StoreID, arg.DebtIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

@@ -25,6 +25,9 @@ func previewCheckout(ctx context.Context, env ops.Env, in *PreviewCheckoutInput)
 	if err != nil {
 		return nil, rowError(err)
 	}
+	if row.Status == "voided" {
+		return nil, ops.Rule("单已撤")
+	}
 	if row.Status == "paid" {
 		return nil, ops.Rule("单已结账")
 	}

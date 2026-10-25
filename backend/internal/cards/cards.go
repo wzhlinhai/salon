@@ -145,7 +145,7 @@ func rechargeCard(ctx context.Context, env ops.Env, in *RechargeInput) (*Recharg
 	return &RechargeResult{Card: *out, UpgradedTo: upgraded}, nil
 }
 func appendLedger(ctx context.Context, env ops.Env, id uuid.UUID, kind string, principal, bonus money.Amount, in TopUpInput, day time.Time) (dbgen.CardLedger, error) {
-	row, err := writeBalance(ctx, env, id, kind, principal, bonus, in.Principal.Sub(money.Amount{}), in.Bonus.Sub(money.Amount{}), day)
+	row, err := writeBalance(ctx, env, id, kind, principal, bonus, in.Principal.Sub(money.Amount{}), in.Bonus.Sub(money.Amount{}), day, nil, nil)
 	if err != nil {
 		return dbgen.CardLedger{}, err
 	}
@@ -213,7 +213,7 @@ func listCardLedger(ctx context.Context, env ops.Env, in *ListCardLedgerInput) (
 		if staff == nil {
 			staff = []SalesStaff{}
 		}
-		out.Entries = append(out.Entries, CardLedgerEntry{OrderID: r.OrderID, ID: l.ID, Kind: l.Kind, Reason: r.Reason, OtherCardID: optionalCardID(r.OtherCardID), PrincipalBefore: l.PrincipalBefore, PrincipalDelta: l.PrincipalDelta, PrincipalAfter: l.PrincipalAfter, BonusBefore: l.BonusBefore, BonusDelta: l.BonusDelta, BonusAfter: l.BonusAfter, BusinessDate: l.BusinessDate.Time.Format(time.DateOnly), At: l.At.Time, Actor: CardLedgerActor{ID: l.ActorID, Name: r.ActorName}, SalesStaff: staff})
+		out.Entries = append(out.Entries, CardLedgerEntry{ReversesID: l.ReversesID, OrderVoidID: l.OrderVoidID, OrderID: r.OrderID, ID: l.ID, Kind: l.Kind, Reason: r.Reason, OtherCardID: optionalCardID(r.OtherCardID), PrincipalBefore: l.PrincipalBefore, PrincipalDelta: l.PrincipalDelta, PrincipalAfter: l.PrincipalAfter, BonusBefore: l.BonusBefore, BonusDelta: l.BonusDelta, BonusAfter: l.BonusAfter, BusinessDate: l.BusinessDate.Time.Format(time.DateOnly), At: l.At.Time, Actor: CardLedgerActor{ID: l.ActorID, Name: r.ActorName}, SalesStaff: staff})
 	}
 	return out, nil
 }

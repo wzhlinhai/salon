@@ -81,7 +81,7 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 			}
 		}
 	}
-	after, err := change(ctx, env, "checkout_orders", ids, func(rows []dbgen.Order) error {
+	after, err := change(ctx, env, "checkout_orders", "open", ids, func(rows []dbgen.Order) error {
 		orders, err := views(ctx, env, rows)
 		if err != nil {
 			return err
@@ -298,7 +298,7 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 			rows[i].CheckoutID = &checkout.ID
 		}
 		return cards.AuditPaymentCards(ctx, env, used)
-	})
+	}, now)
 	if err != nil {
 		return nil, err
 	}

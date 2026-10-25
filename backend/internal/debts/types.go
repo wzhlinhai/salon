@@ -11,6 +11,7 @@ import (
 
 // Debt 是一笔欠款及其从早到晚的还款。
 type Debt struct {
+	Status       string       `json:"status" enum:"outstanding,repaid,voided"`
 	ID           uuid.UUID    `json:"id"`
 	Kind         string       `json:"kind" enum:"order,historical"`
 	OrderID      *uuid.UUID   `json:"order_id" nullable:"true"`

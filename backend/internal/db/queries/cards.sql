@@ -28,8 +28,8 @@ SELECT * FROM cards WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE;
 SELECT * FROM cards WHERE store_id=$1 AND id=$2;
 
 -- name: AddCardLedger :one
-INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *;
+INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id,reverses_id,order_void_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *;
 
 -- name: AddCardLedgerSales :exec
 INSERT INTO card_ledger_sales (tenant_id,store_id,ledger_id,staff_id) VALUES ($1,$2,$3,$4);
@@ -100,8 +100,8 @@ DELETE FROM card_type_items WHERE card_type_id=$1 AND item_id=$2;
 INSERT INTO card_items (tenant_id,store_id,card_id,item_id,unit_price,paid_count_opened,gift_count_opened) VALUES ($1,$2,$3,$4,$5,$6,$7);
 
 -- name: AddCardCountEntry :exec
-INSERT INTO card_count_ledger (tenant_id,store_id,card_id,item_id,kind,paid_before,paid_delta,paid_after,gift_before,gift_delta,gift_after,adjustment_id,business_date,actor_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14);
+INSERT INTO card_count_ledger (tenant_id,store_id,card_id,item_id,kind,paid_before,paid_delta,paid_after,gift_before,gift_delta,gift_after,adjustment_id,business_date,actor_id,reverses_id,order_void_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16);
 
 -- name: RemainingCounts :many
 SELECT sqlc.embed(ci), i.name AS item_name, l.paid_after, l.gift_after FROM card_items ci JOIN items i ON i.id=ci.item_id
@@ -197,3 +197,9 @@ SELECT sqlc.embed(c), t.name AS card_type_name, t.kind, l.principal_after, l.bon
 FROM cards c JOIN card_types t ON t.id=c.card_type_id
 JOIN LATERAL (SELECT principal_after,bonus_after FROM card_ledger WHERE card_id=c.id ORDER BY at DESC,id DESC LIMIT 1) l ON true
 WHERE c.store_id=sqlc.arg(store_id) AND c.id=ANY(sqlc.arg(ids)::uuid[]);
+
+-- name: VoidBalanceConsumes :many
+SELECT l.* FROM card_ledger l JOIN order_payments p ON p.card_ledger_id=l.id WHERE p.store_id=$1 AND p.order_id=$2 ORDER BY p.id;
+
+-- name: VoidCountConsumes :many
+SELECT l.* FROM card_count_ledger l JOIN order_payments p ON p.card_count_ledger_id=l.id WHERE p.store_id=$1 AND p.order_id=$2 ORDER BY p.id;
