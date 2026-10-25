@@ -32,10 +32,11 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 - 新的业务表必须：
   - 有 `tenant_id uuid NOT NULL` 和 `store_id uuid NOT NULL`；
   - 有 `FOREIGN KEY (tenant_id, store_id) REFERENCES stores (tenant_id, id)`；
+  - 引用门店或其他业务表的外键都是组合外键，`tenant_id` 对应被引用表的 `tenant_id`，例如 `FOREIGN KEY (tenant_id, customer_id) REFERENCES customers (tenant_id, id)`：外键检查绕过行级安全，只引用 `id` 就能指向别的租户的行；
   - `ENABLE ROW LEVEL SECURITY`，并建与 `stores` 相同写法的 `tenant_isolation` 策略（`USING` 和 `WITH CHECK`）；
   - `GRANT` 给 `salon_app`。
 
-  `TestEveryTableIsTenantIsolated` 会检查这几条。
+  `TestEveryTableIsTenantIsolated` 会检查这几条，组合外键由 `TestBusinessForeignKeysIncludeTenant` 检查。
 - 行级安全只按租户隔离。同一租户内门店之间的隔离由业务接口的权限检查负责。
 
 ## 业务操作（ADR-0001、ADR-0004）
