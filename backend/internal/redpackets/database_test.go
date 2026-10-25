@@ -61,7 +61,6 @@ func TestRedPacketDatabaseProtections(t *testing.T) {
 	}{
 		{"UPDATE red_packets SET revoked_by=$1,revoked_at=clock_timestamp(),revoke_reason='reason' WHERE id=$2", []any{s.Res.OwnerID, p["id"]}, "23514"},
 		{base, []any{s.Res.TenantID, s.Res.StoreID, s.customer, "gift", "1", nil, s.Res.OwnerID, nil, nil, nil, payment}, "23505"},
-		{`INSERT INTO order_payments(tenant_id,store_id,checkout_id,order_id,method,amount,red_packet_id) VALUES($1,$2,$3,$4,'red_packet',1,$5)`, []any{s.Res.TenantID, s.Res.StoreID, checkout, o["id"], p["id"]}, "23505"},
 		{`INSERT INTO order_payments(tenant_id,store_id,checkout_id,order_id,method,amount,red_packet_id) VALUES($1,$2,$3,$4,'red_packet',1,NULL)`, []any{s.Res.TenantID, s.Res.StoreID, checkout, o["id"]}, "23514"},
 		{`INSERT INTO order_payments(tenant_id,store_id,checkout_id,order_id,method,amount,red_packet_id) VALUES($1,$2,$3,$4,'cash',1,$5)`, []any{s.Res.TenantID, s.Res.StoreID, checkout, o["id"], p["id"]}, "23514"},
 		{`INSERT INTO order_payments(tenant_id,store_id,checkout_id,order_id,method,amount,red_packet_id) VALUES($1,$2,$3,$4,'red_packet',1,$5)`, []any{s.Res.TenantID, s.Res.StoreID, checkout, o["id"], uuid.New()}, "23503"},

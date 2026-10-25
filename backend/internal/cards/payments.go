@@ -16,7 +16,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
-// PaymentCard 是结账持有锁的卡及其在本次结账中的当前余额。
+// PaymentCard 是结账或撤单持有锁的卡及其当前余额。
 type PaymentCard struct {
 	row              dbgen.Card
 	charged          bool
@@ -125,7 +125,7 @@ func (c *PaymentCard) Consume(ctx context.Context, env ops.Env, amount money.Amo
 	if order == "bonus_first" {
 		principal, bonus = bonus, principal
 	}
-	ledger, err := writeBalance(ctx, env, c.row.ID, "consume", c.principal, c.bonus, money.Amount{}.Sub(principal), money.Amount{}.Sub(bonus), day)
+	ledger, err := writeBalance(ctx, env, c.row.ID, "consume", c.principal, c.bonus, money.Amount{}.Sub(principal), money.Amount{}.Sub(bonus), day, nil, nil)
 	if err != nil {
 		return uuid.Nil, err
 	}

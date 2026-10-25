@@ -25,6 +25,7 @@ func Register(r *ops.Registry) {
 	registerMerge(r)
 	registerCheckout(r)
 	registerPreview(r)
+	registerVoid(r)
 	ops.Register(r, ops.Operation[OpenOrderInput, Order]{Name: "open_order", Summary: "开单并保存规则快照", Kind: ops.Write, Permission: perm.OrderCreate, AI: ops.AIDraft, Handle: openOrder})
 	ops.Register(r, ops.Operation[AddOrderItemInput, Order]{Name: "add_order_item", Summary: "向单添加项目行", Kind: ops.Write, Permission: perm.OrderCreate, AI: ops.AIDraft, Handle: addOrderItem})
 	ops.Register(r, ops.Operation[ListOpenOrdersInput, OrderList]{Name: "list_open_orders", Summary: "列出本店挂单", Kind: ops.Read, Permission: perm.OrderCreate, AI: ops.AIDirect, Handle: listOpenOrders})
@@ -160,6 +161,14 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 	if err != nil {
 		return nil, err
 	}
+	voids, err := env.Q.ListOrderVoids(ctx, dbgen.ListOrderVoidsParams{StoreID: env.Caller.StoreID, OrderIds: ids})
+	if err != nil {
+		return nil, err
+	}
+	byVoid := map[uuid.UUID]*OrderVoid{}
+	for _, v := range voids {
+		byVoid[v.OrderID] = &OrderVoid{ID: v.ID, Reason: v.Reason, BusinessDate: v.BusinessDate.Time.Format(time.DateOnly), VoidedBy: v.VoidedBy, At: v.At.Time}
+	}
 	byPaymentOrder := map[uuid.UUID][]OrderPayment{}
 	for _, p := range payments {
 		payment := OrderPayment{RedPacketID: p.RedPacketID, DebtID: p.DebtID, ID: p.ID, Method: p.Method, Amount: p.Amount}
@@ -213,7 +222,7 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 		if ps == nil {
 			ps = []OrderPayment{}
 		}
-		out = append(out, Order{CheckoutID: r.CheckoutID, Payments: ps, ID: r.ID, CustomerID: r.CustomerID, Gender: r.Gender, Designated: r.Designated, Status: r.Status, MergedInto: r.MergedInto, BusinessDate: r.BusinessDate.Time.Format(time.DateOnly), OpenedBy: r.OpenedBy, OpenedAt: r.OpenedAt.Time, Items: items, Receivable: totals[r.ID].Format(), Discount: discounts[r.ID].Format(), Net: nets[r.ID].Format()})
+		out = append(out, Order{Void: byVoid[r.ID], CheckoutID: r.CheckoutID, Payments: ps, ID: r.ID, CustomerID: r.CustomerID, Gender: r.Gender, Designated: r.Designated, Status: r.Status, MergedInto: r.MergedInto, BusinessDate: r.BusinessDate.Time.Format(time.DateOnly), OpenedBy: r.OpenedBy, OpenedAt: r.OpenedAt.Time, Items: items, Receivable: totals[r.ID].Format(), Discount: discounts[r.ID].Format(), Net: nets[r.ID].Format()})
 	}
 	return out, nil
 }

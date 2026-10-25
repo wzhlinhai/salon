@@ -235,6 +235,43 @@ func (q *Queries) CreateOrderPayment(ctx context.Context, arg CreateOrderPayment
 	return id, err
 }
 
+const createOrderVoid = `-- name: CreateOrderVoid :one
+INSERT INTO order_voids (tenant_id,store_id,order_id,reason,business_date,voided_by)
+VALUES ($1,$2,$3,$4,$5,$6) RETURNING tenant_id, store_id, id, order_id, reason, business_date, voided_by, at
+`
+
+type CreateOrderVoidParams struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	OrderID      uuid.UUID
+	Reason       string
+	BusinessDate pgtype.Date
+	VoidedBy     uuid.UUID
+}
+
+func (q *Queries) CreateOrderVoid(ctx context.Context, arg CreateOrderVoidParams) (OrderVoid, error) {
+	row := q.db.QueryRow(ctx, createOrderVoid,
+		arg.TenantID,
+		arg.StoreID,
+		arg.OrderID,
+		arg.Reason,
+		arg.BusinessDate,
+		arg.VoidedBy,
+	)
+	var i OrderVoid
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.OrderID,
+		&i.Reason,
+		&i.BusinessDate,
+		&i.VoidedBy,
+		&i.At,
+	)
+	return i, err
+}
+
 const getOrder = `-- name: GetOrder :one
 SELECT tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into, checkout_id FROM orders WHERE store_id=$1 AND id=$2
 `
@@ -496,6 +533,44 @@ func (q *Queries) ListOrderPayments(ctx context.Context, arg ListOrderPaymentsPa
 	return items, nil
 }
 
+const listOrderVoids = `-- name: ListOrderVoids :many
+SELECT tenant_id, store_id, id, order_id, reason, business_date, voided_by, at FROM order_voids WHERE store_id=$1 AND order_id=ANY($2::uuid[])
+`
+
+type ListOrderVoidsParams struct {
+	StoreID  uuid.UUID
+	OrderIds []uuid.UUID
+}
+
+func (q *Queries) ListOrderVoids(ctx context.Context, arg ListOrderVoidsParams) ([]OrderVoid, error) {
+	rows, err := q.db.Query(ctx, listOrderVoids, arg.StoreID, arg.OrderIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OrderVoid
+	for rows.Next() {
+		var i OrderVoid
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ID,
+			&i.OrderID,
+			&i.Reason,
+			&i.BusinessDate,
+			&i.VoidedBy,
+			&i.At,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockOrder = `-- name: LockOrder :one
 SELECT tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into, checkout_id FROM orders WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
 `
@@ -553,6 +628,20 @@ type MarkOrderPaidParams struct {
 
 func (q *Queries) MarkOrderPaid(ctx context.Context, arg MarkOrderPaidParams) error {
 	_, err := q.db.Exec(ctx, markOrderPaid, arg.CheckoutID, arg.StoreID, arg.ID)
+	return err
+}
+
+const markOrderVoided = `-- name: MarkOrderVoided :exec
+UPDATE orders SET status='voided' WHERE store_id=$1 AND id=$2
+`
+
+type MarkOrderVoidedParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) MarkOrderVoided(ctx context.Context, arg MarkOrderVoidedParams) error {
+	_, err := q.db.Exec(ctx, markOrderVoided, arg.StoreID, arg.ID)
 	return err
 }
 

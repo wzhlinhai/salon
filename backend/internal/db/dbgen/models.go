@@ -73,6 +73,8 @@ type CardCountLedger struct {
 	BusinessDate pgtype.Date
 	ActorID      uuid.UUID
 	At           pgtype.Timestamptz
+	ReversesID   *uuid.UUID
+	OrderVoidID  *uuid.UUID
 }
 
 type CardItem struct {
@@ -100,6 +102,8 @@ type CardLedger struct {
 	BusinessDate    pgtype.Date
 	ActorID         uuid.UUID
 	At              pgtype.Timestamptz
+	ReversesID      *uuid.UUID
+	OrderVoidID     *uuid.UUID
 }
 
 type CardLedgerSale struct {
@@ -371,6 +375,17 @@ type OrderPayment struct {
 	OrderItemID       *uuid.UUID
 	CardCountLedgerID *uuid.UUID
 	RedPacketID       *uuid.UUID
+}
+
+type OrderVoid struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	ID           uuid.UUID
+	OrderID      uuid.UUID
+	Reason       string
+	BusinessDate pgtype.Date
+	VoidedBy     uuid.UUID
+	At           pgtype.Timestamptz
 }
 
 type Position struct {

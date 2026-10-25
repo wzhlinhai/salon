@@ -83,3 +83,13 @@ UPDATE orders SET status='paid', checkout_id=sqlc.arg(checkout_id) WHERE store_i
 
 -- name: CheckoutOrderItem :exec
 UPDATE order_items SET price=$2,price_source=$3,level_id=$4,card_type_id=$5,discount=$6 WHERE id=$1;
+
+-- name: CreateOrderVoid :one
+INSERT INTO order_voids (tenant_id,store_id,order_id,reason,business_date,voided_by)
+VALUES ($1,$2,$3,$4,$5,$6) RETURNING *;
+
+-- name: MarkOrderVoided :exec
+UPDATE orders SET status='voided' WHERE store_id=$1 AND id=$2;
+
+-- name: ListOrderVoids :many
+SELECT * FROM order_voids WHERE store_id=$1 AND order_id=ANY(sqlc.arg(order_ids)::uuid[]);

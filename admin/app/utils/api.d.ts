@@ -1381,6 +1381,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/void_order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 撤已结账的单并退回卡余额、次数和红包 */
+        post: operations["void_order"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1478,6 +1495,7 @@ export interface components {
             item: components["schemas"]["CardCountItem"];
             kind: string;
             order_id: string | null;
+            order_void_id: string | null;
             /** Format: int32 */
             paid_after: number;
             /** Format: int32 */
@@ -1485,6 +1503,7 @@ export interface components {
             /** Format: int32 */
             paid_delta: number;
             reason?: string;
+            reverses_id: string | null;
         };
         CardCountItem: {
             id: string;
@@ -1519,11 +1538,13 @@ export interface components {
             id: string;
             kind: string;
             order_id: string | null;
+            order_void_id: string | null;
             other_card_id?: string;
             principal_after: string;
             principal_before: string;
             principal_delta: string;
             reason?: string;
+            reverses_id: string | null;
             sales_staff: components["schemas"]["SalesStaff"][];
         };
         CardLedgerList: {
@@ -1768,6 +1789,8 @@ export interface components {
             recorded_by: string;
             repaid: string;
             repayments: components["schemas"]["Repayment"][];
+            /** @enum {string} */
+            status: "outstanding" | "repaid" | "voided";
         };
         DebtSummaryInput: Record<string, never>;
         Def: {
@@ -2049,7 +2072,8 @@ export interface components {
             payments: components["schemas"]["OrderPayment"][];
             receivable: string;
             /** @enum {string} */
-            status: "open" | "merged" | "paid";
+            status: "open" | "merged" | "paid" | "voided";
+            void: components["schemas"]["OrderVoid"] | null;
         };
         OrderItem: {
             /** Format: date-time */
@@ -2114,6 +2138,15 @@ export interface components {
             /** Format: int32 */
             paid: number;
         };
+        OrderVoid: {
+            /** Format: date-time */
+            at: string;
+            /** Format: date */
+            business_date: string;
+            id: string;
+            reason: string;
+            voided_by: string;
+        };
         PaymentInput: {
             amount: string;
             card_id?: string;
@@ -2171,7 +2204,8 @@ export interface components {
             pricing_card_id: string | null;
             receivable: string;
             /** @enum {string} */
-            status: "open" | "merged" | "paid";
+            status: "open" | "merged" | "paid" | "voided";
+            void: components["schemas"]["OrderVoid"] | null;
         };
         PreviewCheckoutInput: {
             auto_card?: boolean;
@@ -2560,6 +2594,10 @@ export interface components {
             principal: string;
             sales_staff_ids?: string[];
             to_type_id: string;
+        };
+        VoidOrderInput: {
+            order_id: string;
+            reason: string;
         };
     };
     responses: never;
@@ -5230,6 +5268,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Card"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    void_order: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoidOrderInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
                 };
             };
             /** @description Error */

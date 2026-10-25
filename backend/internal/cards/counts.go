@@ -136,7 +136,7 @@ func openCounts(ctx context.Context, env ops.Env, card uuid.UUID, ct uuid.UUID, 
 	return nil
 }
 func countEntry(l dbgen.CardCountLedger, name, actor, reason string) CardCountEntry {
-	return CardCountEntry{ID: l.ID, Item: CardCountItem{ID: l.ItemID, Name: name}, Kind: l.Kind, PaidBefore: l.PaidBefore, PaidDelta: l.PaidDelta, PaidAfter: l.PaidAfter, GiftBefore: l.GiftBefore, GiftDelta: l.GiftDelta, GiftAfter: l.GiftAfter, Reason: reason, BusinessDate: l.BusinessDate.Time.Format(time.DateOnly), At: l.At.Time, Actor: CardLedgerActor{ID: l.ActorID, Name: actor}}
+	return CardCountEntry{ReversesID: l.ReversesID, OrderVoidID: l.OrderVoidID, ID: l.ID, Item: CardCountItem{ID: l.ItemID, Name: name}, Kind: l.Kind, PaidBefore: l.PaidBefore, PaidDelta: l.PaidDelta, PaidAfter: l.PaidAfter, GiftBefore: l.GiftBefore, GiftDelta: l.GiftDelta, GiftAfter: l.GiftAfter, Reason: reason, BusinessDate: l.BusinessDate.Time.Format(time.DateOnly), At: l.At.Time, Actor: CardLedgerActor{ID: l.ActorID, Name: actor}}
 }
 func listCardCounts(ctx context.Context, env ops.Env, in *ListCardCountsInput) (*CardCountList, error) {
 	card, err := env.Q.GetCard(ctx, dbgen.GetCardParams{StoreID: env.Caller.StoreID, ID: in.CardID})

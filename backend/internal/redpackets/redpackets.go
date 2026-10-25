@@ -243,3 +243,20 @@ func CheckUsable(ctx context.Context, env ops.Env, row dbgen.RedPacket, customer
 func MarkUsed(ctx context.Context, env ops.Env, id, paymentID uuid.UUID) error {
 	return env.Q.UseRedPacket(ctx, dbgen.UseRedPacketParams{ID: id, OrderPaymentID: &paymentID})
 }
+
+// Restore 在已持红包锁的事务中退回支付并记录改前改后日志。
+func Restore(ctx context.Context, env ops.Env, row dbgen.RedPacket, day time.Time) error {
+	before, err := view(ctx, env, row, day)
+	if err != nil {
+		return err
+	}
+	if err := env.Q.UseRedPacket(ctx, dbgen.UseRedPacketParams{ID: row.ID}); err != nil {
+		return err
+	}
+	row.OrderPaymentID = nil
+	after, err := view(ctx, env, row, day)
+	if err != nil {
+		return err
+	}
+	return audit.Record(ctx, env, "void_order", audit.CustomerTarget(row.CustomerID), before, after)
+}

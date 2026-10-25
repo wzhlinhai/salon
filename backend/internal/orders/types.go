@@ -12,13 +12,14 @@ import (
 
 // Order 是单据视图，只引用顾客 ID，不包含顾客姓名或手机号。
 type Order struct {
+	Void         *OrderVoid     `json:"void"`
 	CheckoutID   *uuid.UUID     `json:"checkout_id" nullable:"true"`
 	Payments     []OrderPayment `json:"payments"`
 	ID           uuid.UUID      `json:"id"`
 	CustomerID   uuid.UUID      `json:"customer_id"`
 	Gender       string         `json:"gender" enum:"male,female"`
 	Designated   bool           `json:"designated"`
-	Status       string         `json:"status" enum:"open,merged,paid"`
+	Status       string         `json:"status" enum:"open,merged,paid,voided"`
 	MergedInto   *uuid.UUID     `json:"merged_into" nullable:"true"`
 	BusinessDate string         `json:"business_date" format:"date"`
 	OpenedBy     uuid.UUID      `json:"opened_by"`
@@ -186,4 +187,25 @@ type OrderPaymentCount struct {
 type PreviewCheckout struct {
 	Order
 	PricingCardID *uuid.UUID `json:"pricing_card_id" nullable:"true"`
+}
+
+// OrderVoid 是保留原单的反向单。
+type OrderVoid struct {
+	ID           uuid.UUID `json:"id"`
+	Reason       string    `json:"reason"`
+	BusinessDate string    `json:"business_date" format:"date"`
+	VoidedBy     uuid.UUID `json:"voided_by"`
+	At           time.Time `json:"at"`
+}
+
+// VoidOrderInput 是撤单所需的原单和原因。
+type VoidOrderInput struct {
+	OrderID uuid.UUID `json:"order_id"`
+	Reason  string    `json:"reason" maxLength:"200"`
+}
+
+// TransformSchema 声明反向单对象或空值。
+func (Order) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
+	s.Properties["void"] = &huma.Schema{AnyOf: []*huma.Schema{s.Properties["void"], {Type: "null"}}}
+	return s
 }
