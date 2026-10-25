@@ -2,10 +2,8 @@ package customers
 
 import (
 	"context"
-	"errors"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
@@ -30,17 +28,24 @@ func checkReference(env ops.Env, row dbgen.Customer) error {
 	return nil
 }
 
-// CheckViewable 无锁检查顾客属于本店、在查看范围内且未合并，否则返回未找到。
-func CheckViewable(ctx context.Context, env ops.Env, id uuid.UUID) error {
-	c, err := env.Q.GetCustomer(ctx, id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ops.ErrNotFound
-	}
+// CheckViewable 无锁按批检查每位顾客属于本店、在查看范围内且未合并，任一不符或不存在均返回未找到。
+func CheckViewable(ctx context.Context, env ops.Env, ids ...uuid.UUID) error {
+	rows, err := env.Q.GetCustomers(ctx, dbgen.GetCustomersParams{StoreID: env.Caller.StoreID, Ids: ids})
 	if err != nil {
 		return err
 	}
-	if c.StoreID != env.Caller.StoreID || !CanView(env.Caller, c) || c.MergedInto != nil {
-		return ops.ErrNotFound
+	customers := make(map[uuid.UUID]dbgen.Customer, len(rows))
+	for _, c := range rows {
+		customers[c.ID] = c
+	}
+	for _, id := range ids {
+		c, exists := customers[id]
+		if !exists {
+			return ops.ErrNotFound
+		}
+		if !CanView(env.Caller, c) || c.MergedInto != nil {
+			return ops.ErrNotFound
+		}
 	}
 	return nil
 }

@@ -52,18 +52,27 @@ func pricingData(ctx context.Context, env ops.Env, orders []Order, typeIDs []uui
 	types := map[uuid.UUID]dbgen.CardType{}
 	ordered := slices.Clone(typeIDs)
 	slices.SortFunc(ordered, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
-	for _, id := range slices.Compact(ordered) {
-		var ct dbgen.CardType
-		var err error
-		if lock {
-			ct, err = env.Q.ShareCardType(ctx, dbgen.ShareCardTypeParams{StoreID: env.Caller.StoreID, ID: id})
-		} else {
-			ct, err = env.Q.GetCardType(ctx, dbgen.GetCardTypeParams{StoreID: env.Caller.StoreID, ID: id})
+	if lock {
+		for _, id := range slices.Compact(ordered) {
+			ct, err := env.Q.ShareCardType(ctx, dbgen.ShareCardTypeParams{StoreID: env.Caller.StoreID, ID: id})
+			if err != nil {
+				return nil, nil, nil, rowError(err)
+			}
+			types[id] = ct
 		}
+	} else {
+		rows, err := env.Q.GetCardTypes(ctx, dbgen.GetCardTypesParams{StoreID: env.Caller.StoreID, Ids: typeIDs})
 		if err != nil {
-			return nil, nil, nil, rowError(err)
+			return nil, nil, nil, err
 		}
-		types[id] = ct
+		for _, ct := range rows {
+			types[ct.ID] = ct
+		}
+		for _, id := range typeIDs {
+			if _, exists := types[id]; !exists {
+				return nil, nil, nil, ops.ErrNotFound
+			}
+		}
 	}
 	ids := []uuid.UUID{}
 	for _, order := range orders {
@@ -82,12 +91,17 @@ func pricingData(ctx context.Context, env ops.Env, orders []Order, typeIDs []uui
 		}
 	} else {
 		items = map[uuid.UUID]dbgen.Item{}
+		rows, err := env.Q.GetItems(ctx, dbgen.GetItemsParams{StoreID: env.Caller.StoreID, Ids: ids})
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		for _, item := range rows {
+			items[item.ID] = item
+		}
 		for _, id := range ids {
-			item, err := env.Q.GetItem(ctx, dbgen.GetItemParams{StoreID: env.Caller.StoreID, ID: id})
-			if err != nil {
-				return nil, nil, nil, rowError(err)
+			if _, exists := items[id]; !exists {
+				return nil, nil, nil, ops.ErrNotFound
 			}
-			items[id] = item
 		}
 	}
 	lines := map[uuid.UUID]linePricing{}

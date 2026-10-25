@@ -162,6 +162,48 @@ func (q *Queries) GetCustomer(ctx context.Context, id uuid.UUID) (Customer, erro
 	return i, err
 }
 
+const getCustomers = `-- name: GetCustomers :many
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at FROM customers WHERE store_id=$1 AND id=ANY($2::uuid[])
+`
+
+type GetCustomersParams struct {
+	StoreID uuid.UUID
+	Ids     []uuid.UUID
+}
+
+func (q *Queries) GetCustomers(ctx context.Context, arg GetCustomersParams) ([]Customer, error) {
+	rows, err := q.db.Query(ctx, getCustomers, arg.StoreID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Customer
+	for rows.Next() {
+		var i Customer
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.StoreID,
+			&i.Name,
+			&i.Phone,
+			&i.Gender,
+			&i.SourceID,
+			&i.ResponsibleStaffID,
+			&i.Note,
+			&i.MergedInto,
+			&i.CreatedBy,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCustomerSources = `-- name: ListCustomerSources :many
 SELECT id, tenant_id, store_id, name, active FROM customer_sources WHERE store_id = $1 ORDER BY name, id
 `
