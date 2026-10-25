@@ -546,6 +546,60 @@ func (q *Queries) CardView(ctx context.Context, arg CardViewParams) (CardViewRow
 	return i, err
 }
 
+const cardViews = `-- name: CardViews :many
+SELECT c.id, c.tenant_id, c.store_id, c.customer_id, c.card_type_id, c.opened_at, c.expires_on, c.family_group_id, c.created_by, t.name AS card_type_name, t.kind, l.principal_after, l.bonus_after
+FROM cards c JOIN card_types t ON t.id=c.card_type_id
+JOIN LATERAL (SELECT principal_after,bonus_after FROM card_ledger WHERE card_id=c.id ORDER BY at DESC,id DESC LIMIT 1) l ON true
+WHERE c.store_id=$1 AND c.id=ANY($2::uuid[])
+`
+
+type CardViewsParams struct {
+	StoreID uuid.UUID
+	Ids     []uuid.UUID
+}
+
+type CardViewsRow struct {
+	Card           Card
+	CardTypeName   string
+	Kind           string
+	PrincipalAfter money.Amount
+	BonusAfter     money.Amount
+}
+
+func (q *Queries) CardViews(ctx context.Context, arg CardViewsParams) ([]CardViewsRow, error) {
+	rows, err := q.db.Query(ctx, cardViews, arg.StoreID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CardViewsRow
+	for rows.Next() {
+		var i CardViewsRow
+		if err := rows.Scan(
+			&i.Card.ID,
+			&i.Card.TenantID,
+			&i.Card.StoreID,
+			&i.Card.CustomerID,
+			&i.Card.CardTypeID,
+			&i.Card.OpenedAt,
+			&i.Card.ExpiresOn,
+			&i.Card.FamilyGroupID,
+			&i.Card.CreatedBy,
+			&i.CardTypeName,
+			&i.Kind,
+			&i.PrincipalAfter,
+			&i.BonusAfter,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const consumeCardCount = `-- name: ConsumeCardCount :one
 INSERT INTO card_count_ledger (tenant_id,store_id,card_id,item_id,kind,paid_before,paid_delta,paid_after,gift_before,gift_delta,gift_after,business_date,actor_id)
 VALUES ($1,$2,$3,$4,'consume',$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id
@@ -775,6 +829,47 @@ func (q *Queries) GetCardType(ctx context.Context, arg GetCardTypeParams) (CardT
 		&i.DiscountPercent,
 	)
 	return i, err
+}
+
+const getCardTypes = `-- name: GetCardTypes :many
+SELECT id, tenant_id, store_id, name, kind, validity_kind, validity_date, validity_days, active, created_at, discount_percent FROM card_types WHERE store_id=$1 AND id=ANY($2::uuid[])
+`
+
+type GetCardTypesParams struct {
+	StoreID uuid.UUID
+	Ids     []uuid.UUID
+}
+
+func (q *Queries) GetCardTypes(ctx context.Context, arg GetCardTypesParams) ([]CardType, error) {
+	rows, err := q.db.Query(ctx, getCardTypes, arg.StoreID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CardType
+	for rows.Next() {
+		var i CardType
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.StoreID,
+			&i.Name,
+			&i.Kind,
+			&i.ValidityKind,
+			&i.ValidityDate,
+			&i.ValidityDays,
+			&i.Active,
+			&i.CreatedAt,
+			&i.DiscountPercent,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getCardUpgradeRule = `-- name: GetCardUpgradeRule :one

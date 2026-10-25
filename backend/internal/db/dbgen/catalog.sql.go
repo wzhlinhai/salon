@@ -241,6 +241,47 @@ func (q *Queries) GetItemMemberPrice(ctx context.Context, arg GetItemMemberPrice
 	return i, err
 }
 
+const getItems = `-- name: GetItems :many
+SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind FROM items WHERE store_id=$1 AND id=ANY($2::uuid[])
+`
+
+type GetItemsParams struct {
+	StoreID uuid.UUID
+	Ids     []uuid.UUID
+}
+
+func (q *Queries) GetItems(ctx context.Context, arg GetItemsParams) ([]Item, error) {
+	rows, err := q.db.Query(ctx, getItems, arg.StoreID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Item
+	for rows.Next() {
+		var i Item
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.StoreID,
+			&i.Name,
+			&i.Price,
+			&i.Discountable,
+			&i.LaborFeeAmount,
+			&i.LaborFeePercent,
+			&i.Active,
+			&i.CreatedAt,
+			&i.Kind,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listItemLevelPrices = `-- name: ListItemLevelPrices :many
 SELECT tenant_id, store_id, item_id, level_id, price FROM item_level_prices WHERE store_id=$1 AND item_id = ANY($2::uuid[]) ORDER BY item_id, level_id
 `

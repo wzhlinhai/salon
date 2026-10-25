@@ -188,3 +188,12 @@ ORDER BY l.at DESC,l.id DESC LIMIT sqlc.arg(row_limit);
 -- name: ConsumeCardCount :one
 INSERT INTO card_count_ledger (tenant_id,store_id,card_id,item_id,kind,paid_before,paid_delta,paid_after,gift_before,gift_delta,gift_after,business_date,actor_id)
 VALUES ($1,$2,$3,$4,'consume',$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id;
+
+-- name: GetCardTypes :many
+SELECT * FROM card_types WHERE store_id=sqlc.arg(store_id) AND id=ANY(sqlc.arg(ids)::uuid[]);
+
+-- name: CardViews :many
+SELECT sqlc.embed(c), t.name AS card_type_name, t.kind, l.principal_after, l.bonus_after
+FROM cards c JOIN card_types t ON t.id=c.card_type_id
+JOIN LATERAL (SELECT principal_after,bonus_after FROM card_ledger WHERE card_id=c.id ORDER BY at DESC,id DESC LIMIT 1) l ON true
+WHERE c.store_id=sqlc.arg(store_id) AND c.id=ANY(sqlc.arg(ids)::uuid[]);

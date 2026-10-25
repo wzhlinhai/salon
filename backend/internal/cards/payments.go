@@ -37,17 +37,14 @@ func (c *PaymentCard) CheckHolder(customerID uuid.UUID, rules settings.Rules) er
 
 // PaymentCards 按 UUID 一起锁显式卡和候选卡并检查查看范围；显式卡检查有效期，候选卡留待筛选，试算只读。
 func PaymentCards(ctx context.Context, env ops.Env, ids []uuid.UUID, day time.Time, lock bool, candidates ...uuid.UUID) (map[uuid.UUID]*PaymentCard, error) {
+	if !lock {
+		return readPaymentCards(ctx, env, ids, day, candidates)
+	}
 	ordered := append(slices.Clone(ids), candidates...)
 	slices.SortFunc(ordered, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
 	out := map[uuid.UUID]*PaymentCard{}
 	for _, id := range slices.Compact(ordered) {
-		var row dbgen.Card
-		var err error
-		if lock {
-			row, err = env.Q.LockCard(ctx, dbgen.LockCardParams{StoreID: env.Caller.StoreID, ID: id})
-		} else {
-			row, err = env.Q.GetCard(ctx, dbgen.GetCardParams{StoreID: env.Caller.StoreID, ID: id})
-		}
+		row, err := env.Q.LockCard(ctx, dbgen.LockCardParams{StoreID: env.Caller.StoreID, ID: id})
 		if err != nil {
 			return nil, rowError(err)
 		}
@@ -64,6 +61,45 @@ func PaymentCards(ctx context.Context, env ops.Env, ids []uuid.UUID, day time.Ti
 			}
 		}
 		out[id] = &PaymentCard{row: row, before: before, principal: before.Principal, bonus: before.Bonus}
+	}
+	return out, nil
+}
+
+// readPaymentCards 按批读取试算卡及顾客、余额、积分和次数，不加业务行锁。
+func readPaymentCards(ctx context.Context, env ops.Env, ids []uuid.UUID, day time.Time, candidates []uuid.UUID) (map[uuid.UUID]*PaymentCard, error) {
+	all := append(slices.Clone(ids), candidates...)
+	rows, err := env.Q.CardViews(ctx, dbgen.CardViewsParams{StoreID: env.Caller.StoreID, Ids: all})
+	if err != nil {
+		return nil, err
+	}
+	holders := make([]uuid.UUID, len(rows))
+	views := make([]Card, len(rows))
+	for i, r := range rows {
+		holders[i] = r.Card.CustomerID
+		views[i] = view(r.Card, r.CardTypeName, r.PrincipalAfter, r.BonusAfter)
+		views[i].Kind = r.Kind
+	}
+	if err := customers.CheckViewable(ctx, env, holders...); err != nil {
+		return nil, err
+	}
+	if err := fillCounts(ctx, env, views); err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]*PaymentCard, len(rows))
+	for i, r := range rows {
+		before := &views[i]
+		out[r.Card.ID] = &PaymentCard{row: r.Card, before: before, principal: before.Principal, bonus: before.Bonus}
+	}
+	for _, id := range all {
+		_, exists := out[id]
+		if !exists {
+			return nil, ops.ErrNotFound
+		}
+		if !slices.Contains(candidates, id) || slices.Contains(ids, id) {
+			if err := checkExpiry(out[id].row, day); err != nil {
+				return nil, err
+			}
+		}
 	}
 	return out, nil
 }
