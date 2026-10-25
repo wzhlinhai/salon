@@ -440,34 +440,6 @@ func (q *Queries) ShareItem(ctx context.Context, arg ShareItemParams) (Item, err
 	return i, err
 }
 
-const shareItemCardType = `-- name: ShareItemCardType :one
-SELECT id, tenant_id, store_id, name, kind, validity_kind, validity_date, validity_days, active, created_at, discount_percent FROM card_types WHERE store_id=$1 AND id=$2 FOR SHARE
-`
-
-type ShareItemCardTypeParams struct {
-	StoreID uuid.UUID
-	ID      uuid.UUID
-}
-
-func (q *Queries) ShareItemCardType(ctx context.Context, arg ShareItemCardTypeParams) (CardType, error) {
-	row := q.db.QueryRow(ctx, shareItemCardType, arg.StoreID, arg.ID)
-	var i CardType
-	err := row.Scan(
-		&i.ID,
-		&i.TenantID,
-		&i.StoreID,
-		&i.Name,
-		&i.Kind,
-		&i.ValidityKind,
-		&i.ValidityDate,
-		&i.ValidityDays,
-		&i.Active,
-		&i.CreatedAt,
-		&i.DiscountPercent,
-	)
-	return i, err
-}
-
 const updateItem = `-- name: UpdateItem :one
 UPDATE items SET name=$2, price=$3, discountable=$4, labor_fee_amount=$5, labor_fee_percent=$6, active=$7, kind=$8
 WHERE id=$1 RETURNING id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind

@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/wzhlinhai/salon/backend/internal/audit"
+	"github.com/wzhlinhai/salon/backend/internal/customers"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
@@ -312,7 +313,7 @@ func listCardUpgrades(ctx context.Context, env ops.Env, in *ListCardUpgradesInpu
 	if err != nil {
 		return nil, rowError(err)
 	}
-	if err := canView(ctx, env, card.CustomerID); err != nil {
+	if err := customers.CheckViewable(ctx, env, card.CustomerID); err != nil {
 		return nil, err
 	}
 	limit := in.Limit

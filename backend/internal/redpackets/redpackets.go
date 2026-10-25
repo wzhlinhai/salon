@@ -34,17 +34,6 @@ func rowError(err error) error {
 	return err
 }
 
-func canView(ctx context.Context, env ops.Env, id uuid.UUID) error {
-	c, err := env.Q.GetCustomer(ctx, id)
-	if err != nil {
-		return rowError(err)
-	}
-	if c.StoreID != env.Caller.StoreID || !customers.CanView(env.Caller, c) || c.MergedInto != nil {
-		return ops.ErrNotFound
-	}
-	return nil
-}
-
 func issueRedPacket(ctx context.Context, env ops.Env, in *IssueRedPacketInput) (*RedPacket, error) {
 	return issueRedPacketAt(ctx, env, in, time.Now())
 }
@@ -113,7 +102,7 @@ func revokeRedPacket(ctx context.Context, env ops.Env, in *RevokeRedPacketInput)
 	if err != nil {
 		return nil, rowError(err)
 	}
-	if err := canView(ctx, env, row.CustomerID); err != nil {
+	if err := customers.CheckViewable(ctx, env, row.CustomerID); err != nil {
 		return nil, err
 	}
 	if row.OrderPaymentID != nil {
@@ -145,7 +134,7 @@ func revokeRedPacket(ctx context.Context, env ops.Env, in *RevokeRedPacketInput)
 }
 
 func listCustomerRedPackets(ctx context.Context, env ops.Env, in *ListCustomerRedPacketsInput) (*RedPacketList, error) {
-	if err := canView(ctx, env, in.CustomerID); err != nil {
+	if err := customers.CheckViewable(ctx, env, in.CustomerID); err != nil {
 		return nil, err
 	}
 	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
@@ -232,7 +221,7 @@ func LockPayments(ctx context.Context, env ops.Env, ids []uuid.UUID) (map[uuid.U
 
 // CheckUsable 在持锁后检查红包归属、查看范围和营业日可用状态。
 func CheckUsable(ctx context.Context, env ops.Env, row dbgen.RedPacket, customerID uuid.UUID, day time.Time) error {
-	if err := canView(ctx, env, row.CustomerID); err != nil {
+	if err := customers.CheckViewable(ctx, env, row.CustomerID); err != nil {
 		return err
 	}
 	if row.CustomerID != customerID {

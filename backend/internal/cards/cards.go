@@ -50,16 +50,6 @@ func listCardTypes(ctx context.Context, env ops.Env, _ *ListCardTypesInput) (*Ca
 	return out, nil
 }
 
-func canView(ctx context.Context, env ops.Env, id uuid.UUID) error {
-	c, err := env.Q.GetCustomer(ctx, id)
-	if err != nil {
-		return rowError(err)
-	}
-	if !customers.CanView(env.Caller, c) {
-		return ops.ErrNotFound
-	}
-	return nil
-}
 func view(r dbgen.Card, name string, principal, bonus money.Amount) Card {
 	return Card{ID: r.ID, CustomerID: r.CustomerID, CardTypeID: r.CardTypeID, CardTypeName: name, OpenedAt: r.OpenedAt.Time, ExpiresOn: dateView(r.ExpiresOn), Principal: principal, Bonus: bonus}
 }
@@ -170,7 +160,7 @@ func appendLedger(ctx context.Context, env ops.Env, id uuid.UUID, kind string, p
 	return row, nil
 }
 func listCustomerCards(ctx context.Context, env ops.Env, in *ListCustomerCardsInput) (*CardList, error) {
-	if err := canView(ctx, env, in.CustomerID); err != nil {
+	if err := customers.CheckViewable(ctx, env, in.CustomerID); err != nil {
 		return nil, err
 	}
 	rows, err := env.Q.ListCustomerCards(ctx, dbgen.ListCustomerCardsParams{StoreID: env.Caller.StoreID, CustomerID: in.CustomerID})
@@ -193,7 +183,7 @@ func listCardLedger(ctx context.Context, env ops.Env, in *ListCardLedgerInput) (
 	if err != nil {
 		return nil, rowError(err)
 	}
-	if err := canView(ctx, env, card.CustomerID); err != nil {
+	if err := customers.CheckViewable(ctx, env, card.CustomerID); err != nil {
 		return nil, err
 	}
 	limit := in.Limit

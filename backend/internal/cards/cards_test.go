@@ -294,7 +294,7 @@ func TestIssuingStore(t *testing.T) {
 			t.Fatal(r)
 		}
 		r = ch.Call(t, caller, "list_customer_cards", map[string]any{"customer_id": s.customer})
-		if r.Status != 200 || len(r.Body["items"].([]any)) != 0 {
+		if r.Status != 404 {
 			t.Fatal(r)
 		}
 	}
@@ -342,6 +342,12 @@ func TestMergeMovesCards(t *testing.T) {
 	before := s.call("list_card_ledger", map[string]any{"card_id": card["id"]}, 200)
 	keep := s.call("create_customer", map[string]any{}, 200)["customer"].(map[string]any)["id"]
 	s.call("merge_customers", map[string]any{"keep_id": keep, "merged_id": s.customer}, 200)
+	for _, ch := range s.Channels() {
+		r := ch.Call(t, s.MustCaller(s.Owner), "list_customer_cards", map[string]any{"customer_id": s.customer})
+		if r.Status != 404 {
+			t.Fatal(ch.Name, r)
+		}
+	}
 	after := s.call("list_customer_cards", map[string]any{"customer_id": keep}, 200)["items"].([]any)
 	if len(after) != 1 || after[0].(map[string]any)["customer_id"] != keep {
 		t.Fatal(after)

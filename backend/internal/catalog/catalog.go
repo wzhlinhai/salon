@@ -336,7 +336,7 @@ func shareReferences(ctx context.Context, env ops.Env, in *CreateItemInput, befo
 	}
 	slices.SortFunc(types, order)
 	for _, id := range types {
-		ct, err := env.Q.ShareItemCardType(ctx, dbgen.ShareItemCardTypeParams{StoreID: env.Caller.StoreID, ID: id})
+		ct, err := env.Q.ShareCardType(ctx, dbgen.ShareCardTypeParams{StoreID: env.Caller.StoreID, ID: id})
 		if err != nil {
 			return rowError(err)
 		}

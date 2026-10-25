@@ -58,8 +58,5 @@ UPDATE item_member_prices SET price=$3 WHERE item_id=$1 AND card_type_id=$2;
 -- name: DeleteItemMemberPrice :exec
 DELETE FROM item_member_prices WHERE item_id=$1 AND card_type_id=$2;
 
--- name: ShareItemCardType :one
-SELECT * FROM card_types WHERE store_id=$1 AND id=$2 FOR SHARE;
-
 -- name: ShareItem :one
 SELECT * FROM items WHERE store_id=$1 AND id=$2 FOR SHARE;
