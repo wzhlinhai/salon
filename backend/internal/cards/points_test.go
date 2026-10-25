@@ -186,9 +186,14 @@ func TestPointsStoreScope(t *testing.T) {
 	if err := tx.QueryRow(context.Background(), "INSERT INTO stores (tenant_id,name) VALUES ($1,'外店') RETURNING id", s.Res.TenantID).Scan(&other); err != nil {
 		t.Fatal(err)
 	}
+	otherCard := uuid.New()
+	dbtest.Exec(t, tx, "INSERT INTO cards (tenant_id,store_id,id,customer_id,card_type_id,opened_at,created_by) SELECT tenant_id,$2,$3,customer_id,card_type_id,opened_at,created_by FROM cards WHERE id=$1", card["id"], other, otherCard)
 	dbtest.Commit(t, tx)
 	caller.StoreID = other
 	for _, ch := range s.Channels() {
+		if r := ch.Call(t, s.MustCaller(s.Owner), "list_card_points", map[string]any{"card_id": otherCard}); r.Status != 404 {
+			t.Fatal(ch.Name, r)
+		}
 		if r := ch.Call(t, caller, "list_card_points", map[string]any{"card_id": card["id"]}); r.Status != 404 {
 			t.Fatal(ch.Name, r)
 		}

@@ -376,6 +376,9 @@ func TestMergeCustomerRedPackets(t *testing.T) {
 	keep := s.call("create_customer", map[string]any{}, 200)["customer"].(map[string]any)
 	s.call("merge_customers", map[string]any{"keep_id": keep["id"], "merged_id": s.customer}, 200)
 	for _, ch := range s.Channels() {
+		if r := ch.Call(t, s.MustCaller(s.Owner), "list_customer_red_packets", map[string]any{"customer_id": s.customer}); r.Status != 404 {
+			t.Fatal(ch.Name, r)
+		}
 		r := ch.Call(t, s.MustCaller(s.Owner), "list_customer_red_packets", map[string]any{"customer_id": keep["id"]})
 		if r.Status != 200 || len(r.Body["items"].([]any)) != 1 || r.Body["items"].([]any)[0].(map[string]any)["id"] != p["id"] {
 			t.Fatal(r)

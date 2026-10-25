@@ -369,8 +369,13 @@ func TestListCountsStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	dbtest.Exec(t, tx, "UPDATE staff SET store_id=$2 WHERE id=$1", staff, store)
+	otherCard := uuid.New()
+	dbtest.Exec(t, tx, "INSERT INTO cards (tenant_id,store_id,id,customer_id,card_type_id,opened_at,created_by) SELECT tenant_id,$2,$3,customer_id,card_type_id,opened_at,created_by FROM cards WHERE id=$1", card["id"], store, otherCard)
 	dbtest.Commit(t, tx)
 	for _, ch := range s.Channels() {
+		if r := ch.Call(t, s.MustCaller(s.Owner), "list_card_counts", map[string]any{"card_id": otherCard}); r.Status != 404 {
+			t.Fatal(ch.Name, r)
+		}
 		if r := ch.Call(t, s.MustCaller(token), "list_card_counts", map[string]any{"card_id": card["id"]}); r.Status != 404 {
 			t.Fatal(r)
 		}

@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/wzhlinhai/salon/backend/internal/audit"
+	"github.com/wzhlinhai/salon/backend/internal/customers"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
@@ -37,7 +38,7 @@ func change(ctx context.Context, env ops.Env, action string, ids []uuid.UUID, ed
 	changes := make([]cardChange, len(ids))
 	for i, id := range ids {
 		row := locked[id]
-		if err := canView(ctx, env, row.CustomerID); err != nil {
+		if err := customers.CheckViewable(ctx, env, row.CustomerID); err != nil {
 			return nil, err
 		}
 		before, err := cardView(ctx, env, id)

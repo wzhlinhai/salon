@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/wzhlinhai/salon/backend/internal/customers"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
@@ -50,7 +51,7 @@ func PaymentCards(ctx context.Context, env ops.Env, ids []uuid.UUID, day time.Ti
 		if err != nil {
 			return nil, rowError(err)
 		}
-		if err := canView(ctx, env, row.CustomerID); err != nil {
+		if err := customers.CheckViewable(ctx, env, row.CustomerID); err != nil {
 			return nil, err
 		}
 		before, err := cardView(ctx, env, id)
@@ -200,7 +201,7 @@ func (c *PaymentCard) CompareSelectionTie(other *PaymentCard) int {
 
 // SelectionCandidates 只列出本店顾客的候选卡 ID，使用前须在锁后重新检查。
 func SelectionCandidates(ctx context.Context, env ops.Env, customerID uuid.UUID, excluded []uuid.UUID) ([]uuid.UUID, error) {
-	if err := canView(ctx, env, customerID); err != nil {
+	if err := customers.CheckViewable(ctx, env, customerID); err != nil {
 		return nil, err
 	}
 	rows, err := env.Q.ListCustomerCards(ctx, dbgen.ListCustomerCardsParams{StoreID: env.Caller.StoreID, CustomerID: customerID})

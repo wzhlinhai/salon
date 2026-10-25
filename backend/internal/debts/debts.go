@@ -71,17 +71,6 @@ func registerHistoricalDebtAt(ctx context.Context, env ops.Env, in *RegisterHist
 	return out, nil
 }
 
-func canView(ctx context.Context, env ops.Env, id uuid.UUID) error {
-	c, err := env.Q.GetCustomer(ctx, id)
-	if err != nil {
-		return rowError(err)
-	}
-	if c.StoreID != env.Caller.StoreID || !customers.CanView(env.Caller, c) || c.MergedInto != nil {
-		return ops.ErrNotFound
-	}
-	return nil
-}
-
 func rowError(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ops.ErrNotFound
@@ -90,7 +79,7 @@ func rowError(err error) error {
 }
 
 func listCustomerDebts(ctx context.Context, env ops.Env, in *ListCustomerDebtsInput) (*CustomerDebtList, error) {
-	if err := canView(ctx, env, in.CustomerID); err != nil {
+	if err := customers.CheckViewable(ctx, env, in.CustomerID); err != nil {
 		return nil, err
 	}
 	rows, err := env.Q.ListCustomerDebts(ctx, dbgen.ListCustomerDebtsParams{StoreID: env.Caller.StoreID, CustomerID: in.CustomerID})
@@ -175,7 +164,7 @@ func repayDebtAt(ctx context.Context, env ops.Env, in *RepayDebtInput, now time.
 	if err != nil {
 		return nil, rowError(err)
 	}
-	if err := canView(ctx, env, row.CustomerID); err != nil {
+	if err := customers.CheckViewable(ctx, env, row.CustomerID); err != nil {
 		return nil, err
 	}
 	before, err := view(ctx, env, row)
