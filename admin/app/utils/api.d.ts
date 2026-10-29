@@ -939,6 +939,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/open_void_window": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 输入本人登录密码开启撤单授权窗口 */
+        post: operations["open_void_window"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/preview_checkout": {
         parameters: {
             query?: never;
@@ -2053,6 +2070,9 @@ export interface components {
             gender: "male" | "female";
             items: components["schemas"]["OrderItemInput"][];
         };
+        OpenVoidWindowInput: {
+            password: string;
+        };
         Order: {
             /** Format: date */
             business_date: string;
@@ -2598,6 +2618,14 @@ export interface components {
         VoidOrderInput: {
             order_id: string;
             reason: string;
+        };
+        VoidWindow: {
+            /** Format: date-time */
+            expires_at: string;
+            id: string;
+            /** Format: date-time */
+            opened_at: string;
+            staff_id: string;
         };
     };
     responses: never;
@@ -4410,6 +4438,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Order"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    open_void_window: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenVoidWindowInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoidWindow"];
                 };
             };
             /** @description Error */

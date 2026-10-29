@@ -500,3 +500,12 @@ type Tenant struct {
 	Name      string
 	CreatedAt pgtype.Timestamptz
 }
+
+type VoidWindow struct {
+	TenantID  uuid.UUID
+	StoreID   uuid.UUID
+	ID        uuid.UUID
+	StaffID   uuid.UUID
+	OpenedAt  pgtype.Timestamptz
+	ExpiresAt pgtype.Timestamptz
+}

@@ -147,6 +147,7 @@ func TestVoidMigrationDownRefusesReusedPacket(t *testing.T) {
 	p := s.redPacket(s.customer, "100")
 	s.void(s.paid(s.customerOrder(line), packetPayment(p, "100")))
 	s.paid(s.customerOrder(line), packetPayment(p, "100"))
+	dbtest.MigrateDownTo(t, s.Pool, 24)
 	err := db.MigrateDown(context.Background(), s.Pool)
 	if err == nil || !strings.Contains(err.Error(), "cannot downgrade 00024: a restored red packet has multiple historical payments") {
 		t.Fatal(err)

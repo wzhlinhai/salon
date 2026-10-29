@@ -153,12 +153,18 @@ var (
 )
 
 // RuleError 表示请求违反了业务规则，例如删掉最后一名在职老板。Message 面向人和 AI。
-type RuleError struct{ Message string }
+type RuleError struct {
+	Message string
+	commit  bool
+}
 
 func (e *RuleError) Error() string { return e.Message }
 
 // Rule 返回一个 RuleError。
 func Rule(msg string) error { return &RuleError{Message: msg} }
+
+// CommitRule 返回保留事务写入的业务规则错误。
+func CommitRule(msg string) error { return &RuleError{Message: msg, commit: true} }
 
 // Env 是操作执行时可用的环境。Q 已处于调用者租户的事务中。
 type Env struct {

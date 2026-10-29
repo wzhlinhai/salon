@@ -85,36 +85,13 @@ func (s *Service) Login(ctx context.Context, account, password string) (string, 
 	var st dbgen.Staff
 	var loginErr error
 	err = db.InTenant(ctx, s.pool, tenantID, func(q *dbgen.Queries) error {
-		// 与重设密码、停用及其他登录串行，按锁住后读到的状态校验和写入。
-		login, err := q.LockStaffNoKey(ctx, staffID)
-		if err != nil {
-			return err
-		}
-		st = login.Staff
-		if !st.Active || st.PasswordHash == nil || st.LoginAccount == nil || *st.LoginAccount != account {
-			_, _ = argon2id.ComparePasswordAndHash(password, dummyHash)
-			loginErr = ErrInvalidLogin
+		var err error
+		st, err = checkPassword(ctx, q, staffID, password, &account)
+		if errors.Is(err, ErrInvalidLogin) || errors.Is(err, ErrLoginLocked) {
+			loginErr = err
 			return nil
 		}
-		if login.Locked {
-			loginErr = ErrLoginLocked
-			return nil
-		}
-		ok, err := argon2id.ComparePasswordAndHash(password, *st.PasswordHash)
-		if err != nil {
-			return fmt.Errorf("compare password: %w", err)
-		}
-		if !ok {
-			loginErr = ErrInvalidLogin
-			return q.RecordFailedLogin(ctx, dbgen.RecordFailedLoginParams{
-				ID: staffID, Threshold: maxFailedLogins,
-				LockDuration: pgtype.Interval{Microseconds: loginLockDuration.Microseconds(), Valid: true},
-			})
-		}
-		if st.FailedLogins != 0 {
-			return q.ResetFailedLogins(ctx, staffID)
-		}
-		return nil
+		return err
 	})
 	if err != nil {
 		return "", fmt.Errorf("check login: %w", err)
@@ -136,16 +113,44 @@ func (s *Service) Login(ctx context.Context, account, password string) (string, 
 	return tok.SignedString(s.secret)
 }
 
-// VerifyPassword 报告 password 是否是员工 staffID 的密码。q 须处于该员工租户的事务中。
-func VerifyPassword(ctx context.Context, q *dbgen.Queries, staffID uuid.UUID, password string) (bool, error) {
-	st, err := q.GetStaff(ctx, staffID)
+// CheckPassword 在调用者的租户事务内锁住员工并校验登录密码，失败计数与登录共用，调用者须保留失败写入。
+func CheckPassword(ctx context.Context, q *dbgen.Queries, staffID uuid.UUID, password string) error {
+	_, err := checkPassword(ctx, q, staffID, password, nil)
+	return err
+}
+
+func checkPassword(ctx context.Context, q *dbgen.Queries, staffID uuid.UUID, password string, account *string) (dbgen.Staff, error) {
+	login, err := q.LockStaffNoKey(ctx, staffID)
 	if err != nil {
-		return false, err
+		return dbgen.Staff{}, err
 	}
-	if st.PasswordHash == nil {
-		return false, nil
+	st := login.Staff
+	if !st.Active || st.PasswordHash == nil || st.LoginAccount == nil || (account != nil && *st.LoginAccount != *account) {
+		_, _ = argon2id.ComparePasswordAndHash(password, dummyHash)
+		return st, ErrInvalidLogin
 	}
-	return argon2id.ComparePasswordAndHash(password, *st.PasswordHash)
+	if login.Locked {
+		return st, ErrLoginLocked
+	}
+	ok, err := argon2id.ComparePasswordAndHash(password, *st.PasswordHash)
+	if err != nil {
+		return st, fmt.Errorf("compare password: %w", err)
+	}
+	if !ok {
+		if err := q.RecordFailedLogin(ctx, dbgen.RecordFailedLoginParams{
+			ID: staffID, Threshold: maxFailedLogins,
+			LockDuration: pgtype.Interval{Microseconds: loginLockDuration.Microseconds(), Valid: true},
+		}); err != nil {
+			return st, err
+		}
+		return st, ErrInvalidLogin
+	}
+	if st.FailedLogins != 0 {
+		if err := q.ResetFailedLogins(ctx, staffID); err != nil {
+			return st, err
+		}
+	}
+	return st, nil
 }
 
 func (s *Service) parse(token string) (staffID, tenantID uuid.UUID, version int32, err error) {

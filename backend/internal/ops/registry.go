@@ -164,12 +164,21 @@ func (r *Registry) invoke(ctx context.Context, caller Caller, e *entry, run func
 		return nil, ErrDraftRequired
 	}
 	var out any
+	var committedRule error
 	err := db.InTenant(ctx, r.pool, caller.TenantID, func(q *dbgen.Queries) error {
 		var err error
 		out, err = run(ctx, Env{Caller: caller, Grant: caller.Grant(e.permission), Q: q})
+		var rule *RuleError
+		if errors.As(err, &rule) && rule.commit {
+			committedRule = err
+			return nil
+		}
 		return err
 	})
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	return out, committedRule
 }
 
 // Permissions 返回所有已声明操作用到的权限，按名称排序。供角色设置使用。
