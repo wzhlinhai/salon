@@ -182,3 +182,10 @@ func (r Rules) CardSelection() string {
 	r.decode(KeyCardSelection, &v)
 	return v
 }
+
+// VoidWindowMinutes 返回撤单授权窗口的分钟数，零表示关闭。
+func (r Rules) VoidWindowMinutes() int {
+	var v int
+	r.decode(KeyVoidWindowMinutes, &v)
+	return v
+}

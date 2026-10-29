@@ -2,6 +2,7 @@ package staff
 
 import (
 	"context"
+	"errors"
 
 	"github.com/wzhlinhai/salon/backend/internal/auth"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
@@ -49,15 +50,14 @@ func registerSelf(r *ops.Registry) {
 		Name: "change_my_password", Summary: "修改我自己的登录密码", Kind: ops.Write,
 		Permission: ops.LoggedIn, AI: ops.AINone,
 		Handle: func(ctx context.Context, env ops.Env, in *ChangeMyPasswordInput) (*OK, error) {
-			if _, err := env.Q.LockStaffNoKey(ctx, env.Caller.StaffID); err != nil {
+			if err := auth.CheckPassword(ctx, env.Q, env.Caller.StaffID, in.OldPassword); err != nil {
+				if errors.Is(err, auth.ErrInvalidLogin) {
+					return nil, ops.CommitRule("原密码不正确")
+				}
+				if errors.Is(err, auth.ErrLoginLocked) {
+					return nil, ops.CommitRule("密码错误次数过多，请 15 分钟后再试")
+				}
 				return nil, err
-			}
-			ok, err := auth.VerifyPassword(ctx, env.Q, env.Caller.StaffID, in.OldPassword)
-			if err != nil {
-				return nil, err
-			}
-			if !ok {
-				return nil, ops.Rule("原密码不正确")
 			}
 			hash, err := auth.HashPassword(in.NewPassword)
 			if err != nil {

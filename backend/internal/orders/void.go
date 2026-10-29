@@ -17,6 +17,7 @@ import (
 )
 
 func registerVoid(r *ops.Registry) {
+	registerVoidWindow(r)
 	ops.Register(r, ops.Operation[VoidOrderInput, Order]{Name: "void_order", Summary: "撤已结账的单并退回卡余额、次数和红包", Kind: ops.Write, Permission: perm.OrderVoid, AI: ops.AIDraft, Handle: voidOrder})
 }
 
@@ -29,6 +30,20 @@ func voidOrderAt(ctx context.Context, env ops.Env, in *VoidOrderInput, now time.
 	if reason == "" || len([]rune(reason)) > 200 {
 		return nil, ops.Rule("请填写不超过200字的撤单原因")
 	}
+	minutes, err := voidWindowMinutes(ctx, env, now)
+	if err != nil {
+		return nil, err
+	}
+	if minutes > 0 {
+		allowed, err := env.Q.HasVoidWindow(ctx, dbgen.HasVoidWindowParams{StoreID: env.Caller.StoreID, StaffID: env.Caller.StaffID, Now: pgtype.Timestamptz{Time: now, Valid: true}})
+		if err != nil {
+			return nil, err
+		}
+		if !allowed {
+			return nil, ops.Rule("请先输入登录密码开启撤单授权窗口")
+		}
+	}
+
 	after, err := change(ctx, env, "void_order", "paid", []uuid.UUID{in.OrderID}, func(rows []dbgen.Order) error {
 		row := &rows[0]
 		// 与顾客合并、结账同序：单 → 欠款 → 卡 → 红包；各组按 UUID，持锁后不回锁顾客。

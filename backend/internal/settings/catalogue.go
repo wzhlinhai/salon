@@ -60,13 +60,13 @@ const (
 	KeyOthersCardPayment     = "others_card_payment"
 	KeyMemberPriceRule       = "member_price_rule"
 	KeyPointsPerRechargeYuan = "points_per_recharge_yuan"
+	KeyVoidWindowMinutes     = "void_window_minutes"
 	KeyBusinessHours         = "business_hours"
 	KeyBusinessDayEnd        = "business_day_end"
 )
 
 // Catalogue 是全部门店设置，顺序即设置页面的显示顺序。后续模块的业务规则在这里添加。
 var Catalogue = []Def{
-
 	{
 		Key: KeyMemberPriceRule, Label: "会员价取价", Kind: KindChoice,
 		Hint: "持卡顾客做有级别价的项目时，会员价和级别价取哪个", Default: "member_first",
@@ -80,6 +80,10 @@ var Catalogue = []Def{
 	{Key: KeyOthersCardPayment, Label: "用别人的卡", Hint: "顾客能否用别人（例如家人）的卡余额付自己的单", Kind: KindChoice, Default: "not_allowed", Options: []ChoiceOption{{Value: "not_allowed", Label: "不允许"}, {Value: "allowed", Label: "允许"}}},
 	{Key: KeyCardCountOrder, Label: "扣次顺序", Hint: "扣次时先扣购买次数还是赠送次数，先扣的用完再扣另一种", Kind: KindChoice, Default: "paid_first", Options: []ChoiceOption{{Value: "paid_first", Label: "先扣购买次数"}, {Value: "gift_first", Label: "先扣赠送次数"}}},
 	{Key: KeyCardSelection, Label: "选卡规则", Hint: "结账只说用卡余额付、不指定哪张卡时怎么挑卡：手动选卡必须指定；按折扣率先扣这单实收最低的卡；按余额先扣余额少的卡，一张不够接着扣下一张", Kind: KindChoice, Default: "manual", Options: []ChoiceOption{{Value: "manual", Label: "手动选卡"}, {Value: "by_discount", Label: "按折扣率"}, {Value: "by_balance", Label: "按余额"}}},
+	{
+		Key: KeyVoidWindowMinutes, Label: "撤单授权窗口", Kind: KindInteger, Min: 0, Max: 60,
+		Hint: "开启后，撤单前要本人重新输入登录密码开一个窗口，窗口内只有本人能撤，过期要重开；单位分钟，0 为关闭", Default: 0,
+	},
 	{
 		Key: KeyBusinessHours, Label: "营业时段", Kind: KindTimeRange,
 		Hint:    "每天开门和关门的时间，预约等按它限制",
