@@ -223,11 +223,11 @@ func TestRefundSerializes(t *testing.T) {
 		want = 409
 	}
 	b := optest.WaitResult(t, done, want)
-	if a.Status != 200 && a.Status != 409 || a.Status == b.Status {
+	if a.Status == b.Status {
 		t.Fatal(a, b)
 	}
 	for _, r := range []optest.Result{a, b} {
-		if r.Status == 409 && r.Detail() != "卡已退" {
+		if r.Status != 200 && (r.Status != 409 || r.Detail() != "卡已退") {
 			t.Fatal(r)
 		}
 	}

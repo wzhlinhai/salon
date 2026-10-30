@@ -235,13 +235,7 @@ func TestRepriceOrderItem(t *testing.T) {
 		in["reason"] = reason
 		before := s.snapshot()
 		r := s.HTTPWithToken(t, s.Owner, "reprice_order_item", editArgs("reprice_order_item", in))
-		if r.Status != 409 && r.Status != 422 {
-			t.Fatal(r)
-		}
-		if r.Status == 409 && r.Detail() != "原因须为一到二百字" {
-			t.Fatal(r)
-		}
-		if r.Status == 422 && r.Detail() != "validation failed" {
+		if (r.Status != 409 || r.Detail() != "原因须为一到二百字") && (r.Status != 422 || r.Detail() != "validation failed") {
 			t.Fatal(r)
 		}
 		if before != s.snapshot() {

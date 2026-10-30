@@ -62,6 +62,104 @@ SKIPPED.extend([('1', 'd', 'reason')])
                     self.load('ENTRIES = []\n' + statement)
 
 
+class AllManifestTests(unittest.TestCase):
+    def invoke(self, root, *args):
+        with patch.object(mutchecks, 'ROOT', root), patch.object(sys, 'argv', ['mutchecks.py', *args]), patch('sys.stdout', new=io.StringIO()) as output, patch('sys.stderr', new=io.StringIO()) as error:
+            code = mutchecks.main()
+        return code, output.getvalue(), error.getvalue()
+
+    def test_requires_since_for_real_runs_and_rejects_names(self):
+        for args in ([], ['--jobs', '2'], ['--since', 'main', 'unknown'],
+                     ['--since', 'main', 'unknown', 'other']):
+            with self.subTest(args=args), tempfile.TemporaryDirectory() as folder:
+                with self.assertRaises(SystemExit) as raised:
+                    self.invoke(Path(folder), *args)
+                self.assertEqual(raised.exception.code, 2)
+
+    def test_runs_selected_entries_in_path_order_with_separate_logs(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            manifests = []
+            for name in ('b', 'a', 'empty'):
+                manifest = root / '.dev/codex' / name / 'manifest.py'
+                manifest.parent.mkdir(parents=True)
+                entries = [dict(kind='go', step='1', name=name, file='guard', guards=['TestGuard'], packages=['a']),
+                           dict(kind='go', step='1', name='unselected')]
+                manifest.write_text('ENTRIES = ' + repr(entries))
+                manifests.append(manifest)
+            seen = []
+
+            def select(entries, ref):
+                self.assertEqual(ref, 'main')
+                return [] if entries[0]['name'] == 'empty' else entries[:1]
+
+            def run(entries, manifest, jobs, logs, results):
+                self.assertEqual(jobs, 8)
+                self.assertEqual(logs.parent, manifest.parent)
+                seen.append(manifest)
+                passed = manifest.parent.name == 'b'
+                mutchecks.result_line(f"1 {entries[0]['name']} exit=0 {'PASS' if passed else 'FAIL'}", results)
+                return 0 if passed else 1
+
+            with patch.object(mutchecks, 'affected_entries', side_effect=select), patch.object(mutchecks, 'run_parallel', side_effect=run):
+                code, output, error = self.invoke(root, '--since', 'main', '--jobs', '8')
+            self.assertEqual(code, 1)
+            self.assertEqual(seen, sorted(manifests[:2]))
+            self.assertEqual(output.splitlines()[-1], 'total selected=2 passed=1 failed=1')
+            self.assertIn('.dev/codex/empty/manifest.py selected=0 passed=0 failed=0', output)
+            self.assertEqual(error.count('logs='), 2)
+            self.assertNotIn('1/unselected', error)
+
+    def test_serial_baseline_and_real_run_share_existing_path(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            manifest = root / '.dev/codex/a/manifest.py'
+            manifest.parent.mkdir(parents=True)
+            entry = dict(kind='go', step='1', name='guard', file='guard', guards=['TestGuard'], packages=['a'], original='original', replacement='mutated')
+            manifest.write_text('ENTRIES = ' + repr([entry]))
+            with patch.object(mutchecks, 'affected_entries', return_value=[entry]), patch.object(mutchecks, 'baseline', return_value=True) as baseline:
+                (root / 'guard').write_text('original')
+                with patch.object(mutchecks.subprocess, 'run') as run:
+                    # run_go reads the actual mutation output from this stub.
+                    def mutate(command, **kwargs):
+                        kwargs['stdout'].write('caught by:\n--- FAIL: TestGuard (0.00s)\n')
+                        return subprocess.CompletedProcess(command, 0)
+                    run.side_effect = mutate
+                    code, output, _ = self.invoke(root, '--since', 'main')
+            baseline.assert_called_once()
+            self.assertEqual(code, 0)
+            self.assertIn('total selected=1 passed=1 failed=0', output)
+
+    def test_baseline_failures_count_unrun_entries_and_continue(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            entries = [dict(kind='go', step='1', name='guard', guards=['TestGuard'], packages=['a'])]
+            for name in ('a', 'b'):
+                manifest = root / '.dev/codex' / name / 'manifest.py'
+                manifest.parent.mkdir(parents=True)
+                manifest.write_text('ENTRIES = ' + repr(entries))
+            with patch.object(mutchecks, 'affected_entries', return_value=entries), patch.object(mutchecks, 'baseline', return_value=False) as baseline, patch.object(mutchecks, 'run_go') as mutate:
+                code, output, _ = self.invoke(root, '--since', 'main')
+            self.assertEqual(baseline.call_count, 2)
+            mutate.assert_not_called()
+            self.assertEqual(code, 1)
+            self.assertIn('total selected=2 passed=0 failed=2', output)
+
+    def test_locate_and_broken_manifest_continue_and_report_totals(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for name, source in [('a', 'ENTRIES = missing'), ('b', "ENTRIES = [{'step':'1', 'name':'guard'}]")]:
+                manifest = root / '.dev/codex' / name / 'manifest.py'
+                manifest.parent.mkdir(parents=True)
+                manifest.write_text(source)
+            with patch.object(mutchecks, 'locate') as locate:
+                code, output, error = self.invoke(root, '--locate')
+            locate.assert_called_once_with(dict(step='1', name='guard'))
+            self.assertEqual(code, 1)
+            self.assertIn('total selected=1 passed=1 failed=1', output)
+            self.assertIn('only literal', error)
+
+
 class PartitionTests(unittest.TestCase):
     def test_covers_each_entry_and_keeps_e2e_serial(self):
         entries = [dict(kind='go', packages=[p], name=str(i))
