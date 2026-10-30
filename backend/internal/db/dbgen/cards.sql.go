@@ -132,8 +132,8 @@ func (q *Queries) AddCardAdjustment(ctx context.Context, arg AddCardAdjustmentPa
 }
 
 const addCardCountEntry = `-- name: AddCardCountEntry :exec
-INSERT INTO card_count_ledger (tenant_id,store_id,card_id,item_id,kind,paid_before,paid_delta,paid_after,gift_before,gift_delta,gift_after,adjustment_id,business_date,actor_id,reverses_id,order_void_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+INSERT INTO card_count_ledger (tenant_id,store_id,card_id,item_id,kind,paid_before,paid_delta,paid_after,gift_before,gift_delta,gift_after,adjustment_id,business_date,actor_id,reverses_id,order_void_id,refund_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
 `
 
 type AddCardCountEntryParams struct {
@@ -153,6 +153,7 @@ type AddCardCountEntryParams struct {
 	ActorID      uuid.UUID
 	ReversesID   *uuid.UUID
 	OrderVoidID  *uuid.UUID
+	RefundID     *uuid.UUID
 }
 
 func (q *Queries) AddCardCountEntry(ctx context.Context, arg AddCardCountEntryParams) error {
@@ -173,6 +174,7 @@ func (q *Queries) AddCardCountEntry(ctx context.Context, arg AddCardCountEntryPa
 		arg.ActorID,
 		arg.ReversesID,
 		arg.OrderVoidID,
+		arg.RefundID,
 	)
 	return err
 }
@@ -205,8 +207,8 @@ func (q *Queries) AddCardItem(ctx context.Context, arg AddCardItemParams) error 
 }
 
 const addCardLedger = `-- name: AddCardLedger :one
-INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id,reverses_id,order_void_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id, tenant_id, store_id, card_id, kind, principal_before, principal_delta, principal_after, bonus_before, bonus_delta, bonus_after, business_date, actor_id, at, reverses_id, order_void_id
+INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id,reverses_id,order_void_id,refund_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id, tenant_id, store_id, card_id, kind, principal_before, principal_delta, principal_after, bonus_before, bonus_delta, bonus_after, business_date, actor_id, at, reverses_id, order_void_id, refund_id
 `
 
 type AddCardLedgerParams struct {
@@ -224,6 +226,7 @@ type AddCardLedgerParams struct {
 	ActorID         uuid.UUID
 	ReversesID      *uuid.UUID
 	OrderVoidID     *uuid.UUID
+	RefundID        *uuid.UUID
 }
 
 func (q *Queries) AddCardLedger(ctx context.Context, arg AddCardLedgerParams) (CardLedger, error) {
@@ -242,6 +245,7 @@ func (q *Queries) AddCardLedger(ctx context.Context, arg AddCardLedgerParams) (C
 		arg.ActorID,
 		arg.ReversesID,
 		arg.OrderVoidID,
+		arg.RefundID,
 	)
 	var i CardLedger
 	err := row.Scan(
@@ -261,6 +265,7 @@ func (q *Queries) AddCardLedger(ctx context.Context, arg AddCardLedgerParams) (C
 		&i.At,
 		&i.ReversesID,
 		&i.OrderVoidID,
+		&i.RefundID,
 	)
 	return i, err
 }
@@ -416,7 +421,7 @@ func (q *Queries) AddCardUpgrade(ctx context.Context, arg AddCardUpgradeParams) 
 }
 
 const adjustmentCounts = `-- name: AdjustmentCounts :many
-SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.item_id, l.kind, l.paid_before, l.paid_delta, l.paid_after, l.gift_before, l.gift_delta, l.gift_after, l.adjustment_id, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id, i.name AS item_name FROM card_count_ledger l JOIN items i ON i.id=l.item_id
+SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.item_id, l.kind, l.paid_before, l.paid_delta, l.paid_after, l.gift_before, l.gift_delta, l.gift_after, l.adjustment_id, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id, l.refund_id, i.name AS item_name FROM card_count_ledger l JOIN items i ON i.id=l.item_id
 WHERE l.adjustment_id=ANY($1::uuid[]) ORDER BY l.adjustment_id,l.item_id
 `
 
@@ -453,6 +458,7 @@ func (q *Queries) AdjustmentCounts(ctx context.Context, adjustmentIds []uuid.UUI
 			&i.CardCountLedger.At,
 			&i.CardCountLedger.ReversesID,
 			&i.CardCountLedger.OrderVoidID,
+			&i.CardCountLedger.RefundID,
 			&i.ItemName,
 		); err != nil {
 			return nil, err
@@ -518,7 +524,7 @@ func (q *Queries) CardTypeHasUpgradeRules(ctx context.Context, fromTypeID uuid.U
 }
 
 const cardView = `-- name: CardView :one
-SELECT c.id, c.tenant_id, c.store_id, c.customer_id, c.card_type_id, c.opened_at, c.expires_on, c.family_group_id, c.created_by, t.name AS card_type_name, t.kind, l.principal_after, l.bonus_after
+SELECT c.id, c.tenant_id, c.store_id, c.customer_id, c.card_type_id, c.opened_at, c.expires_on, c.family_group_id, c.created_by, c.status, t.name AS card_type_name, t.kind, l.principal_after, l.bonus_after
 FROM cards c JOIN card_types t ON t.id=c.card_type_id
 JOIN LATERAL (SELECT principal_after,bonus_after FROM card_ledger WHERE card_id=c.id ORDER BY at DESC,id DESC LIMIT 1) l ON true
 WHERE c.store_id=$1 AND c.id=$2
@@ -550,6 +556,7 @@ func (q *Queries) CardView(ctx context.Context, arg CardViewParams) (CardViewRow
 		&i.Card.ExpiresOn,
 		&i.Card.FamilyGroupID,
 		&i.Card.CreatedBy,
+		&i.Card.Status,
 		&i.CardTypeName,
 		&i.Kind,
 		&i.PrincipalAfter,
@@ -559,7 +566,7 @@ func (q *Queries) CardView(ctx context.Context, arg CardViewParams) (CardViewRow
 }
 
 const cardViews = `-- name: CardViews :many
-SELECT c.id, c.tenant_id, c.store_id, c.customer_id, c.card_type_id, c.opened_at, c.expires_on, c.family_group_id, c.created_by, t.name AS card_type_name, t.kind, l.principal_after, l.bonus_after
+SELECT c.id, c.tenant_id, c.store_id, c.customer_id, c.card_type_id, c.opened_at, c.expires_on, c.family_group_id, c.created_by, c.status, t.name AS card_type_name, t.kind, l.principal_after, l.bonus_after
 FROM cards c JOIN card_types t ON t.id=c.card_type_id
 JOIN LATERAL (SELECT principal_after,bonus_after FROM card_ledger WHERE card_id=c.id ORDER BY at DESC,id DESC LIMIT 1) l ON true
 WHERE c.store_id=$1 AND c.id=ANY($2::uuid[])
@@ -597,6 +604,7 @@ func (q *Queries) CardViews(ctx context.Context, arg CardViewsParams) ([]CardVie
 			&i.Card.ExpiresOn,
 			&i.Card.FamilyGroupID,
 			&i.Card.CreatedBy,
+			&i.Card.Status,
 			&i.CardTypeName,
 			&i.Kind,
 			&i.PrincipalAfter,
@@ -654,7 +662,7 @@ func (q *Queries) ConsumeCardCount(ctx context.Context, arg ConsumeCardCountPara
 
 const createCard = `-- name: CreateCard :one
 INSERT INTO cards (tenant_id,store_id,customer_id,card_type_id,opened_at,expires_on,created_by)
-VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, tenant_id, store_id, customer_id, card_type_id, opened_at, expires_on, family_group_id, created_by
+VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, tenant_id, store_id, customer_id, card_type_id, opened_at, expires_on, family_group_id, created_by, status
 `
 
 type CreateCardParams struct {
@@ -688,6 +696,7 @@ func (q *Queries) CreateCard(ctx context.Context, arg CreateCardParams) (Card, e
 		&i.ExpiresOn,
 		&i.FamilyGroupID,
 		&i.CreatedBy,
+		&i.Status,
 	)
 	return i, err
 }
@@ -790,7 +799,7 @@ func (q *Queries) DeleteCardTypeItem(ctx context.Context, arg DeleteCardTypeItem
 }
 
 const getCard = `-- name: GetCard :one
-SELECT id, tenant_id, store_id, customer_id, card_type_id, opened_at, expires_on, family_group_id, created_by FROM cards WHERE store_id=$1 AND id=$2
+SELECT id, tenant_id, store_id, customer_id, card_type_id, opened_at, expires_on, family_group_id, created_by, status FROM cards WHERE store_id=$1 AND id=$2
 `
 
 type GetCardParams struct {
@@ -811,6 +820,7 @@ func (q *Queries) GetCard(ctx context.Context, arg GetCardParams) (Card, error) 
 		&i.ExpiresOn,
 		&i.FamilyGroupID,
 		&i.CreatedBy,
+		&i.Status,
 	)
 	return i, err
 }
@@ -989,7 +999,7 @@ func (q *Queries) ListCardAdjustments(ctx context.Context, arg ListCardAdjustmen
 }
 
 const listCardCounts = `-- name: ListCardCounts :many
-SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.item_id, l.kind, l.paid_before, l.paid_delta, l.paid_after, l.gift_before, l.gift_delta, l.gift_after, l.adjustment_id, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id, i.name AS item_name, s.name AS actor_name, COALESCE(a.reason,'')::text AS reason, p.order_id
+SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.item_id, l.kind, l.paid_before, l.paid_delta, l.paid_after, l.gift_before, l.gift_delta, l.gift_after, l.adjustment_id, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id, l.refund_id, i.name AS item_name, s.name AS actor_name, COALESCE(a.reason,'')::text AS reason, p.order_id
 FROM card_count_ledger l JOIN items i ON i.id=l.item_id JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.id=l.adjustment_id
 LEFT JOIN order_payments p ON p.card_count_ledger_id=l.id
 WHERE l.card_id=$1 AND ($2::uuid IS NULL OR l.item_id=$2)
@@ -1045,6 +1055,7 @@ func (q *Queries) ListCardCounts(ctx context.Context, arg ListCardCountsParams) 
 			&i.CardCountLedger.At,
 			&i.CardCountLedger.ReversesID,
 			&i.CardCountLedger.OrderVoidID,
+			&i.CardCountLedger.RefundID,
 			&i.ItemName,
 			&i.ActorName,
 			&i.Reason,
@@ -1061,11 +1072,12 @@ func (q *Queries) ListCardCounts(ctx context.Context, arg ListCardCountsParams) 
 }
 
 const listCardLedger = `-- name: ListCardLedger :many
-SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.kind, l.principal_before, l.principal_delta, l.principal_after, l.bonus_before, l.bonus_delta, l.bonus_after, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id, s.name AS actor_name, COALESCE(a.reason,tr.reason,'')::text AS reason,
- CASE WHEN tr.from_ledger_id=l.id THEN tr.to_card_id ELSE tr.from_card_id END::uuid AS other_card_id, p.order_id
+SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.kind, l.principal_before, l.principal_delta, l.principal_after, l.bonus_before, l.bonus_delta, l.bonus_after, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id, l.refund_id, s.name AS actor_name, COALESCE(a.reason,tr.reason,'')::text AS reason,
+ CASE WHEN tr.from_ledger_id=l.id THEN tr.to_card_id ELSE tr.from_card_id END::uuid AS other_card_id, p.order_id, rf.method AS refund_method, rf.amount::numeric AS refund_amount
 FROM card_ledger l JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.ledger_id=l.id
 LEFT JOIN card_transfers tr ON tr.from_ledger_id=l.id OR tr.to_ledger_id=l.id
 LEFT JOIN order_payments p ON p.card_ledger_id=l.id
+LEFT JOIN card_refunds rf ON rf.id=l.refund_id
 WHERE l.card_id=$1 AND ($2::uuid IS NULL OR (l.at,l.id) < (SELECT at,id FROM card_ledger WHERE id=$2 AND card_id=$1))
 ORDER BY l.at DESC,l.id DESC LIMIT $3
 `
@@ -1077,11 +1089,13 @@ type ListCardLedgerParams struct {
 }
 
 type ListCardLedgerRow struct {
-	CardLedger  CardLedger
-	ActorName   string
-	Reason      string
-	OtherCardID uuid.UUID
-	OrderID     *uuid.UUID
+	CardLedger   CardLedger
+	ActorName    string
+	Reason       string
+	OtherCardID  uuid.UUID
+	OrderID      *uuid.UUID
+	RefundMethod *string
+	RefundAmount *money.Amount
 }
 
 func (q *Queries) ListCardLedger(ctx context.Context, arg ListCardLedgerParams) ([]ListCardLedgerRow, error) {
@@ -1110,10 +1124,13 @@ func (q *Queries) ListCardLedger(ctx context.Context, arg ListCardLedgerParams) 
 			&i.CardLedger.At,
 			&i.CardLedger.ReversesID,
 			&i.CardLedger.OrderVoidID,
+			&i.CardLedger.RefundID,
 			&i.ActorName,
 			&i.Reason,
 			&i.OtherCardID,
 			&i.OrderID,
+			&i.RefundMethod,
+			&i.RefundAmount,
 		); err != nil {
 			return nil, err
 		}
@@ -1398,7 +1415,7 @@ func (q *Queries) ListCardUpgrades(ctx context.Context, arg ListCardUpgradesPara
 }
 
 const listCustomerCards = `-- name: ListCustomerCards :many
-SELECT c.id, c.tenant_id, c.store_id, c.customer_id, c.card_type_id, c.opened_at, c.expires_on, c.family_group_id, c.created_by, t.name AS card_type_name, t.kind, l.principal_after, l.bonus_after
+SELECT c.id, c.tenant_id, c.store_id, c.customer_id, c.card_type_id, c.opened_at, c.expires_on, c.family_group_id, c.created_by, c.status, t.name AS card_type_name, t.kind, l.principal_after, l.bonus_after
 FROM cards c JOIN card_types t ON t.id=c.card_type_id
 JOIN LATERAL (SELECT principal_after,bonus_after FROM card_ledger WHERE card_id=c.id ORDER BY at DESC,id DESC LIMIT 1) l ON true
 WHERE c.store_id=$1 AND c.customer_id=$2 ORDER BY c.opened_at DESC,c.id
@@ -1436,6 +1453,7 @@ func (q *Queries) ListCustomerCards(ctx context.Context, arg ListCustomerCardsPa
 			&i.Card.ExpiresOn,
 			&i.Card.FamilyGroupID,
 			&i.Card.CreatedBy,
+			&i.Card.Status,
 			&i.CardTypeName,
 			&i.Kind,
 			&i.PrincipalAfter,
@@ -1452,7 +1470,7 @@ func (q *Queries) ListCustomerCards(ctx context.Context, arg ListCustomerCardsPa
 }
 
 const lockCard = `-- name: LockCard :one
-SELECT id, tenant_id, store_id, customer_id, card_type_id, opened_at, expires_on, family_group_id, created_by FROM cards WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
+SELECT id, tenant_id, store_id, customer_id, card_type_id, opened_at, expires_on, family_group_id, created_by, status FROM cards WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
 `
 
 type LockCardParams struct {
@@ -1473,6 +1491,7 @@ func (q *Queries) LockCard(ctx context.Context, arg LockCardParams) (Card, error
 		&i.ExpiresOn,
 		&i.FamilyGroupID,
 		&i.CreatedBy,
+		&i.Status,
 	)
 	return i, err
 }
@@ -1760,7 +1779,7 @@ func (q *Queries) UpdateUpgradedCard(ctx context.Context, arg UpdateUpgradedCard
 }
 
 const voidBalanceConsumes = `-- name: VoidBalanceConsumes :many
-SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.kind, l.principal_before, l.principal_delta, l.principal_after, l.bonus_before, l.bonus_delta, l.bonus_after, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id FROM card_ledger l JOIN order_payments p ON p.card_ledger_id=l.id WHERE p.store_id=$1 AND p.order_id=$2 ORDER BY p.id
+SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.kind, l.principal_before, l.principal_delta, l.principal_after, l.bonus_before, l.bonus_delta, l.bonus_after, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id, l.refund_id FROM card_ledger l JOIN order_payments p ON p.card_ledger_id=l.id WHERE p.store_id=$1 AND p.order_id=$2 ORDER BY p.id
 `
 
 type VoidBalanceConsumesParams struct {
@@ -1794,6 +1813,7 @@ func (q *Queries) VoidBalanceConsumes(ctx context.Context, arg VoidBalanceConsum
 			&i.At,
 			&i.ReversesID,
 			&i.OrderVoidID,
+			&i.RefundID,
 		); err != nil {
 			return nil, err
 		}
@@ -1806,7 +1826,7 @@ func (q *Queries) VoidBalanceConsumes(ctx context.Context, arg VoidBalanceConsum
 }
 
 const voidCountConsumes = `-- name: VoidCountConsumes :many
-SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.item_id, l.kind, l.paid_before, l.paid_delta, l.paid_after, l.gift_before, l.gift_delta, l.gift_after, l.adjustment_id, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id FROM card_count_ledger l JOIN order_payments p ON p.card_count_ledger_id=l.id WHERE p.store_id=$1 AND p.order_id=$2 ORDER BY p.id
+SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.item_id, l.kind, l.paid_before, l.paid_delta, l.paid_after, l.gift_before, l.gift_delta, l.gift_after, l.adjustment_id, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id, l.refund_id FROM card_count_ledger l JOIN order_payments p ON p.card_count_ledger_id=l.id WHERE p.store_id=$1 AND p.order_id=$2 ORDER BY p.id
 `
 
 type VoidCountConsumesParams struct {
@@ -1842,6 +1862,7 @@ func (q *Queries) VoidCountConsumes(ctx context.Context, arg VoidCountConsumesPa
 			&i.At,
 			&i.ReversesID,
 			&i.OrderVoidID,
+			&i.RefundID,
 		); err != nil {
 			return nil, err
 		}

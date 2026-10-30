@@ -116,3 +116,27 @@ sql:
               import: github.com/wzhlinhai/salon/backend/internal/money
               type: Amount
               pointer: true
+          - column: card_refunds.principal
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: card_refunds.bonus
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: card_refunds.counts_amount
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: card_refunds.bonus_deducted
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: card_refunds.fee
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: card_refunds.amount
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount

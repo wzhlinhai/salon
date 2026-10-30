@@ -22,6 +22,9 @@ func LockRestores(ctx context.Context, env ops.Env, ids []uuid.UUID) (map[uuid.U
 		if err != nil {
 			return nil, rowError(err)
 		}
+		if row.Status == "refunded" {
+			return nil, ops.Rule("卡已退，不能撤单退回")
+		}
 		before, err := cardView(ctx, env, id)
 		if err != nil {
 			return nil, err
@@ -33,7 +36,7 @@ func LockRestores(ctx context.Context, env ops.Env, ids []uuid.UUID) (map[uuid.U
 
 // RestoreBalance 按消费流水原扣款拆分退回本金和赠送金，接续当前余额。
 func (c *PaymentCard) RestoreBalance(ctx context.Context, env ops.Env, consume dbgen.CardLedger, voidID uuid.UUID, day time.Time) error {
-	ledger, err := writeBalance(ctx, env, c.row.ID, "void", c.principal, c.bonus, consume.PrincipalBefore.Sub(consume.PrincipalAfter), consume.BonusBefore.Sub(consume.BonusAfter), day, &consume.ID, &voidID)
+	ledger, err := writeBalance(ctx, env, c.row.ID, "void", c.principal, c.bonus, consume.PrincipalBefore.Sub(consume.PrincipalAfter), consume.BonusBefore.Sub(consume.BonusAfter), day, &consume.ID, &voidID, nil)
 	if err != nil {
 		return err
 	}

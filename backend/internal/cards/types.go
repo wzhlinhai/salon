@@ -51,6 +51,7 @@ type CardTypeList struct {
 
 // Card 是顾客持有的卡，余额来自最后一条卡流水。
 type Card struct {
+	Status       string            `json:"status" enum:"active,refunded"`
 	Points       int32             `json:"points"`
 	Kind         string            `json:"kind"`
 	Items        []RemainingCounts `json:"items"`
@@ -109,6 +110,9 @@ type CardLedgerActor struct {
 
 // CardLedgerEntry 是本金和赠送金的一次变动。
 type CardLedgerEntry struct {
+	RefundID        *uuid.UUID      `json:"refund_id" nullable:"true"`
+	RefundMethod    *string         `json:"refund_method" nullable:"true"`
+	RefundAmount    *money.Amount   `json:"refund_amount" nullable:"true"`
 	ReversesID      *uuid.UUID      `json:"reverses_id" nullable:"true"`
 	OrderVoidID     *uuid.UUID      `json:"order_void_id" nullable:"true"`
 	OrderID         *uuid.UUID      `json:"order_id" nullable:"true"`

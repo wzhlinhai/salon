@@ -92,7 +92,7 @@ func adjustCard(ctx context.Context, env ops.Env, in *AdjustCardInput) (*Card, e
 		}
 		var ledgerID *uuid.UUID
 		if balanceChanged {
-			row, err := writeBalance(ctx, env, card.ID, "adjust", before.Principal, before.Bonus, principal.Sub(before.Principal), bonus.Sub(before.Bonus), day, nil, nil)
+			row, err := writeBalance(ctx, env, card.ID, "adjust", before.Principal, before.Bonus, principal.Sub(before.Principal), bonus.Sub(before.Bonus), day, nil, nil, nil)
 			if err != nil {
 				return err
 			}
@@ -124,7 +124,7 @@ func adjustCard(ctx context.Context, env ops.Env, in *AdjustCardInput) (*Card, e
 			}
 		}
 		return nil
-	})
+	}, time.Now())
 }
 
 func listCardAdjustments(ctx context.Context, env ops.Env, in *ListCardAdjustmentsInput) (*CardAdjustmentList, error) {

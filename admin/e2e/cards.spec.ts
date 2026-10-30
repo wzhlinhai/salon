@@ -674,3 +674,31 @@ test('卡类型折扣率创建、清空及次卡隐藏', async ({ page }) => {
   await page.getByRole('option', { name: '套餐', exact: true }).click()
   await expect(dialog.getByLabel('折扣率', { exact: true })).toBeVisible()
 })
+
+test('顾客详情退储值卡和次卡，金额由规则计算并隐藏已退卡操作', async ({ page }) => {
+  const { token, suffix, customer, staff } = await seed()
+  const item = await api(token, 'create_item', { name: `退卡剪发${suffix}`, price: '30.00', discountable: true, labor_fee_amount: null, labor_fee_percent: null, positions: [], level_prices: [] })
+  const cards = []
+  for (const kind of ['stored_value', 'count']) {
+    const ct = await api(token, 'create_card_type', { name: `退卡${kind}${suffix}`, kind, validity_kind: 'none', items: kind === 'count' ? [{ item_id: item.id, paid_count: 3, gift_count: 2, unit_price: '12.34' }] : [] })
+    cards.push(await api(token, 'open_card', { customer_id: customer.id, card_type_id: ct.id, principal: kind === 'count' ? '0' : '100.05', bonus: kind === 'count' ? '0' : '20', sales_staff_ids: [staff.id] }))
+  }
+  await login(page, owner.account, owner.password)
+  await page.goto(`/customers?id=${customer.id}`)
+  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  for (const [index, card] of cards.entries()) {
+    const shown = detail.locator(`[data-card="${card.id}"]`)
+    await shown.getByRole('button', { name: '退卡', exact: true }).click()
+    const modal = page.getByRole('dialog', { name: '退卡', exact: true })
+    await expect(modal.getByTestId('refund-amount')).toHaveText(`退款金额 ${index === 0 ? '100.05' : '37.02'}`)
+    await expect(modal.getByRole('button', { name: '确认退卡', exact: true })).toBeDisabled()
+    await modal.getByRole('combobox', { name: /^退款方式/ }).click()
+    await page.getByRole('option', { name: '微信', exact: true }).click()
+    await modal.getByRole('button', { name: '确认退卡', exact: true }).click()
+    await expect(modal).not.toBeVisible()
+    await expect(shown).toContainText('已退')
+    for (const name of ['充值', '调整', '升级', '转余额', '退卡']) await expect(shown.getByRole('button', { name, exact: true })).toHaveCount(0)
+    await shown.getByRole('button', { name: '流水', exact: true }).click()
+    await expect(shown.getByTestId('card-ledger-entry').first()).toContainText('退卡')
+  }
+})

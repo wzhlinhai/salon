@@ -956,6 +956,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/preview_card_refund": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 试算整卡退款 */
+        post: operations["preview_card_refund"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/preview_checkout": {
         parameters: {
             query?: never;
@@ -1018,6 +1035,23 @@ export interface paths {
         put?: never;
         /** 充值并追加卡流水 */
         post: operations["recharge_card"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/refund_card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 登记整卡退款 */
+        post: operations["refund_card"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1467,6 +1501,8 @@ export interface components {
             /** Format: int32 */
             points: number;
             principal: string;
+            /** @enum {string} */
+            status: "active" | "refunded";
         };
         CardAdjustment: {
             actor: components["schemas"]["CardLedgerActor"];
@@ -1561,6 +1597,9 @@ export interface components {
             principal_before: string;
             principal_delta: string;
             reason?: string;
+            refund_amount: string | null;
+            refund_id: string | null;
+            refund_method: string | null;
             reverses_id: string | null;
             sales_staff: components["schemas"]["SalesStaff"][];
         };
@@ -1569,6 +1608,46 @@ export interface components {
         };
         CardList: {
             items: components["schemas"]["Card"][];
+        };
+        CardRefund: {
+            amount: string;
+            /** Format: date-time */
+            at: string;
+            bonus: string;
+            bonus_deducted: string;
+            bonus_policy: string;
+            business_date: string;
+            card: components["schemas"]["Card"];
+            card_id: string;
+            counts_amount: string;
+            fee: string;
+            /** Format: int64 */
+            fee_percent: number;
+            id: string;
+            items: components["schemas"]["CardRefundItem"][];
+            method: string;
+            principal: string;
+            refunded_by: string;
+        };
+        CardRefundItem: {
+            amount: string;
+            item: components["schemas"]["CardCountItem"];
+            /** Format: int32 */
+            paid_remaining: number;
+            unit_price: string;
+        };
+        CardRefundQuote: {
+            amount: string;
+            bonus: string;
+            bonus_deducted: string;
+            bonus_policy: string;
+            card_id: string;
+            counts_amount: string;
+            fee: string;
+            /** Format: int64 */
+            fee_percent: number;
+            items: components["schemas"]["CardRefundItem"][];
+            principal: string;
         };
         CardTransferResult: {
             from: components["schemas"]["Card"];
@@ -2204,6 +2283,9 @@ export interface components {
         PositionList: {
             items: components["schemas"]["Position"][];
         };
+        PreviewCardRefundInput: {
+            card_id: string;
+        };
         PreviewCheckout: {
             /** Format: date */
             business_date: string;
@@ -2258,6 +2340,8 @@ export interface components {
             /** Format: int32 */
             points: number;
             principal: string;
+            /** @enum {string} */
+            status: "active" | "refunded";
             upgraded_to?: components["schemas"]["CardUpgradeType"];
         };
         RedPacket: {
@@ -2293,6 +2377,12 @@ export interface components {
         Ref: {
             id: string;
             name: string;
+        };
+        RefundCardInput: {
+            amount: string;
+            card_id: string;
+            /** @enum {string} */
+            method: "cash" | "unionpay" | "wechat" | "alipay";
         };
         RegisterHistoricalDebtInput: {
             amount: string;
@@ -4484,6 +4574,39 @@ export interface operations {
             };
         };
     };
+    preview_card_refund: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewCardRefundInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardRefundQuote"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     preview_checkout: {
         parameters: {
             query?: never;
@@ -4603,6 +4726,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RechargeResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    refund_card: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefundCardInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardRefund"];
                 };
             };
             /** @description Error */
