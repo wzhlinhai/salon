@@ -65,7 +65,7 @@ func registerHistoricalDebtAt(ctx context.Context, env ops.Env, in *RegisterHist
 	if err != nil {
 		return nil, err
 	}
-	if err := audit.Record(ctx, env, "register_historical_debt", audit.CustomerTarget(row.CustomerID), nil, out); err != nil {
+	if err := audit.Record(ctx, env, "register_historical_debt", audit.DebtTarget(row.ID, row.CustomerID), nil, out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -210,7 +210,7 @@ func repayDebtAt(ctx context.Context, env ops.Env, in *RepayDebtInput, now time.
 	if err != nil {
 		return nil, err
 	}
-	if err := audit.Record(ctx, env, "repay_debt", audit.CustomerTarget(row.CustomerID), before, out); err != nil {
+	if err := audit.Record(ctx, env, "repay_debt", audit.DebtTarget(row.ID, row.CustomerID), before, out); err != nil {
 		return nil, err
 	}
 	return out, nil

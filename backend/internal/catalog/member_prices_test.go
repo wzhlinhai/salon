@@ -42,6 +42,7 @@ func TestMemberQuoteCombinations(t *testing.T) {
 		} {
 			t.Run(rule+tc.name, func(t *testing.T) {
 				in := input(rule + tc.name)
+				in["discountable"] = true
 				if tc.level != "" {
 					in["level_prices"] = []any{map[string]any{"level_id": level, "price": tc.level}}
 				}
@@ -91,6 +92,7 @@ func TestMemberQuoteEffectiveSetting(t *testing.T) {
 	s := open(t)
 	ct := s.cardType("会员")
 	in := input("会员项目")
+	in["discountable"] = true
 	in["price"] = "50.00"
 	in["member_prices"] = []any{map[string]any{"card_type_id": ct, "price": "80.00"}}
 	item := s.call("create_item", in, 200)
@@ -292,6 +294,7 @@ func TestQuoteUsesSnapshotRules(t *testing.T) {
 	s := open(t)
 	ct := uuid.MustParse(s.cardType("快照会员"))
 	in := input("快照取价")
+	in["discountable"] = true
 	in["price"] = "50.00"
 	in["member_prices"] = []any{map[string]any{"card_type_id": ct, "price": "80.00"}}
 	item := s.call("create_item", in, 200)
@@ -345,6 +348,7 @@ func TestQuoteNilStaff(t *testing.T) {
 	s.call("update_staff", map[string]any{"staff_id": s.Res.OwnerID, "name": "王老板", "number": "001", "level_id": level, "position_id": nil}, 200)
 	ct := uuid.MustParse(s.cardType("无员工会员"))
 	in := input("无员工报价")
+	in["discountable"] = true
 	in["price"] = "100.00"
 	in["level_prices"] = []any{map[string]any{"level_id": level, "price": "150.00"}}
 	in["member_prices"] = []any{map[string]any{"card_type_id": ct, "price": "80.00"}}
@@ -370,5 +374,30 @@ func TestQuoteNilStaff(t *testing.T) {
 		return nil
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestNonDiscountableMemberQuote(t *testing.T) {
+	s := open(t)
+	ct := s.cardType("不可打折会员")
+	level := s.level(true)
+	employee, _ := s.Hire("级别员工", "099", "nondiscount")
+	s.call("update_staff", map[string]any{"staff_id": employee, "name": "级别员工", "number": "099", "level_id": level}, 200)
+	for _, withLevel := range []bool{false, true} {
+		in := input(map[bool]string{false: "标准不可折", true: "级别不可折"}[withLevel])
+		in["discountable"] = false
+		in["member_prices"] = []any{map[string]any{"card_type_id": ct, "price": "1.00"}}
+		want, source := "1234.56", "standard"
+		if withLevel {
+			in["level_prices"] = []any{map[string]any{"level_id": level, "price": "50.00"}}
+			want, source = "50.00", "level"
+		}
+		item := s.call("create_item", in, 200)
+		for _, ch := range s.Channels() {
+			r := ch.Call(t, s.MustCaller(s.Owner), "quote_item_price", map[string]any{"item_id": item["id"], "staff_id": employee, "card_type_id": ct})
+			if r.Status != 200 || r.Body["price"] != want || r.Body["source"] != source {
+				t.Fatal(ch.Name, r)
+			}
+		}
 	}
 }

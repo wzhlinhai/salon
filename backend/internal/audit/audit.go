@@ -259,3 +259,13 @@ func CardUpgradeRuleTarget(id uuid.UUID) Target { return Target{kind: "card_upgr
 func OrderTarget(id, customerID uuid.UUID) Target {
 	return Target{kind: "order", id: id, customerID: &customerID}
 }
+
+// RedPacketTarget 创建关联顾客的红包日志目标。
+func RedPacketTarget(id, customerID uuid.UUID) Target {
+	return Target{kind: "red_packet", id: id, customerID: &customerID}
+}
+
+// DebtTarget 创建关联顾客的欠款日志目标。
+func DebtTarget(id, customerID uuid.UUID) Target {
+	return Target{kind: "debt", id: id, customerID: &customerID}
+}

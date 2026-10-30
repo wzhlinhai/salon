@@ -373,3 +373,32 @@ class WorkerTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SymlinkQueryTests(unittest.TestCase):
+    def test_shell_recognises_query_through_symlink(self):
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder)
+            root = base / 'repo'
+            scripts = root / 'backend/scripts'
+            scripts.mkdir(parents=True)
+            shutil.copy(Path(__file__).with_name('mutcheck.sh'), scripts / 'mutcheck.sh')
+            query = root / 'backend/internal/db/queries/example.sql'
+            query.parent.mkdir(parents=True)
+            query.write_text('SELECT 1;')
+            link = base / 'linked'
+            link.symlink_to(root, target_is_directory=True)
+            bin_dir = base / 'bin'
+            bin_dir.mkdir()
+            calls = base / 'calls'
+            go = bin_dir / 'go'
+            go.write_text("#!/bin/bash\necho \"$*\" >> \"$CALLS\"\nif [[ $* == *\"-run ^$\"* || $1 == tool ]]; then exit 0; fi\necho '--- FAIL: TestQuery (0.00s)'\nexit 1\n")
+            go.chmod(0o755)
+            result = subprocess.run(['bash', str(link / 'backend/scripts/mutcheck.sh'),
+                                     str(link / 'backend/internal/db/queries/example.sql'),
+                                     'SELECT 1;', 'SELECT 2;', './internal/db'],
+                                    env={**os.environ, 'PATH': str(bin_dir) + os.pathsep + os.environ['PATH'], 'CALLS': str(calls)},
+                                    text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(calls.read_text().splitlines().count('tool sqlc generate'), 2)
+            self.assertEqual(query.read_text(), 'SELECT 1;')

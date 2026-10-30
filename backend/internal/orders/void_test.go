@@ -260,10 +260,18 @@ func TestVoidRedPacketReuse(t *testing.T) {
 			t.Fatal(ch.Name, r)
 		}
 	}
-	audits := s.call("list_audit_log", map[string]any{"target_id": s.customer}, 200)["entries"].([]any)
+	audits := s.call("list_audit_log", map[string]any{"target_id": p["id"]}, 200)["entries"].([]any)
 	log := audits[0].(map[string]any)
-	if log["action"] != "void_order" || log["before"].(map[string]any)["status"] != "used" || log["after"].(map[string]any)["status"] != "available" {
+	if log["target_kind"] != "red_packet" || log["target_id"] != p["id"] || log["action"] != "void_order" || log["before"].(map[string]any)["status"] != "used" || log["after"].(map[string]any)["status"] != "available" {
 		t.Fatal(log)
+	}
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	var customer string
+	if err := tx.QueryRow(context.Background(), "SELECT customer_id::text FROM audit_log WHERE target_id=$1 AND action='void_order'", p["id"]).Scan(&customer); err != nil || customer != s.customer.String() {
+		t.Fatal(customer, err)
+	}
+	if err := tx.Rollback(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 	s.paid(s.customerOrder(line), packetPayment(p, "100"))
 }
@@ -422,14 +430,14 @@ func TestVoidOutputPermissionsAndAudit(t *testing.T) {
 				counts[log["target_kind"].(string)]++
 			}
 		}
-		if !reflect.DeepEqual(counts, map[string]int{"order": 1, "card": 1, "customer": 1}) {
+		if !reflect.DeepEqual(counts, map[string]int{"order": 1, "card": 1, "red_packet": 1}) {
 			t.Fatal(counts)
 		}
 		hidden := caller
 		hidden.Permissions = maps.Clone(caller.Permissions)
 		hidden.StaffID = s.employee
 		hidden.Permissions[perm.CustomerView] = ops.Grant{Scope: ops.ScopeSelf}
-		for _, target := range []any{o["id"], c["id"], s.customer} {
+		for _, target := range []any{o["id"], c["id"], p["id"], s.customer} {
 			r = ch.Call(t, hidden, "list_audit_log", map[string]any{"target_id": target})
 			if r.Status != 200 || len(r.Body["entries"].([]any)) != 0 {
 				t.Fatal(ch.Name, r)

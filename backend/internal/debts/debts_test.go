@@ -243,10 +243,19 @@ func TestDebtAudit(t *testing.T) {
 	s := open(t)
 	d := s.historical("10")
 	s.call("repay_debt", repay(d, "3"), 200)
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	var count int
+	if err := tx.QueryRow(context.Background(), "SELECT count(*) FROM audit_log WHERE target_kind=$1 AND target_id=$2 AND customer_id=$3", "debt", d["id"], s.customer).Scan(&count); err != nil || count != 2 {
+		t.Fatal(count, err)
+	}
+	if err := tx.Rollback(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
 	for _, ch := range s.Channels() {
 		c := s.MustCaller(s.Owner)
 		delete(c.Permissions, perm.CustomerFullPhone)
-		r := ch.Call(t, c, "list_audit_log", map[string]any{"target_id": s.customer})
+		r := ch.Call(t, c, "list_audit_log", map[string]any{"target_id": d["id"]})
 		if r.Status != 200 {
 			t.Fatal(r)
 		}
@@ -255,7 +264,7 @@ func TestDebtAudit(t *testing.T) {
 			e := raw.(map[string]any)
 			action := e["action"].(string)
 			found[action] = true
-			if e["target_kind"] != "customer" || e["target_id"] != s.customer.String() {
+			if e["target_kind"] != "debt" || e["target_id"] != d["id"] {
 				t.Fatal(e)
 			}
 			if action == "repay_debt" {
@@ -265,18 +274,12 @@ func TestDebtAudit(t *testing.T) {
 			if action == "register_historical_debt" && (e["before"] != nil || e["after"].(map[string]any)["id"] != d["id"]) {
 				t.Fatal(e)
 			}
-			if action == "create_customer" {
-				phone := e["after"].(map[string]any)["phone"]
-				if phone != "138****1234" {
-					t.Fatal(phone)
-				}
-			}
 		}
 		if !found["repay_debt"] || !found["register_historical_debt"] {
 			t.Fatal(found)
 		}
 		c.Permissions[perm.CustomerView] = ops.Grant{Scope: ops.ScopeSelf}
-		r = ch.Call(t, c, "list_audit_log", map[string]any{"target_id": s.customer})
+		r = ch.Call(t, c, "list_audit_log", map[string]any{"target_id": d["id"]})
 		if r.Status != 200 || len(r.Body["entries"].([]any)) != 0 {
 			t.Fatal(r)
 		}

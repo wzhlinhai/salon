@@ -113,3 +113,81 @@ func TestAuditTargetBackfill(t *testing.T) {
 		})
 	}
 }
+
+func TestAuditPacketDebtMigration(t *testing.T) {
+	ctx := context.Background()
+	pool := dbtest.NewEmptyPool(t)
+	sqlDB := stdlib.OpenDBFromPool(pool)
+	defer func() { _ = sqlDB.Close() }()
+	provider, err := goose.NewProvider(goose.DialectPostgres, sqlDB, os.DirFS("migrations"), goose.WithDisableGlobalRegistry(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 26); err != nil {
+		t.Fatal(err)
+	}
+	shop, err := staff.Bootstrap(ctx, pool, staff.BootstrapInput{TenantName: "历史租户", StoreName: "门店", OwnerName: "老板", OwnerNumber: "001", OwnerAccount: "boss", OwnerPassword: "owner-password"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	customer := uuid.New()
+	if _, err := pool.Exec(ctx, "INSERT INTO customers (id,tenant_id,store_id,created_by) VALUES ($1,$2,$3,$4)", customer, shop.TenantID, shop.StoreID, shop.OwnerID); err != nil {
+		t.Fatal(err)
+	}
+	actions := []string{"issue_red_packet", "revoke_red_packet", "register_historical_debt", "repay_debt", "void_order"}
+	objects := make(map[string]uuid.UUID)
+	for i, action := range actions {
+		object := uuid.New()
+		objects[action] = object
+		before, after := any(nil), any(`{"id":"`+object.String()+`"}`)
+		if i%2 == 1 {
+			before, after = after, nil
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO audit_log (tenant_id,store_id,actor_id,action,target_kind,target_id,customer_id,before,after) VALUES ($1,$2,$3,$4,'customer',$5,$5,$6,$7)`, shop.TenantID, shop.StoreID, shop.OwnerID, action, customer, before, after); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	check := func(down bool) {
+		t.Helper()
+		for _, action := range actions {
+			kind, target := "red_packet", objects[action]
+			if action == "register_historical_debt" || action == "repay_debt" {
+				kind = "debt"
+			}
+			if down {
+				kind, target = "customer", customer
+			}
+			var gotKind string
+			var gotTarget, gotCustomer uuid.UUID
+			if err := pool.QueryRow(ctx, "SELECT target_kind,target_id,customer_id FROM audit_log WHERE action=$1", action).Scan(&gotKind, &gotTarget, &gotCustomer); err != nil {
+				t.Fatal(err)
+			}
+			if gotKind != kind || gotTarget != target || gotCustomer != customer {
+				t.Fatal(action, gotKind, gotTarget, gotCustomer)
+			}
+		}
+	}
+	check(false)
+	for _, tc := range []struct{ kind, constraint string }{
+		{"unknown", "audit_log_target_kind_check"},
+		{"red_packet", "audit_log_customer_presence_check"},
+		{"debt", "audit_log_customer_presence_check"},
+	} {
+		_, err := pool.Exec(ctx, `INSERT INTO audit_log (tenant_id,store_id,actor_id,action,target_kind,target_id) VALUES ($1,$2,$3,'test',$4,$5)`, shop.TenantID, shop.StoreID, shop.OwnerID, tc.kind, uuid.New())
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "23514" || pgErr.ConstraintName != tc.constraint {
+			t.Fatal(tc.kind, err)
+		}
+	}
+	if _, err := provider.Down(ctx); err != nil {
+		t.Fatal(err)
+	}
+	check(true)
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	check(false)
+}

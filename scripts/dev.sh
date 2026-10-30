@@ -109,7 +109,7 @@ start_db() {
   if docker inspect "$DB_CONTAINER" >/dev/null 2>&1; then
     docker start "$DB_CONTAINER" >/dev/null
   else
-    docker run -d --name "$DB_CONTAINER" -e POSTGRES_PASSWORD=dev -p "$DB_PORT:5432" postgres:18-alpine >/dev/null
+    docker run -d --name "$DB_CONTAINER" -e POSTGRES_PASSWORD=dev -p "127.0.0.1:$DB_PORT:5432" postgres:18-alpine >/dev/null
   fi
   wait_for postgres docker exec "$DB_CONTAINER" pg_isready -U postgres
   # pg_isready 在初始化阶段的临时实例上也会成功；等到能执行查询为止。

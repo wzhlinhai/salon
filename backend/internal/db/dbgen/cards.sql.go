@@ -1176,7 +1176,6 @@ func (q *Queries) ListCardLedgerSales(ctx context.Context, ledgerIds []uuid.UUID
 const listCardPoints = `-- name: ListCardPoints :many
 SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.kind, l.before, l.delta, l.after, l.card_ledger_id, l.adjustment_id, l.business_date, l.actor_id, l.at,s.name AS actor_name,COALESCE(a.reason,'')::text AS reason
 FROM card_points_ledger l JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.id=l.adjustment_id
-LEFT JOIN order_payments p ON p.card_count_ledger_id=l.id
 WHERE l.card_id=$1 AND ($2::uuid IS NULL OR (l.at,l.id) < (SELECT at,id FROM card_points_ledger WHERE id=$2 AND card_id=$1))
 ORDER BY l.at DESC,l.id DESC LIMIT $3
 `

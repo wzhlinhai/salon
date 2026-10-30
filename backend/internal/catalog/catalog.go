@@ -459,7 +459,7 @@ func Quote(ctx context.Context, q *dbgen.Queries, storeID, itemID uuid.UUID, sta
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
 		}
-		if err == nil && (rules.MemberPriceRule() == "member_first" || member.Price.Cmp(out.Price) <= 0) {
+		if err == nil && item.Discountable && (rules.MemberPriceRule() == "member_first" || member.Price.Cmp(out.Price) <= 0) {
 			out.Price = member.Price
 			out.Source = "member"
 			out.CardTypeID = cardTypeID

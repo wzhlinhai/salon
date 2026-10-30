@@ -87,7 +87,7 @@ func issueRedPacketAt(ctx context.Context, env ops.Env, in *IssueRedPacketInput,
 	if err != nil {
 		return nil, err
 	}
-	if err := audit.Record(ctx, env, "issue_red_packet", audit.CustomerTarget(row.CustomerID), nil, out); err != nil {
+	if err := audit.Record(ctx, env, "issue_red_packet", audit.RedPacketTarget(row.ID, row.CustomerID), nil, out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -127,7 +127,7 @@ func revokeRedPacket(ctx context.Context, env ops.Env, in *RevokeRedPacketInput)
 	if err != nil {
 		return nil, err
 	}
-	if err := audit.Record(ctx, env, "revoke_red_packet", audit.CustomerTarget(row.CustomerID), before, out); err != nil {
+	if err := audit.Record(ctx, env, "revoke_red_packet", audit.RedPacketTarget(row.ID, row.CustomerID), before, out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -258,5 +258,5 @@ func Restore(ctx context.Context, env ops.Env, row dbgen.RedPacket, day time.Tim
 	if err != nil {
 		return err
 	}
-	return audit.Record(ctx, env, "void_order", audit.CustomerTarget(row.CustomerID), before, after)
+	return audit.Record(ctx, env, "void_order", audit.RedPacketTarget(row.ID, row.CustomerID), before, after)
 }

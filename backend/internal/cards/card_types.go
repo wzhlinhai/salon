@@ -78,6 +78,9 @@ func validateType(in *CreateCardTypeInput) (pgtype.Date, error) {
 		}
 		date = pgtype.Date{Time: d, Valid: true}
 	case "days_after_open":
+		if in.ValidityDays != nil && *in.ValidityDays > 36500 {
+			return date, ops.Rule("开卡后天数不能超过 36500 天")
+		}
 		if in.ValidityDate != nil || in.ValidityDays == nil || *in.ValidityDays <= 0 {
 			return date, ops.Rule("开卡后天数必须大于零，不能填写固定日期")
 		}

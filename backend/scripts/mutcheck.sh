@@ -14,7 +14,7 @@
 #         2 用法、匹配或构建错误；3 测试失败但没有 --- FAIL 行（超时、panic 等，需人工查看）。
 set -euo pipefail
 
-backend=$(cd "$(dirname "$0")/.." && pwd)
+backend=$(cd "$(dirname "$0")/.." && pwd -P)
 slot="$backend/../.dev/mutcheck-backup"
 discard_incomplete() {
   if [ -d "$slot" ] && [ ! -f "$slot/original" ]; then

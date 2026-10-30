@@ -15,13 +15,19 @@ const kinds = [
 const items = reactive<Record<string, LevelOrPosition[]>>({ level: [], position: [] })
 const draft = reactive<Record<string, string>>({ level: '', position: '' })
 
+const saving = reactive<Record<string, boolean>>({})
+const actionGuard = useRequestGuard()
 const loadGuard = useRequestGuard()
 
 async function load() {
   const request = loadGuard.next()
   for (const k of kinds) {
-    const { data } = await api.POST(k.list, { body: {} })
+    const { data, error } = await api.POST(k.list, { body: {} })
     if (!request()) return
+    if (!data) {
+      toast.add({ title: errorText(error), color: 'error' })
+      continue
+    }
     items[k.key] = data?.items ?? []
   }
 }
@@ -34,15 +40,31 @@ function report(error: unknown, ok: unknown) {
 }
 
 async function add(k: typeof kinds[number]) {
-  const name = draft[k.key] ?? ''
-  const { data, error } = await api.POST(k.create, { body: { name } })
-  if (data && draft[k.key] === name) draft[k.key] = ''
-  report(error, data)
+  if (saving[k.key]) return
+  const current = actionGuard.hold()
+  saving[k.key] = true
+  try {
+    const name = draft[k.key] ?? ''
+    const { data, error } = await api.POST(k.create, { body: { name } })
+    if (!current()) return
+    if (data && draft[k.key] === name) draft[k.key] = ''
+    report(error, data)
+  } finally {
+    if (current()) saving[k.key] = false
+  }
 }
 
 async function save(k: typeof kinds[number], o: LevelOrPosition) {
-  const { data, error } = await api.POST(k.update, { body: { id: o.id, name: o.name, active: o.active } })
-  report(error, data)
+  if (saving[o.id]) return
+  const current = actionGuard.hold()
+  saving[o.id] = true
+  try {
+    const { data, error } = await api.POST(k.update, { body: { id: o.id, name: o.name, active: o.active } })
+    if (!current()) return
+    report(error, data)
+  } finally {
+    if (current()) saving[o.id] = false
+  }
 }
 </script>
 
@@ -57,12 +79,12 @@ async function save(k: typeof kinds[number], o: LevelOrPosition) {
         </template>
         <div class="space-y-2">
           <div v-for="o in items[k.key]" :key="o.id" class="flex items-center gap-2">
-            <UInput v-model="o.name" class="flex-1" @change="save(k, o)" />
-            <USwitch v-model="o.active" :label="o.active ? '启用' : '停用'" @update:model-value="save(k, o)" />
+            <UInput v-model="o.name" :disabled="saving[o.id]" class="flex-1" @change="save(k, o)" />
+            <USwitch v-model="o.active" :loading="saving[o.id]" :label="o.active ? '启用' : '停用'" @update:model-value="save(k, o)" />
           </div>
           <form class="flex gap-2 pt-2" @submit.prevent="add(k)">
             <UInput v-model="draft[k.key]" :placeholder="`新${k.title}`" class="flex-1" />
-            <UButton type="submit" icon="i-lucide-plus">添加</UButton>
+            <UButton :loading="saving[k.key]" type="submit" icon="i-lucide-plus">添加</UButton>
           </form>
         </div>
       </UCard>

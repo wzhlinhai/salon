@@ -182,7 +182,6 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11);
 -- name: ListCardPoints :many
 SELECT sqlc.embed(l),s.name AS actor_name,COALESCE(a.reason,'')::text AS reason
 FROM card_points_ledger l JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.id=l.adjustment_id
-LEFT JOIN order_payments p ON p.card_count_ledger_id=l.id
 WHERE l.card_id=$1 AND (sqlc.narg(before_id)::uuid IS NULL OR (l.at,l.id) < (SELECT at,id FROM card_points_ledger WHERE id=sqlc.narg(before_id) AND card_id=$1))
 ORDER BY l.at DESC,l.id DESC LIMIT sqlc.arg(row_limit);
 
