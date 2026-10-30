@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
-"""按清单验证保护：mutchecks.py [manifest.py] [--since <git-ref>] [--locate] [names...]。
+"""按清单验证保护：mutchecks.py [manifest.py] [--since <git-ref>] [--locate] [--jobs N] [names...]。
 
+清单的条目必须原地改写，不允许执行代码。
+--jobs N（默认 1）将 go 项按清单顺序轮流分配到 .dev/mutcheck-worktrees/<n>/ 的
+临时文件副本；各包的守护测试基线在主工作树至多 N 个并发运行，通过后才创建副本并运行变异。
+e2e 在所有 go 项之后于主工作树串行运行。副本包含磁盘上的跟踪文件和未忽略的未跟踪文件，
+首次变异前逐字节核对所有保护文件；只读 git 命令列出文件，不写 .git。
+开始时清理残留副本，结束、失败、Ctrl-C 或 SIGTERM 时删除副本目录。
 清单是定义 ENTRIES 的 Python 文件：它是由字典组成的列表；可选的 SKIPPED
 用 (step, name, reason) 元组列出跳过的保护及原因。
 每项包含 kind（go 或 e2e）、step、name、file（相对仓库根目录）、original、
@@ -16,27 +22,198 @@ e2e 项另有 spec，即相对 admin/ 的测试文件，
 省略清单时必须带 --locate，按路径排序检查 .dev/codex/*/manifest.py 的全部清单，
 逐份输出选中、通过、失败数量；任一项定位失败就非零退出。
 无清单形式为 mutchecks.py --locate [--since <git-ref>]，不接受名称。
-正式运行先对选中 go 项的每个不同包执行一次 go test -count=1，全部通过后
+正式运行先按包合并选中 go 项的 guards，以 go test -count=1 -run '^(GuardA|GuardB|...)$'
+运行这些顶层守护测试（含子测试）；--jobs 1 串行，N > 1 时主工作树至多 N 个包并发，全部通过后
 才允许任何变异；基线失败时打印测试输出并退出，避免把已有故障算成保护生效。
 每次运行在清单旁新建日志目录，保存完整命令、测试输出和所有结果行 results.log。
 go 项要求 mutcheck.sh 退出 0 且命中所有 guards；e2e 项要求守护断言失败，
-还原后同一测试通过。两者共用 .dev/mutcheck-backup/；没有 original 的残留槽
-可以安全清理。中断后用 mutcheck.sh --restore 恢复已发布的备份。
+还原后同一测试通过。每个副本使用自身的 .dev/mutcheck-backup/，主工作树的 go/e2e
+仍共用主槽；没有 original 的残留槽可以安全清理。中断后用 mutcheck.sh --restore 恢复已发布的备份。
 """
 import argparse
+import ast
+import io
 import json
 import os
 from pathlib import Path
 import re
-import runpy
+import shutil
+import signal
 import shlex
 import subprocess
 import sys
 import tempfile
+import time
 
 ROOT = Path(__file__).resolve().parents[2]
 GENERATED = ROOT / 'backend/internal/db/dbgen'
 SLOT = ROOT / '.dev/mutcheck-backup'
+
+def load_manifest(path):
+    """Interpret literal data without executing manifest code."""
+    values = {}
+    try:
+        tree = ast.parse(path.read_text(), filename=str(path))
+    except SyntaxError as exc:
+        raise ValueError(f'{path}:{exc.lineno}: {exc.msg}') from exc
+    for index, node in enumerate(tree.body):
+        try:
+            if index == 0 and isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                continue
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) and node.targets[0].id in ('ENTRIES', 'SKIPPED'):
+                values[node.targets[0].id] = ast.literal_eval(node.value)
+                continue
+            if isinstance(node, ast.AugAssign) and isinstance(node.op, ast.Add) and isinstance(node.target, ast.Name) and node.target.id in ('ENTRIES', 'SKIPPED'):
+                values[node.target.id] += ast.literal_eval(node.value)
+                continue
+            if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+                call = node.value
+                if isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name) and call.func.value.id in ('ENTRIES', 'SKIPPED') and call.func.attr in ('append', 'extend') and len(call.args) == 1 and not call.keywords:
+                    getattr(values[call.func.value.id], call.func.attr)(ast.literal_eval(call.args[0]))
+                    continue
+        except (ValueError, TypeError, KeyError, AttributeError):
+            pass
+        raise ValueError(f'{path}:{node.lineno}: only literal ENTRIES/SKIPPED statements are allowed; edit the entry in place')
+    return values
+
+
+def partition_entries(entries, jobs):
+    """Balance Go entries round-robin, keeping e2e serial in manifest order."""
+    go = [entry for entry in entries if entry['kind'] == 'go']
+    serial = [entry for entry in entries if entry['kind'] == 'e2e']
+    return [go[index::jobs] for index in range(min(jobs, len(go)))], serial
+
+
+def copy_working_tree(source, target):
+    """Copy on-disk tracked and non-ignored untracked files using read-only Git."""
+    files = subprocess.check_output(
+        ['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], cwd=source)
+    target.mkdir(parents=True, exist_ok=True)
+    for name in sorted(set(files.split(b'\0')) - {b''}):
+        relative = Path(os.fsdecode(name))
+        src, dst = source / relative, target / relative
+        if src.is_symlink():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.symlink_to(os.readlink(src))
+        elif src.is_file():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+
+
+def merge_results(entries, lines):
+    return [line for entry in entries for line in lines
+            if line.startswith(entry['step'] + ' ' + entry['name'] + ' exit=')]
+
+
+def cleanup_workers(folder):
+    if folder.exists():
+        shutil.rmtree(folder)
+
+
+def stop_processes(processes):
+    # Kill the whole session, including go test and its descendants, before
+    # removing any worker directory. The worker itself may have exited already.
+    for process in processes:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    deadline = time.monotonic() + 5
+    for process in processes:
+        try:
+            process.wait(timeout=max(0, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            pass
+    for process in processes:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+    processes.clear()
+
+
+def run_parallel(selected, manifest, jobs, logs, results):
+    folder = ROOT / '.dev/mutcheck-worktrees'
+    processes = []
+    handles = []
+    workers, serial = partition_entries(selected, jobs)
+    previous = {}
+
+    def interrupted(signum, frame):
+        raise KeyboardInterrupt
+
+    try:
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            previous[sig] = signal.signal(sig, interrupted)
+        cleanup_workers(folder)
+        if not baseline(selected, logs, results, jobs=jobs):
+            return 1
+        folder.mkdir(parents=True)
+        locations = []
+        for index, entries in enumerate(workers):
+            path = folder / str(index)
+            copy_working_tree(ROOT, path)
+            for filename in dict.fromkeys(e['file'] for e in selected):
+                if (ROOT / filename).read_bytes() != (path / filename).read_bytes():
+                    raise ValueError(f'worker copy differs: {filename}')
+            worker_logs = logs / f'worker-{index}'
+            worker_logs.mkdir()
+            locations.append((path, entries, worker_logs))
+        mutation_lines = []
+        for path, entries, worker_logs in locations:
+            output = (worker_logs / 'worker.log').open('w')
+            handles.append(output)
+            command = [sys.executable, str(path / 'backend/scripts/mutchecks.py'), str(manifest),
+                       '--worker-logs', str(worker_logs),
+                       *[e['step'] + '/' + e['name'] for e in entries]]
+            processes.append(subprocess.Popen(command, cwd=path, stdout=output,
+                                               stderr=subprocess.STDOUT, start_new_session=True))
+        while any(p.poll() is None for p in processes):
+            time.sleep(0.1)
+        failed = any(p.returncode != 0 for p in processes)
+        stop_processes(processes)
+        for _, entries, worker_logs in locations:
+            result = worker_logs / 'results.log'
+            if result.exists():
+                mutation_lines.extend(result.read_text().splitlines())
+            for entry in entries:
+                for suffix in ('.log', '.command.json'):
+                    artifact = worker_logs / (entry['step'] + '-' + entry['name'] + suffix)
+                    if artifact.exists():
+                        artifact.rename(logs / artifact.name)
+                # A worker crash must not silently omit selected entries.
+                if not merge_results([entry], mutation_lines):
+                    mutation_lines.append(f"{entry['step']} {entry['name']} exit=not-run caught=- restored=False FAIL")
+                    failed = True
+        for entry in serial:
+            buffer = io.StringIO()
+            passed, restored = run_e2e(entry, logs, buffer)
+            mutation_lines.extend(buffer.getvalue().splitlines())
+            failed |= not passed
+            if not restored:
+                break
+        # e2e executes last even when its entries precede Go in the manifest.
+        # Rewrite only once all results are available to retain manifest order.
+        for line in merge_results(selected, mutation_lines):
+            result_line(line, results)
+        return int(failed)
+    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    finally:
+        # Further signals must not interrupt cleanup itself.
+        for sig in previous:
+            signal.signal(sig, signal.SIG_IGN)
+        try:
+            stop_processes(processes)
+            for handle in handles:
+                handle.close()
+            cleanup_workers(folder)
+        finally:
+            for sig, handler in previous.items():
+                signal.signal(sig, handler)
+
 
 def select_entries(entries, names):
     unknown = set(names) - {e['name'] for e in entries} - {e['step'] + '/' + e['name'] for e in entries}
@@ -117,33 +294,73 @@ def restore(before, entry):
 
 
 def result_line(line, results):
-    print(line, flush=True)
+    if not isinstance(results, io.StringIO):
+        print(line, flush=True)
     results.write(line + '\n')
     results.flush()
 
 
-def baseline(entries, logs, results):
-    packages = dict.fromkeys(package for entry in entries if entry['kind'] == 'go'
-                             for package in entry['packages'])
+def guard_pattern(guards):
+    return '^(' + '|'.join(re.escape(guard) for guard in guards) + ')$'
+
+
+def baseline(entries, logs, results, jobs=1):
+    packages = {}
+    for entry in entries:
+        if entry['kind'] == 'go':
+            for package in entry['packages']:
+                packages.setdefault(package, {}).update(dict.fromkeys(entry['guards']))
+    commands = [['go', 'test', '-count=1', '-run', guard_pattern(guards), package]
+                for package, guards in packages.items()]
     env = dict(os.environ)
     env.pop('GOFLAGS', None)
+    processes, handles, running, codes = [], [], {}, {}
+    next_index = 0
+    failed = False
+    try:
+        while next_index < len(commands) or running:
+            while next_index < len(commands) and len(running) < jobs and not failed:
+                index = next_index
+                next_index += 1
+                command = commands[index]
+                log = logs / f'baseline-{index}.log'
+                (logs / f'baseline-{index}.command.json').write_text(
+                    json.dumps(command, ensure_ascii=False, indent=2) + '\n')
+                output = log.open('w')
+                handles.append(output)
+                try:
+                    process = subprocess.Popen(command, cwd=ROOT / 'backend', env=env,
+                                               stdout=output, stderr=subprocess.STDOUT,
+                                               start_new_session=True)
+                    processes.append(process)
+                    running[index] = process
+                except OSError as exc:
+                    output.write(str(exc) + '\n')
+                    codes[index] = 2
+                    failed = True
+            for index, process in list(running.items()):
+                code = process.poll()
+                if code is not None:
+                    codes[index] = code
+                    del running[index]
+                    failed |= code != 0
+            if failed:
+                break
+            if running:
+                time.sleep(0.05)
+    finally:
+        # Cancel all baseline descendants on failure or interruption; no worker
+        # may start until all successful baseline processes have finished.
+        stop_processes(processes)
+        for handle in handles:
+            handle.close()
     for index, package in enumerate(packages):
-        command = ['go', 'test', '-count=1', package]
-        log = logs / f'baseline-{index}.log'
-        (logs / f'baseline-{index}.command.json').write_text(
-            json.dumps(command, ensure_ascii=False, indent=2) + '\n')
-        try:
-            with log.open('w') as output:
-                code = subprocess.run(command, cwd=ROOT / 'backend', env=env,
-                                      stdout=output, stderr=subprocess.STDOUT).returncode
-        except OSError as exc:
-            log.write_text(str(exc) + '\n')
-            code = 2
-        result_line(f"baseline {package} exit={code} {'PASS' if code == 0 else 'FAIL'}", results)
-        if code:
-            print(log.read_text(errors='replace'), file=sys.stderr, end='')
-            return False
-    return True
+        if index in codes:
+            code = codes[index]
+            result_line(f"baseline {package} exit={code} {'PASS' if code == 0 else 'FAIL'}", results)
+            if code:
+                print((logs / f'baseline-{index}.log').read_text(errors='replace'), file=sys.stderr, end='')
+    return not failed
 
 
 def run_go(entry, logs, results):
@@ -152,7 +369,7 @@ def run_go(entry, logs, results):
     try:
         locate(entry)
         before = snapshot(entry)
-        guard_regex = '^(' + '|'.join(re.escape(guard) for guard in entry['guards']) + ')$'
+        guard_regex = guard_pattern(entry['guards'])
         command = ['backend/scripts/mutcheck.sh', '--run', guard_regex,
                    entry['file'], entry['original'], entry['replacement'], *entry['packages']]
         log = logs / (entry['step'] + '-' + entry['name'] + '.log')
@@ -196,8 +413,18 @@ def phase(entry, folder, label):
     (folder / (label + '.command.sh')).write_text(command + '\n')
     with (folder / (label + '-command.log')).open('w') as output:
         env = dict(os.environ, npm_config_update_notifier='false')
-        code = subprocess.run(['bash', '-c', command], cwd=ROOT, env=env,
-                              stdout=output, stderr=subprocess.STDOUT).returncode
+        process = subprocess.Popen(['bash', '-c', command], cwd=ROOT, env=env,
+                                   stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
+        try:
+            code = process.wait()
+        except BaseException:
+            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+            raise
     command_output = (folder / (label + '-command.log')).read_text()
     test_log = folder / (label + '-e2e.log')
     if 'e2e exit=' not in command_output or not test_log.exists():
@@ -295,10 +522,14 @@ def run_e2e(entry, logs, results):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('manifest', type=Path, nargs='?')
+    parser.add_argument('--jobs', type=int, default=1)
+    parser.add_argument('--worker-logs', type=Path, help=argparse.SUPPRESS)
     parser.add_argument('--locate', action='store_true')
     parser.add_argument('--since', metavar='git-ref')
     parser.add_argument('names', nargs='*')
     args = parser.parse_intermixed_args()
+    if args.jobs < 1:
+        parser.error('--jobs must be positive')
     if args.manifest is None:
         if args.names:
             parser.error('names are not supported without a manifest')
@@ -307,7 +538,7 @@ def main():
         failed = False
         for manifest in sorted((ROOT / '.dev/codex').glob('*/manifest.py')):
             try:
-                entries = runpy.run_path(str(manifest))['ENTRIES']
+                entries = load_manifest(manifest)['ENTRIES']
                 selected = entries
                 if args.since is not None:
                     selected = affected_entries(selected, args.since)
@@ -327,7 +558,7 @@ def main():
         return int(failed)
     manifest = args.manifest.resolve()
     try:
-        entries = runpy.run_path(str(manifest))['ENTRIES']
+        entries = load_manifest(manifest)['ENTRIES']
         selected = select_entries(entries, args.names)
         if args.since is not None:
             selected = affected_entries(selected, args.since)
@@ -337,14 +568,21 @@ def main():
         parser.error(str(exc))
     for entry in selected:
         print(entry['step'] + '/' + entry['name'], file=sys.stderr)
+    if not args.locate and not args.worker_logs and (ROOT / '.dev/mutcheck-worktrees').exists():
+        cleanup_workers(ROOT / '.dev/mutcheck-worktrees')
     if not selected:
         print('no affected entries', file=sys.stderr)
         return 0
-    logs = Path(tempfile.mkdtemp(prefix='mutchecks-', dir=manifest.parent))
+    logs = args.worker_logs or Path(tempfile.mkdtemp(prefix='mutchecks-', dir=manifest.parent))
     print(f'logs={logs}', file=sys.stderr)
     failed = False
     with (logs / 'results.log').open('w') as results:
-        if not args.locate and not baseline(selected, logs, results):
+        if args.jobs > 1 and not args.locate:
+            try:
+                return run_parallel(selected, manifest, args.jobs, logs, results)
+            except KeyboardInterrupt:
+                return 130
+        if not args.locate and not args.worker_logs and not baseline(selected, logs, results):
             return 1
         for entry in selected:
             if args.locate:
