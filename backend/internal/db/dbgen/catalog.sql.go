@@ -59,16 +59,17 @@ func (q *Queries) AddItemMemberPrice(ctx context.Context, arg AddItemMemberPrice
 }
 
 const addItemPosition = `-- name: AddItemPosition :exec
-INSERT INTO item_positions (tenant_id,store_id,item_id,slot,position_id,required) VALUES ($1,$2,$3,$4,$5,$6)
+INSERT INTO item_positions (tenant_id,store_id,item_id,slot,position_id,required,share_percent) VALUES ($1,$2,$3,$4,$5,$6,$7)
 `
 
 type AddItemPositionParams struct {
-	TenantID   uuid.UUID
-	StoreID    uuid.UUID
-	ItemID     uuid.UUID
-	Slot       int16
-	PositionID uuid.UUID
-	Required   bool
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	ItemID       uuid.UUID
+	Slot         int16
+	PositionID   uuid.UUID
+	Required     bool
+	SharePercent *int16
 }
 
 func (q *Queries) AddItemPosition(ctx context.Context, arg AddItemPositionParams) error {
@@ -79,6 +80,7 @@ func (q *Queries) AddItemPosition(ctx context.Context, arg AddItemPositionParams
 		arg.Slot,
 		arg.PositionID,
 		arg.Required,
+		arg.SharePercent,
 	)
 	return err
 }
@@ -353,7 +355,7 @@ func (q *Queries) ListItemMemberPrices(ctx context.Context, arg ListItemMemberPr
 }
 
 const listItemPositions = `-- name: ListItemPositions :many
-SELECT tenant_id, store_id, item_id, slot, position_id, required FROM item_positions WHERE store_id=$1 AND item_id = ANY($2::uuid[]) ORDER BY item_id, slot
+SELECT tenant_id, store_id, item_id, slot, position_id, required, share_percent FROM item_positions WHERE store_id=$1 AND item_id = ANY($2::uuid[]) ORDER BY item_id, slot
 `
 
 type ListItemPositionsParams struct {
@@ -377,6 +379,7 @@ func (q *Queries) ListItemPositions(ctx context.Context, arg ListItemPositionsPa
 			&i.Slot,
 			&i.PositionID,
 			&i.Required,
+			&i.SharePercent,
 		); err != nil {
 			return nil, err
 		}
@@ -556,14 +559,15 @@ func (q *Queries) UpdateItemMemberPrice(ctx context.Context, arg UpdateItemMembe
 }
 
 const updateItemPosition = `-- name: UpdateItemPosition :exec
-UPDATE item_positions SET position_id=$3, required=$4 WHERE item_id=$1 AND slot=$2
+UPDATE item_positions SET position_id=$3, required=$4, share_percent=$5 WHERE item_id=$1 AND slot=$2
 `
 
 type UpdateItemPositionParams struct {
-	ItemID     uuid.UUID
-	Slot       int16
-	PositionID uuid.UUID
-	Required   bool
+	ItemID       uuid.UUID
+	Slot         int16
+	PositionID   uuid.UUID
+	Required     bool
+	SharePercent *int16
 }
 
 func (q *Queries) UpdateItemPosition(ctx context.Context, arg UpdateItemPositionParams) error {
@@ -572,6 +576,7 @@ func (q *Queries) UpdateItemPosition(ctx context.Context, arg UpdateItemPosition
 		arg.Slot,
 		arg.PositionID,
 		arg.Required,
+		arg.SharePercent,
 	)
 	return err
 }

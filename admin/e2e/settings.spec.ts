@@ -196,3 +196,23 @@ test('退卡手续费编辑使用自己的标签', async ({ page }) => {
   await page.locator('[data-setting=card_refund_fee_percent]').getByRole('button', { name: '修改', exact: true }).click()
   await expect(page.getByRole('dialog').getByLabel('退卡手续费', { exact: true })).toBeVisible()
 })
+
+test('业绩九项设置由目录显示', async ({ page }) => {
+  await login(page, owner.account, owner.password)
+  await page.goto('/settings')
+  for (const [key, label] of [
+    ['performance_split', '多人分业绩'],
+    ['performance_ratio_cash', '现金业绩比例'],
+    ['performance_ratio_unionpay', '银联业绩比例'],
+    ['performance_ratio_wechat', '微信业绩比例'],
+    ['performance_ratio_alipay', '支付宝业绩比例'],
+    ['performance_ratio_debt', '挂账业绩比例'],
+    ['performance_ratio_card_principal', '卡余额本金业绩比例'],
+    ['performance_ratio_card_bonus', '卡余额赠送金业绩比例'],
+    ['performance_ratio_red_packet', '红包业绩比例']
+  ]) {
+    const card = page.locator(`[data-setting="${key}"]`)
+    await expect(card).toContainText(label!)
+    await expect(card.getByRole('button', { name: '修改', exact: true })).toBeVisible()
+  }
+})

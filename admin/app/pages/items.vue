@@ -50,7 +50,7 @@ const discountable = ref(true)
 const active = ref(true)
 const feeKind = ref('none')
 const feeValue = ref('0.00')
-const positionRows = ref<{ position_id: string, required: boolean }[]>([])
+const positionRows = ref<{ position_id: string, required: boolean, share_percent: string }[]>([])
 const memberRows = ref<{ card_type_id: string, price: string }[]>([])
 const memberOptions = computed(() => cardTypes.value.filter(t => t.active || editing.value?.member_prices.some(p => p.card_type_id === t.id)).map(t => ({ label: t.name + (t.active ? '' : '（停用）'), value: t.id })))
 const levelRows = ref<{ level_id: string, price: string }[]>([])
@@ -70,7 +70,7 @@ function openEditor(item: Item | null) {
     active.value = item?.active ?? true
     feeKind.value = item?.labor_fee_amount != null ? 'amount' : item?.labor_fee_percent != null ? 'percent' : 'none'
     feeValue.value = item?.labor_fee_amount ?? item?.labor_fee_percent ?? '0.00'
-    positionRows.value = item?.positions.map(p => ({ position_id: p.position_id, required: p.required })) ?? []
+    positionRows.value = item?.positions.map(p => ({ position_id: p.position_id, required: p.required, share_percent: p.share_percent == null ? '' : String(p.share_percent) })) ?? []
     memberRows.value = item?.member_prices.map(m => ({ ...m })) ?? []
     levelRows.value = item?.level_prices.map(l => ({ ...l })) ?? []
   })
@@ -88,7 +88,7 @@ async function save() {
     name: name.value, kind: kind.value, price: price.value, discountable: discountable.value,
     labor_fee_amount: feeKind.value === 'amount' ? feeValue.value : null,
     labor_fee_percent: feeKind.value === 'percent' ? feeValue.value : null,
-    positions: positionRows.value.map(p => ({ ...p })),
+    positions: positionRows.value.map(p => ({ ...p, share_percent: p.share_percent === '' ? null : Number(p.share_percent) })),
     member_prices: memberRows.value.map(m => ({ ...m })),
     level_prices: levelRows.value.map(l => ({ ...l }))
   }
@@ -147,11 +147,12 @@ function laborFee(item: Item) {
             <div v-for="(row, index) in positionRows" :key="index" class="flex flex-wrap gap-2" data-testid="position-row">
               <USelect v-model="row.position_id" :aria-label="`岗位${index + 1}`" :items="positionOptions(index)" placeholder="选择岗位" />
               <UCheckbox v-model="row.required" label="必填" />
+              <UFormField label="岗位比例 %"><UInput v-model="row.share_percent" type="number" min="0" max="100" :aria-label="`岗位${index + 1}比例`" /></UFormField>
               <UButton :disabled="index === 0" aria-label="上移" @click="move(index, -1)">↑</UButton>
               <UButton :disabled="index === positionRows.length - 1" aria-label="下移" @click="move(index, 1)">↓</UButton>
               <UButton color="error" @click="positionRows.splice(index, 1)">移除岗位</UButton>
             </div>
-            <UButton variant="outline" @click="positionRows.push({ position_id: positions.find(p => p.active)?.id ?? '', required: false })">添加岗位</UButton>
+            <UButton variant="outline" @click="positionRows.push({ position_id: positions.find(p => p.active)?.id ?? '', required: false, share_percent: '' })">添加岗位</UButton>
           </div>
           <div class="space-y-2">
             <h2 class="font-medium">级别价</h2>

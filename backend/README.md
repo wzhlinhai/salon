@@ -68,7 +68,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 ## 门店设置（ADR-0002）
 
-- 设置值支持 time（时刻）、time_range（时段）、choice（Options 中的字符串）和 integer（Min/Max 内的非负整数）。`member_price_rule` 默认会员价优先，也可取较低价；`points_per_recharge_yuan` 为每积一分所需充值本金元数，默认 0（不积分），范围 0–100000。开卡、充值和升级补差价按当日规则积分，赠送金、转余额和调整余额不积分。退卡赠送金 `card_refund_bonus` 默认不退、作废，可选择扣回未被撤单退回的消费赠送金；`card_refund_fee_percent` 为 0–100 的退款手续费百分比，默认 0，当天可生效。撤单授权窗口 `void_window_minutes` 为 0（默认关闭）或 1–60 分钟，当天可生效。
+- 设置值支持 time（时刻）、time_range（时段）、choice（Options 中的字符串）和 integer（Min/Max 内的非负整数）。`member_price_rule` 默认会员价优先，也可取较低价；`points_per_recharge_yuan` 为每积一分所需充值本金元数，默认 0（不积分），范围 0–100000。开卡、充值和升级补差价按当日规则积分，赠送金、转余额和调整余额不积分。`performance_split` 默认按岗位比例分多人业绩，也可选择均分，项目没设岗位比例时均分；`performance_ratio_*` 为八种支付方式各自的 0–100 业绩比例，本金、现金、银联、微信、支付宝和挂账默认 100%，赠送金和红包默认 0%，均可当天生效。退卡赠送金 `card_refund_bonus` 默认不退、作废，可选择扣回未被撤单退回的消费赠送金；`card_refund_fee_percent` 为 0–100 的退款手续费百分比，默认 0，当天可生效。撤单授权窗口 `void_window_minutes` 为 0（默认关闭）或 1–60 分钟，当天可生效。
 - 设置项在 `internal/settings` 的 `Catalogue` 里声明：名称、值的形式、系统默认做法和校验。新的业务规则（例如各项业务的做法选择）在这里加一项，再给 `Rules` 加一个读取它的方法。
 - 每次修改都在 `setting_changes` 追加一行：改前、改后、生效日期、修改人、修改时间。`salon_app` 只有 SELECT 和 INSERT 权限。某个营业日执行的值，取生效日期不晚于这一天的最后一次修改；没有修改，或者改成了"恢复默认"，就用系统当前的默认做法。生效日期不能早于今天；划分营业日的设置（`fromTomorrow`，例如营业日结束时间）最早明天生效。同一项设置的修改用咨询锁排队，改前值才接得上前一次的改后值。
 - 业务模块不直接查设置表：
@@ -115,3 +115,11 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 跨模块引用检查由数据所属模块提供：`customers.LockReference` 检查本店、查看范围和未合并；`staff.LockAssignable` 按 UUID 锁住本店在职员工，交接来源用允许离职的 `staff.LockReferences`；`catalog.LockReference` 检查本店启用项目。只检查引用均用 FOR SHARE。报价 `catalog.Quote` 自己锁住读取的项目和员工；项目行岗位分配及是否重取价由 `catalog.QuoteLine` 负责。
 
 测试调用和并发请求等待共用 `optest.App.Call`、`optest.WaitResult`、`optest.AssertWaiting`；事务 SQL、提交回滚和固定行顺序的表快照共用 `dbtest` 的辅助函数。各业务包只准备自己的业务数据。
+
+## 业绩
+
+`internal/performance` 拥有项目业绩表、纯分配函数和 `list_performance`。结账在支付写入后、标记已结账前，在已有单锁的事务内按各单规则快照追加记录；撤单在已有单锁的事务内逐条追加冲回，不改原记录，不另记操作日志。结账记录用结账营业日，冲回用撤单营业日。
+
+仅有效且非扣次支付的项目行参与。卡余额从消费流水拆出本金和赠送金。支付方式金额按各行实收比例分摊，以分为单位先向下取整，再按项目行顺序、现金、银联、微信、支付宝、挂账、红包、本金、赠送金的固定顺序，在行和支付方式都缺分的格子补分，保留两边合计。均分或没设岗位比例时按已填员工岗位均分；按岗位比例时仅对已填岗位的权重重新归一。岗位分配先向下取整，余分给最前的已填岗位。无人或已填岗位权重合计为零时记门店未分配业绩；同一员工占两岗位分别留存。实收份额乘该方式的业绩比例，用 money 的四舍五入到分计算业绩。
+
+读操作按不超过相隔 92 天的营业日范围查询，`performance.view` 本人范围仅返回本人岗位记录，全店范围包括未分配记录，可再筛员工。明细倒序游标分页，合计使用整个筛选范围，原记录减去冲回，可为负数。表有租户 RLS 和组合外键，仅授予 salon_app SELECT、INSERT。

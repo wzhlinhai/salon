@@ -32,10 +32,10 @@ UPDATE item_level_prices SET price=$3 WHERE item_id=$1 AND level_id=$2;
 DELETE FROM item_level_prices WHERE item_id=$1 AND level_id=$2;
 
 -- name: AddItemPosition :exec
-INSERT INTO item_positions (tenant_id,store_id,item_id,slot,position_id,required) VALUES ($1,$2,$3,$4,$5,$6);
+INSERT INTO item_positions (tenant_id,store_id,item_id,slot,position_id,required,share_percent) VALUES ($1,$2,$3,$4,$5,$6,$7);
 
 -- name: UpdateItemPosition :exec
-UPDATE item_positions SET position_id=$3, required=$4 WHERE item_id=$1 AND slot=$2;
+UPDATE item_positions SET position_id=$3, required=$4, share_percent=$5 WHERE item_id=$1 AND slot=$2;
 
 -- name: DeleteItemPosition :exec
 DELETE FROM item_positions WHERE item_id=$1 AND slot=$2;

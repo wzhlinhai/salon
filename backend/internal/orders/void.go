@@ -11,6 +11,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/debts"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/performance"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
 	"github.com/wzhlinhai/salon/backend/internal/redpackets"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
@@ -77,6 +78,9 @@ func voidOrderAt(ctx context.Context, env ops.Env, in *VoidOrderInput, now time.
 		}
 		reversal, err := env.Q.CreateOrderVoid(ctx, dbgen.CreateOrderVoidParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, OrderID: row.ID, Reason: reason, BusinessDate: pgtype.Date{Time: day, Valid: true}, VoidedBy: env.Caller.StaffID})
 		if err != nil {
+			return err
+		}
+		if err := performance.ReverseOrder(ctx, env, row.ID, reversal.ID, day); err != nil {
 			return err
 		}
 		if err := env.Q.MarkOrderVoided(ctx, dbgen.MarkOrderVoidedParams{StoreID: env.Caller.StoreID, ID: row.ID}); err != nil {

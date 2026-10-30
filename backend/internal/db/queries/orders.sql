@@ -16,8 +16,8 @@ INSERT INTO order_items (tenant_id,store_id,order_id,item_id,item_name,price,pri
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *;
 
 -- name: AddOrderItemPosition :exec
-INSERT INTO order_item_positions (tenant_id,store_id,order_item_id,slot,position_id,required,staff_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7);
+INSERT INTO order_item_positions (tenant_id,store_id,order_item_id,slot,position_id,required,staff_id,share_percent)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8);
 
 -- name: ListOrderItems :many
 SELECT oi.* FROM order_items oi

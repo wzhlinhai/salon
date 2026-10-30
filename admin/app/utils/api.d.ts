@@ -752,6 +752,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_performance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按营业日查询项目业绩及冲回记录 */
+        post: operations["list_performance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_permissions": {
         parameters: {
             query?: never;
@@ -2009,12 +2026,22 @@ export interface components {
         ItemPosition: {
             position_id: string;
             required: boolean;
+            /**
+             * Format: int32
+             * @description 岗位比例，分配多人业绩用；都不填为均分
+             */
+            share_percent: number | null;
             /** Format: int32 */
             slot: number;
         };
         ItemPositionInput: {
             position_id: string;
             required: boolean;
+            /**
+             * Format: int32
+             * @description 岗位比例，分配多人业绩用；都不填为均分
+             */
+            share_percent?: number | null;
         };
         ItemPrice: {
             card_type_id?: string;
@@ -2090,6 +2117,16 @@ export interface components {
         ListInput: Record<string, never>;
         ListItemsInput: Record<string, never>;
         ListOpenOrdersInput: Record<string, never>;
+        ListPerformanceInput: {
+            before_id?: string;
+            /** Format: date */
+            date_from: string;
+            /** Format: date */
+            date_to: string;
+            /** Format: int32 */
+            limit?: number;
+            staff_id?: string;
+        };
         ListSettingChangesInput: {
             /** @description 上一页最后一条的 ID，只看比它更早的；不填为最新一页 */
             before_id?: string;
@@ -2201,6 +2238,11 @@ export interface components {
         OrderItemPosition: {
             position_id: string;
             required: boolean;
+            /**
+             * Format: int32
+             * @description 岗位比例，添加项目行时留存
+             */
+            share_percent: number | null;
             /** Format: int32 */
             slot: number;
             staff_id: string | null;
@@ -2253,6 +2295,42 @@ export interface components {
             method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "card" | "count" | "red_packet";
             order_item_id?: string;
             red_packet_id?: string;
+        };
+        PerformanceEntry: {
+            /** @description 非负业绩金额，reversal 为 true 时计负数 */
+            amount: string;
+            /** Format: date */
+            business_date: string;
+            checkout_id: string;
+            id: string;
+            item_name: string;
+            /** @enum {string} */
+            kind: "item";
+            /** @enum {string} */
+            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "red_packet" | "card_principal" | "card_bonus";
+            order_id: string;
+            order_item_id: string;
+            /** @description 非负实收份额，reversal 为 true 时计负数 */
+            paid_amount: string;
+            position_id: string | null;
+            /** Format: int32 */
+            ratio: number;
+            reversal: boolean;
+            reverses_id: string | null;
+            settings_snapshot_id: string;
+            /** Format: int32 */
+            slot: number | null;
+            staff: components["schemas"]["Ref"] | null;
+        };
+        PerformanceList: {
+            entries: components["schemas"]["PerformanceEntry"][];
+            totals: components["schemas"]["PerformanceTotals"];
+        };
+        PerformanceTotals: {
+            /** @description 业绩净额，可为负数 */
+            amount: string;
+            /** @description 实收份额净额，可为负数 */
+            paid_amount: string;
         };
         PermissionList: {
             permissions: components["schemas"]["Def"][];
@@ -4165,6 +4243,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_performance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListPerformanceInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PerformanceList"];
                 };
             };
             /** @description Error */

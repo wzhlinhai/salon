@@ -13,6 +13,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/debts"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/performance"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
 	"github.com/wzhlinhai/salon/backend/internal/redpackets"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
@@ -291,6 +292,37 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 					}
 				}
 			}
+			performanceLines := []performance.Line{}
+			for _, line := range priced[i].Items {
+				if line.RemovedAt != nil || countLines[line.ID] {
+					continue
+				}
+				net, _ := line.Price.Apply(money.Amount{}.Sub(line.Discount))
+				slots := make([]performance.Slot, 0, len(line.Positions))
+				for _, p := range line.Positions {
+					slots = append(slots, performance.Slot{Slot: p.Slot, PositionID: p.PositionID, StaffID: p.StaffID, SharePercent: p.SharePercent})
+				}
+				performanceLines = append(performanceLines, performance.Line{OrderItemID: line.ID, Net: net, Slots: slots})
+			}
+			recordedPayments, err := env.Q.ListOrderPayments(ctx, dbgen.ListOrderPaymentsParams{StoreID: env.Caller.StoreID, OrderIds: []uuid.UUID{rows[i].ID}})
+			if err != nil {
+				return err
+			}
+			categories := []performance.Category{}
+			for _, p := range recordedPayments {
+				switch p.Method {
+				case "count":
+					continue
+				case "card":
+					categories = append(categories, performance.Category{Method: "card_principal", Amount: *p.Principal}, performance.Category{Method: "card_bonus", Amount: *p.Bonus})
+				default:
+					categories = append(categories, performance.Category{Method: p.Method, Amount: p.Amount})
+				}
+			}
+			if err := performance.RecordCheckout(ctx, env, performance.CheckoutInput{CheckoutID: checkout.ID, BusinessDate: day, OrderID: rows[i].ID, SettingsSnapshotID: rows[i].SettingsSnapshotID, Rules: rules[i], Lines: performanceLines, Payments: categories}); err != nil {
+				return err
+			}
+
 			if err := env.Q.MarkOrderPaid(ctx, dbgen.MarkOrderPaidParams{StoreID: env.Caller.StoreID, ID: rows[i].ID, CheckoutID: &checkout.ID}); err != nil {
 				return err
 			}

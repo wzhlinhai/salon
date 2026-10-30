@@ -203,3 +203,38 @@ func (r Rules) CardRefundFeePercent() int {
 	r.decode(KeyCardRefundFeePercent, &v)
 	return v
 }
+
+// PerformanceSplit 返回多人分业绩的做法。
+func (r Rules) PerformanceSplit() string {
+	var v string
+	r.decode(KeyPerformanceSplit, &v)
+	return v
+}
+
+// PerformanceRatio 返回支付方式的业绩比例。
+func (r Rules) PerformanceRatio(category string) int {
+	var key string
+	switch category {
+	case "cash":
+		key = KeyPerformanceRatioCash
+	case "unionpay":
+		key = KeyPerformanceRatioUnionpay
+	case "wechat":
+		key = KeyPerformanceRatioWechat
+	case "alipay":
+		key = KeyPerformanceRatioAlipay
+	case "debt":
+		key = KeyPerformanceRatioDebt
+	case "card_principal":
+		key = KeyPerformanceRatioCardPrincipal
+	case "card_bonus":
+		key = KeyPerformanceRatioCardBonus
+	case "red_packet":
+		key = KeyPerformanceRatioRedPacket
+	default:
+		panic("settings: unknown performance category: " + category)
+	}
+	var v int
+	r.decode(key, &v)
+	return v
+}

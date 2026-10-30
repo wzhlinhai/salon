@@ -4,6 +4,7 @@ package catalog
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -35,15 +36,17 @@ type MemberPrice struct {
 
 // ItemPositionInput 是按列表顺序分配的项目岗位。
 type ItemPositionInput struct {
-	PositionID uuid.UUID `json:"position_id"`
-	Required   bool      `json:"required"`
+	SharePercent *int16    `json:"share_percent,omitempty" nullable:"true" minimum:"0" maximum:"100" doc:"岗位比例，分配多人业绩用；都不填为均分"`
+	PositionID   uuid.UUID `json:"position_id"`
+	Required     bool      `json:"required"`
 }
 
 // ItemPosition 是带顺序的项目岗位。
 type ItemPosition struct {
-	Slot       int16     `json:"slot"`
-	PositionID uuid.UUID `json:"position_id"`
-	Required   bool      `json:"required"`
+	SharePercent *int16    `json:"share_percent" nullable:"true" minimum:"0" maximum:"100" doc:"岗位比例，分配多人业绩用；都不填为均分"`
+	Slot         int16     `json:"slot"`
+	PositionID   uuid.UUID `json:"position_id"`
+	Required     bool      `json:"required"`
 }
 
 // Item 是本店项目及其完整价格规则。
@@ -179,7 +182,7 @@ func views(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, rows []dbge
 	}
 	for _, p := range positions {
 		if i, ok := indices[p.ItemID]; ok {
-			out[i].Positions = append(out[i].Positions, ItemPosition{Slot: p.Slot, PositionID: p.PositionID, Required: p.Required})
+			out[i].Positions = append(out[i].Positions, ItemPosition{Slot: p.Slot, PositionID: p.PositionID, Required: p.Required, SharePercent: p.SharePercent})
 		}
 	}
 	return out, nil
@@ -205,6 +208,16 @@ func rowError(err error) error {
 }
 
 func validate(in *CreateItemInput) error {
+	set, total := 0, 0
+	for _, p := range in.Positions {
+		if p.SharePercent != nil {
+			set++
+			total += int(*p.SharePercent)
+		}
+	}
+	if set > 0 && (set != len(in.Positions) || total != 100) {
+		return ops.Rule("岗位比例要么都不填，要么都填且合计 100%")
+	}
 	if in.Kind == "" {
 		in.Kind = "service"
 	}
@@ -413,11 +426,11 @@ func writeChildren(ctx context.Context, env ops.Env, id uuid.UUID, before *Item,
 	for i, p := range in.Positions {
 		slot := int16(i + 1)
 		if i >= len(before.Positions) {
-			if err := env.Q.AddItemPosition(ctx, dbgen.AddItemPositionParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, ItemID: id, Slot: slot, PositionID: p.PositionID, Required: p.Required}); err != nil {
+			if err := env.Q.AddItemPosition(ctx, dbgen.AddItemPositionParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, ItemID: id, Slot: slot, PositionID: p.PositionID, Required: p.Required, SharePercent: p.SharePercent}); err != nil {
 				return err
 			}
-		} else if before.Positions[i].PositionID != p.PositionID || before.Positions[i].Required != p.Required {
-			if err := env.Q.UpdateItemPosition(ctx, dbgen.UpdateItemPositionParams{ItemID: id, Slot: slot, PositionID: p.PositionID, Required: p.Required}); err != nil {
+		} else if before.Positions[i].PositionID != p.PositionID || before.Positions[i].Required != p.Required || !reflect.DeepEqual(before.Positions[i].SharePercent, p.SharePercent) {
+			if err := env.Q.UpdateItemPosition(ctx, dbgen.UpdateItemPositionParams{ItemID: id, Slot: slot, PositionID: p.PositionID, Required: p.Required, SharePercent: p.SharePercent}); err != nil {
 				return err
 			}
 		}
