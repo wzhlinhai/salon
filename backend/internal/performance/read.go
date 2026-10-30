@@ -17,6 +17,7 @@ import (
 
 // ListPerformanceInput 是按营业日查询业绩的参数。
 type ListPerformanceInput struct {
+	Kind     *string    `json:"kind,omitempty" enum:"item,consume,labor"`
 	DateFrom string     `json:"date_from" format:"date"`
 	DateTo   string     `json:"date_to" format:"date"`
 	StaffID  *uuid.UUID `json:"staff_id,omitempty"`
@@ -27,7 +28,7 @@ type ListPerformanceInput struct {
 // PerformanceEntry 是可追溯到单、项目行和规则快照的业绩，冲回记录以 reversal 标明负向。
 type PerformanceEntry struct {
 	ID                 uuid.UUID    `json:"id"`
-	Kind               string       `json:"kind" enum:"item"`
+	Kind               string       `json:"kind" enum:"item,consume,labor"`
 	BusinessDate       string       `json:"business_date" format:"date"`
 	OrderID            uuid.UUID    `json:"order_id"`
 	OrderItemID        uuid.UUID    `json:"order_item_id"`
@@ -35,7 +36,7 @@ type PerformanceEntry struct {
 	Slot               *int16       `json:"slot" nullable:"true"`
 	PositionID         *uuid.UUID   `json:"position_id" nullable:"true"`
 	Staff              *staff.Ref   `json:"staff"`
-	Method             string       `json:"method" enum:"cash,unionpay,wechat,alipay,debt,red_packet,card_principal,card_bonus"`
+	Method             string       `json:"method" enum:"cash,unionpay,wechat,alipay,debt,red_packet,card_principal,card_bonus,count_paid,count_gift,labor"`
 	PaidAmount         money.Amount `json:"paid_amount" doc:"非负实收份额，reversal 为 true 时计负数"`
 	Ratio              int16        `json:"ratio"`
 	Amount             money.Amount `json:"amount" doc:"非负业绩金额，reversal 为 true 时计负数"`
@@ -47,14 +48,15 @@ type PerformanceEntry struct {
 
 // PerformanceTotals 是完整筛选范围内原记录减去冲回的有符号合计。
 type PerformanceTotals struct {
+	Kind       string `json:"kind" enum:"item,consume,labor"`
 	Amount     string `json:"amount" doc:"业绩净额，可为负数"`
 	PaidAmount string `json:"paid_amount" doc:"实收份额净额，可为负数"`
 }
 
 // PerformanceList 是最新在前的业绩分页及整个筛选范围的合计。
 type PerformanceList struct {
-	Entries []PerformanceEntry `json:"entries"`
-	Totals  PerformanceTotals  `json:"totals"`
+	Entries []PerformanceEntry  `json:"entries"`
+	Totals  []PerformanceTotals `json:"totals"`
 }
 
 // Register 声明按营业日及本人或全店范围查询业绩的读操作。
@@ -85,15 +87,23 @@ func listPerformance(ctx context.Context, env ops.Env, in *ListPerformanceInput)
 		limit = 50
 	}
 	datesFrom, datesTo := pgtype.Date{Time: from, Valid: true}, pgtype.Date{Time: to, Valid: true}
-	rows, err := env.Q.ListPerformance(ctx, dbgen.ListPerformanceParams{StoreID: env.Caller.StoreID, DateFrom: datesFrom, DateTo: datesTo, SelfID: self, StaffID: in.StaffID, BeforeID: in.BeforeID, RowLimit: limit})
+	rows, err := env.Q.ListPerformance(ctx, dbgen.ListPerformanceParams{StoreID: env.Caller.StoreID, DateFrom: datesFrom, DateTo: datesTo, SelfID: self, StaffID: in.StaffID, Kind: in.Kind, BeforeID: in.BeforeID, RowLimit: limit})
 	if err != nil {
 		return nil, err
 	}
-	totals, err := env.Q.PerformanceTotals(ctx, dbgen.PerformanceTotalsParams{StoreID: env.Caller.StoreID, DateFrom: datesFrom, DateTo: datesTo, SelfID: self, StaffID: in.StaffID})
+	totals, err := env.Q.PerformanceTotals(ctx, dbgen.PerformanceTotalsParams{StoreID: env.Caller.StoreID, DateFrom: datesFrom, DateTo: datesTo, SelfID: self, StaffID: in.StaffID, Kind: in.Kind})
 	if err != nil {
 		return nil, err
 	}
-	out := &PerformanceList{Entries: make([]PerformanceEntry, 0, len(rows)), Totals: PerformanceTotals{Amount: totals.Amount, PaidAmount: totals.PaidAmount}}
+	out := &PerformanceList{Entries: make([]PerformanceEntry, 0, len(rows)), Totals: []PerformanceTotals{{Kind: "item", Amount: "0", PaidAmount: "0"}, {Kind: "consume", Amount: "0", PaidAmount: "0"}, {Kind: "labor", Amount: "0", PaidAmount: "0"}}}
+	for _, total := range totals {
+		for i := range out.Totals {
+			if out.Totals[i].Kind == total.Kind {
+				out.Totals[i].Amount = total.Amount
+				out.Totals[i].PaidAmount = total.PaidAmount
+			}
+		}
+	}
 	for _, e := range rows {
 		var ref *staff.Ref
 		if e.StaffID != nil {

@@ -117,10 +117,14 @@ func (a Amount) WholeDiv(n int64) int64 {
 	return quotient.IntPart()
 }
 
+// Share 返回金额按百分比分得的份额，四舍五入到分（恰好半分时远离零）。
+func (a Amount) Share(percent Percent) Amount {
+	return Amount{value: a.value.Mul(percent.value).Div(decimal.NewFromInt(100)).Round(2)}
+}
+
 // Discount 返回按折扣率收取并四舍五入到分后减免的金额。
 func (a Amount) Discount(percent Percent) Amount {
-	net := a.value.Mul(percent.value).Div(decimal.NewFromInt(100)).Round(2)
-	return Amount{value: a.value.Sub(net)}
+	return Amount{value: a.value.Sub(a.Share(percent).value)}
 }
 
 // IsDiscount 判断折扣率是否大于零且小于一百。

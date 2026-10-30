@@ -32,20 +32,22 @@ type Order struct {
 
 // OrderItem 是只记录一次价格的项目行。
 type OrderItem struct {
-	ItemKind      string              `json:"item_kind" enum:"service,goods"`
-	CardTypeID    *uuid.UUID          `json:"card_type_id" nullable:"true"`
-	Discount      money.Amount        `json:"discount"`
-	ID            uuid.UUID           `json:"id"`
-	ItemID        uuid.UUID           `json:"item_id"`
-	ItemName      string              `json:"item_name"`
-	Price         money.Amount        `json:"price"`
-	PriceSource   string              `json:"price_source" enum:"standard,level,manual,member"`
-	LevelID       *uuid.UUID          `json:"level_id" nullable:"true"`
-	RemovedAt     *time.Time          `json:"removed_at" nullable:"true"`
-	RemovedBy     *uuid.UUID          `json:"removed_by" nullable:"true"`
-	RepriceReason *string             `json:"reprice_reason" nullable:"true"`
-	AddedAt       time.Time           `json:"added_at"`
-	Positions     []OrderItemPosition `json:"positions"`
+	LaborFeeAmount  *money.Amount       `json:"labor_fee_amount" nullable:"true" doc:"加项目时随项目行留存的手工费"`
+	LaborFeePercent *money.Percent      `json:"labor_fee_percent" nullable:"true" doc:"加项目时随项目行留存的手工费"`
+	ItemKind        string              `json:"item_kind" enum:"service,goods"`
+	CardTypeID      *uuid.UUID          `json:"card_type_id" nullable:"true"`
+	Discount        money.Amount        `json:"discount"`
+	ID              uuid.UUID           `json:"id"`
+	ItemID          uuid.UUID           `json:"item_id"`
+	ItemName        string              `json:"item_name"`
+	Price           money.Amount        `json:"price"`
+	PriceSource     string              `json:"price_source" enum:"standard,level,manual,member"`
+	LevelID         *uuid.UUID          `json:"level_id" nullable:"true"`
+	RemovedAt       *time.Time          `json:"removed_at" nullable:"true"`
+	RemovedBy       *uuid.UUID          `json:"removed_by" nullable:"true"`
+	RepriceReason   *string             `json:"reprice_reason" nullable:"true"`
+	AddedAt         time.Time           `json:"added_at"`
+	Positions       []OrderItemPosition `json:"positions"`
 }
 
 // OrderItemPosition 是项目行保留的岗位及参与员工。

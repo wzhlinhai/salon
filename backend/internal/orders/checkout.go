@@ -292,9 +292,24 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 					}
 				}
 			}
+			recordedPayments, err := env.Q.ListOrderPayments(ctx, dbgen.ListOrderPaymentsParams{StoreID: env.Caller.StoreID, OrderIds: []uuid.UUID{rows[i].ID}})
+			if err != nil {
+				return err
+			}
+			consumptions := map[uuid.UUID]*performance.CountConsumption{}
+			for _, p := range recordedPayments {
+				if p.Method != "count" {
+					continue
+				}
+				method := "count_paid"
+				if p.Gift > 0 {
+					method = "count_gift"
+				}
+				consumptions[*p.OrderItemID] = &performance.CountConsumption{Method: method, UnitPrice: *p.CountUnitPrice}
+			}
 			performanceLines := []performance.Line{}
 			for _, line := range priced[i].Items {
-				if line.RemovedAt != nil || countLines[line.ID] {
+				if line.RemovedAt != nil {
 					continue
 				}
 				net, _ := line.Price.Apply(money.Amount{}.Sub(line.Discount))
@@ -302,11 +317,7 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 				for _, p := range line.Positions {
 					slots = append(slots, performance.Slot{Slot: p.Slot, PositionID: p.PositionID, StaffID: p.StaffID, SharePercent: p.SharePercent})
 				}
-				performanceLines = append(performanceLines, performance.Line{OrderItemID: line.ID, Net: net, Slots: slots})
-			}
-			recordedPayments, err := env.Q.ListOrderPayments(ctx, dbgen.ListOrderPaymentsParams{StoreID: env.Caller.StoreID, OrderIds: []uuid.UUID{rows[i].ID}})
-			if err != nil {
-				return err
+				performanceLines = append(performanceLines, performance.Line{OrderItemID: line.ID, Net: net, Price: line.Price, LaborFeeAmount: line.LaborFeeAmount, LaborFeePercent: line.LaborFeePercent, Count: consumptions[line.ID], Slots: slots})
 			}
 			categories := []performance.Category{}
 			for _, p := range recordedPayments {

@@ -22,19 +22,24 @@ type CheckoutInput struct {
 	Payments           []Category
 }
 
-// RecordCheckout 在结账已持有单锁的事务内追加项目业绩。
+// RecordCheckout 在结账已持有单锁的事务内追加项目业绩、耗卡业绩和手工费。
 func RecordCheckout(ctx context.Context, env ops.Env, in CheckoutInput) error {
 	ratios := map[string]int{}
 	for _, method := range methods {
 		ratios[method] = in.Rules.PerformanceRatio(method)
 	}
-	for _, e := range allocate(in.Lines, in.Payments, in.Rules.PerformanceSplit(), ratios) {
+	for _, method := range []string{"count_paid", "count_gift"} {
+		ratios[method] = in.Rules.PerformanceRatio(method)
+	}
+	entries := allocate(in.Lines, in.Payments, in.Rules.PerformanceSplit(), ratios)
+	entries = append(entries, consumeAndLabor(in.Lines, in.Rules.PerformanceSplit(), ratios)...)
+	for _, e := range entries {
 		err := env.Q.AddPerformanceEntry(ctx, dbgen.AddPerformanceEntryParams{
 			TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID,
 			BusinessDate: pgtype.Date{Time: in.BusinessDate, Valid: true},
 			OrderID:      in.OrderID, OrderItemID: e.orderItemID, CheckoutID: in.CheckoutID, SettingsSnapshotID: in.SettingsSnapshotID,
 			Slot: e.slot, PositionID: e.positionID, StaffID: e.staffID,
-			Method: e.method, PaidAmount: e.paidAmount, Ratio: e.ratio, Amount: e.amount,
+			Kind: e.kind, Method: e.method, PaidAmount: e.paidAmount, Ratio: e.ratio, Amount: e.amount,
 		})
 		if err != nil {
 			return err

@@ -34,7 +34,7 @@ func TestVoidPerformance(t *testing.T) {
 			n         int
 		}{{today, "100.00", 2}, {day.Format(time.DateOnly), "0.00", 4}} {
 			r := ch.Call(t, s.MustCaller(s.Owner), "list_performance", map[string]any{"date_from": today, "date_to": tc.to})
-			if r.Status != 200 || len(r.Body["entries"].([]any)) != tc.n || r.Body["totals"].(map[string]any)["amount"] != tc.total || r.Body["totals"].(map[string]any)["paid_amount"] != tc.total {
+			if r.Status != 200 || len(r.Body["entries"].([]any)) != tc.n || r.Body["totals"].([]any)[0].(map[string]any)["amount"] != tc.total || r.Body["totals"].([]any)[0].(map[string]any)["paid_amount"] != tc.total {
 				t.Fatal(r)
 			}
 			if tc.n == 4 {
@@ -66,7 +66,7 @@ func TestVoidPerformance(t *testing.T) {
 			}
 		}
 		negative := ch.Call(t, s.MustCaller(s.Owner), "list_performance", map[string]any{"date_from": day.Format(time.DateOnly), "date_to": day.Format(time.DateOnly)})
-		if negative.Status != 200 || negative.Body["totals"].(map[string]any)["amount"] != "-100.00" {
+		if negative.Status != 200 || negative.Body["totals"].([]any)[0].(map[string]any)["amount"] != "-100.00" {
 			t.Fatal(negative)
 		}
 	}

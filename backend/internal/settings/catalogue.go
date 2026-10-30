@@ -69,6 +69,8 @@ const (
 	KeyPerformanceRatioCardPrincipal = "performance_ratio_card_principal"
 	KeyPerformanceRatioCardBonus     = "performance_ratio_card_bonus"
 	KeyPerformanceRatioRedPacket     = "performance_ratio_red_packet"
+	KeyPerformanceRatioCountPaid     = "performance_ratio_count_paid"
+	KeyPerformanceRatioCountGift     = "performance_ratio_count_gift"
 	KeyCardRefundBonus               = "card_refund_bonus"
 	KeyCardRefundFeePercent          = "card_refund_fee_percent"
 	KeyVoidWindowMinutes             = "void_window_minutes"
@@ -100,6 +102,8 @@ var Catalogue = []Def{
 	{Key: KeyPerformanceRatioCardPrincipal, Label: "卡余额本金业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
 	{Key: KeyPerformanceRatioCardBonus, Label: "卡余额赠送金业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 0, Hint: "这种支付方式付的钱按百分之几计入业绩"},
 	{Key: KeyPerformanceRatioRedPacket, Label: "红包业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 0, Hint: "这种支付方式付的钱按百分之几计入业绩"},
+	{Key: KeyPerformanceRatioCountPaid, Label: "购买次数耗卡业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "扣次时按单次金额的百分之几计入耗卡业绩"},
+	{Key: KeyPerformanceRatioCountGift, Label: "赠送次数耗卡业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 0, Hint: "扣次时按单次金额的百分之几计入耗卡业绩"},
 	{
 		Key: KeyCardRefundBonus, Label: "退卡赠送金", Kind: KindChoice, Default: "forfeit",
 		Options: []ChoiceOption{{Value: "forfeit", Label: "不退、作废"}, {Value: "deduct_used", Label: "扣回已用掉的赠送金"}},

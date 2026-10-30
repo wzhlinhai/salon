@@ -111,7 +111,7 @@ func addItem(ctx context.Context, env ops.Env, orderID uuid.UUID, in OrderItemIn
 	if err != nil {
 		return err
 	}
-	row, err := env.Q.CreateOrderItem(ctx, dbgen.CreateOrderItemParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, OrderID: orderID, ItemID: item.ID, ItemName: item.Name, ItemKind: item.Kind, Price: price.Price, PriceSource: price.Source, LevelID: price.LevelID, AddedBy: env.Caller.StaffID})
+	row, err := env.Q.CreateOrderItem(ctx, dbgen.CreateOrderItemParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, OrderID: orderID, ItemID: item.ID, ItemName: item.Name, ItemKind: item.Kind, Price: price.Price, PriceSource: price.Source, LevelID: price.LevelID, AddedBy: env.Caller.StaffID, LaborFeeAmount: item.LaborFeeAmount, LaborFeePercent: item.LaborFeePercent})
 	if err != nil {
 		return err
 	}
@@ -201,7 +201,7 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 		if p == nil {
 			p = []OrderItemPosition{}
 		}
-		byOrder[i.OrderID] = append(byOrder[i.OrderID], OrderItem{ID: i.ID, ItemID: i.ItemID, ItemName: i.ItemName, ItemKind: i.ItemKind, Price: i.Price, PriceSource: i.PriceSource, CardTypeID: i.CardTypeID, Discount: i.Discount, LevelID: i.LevelID, AddedAt: i.AddedAt.Time, RemovedAt: removedTime(i.RemovedAt), RemovedBy: i.RemovedBy, RepriceReason: i.RepriceReason, Positions: p})
+		byOrder[i.OrderID] = append(byOrder[i.OrderID], OrderItem{ID: i.ID, ItemID: i.ItemID, ItemName: i.ItemName, ItemKind: i.ItemKind, LaborFeeAmount: i.LaborFeeAmount, LaborFeePercent: i.LaborFeePercent, Price: i.Price, PriceSource: i.PriceSource, CardTypeID: i.CardTypeID, Discount: i.Discount, LevelID: i.LevelID, AddedAt: i.AddedAt.Time, RemovedAt: removedTime(i.RemovedAt), RemovedBy: i.RemovedBy, RepriceReason: i.RepriceReason, Positions: p})
 		if !i.RemovedAt.Valid {
 			totals[i.OrderID] = totals[i.OrderID].AddProduct(i.Price, 1)
 			discounts[i.OrderID] = discounts[i.OrderID].AddProduct(i.Discount, 1)

@@ -15,7 +15,7 @@ import (
 
 const addPerformanceEntry = `-- name: AddPerformanceEntry :exec
 INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,ratio,amount)
-VALUES ($1,$2,'item',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+VALUES ($1,$2,$15,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 `
 
 type AddPerformanceEntryParams struct {
@@ -33,6 +33,7 @@ type AddPerformanceEntryParams struct {
 	PaidAmount         money.Amount
 	Ratio              int16
 	Amount             money.Amount
+	Kind               string
 }
 
 func (q *Queries) AddPerformanceEntry(ctx context.Context, arg AddPerformanceEntryParams) error {
@@ -51,6 +52,7 @@ func (q *Queries) AddPerformanceEntry(ctx context.Context, arg AddPerformanceEnt
 		arg.PaidAmount,
 		arg.Ratio,
 		arg.Amount,
+		arg.Kind,
 	)
 	return err
 }
@@ -63,9 +65,10 @@ LEFT JOIN staff s ON s.id=e.staff_id
 WHERE e.store_id=$1
 AND e.business_date BETWEEN $2::date AND $3::date
 AND ($4::uuid IS NULL OR e.staff_id=$4)
-AND ($5::uuid IS NULL OR e.staff_id=$5)
-AND ($6::uuid IS NULL OR e.id < $6)
-ORDER BY e.id DESC LIMIT $7
+AND ($5::text IS NULL OR e.kind=$5)
+AND ($6::uuid IS NULL OR e.staff_id=$6)
+AND ($7::uuid IS NULL OR e.id < $7)
+ORDER BY e.id DESC LIMIT $8
 `
 
 type ListPerformanceParams struct {
@@ -73,6 +76,7 @@ type ListPerformanceParams struct {
 	DateFrom pgtype.Date
 	DateTo   pgtype.Date
 	SelfID   *uuid.UUID
+	Kind     *string
 	StaffID  *uuid.UUID
 	BeforeID *uuid.UUID
 	RowLimit int32
@@ -108,6 +112,7 @@ func (q *Queries) ListPerformance(ctx context.Context, arg ListPerformanceParams
 		arg.DateFrom,
 		arg.DateTo,
 		arg.SelfID,
+		arg.Kind,
 		arg.StaffID,
 		arg.BeforeID,
 		arg.RowLimit,
@@ -152,14 +157,16 @@ func (q *Queries) ListPerformance(ctx context.Context, arg ListPerformanceParams
 	return items, nil
 }
 
-const performanceTotals = `-- name: PerformanceTotals :one
-SELECT COALESCE(sum(CASE WHEN e.reverses_id IS NULL THEN e.amount ELSE -e.amount END),0)::text AS amount,
+const performanceTotals = `-- name: PerformanceTotals :many
+SELECT e.kind, COALESCE(sum(CASE WHEN e.reverses_id IS NULL THEN e.amount ELSE -e.amount END),0)::text AS amount,
 COALESCE(sum(CASE WHEN e.reverses_id IS NULL THEN e.paid_amount ELSE -e.paid_amount END),0)::text AS paid_amount
 FROM performance_entries e
 WHERE e.store_id=$1
 AND e.business_date BETWEEN $2::date AND $3::date
 AND ($4::uuid IS NULL OR e.staff_id=$4)
-AND ($5::uuid IS NULL OR e.staff_id=$5)
+AND ($5::text IS NULL OR e.kind=$5)
+AND ($6::uuid IS NULL OR e.staff_id=$6)
+GROUP BY e.kind
 `
 
 type PerformanceTotalsParams struct {
@@ -167,25 +174,41 @@ type PerformanceTotalsParams struct {
 	DateFrom pgtype.Date
 	DateTo   pgtype.Date
 	SelfID   *uuid.UUID
+	Kind     *string
 	StaffID  *uuid.UUID
 }
 
 type PerformanceTotalsRow struct {
+	Kind       string
 	Amount     string
 	PaidAmount string
 }
 
-func (q *Queries) PerformanceTotals(ctx context.Context, arg PerformanceTotalsParams) (PerformanceTotalsRow, error) {
-	row := q.db.QueryRow(ctx, performanceTotals,
+func (q *Queries) PerformanceTotals(ctx context.Context, arg PerformanceTotalsParams) ([]PerformanceTotalsRow, error) {
+	rows, err := q.db.Query(ctx, performanceTotals,
 		arg.StoreID,
 		arg.DateFrom,
 		arg.DateTo,
 		arg.SelfID,
+		arg.Kind,
 		arg.StaffID,
 	)
-	var i PerformanceTotalsRow
-	err := row.Scan(&i.Amount, &i.PaidAmount)
-	return i, err
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PerformanceTotalsRow
+	for rows.Next() {
+		var i PerformanceTotalsRow
+		if err := rows.Scan(&i.Kind, &i.Amount, &i.PaidAmount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const reversePerformanceOrder = `-- name: ReversePerformanceOrder :exec
