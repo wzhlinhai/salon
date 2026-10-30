@@ -189,3 +189,17 @@ func (r Rules) VoidWindowMinutes() int {
 	r.decode(KeyVoidWindowMinutes, &v)
 	return v
 }
+
+// CardRefundBonus 返回退卡赠送金的处理规则。
+func (r Rules) CardRefundBonus() string {
+	var v string
+	r.decode(KeyCardRefundBonus, &v)
+	return v
+}
+
+// CardRefundFeePercent 返回退卡手续费百分比。
+func (r Rules) CardRefundFeePercent() int {
+	var v int
+	r.decode(KeyCardRefundFeePercent, &v)
+	return v
+}

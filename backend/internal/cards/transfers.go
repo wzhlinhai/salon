@@ -53,11 +53,11 @@ func transferCardBalance(ctx context.Context, env ops.Env, in *TransferCardBalan
 			return ops.Rule("余额不足")
 		}
 		date := pgtype.Date{Time: day, Valid: true}
-		outLedger, err := writeBalance(ctx, env, from.ID, "transfer_out", from.Principal, from.Bonus, money.Amount{}.Sub(in.Principal), money.Amount{}.Sub(in.Bonus), day, nil, nil)
+		outLedger, err := writeBalance(ctx, env, from.ID, "transfer_out", from.Principal, from.Bonus, money.Amount{}.Sub(in.Principal), money.Amount{}.Sub(in.Bonus), day, nil, nil, nil)
 		if err != nil {
 			return err
 		}
-		inLedger, err := writeBalance(ctx, env, to.ID, "transfer_in", to.Principal, to.Bonus, in.Principal.Sub(money.Amount{}), in.Bonus.Sub(money.Amount{}), day, nil, nil)
+		inLedger, err := writeBalance(ctx, env, to.ID, "transfer_in", to.Principal, to.Bonus, in.Principal.Sub(money.Amount{}), in.Bonus.Sub(money.Amount{}), day, nil, nil, nil)
 		if err != nil {
 			return err
 		}
@@ -65,7 +65,7 @@ func transferCardBalance(ctx context.Context, env ops.Env, in *TransferCardBalan
 			return err
 		}
 		return nil
-	})
+	}, time.Now())
 	if err != nil {
 		return nil, err
 	}

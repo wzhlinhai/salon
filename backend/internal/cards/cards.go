@@ -22,6 +22,7 @@ import (
 // Register 声明卡类型、开卡、充值和卡流水操作。
 func Register(r *ops.Registry) {
 	ops.Register(r, ops.Operation[ListCardPointsInput, PointsLedgerList]{Name: "list_card_points", Summary: "查看积分流水", Kind: ops.Read, Permission: perm.CustomerView, AI: ops.AIDirect, Handle: listCardPoints})
+	registerRefunds(r)
 	registerUpgrades(r)
 	registerTransfers(r)
 	ops.Register(r, ops.Operation[ListCardCountsInput, CardCountList]{Name: "list_card_counts", Summary: "查看次数流水", Kind: ops.Read, Permission: perm.CustomerView, AI: ops.AIDirect, Handle: listCardCounts})
@@ -51,7 +52,7 @@ func listCardTypes(ctx context.Context, env ops.Env, _ *ListCardTypesInput) (*Ca
 }
 
 func view(r dbgen.Card, name string, principal, bonus money.Amount) Card {
-	return Card{ID: r.ID, CustomerID: r.CustomerID, CardTypeID: r.CardTypeID, CardTypeName: name, OpenedAt: r.OpenedAt.Time, ExpiresOn: dateView(r.ExpiresOn), Principal: principal, Bonus: bonus}
+	return Card{Status: r.Status, ID: r.ID, CustomerID: r.CustomerID, CardTypeID: r.CardTypeID, CardTypeName: name, OpenedAt: r.OpenedAt.Time, ExpiresOn: dateView(r.ExpiresOn), Principal: principal, Bonus: bonus}
 }
 func cardView(ctx context.Context, env ops.Env, id uuid.UUID) (*Card, error) {
 	r, err := env.Q.CardView(ctx, dbgen.CardViewParams{StoreID: env.Caller.StoreID, ID: id})
@@ -138,14 +139,14 @@ func rechargeCard(ctx context.Context, env ops.Env, in *RechargeInput) (*Recharg
 		}
 		upgraded, err = autoUpgradeCard(ctx, env, c.row, in.Principal, ledger.ID, day)
 		return err
-	})
+	}, time.Now())
 	if err != nil {
 		return nil, err
 	}
 	return &RechargeResult{Card: *out, UpgradedTo: upgraded}, nil
 }
 func appendLedger(ctx context.Context, env ops.Env, id uuid.UUID, kind string, principal, bonus money.Amount, in TopUpInput, day time.Time) (dbgen.CardLedger, error) {
-	row, err := writeBalance(ctx, env, id, kind, principal, bonus, in.Principal.Sub(money.Amount{}), in.Bonus.Sub(money.Amount{}), day, nil, nil)
+	row, err := writeBalance(ctx, env, id, kind, principal, bonus, in.Principal.Sub(money.Amount{}), in.Bonus.Sub(money.Amount{}), day, nil, nil, nil)
 	if err != nil {
 		return dbgen.CardLedger{}, err
 	}
@@ -213,7 +214,7 @@ func listCardLedger(ctx context.Context, env ops.Env, in *ListCardLedgerInput) (
 		if staff == nil {
 			staff = []SalesStaff{}
 		}
-		out.Entries = append(out.Entries, CardLedgerEntry{ReversesID: l.ReversesID, OrderVoidID: l.OrderVoidID, OrderID: r.OrderID, ID: l.ID, Kind: l.Kind, Reason: r.Reason, OtherCardID: optionalCardID(r.OtherCardID), PrincipalBefore: l.PrincipalBefore, PrincipalDelta: l.PrincipalDelta, PrincipalAfter: l.PrincipalAfter, BonusBefore: l.BonusBefore, BonusDelta: l.BonusDelta, BonusAfter: l.BonusAfter, BusinessDate: l.BusinessDate.Time.Format(time.DateOnly), At: l.At.Time, Actor: CardLedgerActor{ID: l.ActorID, Name: r.ActorName}, SalesStaff: staff})
+		out.Entries = append(out.Entries, CardLedgerEntry{RefundID: l.RefundID, RefundMethod: r.RefundMethod, RefundAmount: r.RefundAmount, ReversesID: l.ReversesID, OrderVoidID: l.OrderVoidID, OrderID: r.OrderID, ID: l.ID, Kind: l.Kind, Reason: r.Reason, OtherCardID: optionalCardID(r.OtherCardID), PrincipalBefore: l.PrincipalBefore, PrincipalDelta: l.PrincipalDelta, PrincipalAfter: l.PrincipalAfter, BonusBefore: l.BonusBefore, BonusDelta: l.BonusDelta, BonusAfter: l.BonusAfter, BusinessDate: l.BusinessDate.Time.Format(time.DateOnly), At: l.At.Time, Actor: CardLedgerActor{ID: l.ActorID, Name: r.ActorName}, SalesStaff: staff})
 	}
 	return out, nil
 }

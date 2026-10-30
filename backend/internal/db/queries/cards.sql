@@ -28,8 +28,8 @@ SELECT * FROM cards WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE;
 SELECT * FROM cards WHERE store_id=$1 AND id=$2;
 
 -- name: AddCardLedger :one
-INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id,reverses_id,order_void_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *;
+INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id,reverses_id,order_void_id,refund_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *;
 
 -- name: AddCardLedgerSales :exec
 INSERT INTO card_ledger_sales (tenant_id,store_id,ledger_id,staff_id) VALUES ($1,$2,$3,$4);
@@ -48,10 +48,11 @@ WHERE c.store_id=$1 AND c.id=$2;
 
 -- name: ListCardLedger :many
 SELECT sqlc.embed(l), s.name AS actor_name, COALESCE(a.reason,tr.reason,'')::text AS reason,
- CASE WHEN tr.from_ledger_id=l.id THEN tr.to_card_id ELSE tr.from_card_id END::uuid AS other_card_id, p.order_id
+ CASE WHEN tr.from_ledger_id=l.id THEN tr.to_card_id ELSE tr.from_card_id END::uuid AS other_card_id, p.order_id, rf.method AS refund_method, rf.amount::numeric AS refund_amount
 FROM card_ledger l JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.ledger_id=l.id
 LEFT JOIN card_transfers tr ON tr.from_ledger_id=l.id OR tr.to_ledger_id=l.id
 LEFT JOIN order_payments p ON p.card_ledger_id=l.id
+LEFT JOIN card_refunds rf ON rf.id=l.refund_id
 WHERE l.card_id=$1 AND (sqlc.narg(before_id)::uuid IS NULL OR (l.at,l.id) < (SELECT at,id FROM card_ledger WHERE id=sqlc.narg(before_id) AND card_id=$1))
 ORDER BY l.at DESC,l.id DESC LIMIT sqlc.arg(row_limit);
 
@@ -100,8 +101,8 @@ DELETE FROM card_type_items WHERE card_type_id=$1 AND item_id=$2;
 INSERT INTO card_items (tenant_id,store_id,card_id,item_id,unit_price,paid_count_opened,gift_count_opened) VALUES ($1,$2,$3,$4,$5,$6,$7);
 
 -- name: AddCardCountEntry :exec
-INSERT INTO card_count_ledger (tenant_id,store_id,card_id,item_id,kind,paid_before,paid_delta,paid_after,gift_before,gift_delta,gift_after,adjustment_id,business_date,actor_id,reverses_id,order_void_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16);
+INSERT INTO card_count_ledger (tenant_id,store_id,card_id,item_id,kind,paid_before,paid_delta,paid_after,gift_before,gift_delta,gift_after,adjustment_id,business_date,actor_id,reverses_id,order_void_id,refund_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17);
 
 -- name: RemainingCounts :many
 SELECT sqlc.embed(ci), i.name AS item_name, l.paid_after, l.gift_after FROM card_items ci JOIN items i ON i.id=ci.item_id

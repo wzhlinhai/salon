@@ -127,3 +127,15 @@ func (a Amount) Discount(percent Percent) Amount {
 func (a Percent) IsDiscount() bool {
 	return a.value.IsPositive() && a.value.LessThan(decimal.NewFromInt(100))
 }
+
+// PercentOf 返回金额的整数百分比，四舍五入到分，百分比须在零到一百之间。
+func (a Amount) PercentOf(percent int) Amount {
+	return Amount{value: percentOf(a.value, percent)}
+}
+
+func percentOf(value decimal.Decimal, percent int) decimal.Decimal {
+	if percent < 0 || percent > 100 {
+		panic("money: percent must be between 0 and 100")
+	}
+	return value.Mul(decimal.NewFromInt(int64(percent))).Div(decimal.NewFromInt(100)).Round(2)
+}

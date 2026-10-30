@@ -35,6 +35,7 @@ type Card struct {
 	// 家庭卡、共用卡关联，P0 只预留，界面不做
 	FamilyGroupID *uuid.UUID
 	CreatedBy     uuid.UUID
+	Status        string
 }
 
 type CardAdjustment struct {
@@ -75,6 +76,7 @@ type CardCountLedger struct {
 	At           pgtype.Timestamptz
 	ReversesID   *uuid.UUID
 	OrderVoidID  *uuid.UUID
+	RefundID     *uuid.UUID
 }
 
 type CardItem struct {
@@ -104,6 +106,7 @@ type CardLedger struct {
 	At              pgtype.Timestamptz
 	ReversesID      *uuid.UUID
 	OrderVoidID     *uuid.UUID
+	RefundID        *uuid.UUID
 }
 
 type CardLedgerSale struct {
@@ -127,6 +130,25 @@ type CardPointsLedger struct {
 	BusinessDate pgtype.Date
 	ActorID      uuid.UUID
 	At           pgtype.Timestamptz
+}
+
+type CardRefund struct {
+	TenantID      uuid.UUID
+	StoreID       uuid.UUID
+	ID            uuid.UUID
+	CardID        uuid.UUID
+	Method        string
+	Principal     money.Amount
+	Bonus         money.Amount
+	CountsAmount  money.Amount
+	BonusPolicy   string
+	BonusDeducted money.Amount
+	FeePercent    int32
+	Fee           money.Amount
+	Amount        money.Amount
+	BusinessDate  pgtype.Date
+	RefundedBy    uuid.UUID
+	At            pgtype.Timestamptz
 }
 
 type CardTransfer struct {

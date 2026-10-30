@@ -257,7 +257,7 @@ func upgradeCard(ctx context.Context, env ops.Env, in *UpgradeCardInput) (*Card,
 			return err
 		}
 		return nil
-	})
+	}, time.Now())
 }
 func recordUpgrade(ctx context.Context, env ops.Env, card dbgen.Card, to uuid.UUID, trigger string, rule *uuid.UUID, ledger uuid.UUID, day time.Time) error {
 	// 升级不改有效期；门店需要更正时另写调整单。

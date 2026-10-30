@@ -41,3 +41,17 @@ func (a Total) Limit(limit Amount) Amount {
 
 // AddTotal 精确相加两份不受单笔上限限制的累计金额。
 func (a Total) AddTotal(b Total) Total { return Total{value: a.value.Add(b.value)} }
+
+// Deduct 返回累计金额扣减后的金额，扣减超过累计金额时 panic。
+func (a Total) Deduct(deduction Amount) Total {
+	value := a.value.Sub(deduction.value)
+	if value.IsNegative() {
+		panic("money: deduction exceeds total")
+	}
+	return Total{value: value}
+}
+
+// PercentOf 返回累计金额的整数百分比，四舍五入到分，百分比须在零到一百之间。
+func (a Total) PercentOf(percent int) Total {
+	return Total{value: percentOf(a.value, percent)}
+}

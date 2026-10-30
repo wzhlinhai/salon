@@ -207,7 +207,7 @@ const balanceReason = ref('')
 const balanceTypes = ref<components['schemas']['CardType'][]>([])
 const balanceStaff = ref<components['schemas']['StaffOption'][]>([])
 const hasDifference = computed(() => Number(balancePrincipal.value) > 0 || Number(balanceBonus.value) > 0)
-const transferTargets = computed(() => cardCards.value.filter(c => c.id !== balanceCard.value?.id && c.kind !== 'count'))
+const transferTargets = computed(() => cardCards.value.filter(c => c.status === 'active' && c.id !== balanceCard.value?.id && c.kind !== 'count'))
 
 async function editBalance(card: CustomerCard, mode: 'upgrade' | 'transfer') {
   balanceForm.begin(() => {
@@ -251,7 +251,48 @@ async function saveBalance() {
   })
 }
 
-const ledgerKinds: Record<string, string> = { open: '开卡', recharge: '充值', adjust: '调整', upgrade: '升级', transfer_out: '转出', transfer_in: '转入', consume: '消费', void: '撤单退回' }
+const refundForm = useModalForm()
+const { open: refundOpen, loading: refundLoading, saving: refundSaving } = refundForm
+const refundQuote = ref<components['schemas']['CardRefundQuote'] | null>(null)
+const refundMethod = ref<components['schemas']['RefundCardInput']['method']>()
+const refundError = ref('')
+const refundMethods = [{ label: '现金', value: 'cash' }, { label: '银联', value: 'unionpay' }, { label: '微信', value: 'wechat' }, { label: '支付宝', value: 'alipay' }]
+
+async function editRefund(card: CustomerCard) {
+  refundForm.begin(() => {
+    refundQuote.value = null
+    refundMethod.value = undefined
+    refundError.value = ''
+  })
+  await refundForm.load(async (current) => {
+    const { data, error } = await api.POST('/api/ops/preview_card_refund', { body: { card_id: card.id } })
+    if (!current()) return
+    if (data) refundQuote.value = data
+    else refundError.value = errorText(error)
+  })
+}
+
+async function saveRefund() {
+  const quote = refundQuote.value
+  const method = refundMethod.value
+  if (!quote || !method) return
+  await refundForm.save(async (current) => {
+    const { data, error, response } = await api.POST('/api/ops/refund_card', { body: { card_id: quote.card_id, amount: quote.amount, method } })
+    if (!current()) return
+    if (data) {
+      refundOpen.value = false
+      await refreshCards()
+    } else {
+      refundError.value = errorText(error)
+      if (response.status === 409) {
+        refundQuote.value = null
+        await refreshCards()
+      }
+    }
+  })
+}
+
+const ledgerKinds: Record<string, string> = { open: '开卡', recharge: '充值', adjust: '调整', upgrade: '升级', transfer_out: '转出', transfer_in: '转入', consume: '消费', void: '撤单退回', refund: '退卡' }
 
 // 所有写操作刷新同一组已展开的明细，避免某个弹窗漏掉积分或升级记录。
 async function refreshCards() {
@@ -280,17 +321,18 @@ onMounted(cardLoad)
       <p v-if="cardLoading">正在读取卡…</p>
       <p v-else-if="!cardCards.length">暂无卡</p>
       <div v-for="card in cardCards" :key="card.id" :data-card="card.id" class="space-y-2 py-3 border-b border-default">
-        <p>{{ card.card_type_name }} · 本金 {{ card.principal }} · 赠送金 {{ card.bonus }} · 积分 {{ card.points }} · 有效期 {{ card.expires_on || '不限' }}</p>
+        <p><UBadge v-if="card.status === 'refunded'">已退</UBadge> {{ card.card_type_name }} · 本金 {{ card.principal }} · 赠送金 {{ card.bonus }} · 积分 {{ card.points }} · 有效期 {{ card.expires_on || '不限' }}</p>
         <p v-for="item in card.items" :key="item.item_id" data-testid="remaining-counts">{{ item.item_name }} · 购买 {{ item.paid_remaining }} · 赠送 {{ item.gift_remaining }}</p>
         <p v-if="card.items.length">次数售价 {{ card.counts_price }}</p>
         <div class="flex gap-2">
-          <UButton v-if="card.kind !== 'count' && can('card.sell') && !props.merged" size="xs" variant="outline" @click="cardEdit(card)">充值</UButton>
-          <UButton v-if="can('card.adjust')" size="xs" variant="outline" @click="editAdjustment(card)">调整</UButton>
+          <UButton v-if="card.status === 'active' && card.kind !== 'count' && can('card.sell') && !props.merged" size="xs" variant="outline" @click="cardEdit(card)">充值</UButton>
+          <UButton v-if="card.status === 'active' && can('card.adjust')" size="xs" variant="outline" @click="editAdjustment(card)">调整</UButton>
           <UButton size="xs" variant="outline" @click="cardShowLedger(card.id)">流水</UButton>
           <UButton size="xs" variant="outline" @click="showPoints(card.id)">积分流水</UButton>
           <UButton v-if="card.items.length" size="xs" variant="outline" @click="showCounts(card.id)">次数流水</UButton>
-          <UButton v-if="can('card.sell') && card.kind === 'stored_value'" size="xs" variant="outline" @click="editBalance(card, 'upgrade')">升级</UButton>
-          <UButton v-if="can('card.adjust')" size="xs" variant="outline" @click="editBalance(card, 'transfer')">转余额</UButton>
+          <UButton v-if="card.status === 'active' && can('card.sell') && card.kind === 'stored_value'" size="xs" variant="outline" @click="editBalance(card, 'upgrade')">升级</UButton>
+          <UButton v-if="card.status === 'active' && can('card.adjust')" size="xs" variant="outline" @click="editBalance(card, 'transfer')">转余额</UButton>
+          <UButton v-if="card.status === 'active' && can('card.adjust')" size="xs" variant="outline" @click="editRefund(card)">退卡</UButton>
           <UButton size="xs" variant="outline" @click="showUpgrades(card.id)">升级记录</UButton>
           <UButton size="xs" variant="outline" @click="showAdjustments(card.id)">调整记录</UButton>
         </div>
@@ -342,6 +384,24 @@ onMounted(cardLoad)
       </div>
     </UCard>
   </div>
+  <UModal v-model:open="refundOpen" title="退卡">
+    <template #body>
+      <div class="space-y-3">
+        <p v-if="refundLoading">正在计算退款…</p>
+        <p v-if="refundError" role="alert">{{ refundError }}</p>
+        <template v-if="refundQuote">
+          <p>剩余本金 {{ refundQuote.principal }}</p>
+          <p>作废的赠送金 {{ refundQuote.bonus }}</p>
+          <p v-for="item in refundQuote.items" :key="item.item.id">{{ item.item.name }} · 购买次数 {{ item.paid_remaining }} × 单次金额 {{ item.unit_price }} = {{ item.amount }}</p>
+          <p v-if="refundQuote.bonus_policy === 'deduct_used'">扣回赠送金 {{ refundQuote.bonus_deducted }}</p>
+          <p>手续费 {{ refundQuote.fee_percent }}% · {{ refundQuote.fee }}</p>
+          <p data-testid="refund-amount">退款金额 {{ refundQuote.amount }}</p>
+          <UFormField label="退款方式" required><USelect v-model="refundMethod" :items="refundMethods" class="w-full" /></UFormField>
+        </template>
+      </div>
+    </template>
+    <template #footer><UButton :loading="refundSaving" :disabled="refundLoading || !refundQuote || !refundMethod" @click="saveRefund">确认退卡</UButton></template>
+  </UModal>
   <UModal v-model:open="balanceOpen" :title="balanceMode === 'upgrade' ? '升级' : '转余额'">
     <template #body>
       <div class="space-y-3">

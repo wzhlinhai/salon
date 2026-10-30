@@ -56,6 +56,9 @@ func PaymentCards(ctx context.Context, env ops.Env, ids []uuid.UUID, day time.Ti
 			return nil, err
 		}
 		if !slices.Contains(candidates, id) || slices.Contains(ids, id) {
+			if row.Status == "refunded" {
+				return nil, ops.Rule("卡已退")
+			}
 			if err := checkExpiry(row, day); err != nil {
 				return nil, err
 			}
@@ -96,6 +99,9 @@ func readPaymentCards(ctx context.Context, env ops.Env, ids []uuid.UUID, day tim
 			return nil, ops.ErrNotFound
 		}
 		if !slices.Contains(candidates, id) || slices.Contains(ids, id) {
+			if out[id].row.Status == "refunded" {
+				return nil, ops.Rule("卡已退")
+			}
 			if err := checkExpiry(out[id].row, day); err != nil {
 				return nil, err
 			}
@@ -125,7 +131,7 @@ func (c *PaymentCard) Consume(ctx context.Context, env ops.Env, amount money.Amo
 	if order == "bonus_first" {
 		principal, bonus = bonus, principal
 	}
-	ledger, err := writeBalance(ctx, env, c.row.ID, "consume", c.principal, c.bonus, money.Amount{}.Sub(principal), money.Amount{}.Sub(bonus), day, nil, nil)
+	ledger, err := writeBalance(ctx, env, c.row.ID, "consume", c.principal, c.bonus, money.Amount{}.Sub(principal), money.Amount{}.Sub(bonus), day, nil, nil, nil)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -204,6 +210,9 @@ func (c *PaymentCard) CheckSelection(customerID uuid.UUID, day time.Time) error 
 	if c.row.CustomerID != customerID {
 		return ops.Rule("不能用别人的卡")
 	}
+	if c.row.Status == "refunded" {
+		return ops.Rule("卡已退")
+	}
 	if err := checkExpiry(c.row, day); err != nil {
 		return err
 	}
@@ -246,7 +255,7 @@ func SelectionCandidates(ctx context.Context, env ops.Env, customerID uuid.UUID,
 	}
 	ids := []uuid.UUID{}
 	for _, row := range rows {
-		if !slices.Contains(excluded, row.Card.ID) {
+		if row.Card.Status != "refunded" && !slices.Contains(excluded, row.Card.ID) {
 			ids = append(ids, row.Card.ID)
 		}
 	}
