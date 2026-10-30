@@ -11,9 +11,9 @@ import (
 
 func TestCardPaymentSettings(t *testing.T) {
 	s := open(t)
-	for _, tc := range []struct{ key, def, value string }{
-		{settings.KeyCardDeductionOrder, "principal_first", "bonus_first"},
-		{settings.KeyOthersCardPayment, "not_allowed", "allowed"},
+	for _, tc := range []struct{ key, def, value, wantDetail string }{
+		{settings.KeyCardDeductionOrder, "principal_first", "bonus_first", "扣款顺序的做法无效"},
+		{settings.KeyOthersCardPayment, "not_allowed", "allowed", "用别人的卡的做法无效"},
 	} {
 		for _, ch := range s.Channels() {
 			got := setting(t, ch.Call(t, s.owner, "get_settings", map[string]any{}), tc.key)
@@ -21,7 +21,9 @@ func TestCardPaymentSettings(t *testing.T) {
 				t.Fatal(got)
 			}
 		}
-		s.change(s.owner, tc.key, "invalid", day(0), 409)
+		if r := s.change(s.owner, tc.key, "invalid", day(0), 409); r.Detail() != tc.wantDetail {
+			t.Fatal(r)
+		}
 		s.change(s.owner, tc.key, tc.value, day(0), 200)
 		for _, ch := range s.Channels() {
 			got := setting(t, ch.Call(t, s.owner, "get_settings", map[string]any{}), tc.key)

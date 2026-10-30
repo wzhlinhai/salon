@@ -144,7 +144,7 @@ func TestIssueStaffValidation(t *testing.T) {
 			_, err := redpackets.IssueRedPacketAtForTest(context.Background(), ops.Env{Caller: caller, Q: q}, &redpackets.IssueRedPacketInput{CustomerID: s.customer, Kind: "sold", FaceValue: amount, Price: &amount, ExpiresOn: "2999-01-01", SalesStaffIDs: ids}, time.Now())
 			return err
 		})
-		if ops.StatusOf(err) != 409 {
+		if ops.StatusOf(err) != 409 || err.Error() != "请选择一到十名不同的业绩归属人" {
 			t.Fatal(err)
 		}
 	}
@@ -167,7 +167,7 @@ func TestIssueBusinessDate(t *testing.T) {
 			}
 			return err
 		})
-		if offset == 0 && err != nil || offset == -1 && (ops.StatusOf(err) != 409 || s.snapshot() != before) {
+		if offset == 0 && err != nil || offset == -1 && (ops.StatusOf(err) != 409 || err.Error() != "有效期不能早于今天" || s.snapshot() != before) {
 			t.Fatal(err)
 		}
 	}
@@ -297,7 +297,7 @@ func TestRedPacketPermissionsAndAI(t *testing.T) {
 		for _, ch := range s.Channels() {
 			before := s.snapshot()
 			r := ch.Call(t, c, tc.op, tc.in)
-			if r.Status != 403 || s.snapshot() != before {
+			if r.Status != 403 || r.Detail() != "permission denied" || s.snapshot() != before {
 				t.Fatal(r)
 			}
 		}

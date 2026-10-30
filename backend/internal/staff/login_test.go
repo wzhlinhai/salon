@@ -16,6 +16,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/auth"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
+	"github.com/wzhlinhai/salon/backend/internal/optest"
 )
 
 func TestResetPasswordRevokesTokens(t *testing.T) {
@@ -169,13 +170,13 @@ func TestPasswordChecksReadAfterLock(t *testing.T) {
 			if _, err := tx.Exec(context.Background(), "UPDATE staff SET password_hash = $2, token_version = token_version + 1 WHERE id = $1", id, hash); err != nil {
 				t.Fatal(err)
 			}
-			codes := make(chan int, 1)
+			codes := make(chan optest.Result, 1)
 			go func() {
 				if path == "login" {
 					code, _ := s.Login(t, "xiaoli", "password-xiaoli")
-					codes <- code
+					codes <- optest.Result{Status: code}
 				} else {
-					codes <- s.HTTPWithToken(t, token, "change_my_password", map[string]any{"old_password": "password-xiaoli", "new_password": "overwritten-password"}).Status
+					codes <- s.HTTPWithToken(t, token, "change_my_password", map[string]any{"old_password": "password-xiaoli", "new_password": "overwritten-password"})
 				}
 			}()
 			dbtest.WaitForLockWait(t, s.Pool)
@@ -186,8 +187,8 @@ func TestPasswordChecksReadAfterLock(t *testing.T) {
 			if path == "change_my_password" {
 				want = http.StatusConflict
 			}
-			if code := <-codes; code != want {
-				t.Fatalf("password check after reset: got %d, want %d", code, want)
+			if r := <-codes; r.Status != want || want == http.StatusConflict && r.Detail() != "原密码不正确" {
+				t.Fatalf("password check after reset: got %d %v, want %d", r.Status, r, want)
 			}
 			s.MustLogin("xiaoli", "reset-password")
 		})

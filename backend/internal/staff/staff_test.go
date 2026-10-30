@@ -175,11 +175,11 @@ func TestInsufficientPermissionRejectedOnBothChannels(t *testing.T) {
 		if op == "create_role" {
 			args = map[string]any{"name": "x", "permissions": []any{}}
 		}
-		if r := s.call(stylist, op, args, 0); r.Status != http.StatusForbidden {
+		if r := s.call(stylist, op, args, 0); r.Status != http.StatusForbidden || r.Detail() != "permission denied" {
 			t.Errorf("http %s = %d, want 403", op, r.Status)
 		}
 	}
-	if r := s.ai(stylist, "list_staff", map[string]any{}); r.Status != http.StatusForbidden {
+	if r := s.ai(stylist, "list_staff", map[string]any{}); r.Status != http.StatusForbidden || r.Detail() != "permission denied" {
 		t.Errorf("ai list_staff = %d, want 403", r.Status)
 	}
 	// 发型师看得到自己的权限，用于决定显示哪些页面。
@@ -216,13 +216,19 @@ func TestMultipleRolesUnionWithWidestLimits(t *testing.T) {
 func TestLastActiveOwnerCannotBeRemoved(t *testing.T) {
 	s := open(t)
 	owner := s.Res.OwnerID
-	s.call(s.Owner, "set_staff_roles", map[string]any{"staff_id": owner, "role_ids": []any{}}, http.StatusConflict)
-	s.call(s.Owner, "deactivate_staff", map[string]any{"staff_id": owner}, http.StatusConflict)
+	if r := s.call(s.Owner, "set_staff_roles", map[string]any{"staff_id": owner, "role_ids": []any{}}, http.StatusConflict); r.Detail() != "至少要保留一名在职老板" {
+		t.Fatal(r)
+	}
+	if r := s.call(s.Owner, "deactivate_staff", map[string]any{"staff_id": owner}, http.StatusConflict); r.Detail() != "至少要保留一名在职老板" {
+		t.Fatal(r)
+	}
 
 	// 有两名老板时可以互相删除，但删到最后一名为止。
 	second, _ := s.Hire("李老板", "002", "boss2", s.Role("老板"))
 	s.call(s.Owner, "set_staff_roles", map[string]any{"staff_id": second, "role_ids": []any{}}, http.StatusOK)
-	s.call(s.Owner, "set_staff_roles", map[string]any{"staff_id": owner, "role_ids": []any{}}, http.StatusConflict)
+	if r := s.call(s.Owner, "set_staff_roles", map[string]any{"staff_id": owner, "role_ids": []any{}}, http.StatusConflict); r.Detail() != "至少要保留一名在职老板" {
+		t.Fatal(r)
+	}
 }
 
 // 两名老板同时互相删除时，必须有一个被拒绝。测试自己扮演先到的那一方：
@@ -241,21 +247,21 @@ func TestConcurrentOwnerRemovalKeepsOneOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	done := make(chan int, 1)
+	done := make(chan optest.Result, 1)
 	go func() {
 		done <- s.HTTPWithToken(t, s.Owner, "set_staff_roles",
-			map[string]any{"staff_id": second, "role_ids": []any{}}).Status
+			map[string]any{"staff_id": second, "role_ids": []any{}})
 	}()
 	select {
-	case status := <-done:
-		t.Fatalf("removal finished with %d while the owner role was locked; want it to wait", status)
+	case r := <-done:
+		t.Fatalf("removal finished with %d while the owner role was locked; want it to wait", r.Status)
 	case <-time.After(300 * time.Millisecond):
 	}
 	// 老板 A 的凭证此时还有效（删除尚未提交）。提交后，等待中的请求继续执行。
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if status := <-done; status == http.StatusOK {
+	if r := <-done; r.Status != http.StatusConflict || r.Detail() != "至少要保留一名在职老板" {
 		t.Fatalf("second removal succeeded; want it rejected so one owner remains")
 	}
 
@@ -277,8 +283,12 @@ func TestOnlyOwnerGrantsOrRemovesOwnerRole(t *testing.T) {
 	s := open(t)
 	_, manager := s.Hire("张店长", "002", "manager", s.Role("店长"))
 	other, _ := s.Hire("小李", "003", "xiaoli")
-	s.call(manager, "set_staff_roles", map[string]any{"staff_id": other, "role_ids": []any{s.Role("老板")}}, http.StatusForbidden)
-	s.call(manager, "set_staff_roles", map[string]any{"staff_id": s.Res.OwnerID, "role_ids": []any{}}, http.StatusForbidden)
+	if r := s.call(manager, "set_staff_roles", map[string]any{"staff_id": other, "role_ids": []any{s.Role("老板")}}, http.StatusForbidden); r.Detail() != "permission denied" {
+		t.Fatal(r)
+	}
+	if r := s.call(manager, "set_staff_roles", map[string]any{"staff_id": s.Res.OwnerID, "role_ids": []any{}}, http.StatusForbidden); r.Detail() != "permission denied" {
+		t.Fatal(r)
+	}
 	// 店长可以分配不超过自己的角色。
 	s.call(manager, "set_staff_roles", map[string]any{"staff_id": other, "role_ids": []any{s.Role("发型师")}}, http.StatusOK)
 }
@@ -301,20 +311,34 @@ func TestCannotGrantBeyondOwnPermissions(t *testing.T) {
 	editBeyond := map[string]any{"permission": "order.edit", "scope": "store", "window_days": 30}
 	settings := map[string]any{"permission": "settings.manage"}
 
-	s.call(manager, "create_role", map[string]any{"name": "越权1", "permissions": []any{settings}}, http.StatusForbidden)
-	s.call(manager, "create_role", map[string]any{"name": "越权2", "permissions": []any{editBeyond}}, http.StatusForbidden)
+	if r := s.call(manager, "create_role", map[string]any{"name": "越权1", "permissions": []any{settings}}, http.StatusForbidden); r.Detail() != "permission denied" {
+		t.Fatal(r)
+	}
+	if r := s.call(manager, "create_role", map[string]any{"name": "越权2", "permissions": []any{editBeyond}}, http.StatusForbidden); r.Detail() != "permission denied" {
+		t.Fatal(r)
+	}
 	s.call(manager, "create_role", map[string]any{"name": "可以", "permissions": []any{editWithin}}, http.StatusOK)
 
 	// 不能把超过自己的角色分配给别人，也不能管理权限比自己大的员工。
 	settingsRole := s.call(s.Owner, "create_role", map[string]any{"name": "设置", "permissions": []any{settings}}, http.StatusOK)
 	other, _ := s.Hire("小李", "003", "xiaoli")
-	s.call(manager, "set_staff_roles", map[string]any{"staff_id": other, "role_ids": []any{settingsRole.Body["id"]}}, http.StatusForbidden)
-	s.call(manager, "set_staff_login", map[string]any{"staff_id": s.Res.OwnerID, "login_account": "boss", "password": "taken-over"}, http.StatusForbidden)
-	s.call(manager, "deactivate_staff", map[string]any{"staff_id": s.Res.OwnerID}, http.StatusForbidden)
-	s.call(manager, "update_role", map[string]any{"role_id": settingsRole.Body["id"], "name": "设置", "permissions": []any{}}, http.StatusForbidden)
+	if r := s.call(manager, "set_staff_roles", map[string]any{"staff_id": other, "role_ids": []any{settingsRole.Body["id"]}}, http.StatusForbidden); r.Detail() != "permission denied" {
+		t.Fatal(r)
+	}
+	if r := s.call(manager, "set_staff_login", map[string]any{"staff_id": s.Res.OwnerID, "login_account": "boss", "password": "taken-over"}, http.StatusForbidden); r.Detail() != "permission denied" {
+		t.Fatal(r)
+	}
+	if r := s.call(manager, "deactivate_staff", map[string]any{"staff_id": s.Res.OwnerID}, http.StatusForbidden); r.Detail() != "permission denied" {
+		t.Fatal(r)
+	}
+	if r := s.call(manager, "update_role", map[string]any{"role_id": settingsRole.Body["id"], "name": "设置", "permissions": []any{}}, http.StatusForbidden); r.Detail() != "permission denied" {
+		t.Fatal(r)
+	}
 
 	// 老板角色谁都不能改。
-	s.call(s.Owner, "update_role", map[string]any{"role_id": s.Role("老板"), "name": "老板", "permissions": []any{}}, http.StatusConflict)
+	if r := s.call(s.Owner, "update_role", map[string]any{"role_id": s.Role("老板"), "name": "老板", "permissions": []any{}}, http.StatusConflict); r.Detail() != "老板角色拥有全部权限，不能修改或删除" {
+		t.Fatal(r)
+	}
 }
 
 func TestRevokedPermissionTakesEffectOnNextRequest(t *testing.T) {
@@ -327,8 +351,10 @@ func TestRevokedPermissionTakesEffectOnNextRequest(t *testing.T) {
 
 	s.call(s.Owner, "set_staff_roles", map[string]any{"staff_id": id, "role_ids": []any{s.Role("发型师")}}, http.StatusOK)
 
-	s.call(manager, "list_staff", map[string]any{}, http.StatusForbidden)
-	if r := s.ai(manager, "list_staff", map[string]any{}); r.Status != http.StatusForbidden {
+	if r := s.call(manager, "list_staff", map[string]any{}, http.StatusForbidden); r.Detail() != "permission denied" {
+		t.Fatal(r)
+	}
+	if r := s.ai(manager, "list_staff", map[string]any{}); r.Status != http.StatusForbidden || r.Detail() != "permission denied" {
 		t.Fatalf("ai list_staff after revoke = %d, want 403", r.Status)
 	}
 }
@@ -336,7 +362,9 @@ func TestRevokedPermissionTakesEffectOnNextRequest(t *testing.T) {
 func TestChangeMyPassword(t *testing.T) {
 	s := open(t)
 	_, token := s.Hire("小李", "002", "xiaoli")
-	s.call(token, "change_my_password", map[string]any{"old_password": "wrong", "new_password": "new-password"}, http.StatusConflict)
+	if r := s.call(token, "change_my_password", map[string]any{"old_password": "wrong", "new_password": "new-password"}, http.StatusConflict); r.Detail() != "原密码不正确" {
+		t.Fatal(r)
+	}
 	s.call(token, "change_my_password", map[string]any{"old_password": "password-xiaoli", "new_password": "new-password"}, http.StatusOK)
 	s.call(token, "get_me", map[string]any{}, http.StatusUnauthorized)
 	s.call(s.MustLogin("xiaoli", "new-password"), "get_me", map[string]any{}, http.StatusOK)
@@ -344,9 +372,13 @@ func TestChangeMyPassword(t *testing.T) {
 
 func TestDuplicateNumberAndAccountRejected(t *testing.T) {
 	s := open(t)
-	s.call(s.Owner, "create_staff", map[string]any{"name": "重号", "number": "001", "role_ids": []any{}}, http.StatusConflict)
+	if r := s.call(s.Owner, "create_staff", map[string]any{"name": "重号", "number": "001", "role_ids": []any{}}, http.StatusConflict); r.Detail() != "员工编号已存在" {
+		t.Fatal(r)
+	}
 	id, _ := s.Hire("小李", "002", "xiaoli")
-	s.call(s.Owner, "set_staff_login", map[string]any{"staff_id": id, "login_account": "boss", "password": "password-x"}, http.StatusConflict)
+	if r := s.call(s.Owner, "set_staff_login", map[string]any{"staff_id": id, "login_account": "boss", "password": "password-x"}, http.StatusConflict); r.Detail() != "登录账号已被使用" {
+		t.Fatal(r)
+	}
 }
 
 func TestLevelsAndPositions(t *testing.T) {
@@ -359,9 +391,11 @@ func TestLevelsAndPositions(t *testing.T) {
 	if r.Body["level"].(map[string]any)["name"] != "首席" || r.Body["position"].(map[string]any)["name"] != "大工" {
 		t.Fatalf("staff = %v, want level 首席 and position 大工", r.Body)
 	}
-	s.call(s.Owner, "create_staff", map[string]any{
+	if r := s.call(s.Owner, "create_staff", map[string]any{
 		"name": "小王", "number": "003", "level_id": uuid.New(), "role_ids": []any{},
-	}, http.StatusConflict)
+	}, http.StatusConflict); r.Detail() != "没有这个级别，或者它已停用" {
+		t.Fatal(r)
+	}
 }
 
 func TestCannotChangeRolesOfStaffWithMorePermissions(t *testing.T) {
@@ -379,9 +413,13 @@ func TestCannotChangeRolesOfStaffWithMorePermissions(t *testing.T) {
 	_, manager := s.Hire("张店长", "003", "manager", s.Role("店长"))
 
 	// 店长能授予"前台"，但对方权限比自己大，不能改对方的角色。
-	s.call(manager, "set_staff_roles", map[string]any{"staff_id": superior, "role_ids": []any{s.Role("前台")}}, http.StatusForbidden)
-	s.call(manager, "set_staff_roles", map[string]any{"staff_id": superior,
-		"role_ids": []any{senior.Body["id"], s.Role("前台")}}, http.StatusForbidden)
+	if r := s.call(manager, "set_staff_roles", map[string]any{"staff_id": superior, "role_ids": []any{s.Role("前台")}}, http.StatusForbidden); r.Detail() != "permission denied" {
+		t.Fatal(r)
+	}
+	if r := s.call(manager, "set_staff_roles", map[string]any{"staff_id": superior,
+		"role_ids": []any{senior.Body["id"], s.Role("前台")}}, http.StatusForbidden); r.Detail() != "permission denied" {
+		t.Fatal(r)
+	}
 }
 
 func TestInactiveLevelCannotBeAssignedButCanBeKept(t *testing.T) {
@@ -395,9 +433,11 @@ func TestInactiveLevelCannotBeAssignedButCanBeKept(t *testing.T) {
 	// 已有的停用级别可以保留，改别的字段不受影响。
 	s.call(s.Owner, "update_staff", map[string]any{"staff_id": id, "name": "小李改名", "number": "002", "level_id": lvl.Body["id"]}, http.StatusOK)
 	// 不能再分配给其他员工。
-	s.call(s.Owner, "create_staff", map[string]any{
+	if r := s.call(s.Owner, "create_staff", map[string]any{
 		"name": "小王", "number": "003", "level_id": lvl.Body["id"], "role_ids": []any{},
-	}, http.StatusConflict)
+	}, http.StatusConflict); r.Detail() != "没有这个级别，或者它已停用" {
+		t.Fatal(r)
+	}
 }
 
 func TestRoleListsRequirePermission(t *testing.T) {
@@ -416,10 +456,10 @@ func TestRoleListsRequirePermission(t *testing.T) {
 		{s.Owner, "list_role_options", http.StatusOK},
 	}
 	for _, c := range cases {
-		if r := s.call(c.token, c.op, map[string]any{}, 0); r.Status != c.want {
+		if r := s.call(c.token, c.op, map[string]any{}, 0); r.Status != c.want || c.want == http.StatusForbidden && r.Detail() != "permission denied" {
 			t.Errorf("%s by token %.8s… = %d, want %d", c.op, c.token, r.Status, c.want)
 		}
-		if r := s.ai(c.token, c.op, map[string]any{}); r.Status != c.want {
+		if r := s.ai(c.token, c.op, map[string]any{}); r.Status != c.want || c.want == http.StatusForbidden && r.Detail() != "permission denied" {
 			t.Errorf("ai %s = %d, want %d", c.op, r.Status, c.want)
 		}
 	}
@@ -455,7 +495,7 @@ func TestAICannotExecuteStaffAndRoleWrites(t *testing.T) {
 	rolesBefore := s.call(s.Owner, "list_roles", map[string]any{}, http.StatusOK).Body
 	auditBefore := s.call(s.Owner, "list_audit_log", map[string]any{}, http.StatusOK).Body
 	for _, c := range cases {
-		if r := s.ai(s.Owner, c.op, c.args); r.Status != c.want {
+		if r := s.ai(s.Owner, c.op, c.args); r.Status != c.want || c.want == http.StatusConflict && r.Detail() != "operation requires a draft confirmed by a person" {
 			t.Errorf("ai %s = %d (%v), want %d", c.op, r.Status, r.Err, c.want)
 		}
 	}

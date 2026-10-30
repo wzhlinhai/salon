@@ -213,7 +213,9 @@ func TestStaffAndRoleAuditLog(t *testing.T) {
 	inactive := s.call(s.Owner, "deactivate_staff", map[string]any{"staff_id": staffID}, http.StatusOK).Body
 	record("deactivate_staff", staffID, login, inactive)
 	// 失败的操作不能产生第二条停用日志。
-	s.call(s.Owner, "deactivate_staff", map[string]any{"staff_id": staffID}, http.StatusConflict)
+	if r := s.call(s.Owner, "deactivate_staff", map[string]any{"staff_id": staffID}, http.StatusConflict); r.Detail() != "员工已经是停用状态" {
+		t.Fatal(r)
+	}
 	active := s.call(s.Owner, "reactivate_staff", map[string]any{"staff_id": staffID}, http.StatusOK).Body
 	record("reactivate_staff", staffID, inactive, active)
 	assigned := s.call(s.Owner, "set_staff_roles", map[string]any{"staff_id": staffID, "role_ids": []string{roleID}}, http.StatusOK).Body
@@ -300,8 +302,10 @@ func TestStaffAndRoleAuditLog(t *testing.T) {
 func TestAuditLogRequiresPermission(t *testing.T) {
 	s := open(t)
 	_, token := s.Hire("小李", "002", "xiaoli", s.Role("发型师"))
-	s.call(token, "list_audit_log", map[string]any{}, http.StatusForbidden)
-	if result := s.ai(token, "list_audit_log", map[string]any{}); result.Status != http.StatusForbidden {
+	if r := s.call(token, "list_audit_log", map[string]any{}, http.StatusForbidden); r.Detail() != "permission denied" {
+		t.Fatal(r)
+	}
+	if result := s.ai(token, "list_audit_log", map[string]any{}); result.Status != http.StatusForbidden || result.Detail() != "permission denied" {
 		t.Errorf("AI list_audit_log = %d, want 403", result.Status)
 	}
 	// 有权限的员工通过两条路径看到同一份日志。

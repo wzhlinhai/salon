@@ -65,7 +65,9 @@ func TestCreateCustomers(t *testing.T) {
 	}
 	assertEqual(t, a["unidentified"], true)
 	for _, phone := range []string{"138", "23800131234", "1380013123a", ""} {
-		s.call("create_customer", map[string]any{"phone": phone}, 409)
+		if r := s.call("create_customer", map[string]any{"phone": phone}, 409); r["detail"] != "请输入有效的中国大陆手机号" {
+			t.Fatal(r)
+		}
 	}
 	var count, logs int
 	if err := s.Pool.QueryRow(context.Background(), "SELECT count(*) FROM customers").Scan(&count); err != nil {
@@ -180,7 +182,9 @@ func TestCustomerPhones(t *testing.T) {
 	b := s.create(map[string]any{"phone": "13800131234"})
 	s.call("add_customer_phone", map[string]any{"id": a["id"], "phone": "139-0013 5678"}, 200)
 	assertEqual(t, s.get(a["id"])["phone"], "13900135678")
-	s.call("add_customer_phone", map[string]any{"id": a["id"], "phone": "13600135678"}, 409)
+	if r := s.call("add_customer_phone", map[string]any{"id": a["id"], "phone": "13600135678"}, 409); r["detail"] != "该顾客已有手机号，修改请找有权限的人" {
+		t.Fatal(r)
+	}
 	u := s.create(map[string]any{})
 	for _, op := range []string{"add_customer_phone", "change_customer_phone"} {
 		id := u["id"]
@@ -193,7 +197,9 @@ func TestCustomerPhones(t *testing.T) {
 		}
 	}
 	s.call("change_customer_phone", map[string]any{"id": a["id"], "phone": "13600135678"}, 200)
-	s.call("change_customer_phone", map[string]any{"id": u["id"], "phone": "13500135678"}, 409)
+	if r := s.call("change_customer_phone", map[string]any{"id": u["id"], "phone": "13500135678"}, 409); r["detail"] != "该顾客还没有手机号，请先补充手机号" {
+		t.Fatal(r)
+	}
 }
 
 func TestMergeCustomersAndSafetyLabels(t *testing.T) {
@@ -213,8 +219,17 @@ func TestMergeCustomersAndSafetyLabels(t *testing.T) {
 	}
 	assertEqual(t, other["merged_into"], keep["id"])
 	assertEqual(t, other["phone"], nil)
-	for _, pair := range [][2]any{{keep["id"], merged["id"]}, {merged["id"], keep["id"]}, {keep["id"], keep["id"]}} {
-		s.call("merge_customers", map[string]any{"keep_id": pair[0], "merged_id": pair[1]}, 409)
+	for _, tc := range []struct {
+		pair       [2]any
+		wantDetail string
+	}{
+		{[2]any{keep["id"], merged["id"]}, "该顾客已合并到另一位顾客"},
+		{[2]any{merged["id"], keep["id"]}, "该顾客已合并到另一位顾客"},
+		{[2]any{keep["id"], keep["id"]}, "不能合并同一位顾客"},
+	} {
+		if r := s.call("merge_customers", map[string]any{"keep_id": tc.pair[0], "merged_id": tc.pair[1]}, 409); r["detail"] != tc.wantDetail {
+			t.Fatal(r)
+		}
 	}
 	r := s.call("update_customer_profile", map[string]any{"id": merged["id"], "name": "不能改"}, 409)
 	if !strings.Contains(r["detail"].(string), "已合并") {
@@ -244,7 +259,9 @@ func TestSafetyLabelRules(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := map[string]any{"customer_id": a["id"], "kind": "scalp_sensitive", "source": "staff_observed", "observed_on": today.AddDate(0, 0, 1).Format(time.DateOnly)}
-	s.call("add_safety_label", args, 409)
+	if r := s.call("add_safety_label", args, 409); r["detail"] != "观察日期不能晚于今天的营业日" {
+		t.Fatal(r)
+	}
 	args["observed_on"] = today.Format(time.DateOnly)
 	s.call("add_safety_label", args, 200)
 	args["observed_on"] = "2000-01-01"
@@ -254,7 +271,9 @@ func TestSafetyLabelRules(t *testing.T) {
 	assertEqual(t, labels[0].(map[string]any)["observed_on"], today.Format(time.DateOnly))
 	revoke := map[string]any{"customer_id": a["id"], "id": labels[0].(map[string]any)["id"]}
 	s.call("revoke_safety_label", revoke, 200)
-	s.call("revoke_safety_label", revoke, 409)
+	if r := s.call("revoke_safety_label", revoke, 409); r["detail"] != "安全标签不存在或已撤销" {
+		t.Fatal(r)
+	}
 	assertEqual(t, len(s.get(a["id"])["active_safety_labels"].([]any)), 1)
 }
 
@@ -268,9 +287,15 @@ func TestCustomerHandover(t *testing.T) {
 	s.call("assign_customer_responsible", map[string]any{"customer_ids": []any{a["id"], b["id"], m["id"]}, "staff_id": from}, 200)
 	s.call("merge_customers", map[string]any{"keep_id": a["id"], "merged_id": m["id"]}, 200)
 	s.call("deactivate_staff", map[string]any{"staff_id": from}, 200)
-	s.call("assign_customer_responsible", map[string]any{"customer_ids": []any{a["id"]}, "staff_id": from}, 409)
-	s.call("hand_over_customers", map[string]any{"from_staff_id": to, "to_staff_id": from}, 409)
-	s.call("hand_over_customers", map[string]any{"from_staff_id": to, "to_staff_id": to}, 409)
+	if r := s.call("assign_customer_responsible", map[string]any{"customer_ids": []any{a["id"]}, "staff_id": from}, 409); r["detail"] != "负责人必须是在职员工" {
+		t.Fatal(r)
+	}
+	if r := s.call("hand_over_customers", map[string]any{"from_staff_id": to, "to_staff_id": from}, 409); r["detail"] != "负责人必须是在职员工" {
+		t.Fatal(r)
+	}
+	if r := s.call("hand_over_customers", map[string]any{"from_staff_id": to, "to_staff_id": to}, 409); r["detail"] != "交接的两名员工不能相同" {
+		t.Fatal(r)
+	}
 	result := s.call("hand_over_customers", map[string]any{"from_staff_id": from, "to_staff_id": to}, 200)
 	assertEqual(t, result["count"], float64(2))
 	for _, id := range []any{a["id"], b["id"]} {
@@ -304,13 +329,21 @@ func TestCustomerSources(t *testing.T) {
 	s := open(t)
 	source := s.call("create_customer_source", map[string]any{"name": "活动"}, 200)
 	a := s.create(map[string]any{"source_id": source["id"]})
-	s.call("create_customer_source", map[string]any{"name": "活动"}, 409)
+	if r := s.call("create_customer_source", map[string]any{"name": "活动"}, 409); r["detail"] != "顾客来源名称已存在" {
+		t.Fatal(r)
+	}
 	s.call("update_customer_source", map[string]any{"id": source["id"], "name": "活动", "active": false}, 200)
-	s.call("create_customer", map[string]any{"source_id": source["id"]}, 409)
+	if r := s.call("create_customer", map[string]any{"source_id": source["id"]}, 409); r["detail"] != "没有这个顾客来源，或者它已停用" {
+		t.Fatal(r)
+	}
 	s.call("update_customer_profile", map[string]any{"id": a["id"], "source_id": source["id"], "name": "保留已选"}, 200)
 	b := s.create(map[string]any{})
-	s.call("update_customer_profile", map[string]any{"id": b["id"], "source_id": source["id"]}, 409)
-	s.call("create_customer", map[string]any{"source_id": uuid.New()}, 409)
+	if r := s.call("update_customer_profile", map[string]any{"id": b["id"], "source_id": source["id"]}, 409); r["detail"] != "没有这个顾客来源，或者它已停用" {
+		t.Fatal(r)
+	}
+	if r := s.call("create_customer", map[string]any{"source_id": uuid.New()}, 409); r["detail"] != "没有这个顾客来源，或者它已停用" {
+		t.Fatal(r)
+	}
 }
 
 func snapshot(t *testing.T, s *shop) string {
@@ -351,6 +384,7 @@ func TestCustomerWritePermissionsAndAI(t *testing.T) {
 			delete(c.Permissions, tc.p)
 			r := s.HTTP(t, &c, tc.op, tc.args)
 			assertEqual(t, r.Status, 403)
+			assertEqual(t, r.Detail(), "permission denied")
 			assertEqual(t, snapshot(t, s), before)
 			r = s.AI(t, owner, tc.op, tc.args)
 			if r.Status == 200 || !strings.Contains(fmt.Sprint(r.Err), "draft") {
@@ -540,7 +574,9 @@ func TestResponsibleMustBeFromThisStore(t *testing.T) {
 		{"hand_over_customers", map[string]any{"from_staff_id": foreign.Body["id"], "to_staff_id": s.Res.OwnerID}, 404},
 	} {
 		before := snapshot(t, s)
-		s.call(tc.op, tc.in, tc.status)
+		if r := s.call(tc.op, tc.in, tc.status); tc.status == 409 && r["detail"] != "负责人必须是在职员工" {
+			t.Fatal(r)
+		}
 		if snapshot(t, s) != before {
 			t.Fatal("refused cross-store assignment changed data", tc.op)
 		}

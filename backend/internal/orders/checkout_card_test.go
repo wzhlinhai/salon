@@ -316,7 +316,7 @@ func TestPreviewCheckout(t *testing.T) {
 		}
 		delete(caller.Permissions, perm.PaymentCollect)
 		got = ch.Call(t, caller, "preview_checkout", orders.PreviewCheckoutInput{OrderID: id(o["id"])})
-		if got.Status != 403 || before != s.cardSnapshot() {
+		if got.Status != 403 || got.Detail() != "permission denied" || before != s.cardSnapshot() {
 			t.Fatal(ch.Name, got)
 		}
 		got = ch.Call(t, s.MustCaller(s.Owner), "preview_checkout", orders.PreviewCheckoutInput{OrderID: uuid.New()})

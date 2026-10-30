@@ -57,7 +57,7 @@ func TestVoidWindowOffAndAccess(t *testing.T) {
 	denied := c
 	denied.Permissions = map[ops.Permission]ops.Grant{}
 	before = s.windowSnapshot()
-	s.openWindow(denied, optest.OwnerPassword, 403, "")
+	s.openWindow(denied, optest.OwnerPassword, 403, "permission denied")
 	r := s.AI(t, c, "open_void_window", orders.OpenVoidWindowInput{Password: optest.OwnerPassword})
 	if r.Status != 404 || !errors.Is(r.Err, ops.ErrUnknownOperation) || before != s.windowSnapshot() {
 		t.Fatal(r)

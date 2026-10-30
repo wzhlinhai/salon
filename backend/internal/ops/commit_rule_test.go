@@ -28,8 +28,10 @@ func TestCommitRuleKeepsWrites(t *testing.T) {
 	}
 	for _, commit := range []bool{false, true} {
 		name := "plain_rule"
+		want := "回滚"
 		if commit {
 			name = "commit_rule"
+			want = "保留"
 		}
 		var created uuid.UUID
 		ops.Register(r, ops.Operation[in, out]{Name: name, Kind: ops.Write, Permission: ops.LoggedIn, AI: ops.AIDraft, Handle: func(ctx context.Context, env ops.Env, _ *in) (*out, error) {
@@ -52,7 +54,7 @@ func TestCommitRuleKeepsWrites(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 			t.Fatal(err)
 		}
-		if rec.Code != 409 {
+		if rec.Code != 409 || body["detail"] != want {
 			t.Fatal(rec.Code, body)
 		}
 		tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)

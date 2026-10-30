@@ -135,14 +135,22 @@ func TestDuplicateAndLaborFeeRules(t *testing.T) {
 	s := open(t)
 	in := input("剪发")
 	first := s.call("create_item", in, 200)
-	s.call("create_item", in, 409)
+	if r := s.call("create_item", in, 409); r["detail"] != "项目名称重复" {
+		t.Fatal(r)
+	}
 	second := s.call("create_item", input("烫发"), 200)
-	s.call("update_item", update(in, second["id"]), 409)
+	if r := s.call("update_item", update(in, second["id"]), 409); r["detail"] != "项目名称重复" {
+		t.Fatal(r)
+	}
 	in["name"] = "双手工费"
 	in["labor_fee_percent"] = "10.00"
 	// 必须是业务规则的 409；数据库 CHECK 失败会变成 500，不能冒充处理函数保护。
-	s.call("create_item", in, 409)
-	s.call("update_item", update(in, first["id"]), 409)
+	if r := s.call("create_item", in, 409); r["detail"] != "手工费只能选择固定金额或售价百分比" {
+		t.Fatal(r)
+	}
+	if r := s.call("update_item", update(in, first["id"]), 409); r["detail"] != "手工费只能选择固定金额或售价百分比" {
+		t.Fatal(r)
+	}
 }
 
 func TestInactiveLevel(t *testing.T) {
@@ -152,8 +160,12 @@ func TestInactiveLevel(t *testing.T) {
 	item := s.call("create_item", in, 200)
 	in["name"] = "新增剪发"
 	in["level_prices"] = []any{map[string]any{"level_id": l, "price": "88.00"}}
-	s.call("create_item", in, 409)
-	s.call("update_item", update(in, item["id"]), 409)
+	if r := s.call("create_item", in, 409); r["detail"] != "不能新增停用级别的级别价" {
+		t.Fatal(r)
+	}
+	if r := s.call("update_item", update(in, item["id"]), 409); r["detail"] != "不能新增停用级别的级别价" {
+		t.Fatal(r)
+	}
 }
 func TestInactivePosition(t *testing.T) {
 	s := open(t)
@@ -162,8 +174,12 @@ func TestInactivePosition(t *testing.T) {
 	item := s.call("create_item", in, 200)
 	in["name"] = "新增剪发"
 	in["positions"] = []any{map[string]any{"position_id": p, "required": true}}
-	s.call("create_item", in, 409)
-	s.call("update_item", update(in, item["id"]), 409)
+	if r := s.call("create_item", in, 409); r["detail"] != "不能新增停用的项目岗位" {
+		t.Fatal(r)
+	}
+	if r := s.call("update_item", update(in, item["id"]), 409); r["detail"] != "不能新增停用的项目岗位" {
+		t.Fatal(r)
+	}
 }
 
 func versions(t *testing.T, s *fixture, id any) []string {
@@ -233,12 +249,12 @@ func TestPermissionsAndAIDraft(t *testing.T) {
 		args any
 	}{{"create_item", input("新项目")}, {"update_item", edited}} {
 		r := s.HTTPWithToken(t, token, tc.op, tc.args)
-		if r.Status != 403 {
+		if r.Status != 403 || r.Detail() != "permission denied" {
 			t.Fatalf("%s: %v", tc.op, r)
 		}
 		before := s.call("list_items", map[string]any{}, 200)
 		r = s.AI(t, s.MustCaller(s.Owner), tc.op, tc.args)
-		if r.Status == 200 {
+		if r.Status == 200 || r.Detail() != "operation requires a draft confirmed by a person" {
 			t.Fatal(r)
 		}
 		if after := s.call("list_items", map[string]any{}, 200); !reflect.DeepEqual(before, after) {
@@ -296,7 +312,7 @@ func TestReadChannels(t *testing.T) {
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					r := ch.Call(t, caller, "quote_item_price", map[string]any{"item_id": tc.item, "staff_id": tc.staff})
-					if r.Status != tc.status {
+					if r.Status != tc.status || tc.status == 409 && r.Detail() != "项目已停用" {
 						t.Fatalf("%v", r)
 					}
 					if tc.status == 200 {
@@ -335,8 +351,12 @@ func TestUnknownReferencesAndDuplicates(t *testing.T) {
 	}
 	l := s.level(true)
 	in["level_prices"] = []any{map[string]any{"level_id": l, "price": "1.00"}, map[string]any{"level_id": l, "price": "2.00"}}
-	s.call("create_item", in, 409)
-	s.call("update_item", update(in, item["id"]), 409)
+	if r := s.call("create_item", in, 409); r["detail"] != "级别价的级别不能重复" {
+		t.Fatal(r)
+	}
+	if r := s.call("update_item", update(in, item["id"]), 409); r["detail"] != "级别价的级别不能重复" {
+		t.Fatal(r)
+	}
 	s.call("update_item", update(input("不存在"), uuid.New()), 404)
 }
 
@@ -372,7 +392,11 @@ func TestLocksBeforeReadingState(t *testing.T) {
 }
 
 func TestReferenceShareLocks(t *testing.T) {
-	for _, kind := range []string{"level", "position"} {
+	for _, tc := range []struct {
+		kind       string
+		wantDetail string
+	}{{"level", "不能新增停用级别的级别价"}, {"position", "不能新增停用的项目岗位"}} {
+		kind := tc.kind
 		t.Run(kind, func(t *testing.T) {
 			s := open(t)
 			in := input("剪发")
@@ -398,7 +422,7 @@ func TestReferenceShareLocks(t *testing.T) {
 			if err := tx.Commit(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			if r := <-done; r.Status != 409 {
+			if r := <-done; r.Status != 409 || r.Detail() != tc.wantDetail {
 				t.Fatalf("referenced concurrently deactivated %s: %v", kind, r)
 			}
 		})

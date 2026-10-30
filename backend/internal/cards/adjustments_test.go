@@ -146,7 +146,9 @@ func TestAdjustmentInactiveType(t *testing.T) {
 	in := typeInput("停用类型")
 	in["id"], in["active"] = ct["id"], false
 	s.call("update_card_type", in, 200)
-	s.call("adjust_card", map[string]any{"card_id": card["id"], "card_type_id": ct["id"], "reason": "更正"}, 409)
+	if r := s.call("adjust_card", map[string]any{"card_id": card["id"], "card_type_id": ct["id"], "reason": "更正"}, 409); r["detail"] != "卡类型已停用" {
+		t.Fatal(r)
+	}
 	adjustmentCount(t, s, card["id"], 0)
 }
 func TestAdjustmentNoop(t *testing.T) {
@@ -171,7 +173,13 @@ func TestAdjustmentReason(t *testing.T) {
 		if reason == "" {
 			want = 422
 		}
-		s.call("adjust_card", in, want)
+		wantDetail := "原因须为一到二百字"
+		if reason == "" {
+			wantDetail = "validation failed"
+		}
+		if r := s.call("adjust_card", in, want); r["detail"] != wantDetail {
+			t.Fatal(r)
+		}
 	}
 	adjustmentCount(t, s, card["id"], 0)
 }
@@ -187,13 +195,13 @@ func TestAdjustmentPermissions(t *testing.T) {
 	caller := s.MustCaller(s.Owner)
 	caller.Permissions = perm.All()
 	delete(caller.Permissions, perm.CardAdjust)
-	if r := s.HTTP(t, &caller, "adjust_card", adjustment(card["id"])); r.Status != 403 {
+	if r := s.HTTP(t, &caller, "adjust_card", adjustment(card["id"])); r.Status != 403 || r.Detail() != "permission denied" {
 		t.Fatal(r)
 	}
 	caller.Permissions = perm.All()
 	delete(caller.Permissions, perm.CustomerView)
 	for _, ch := range s.Channels() {
-		if r := ch.Call(t, caller, "list_card_adjustments", map[string]any{"card_id": card["id"]}); r.Status != 403 {
+		if r := ch.Call(t, caller, "list_card_adjustments", map[string]any{"card_id": card["id"]}); r.Status != 403 || r.Detail() != "permission denied" {
 			t.Fatal(r)
 		}
 	}
@@ -203,7 +211,7 @@ func TestAdjustmentAIRefused(t *testing.T) {
 	s := open(t)
 	card := s.call("open_card", s.opening(), 200)
 	before := snapshot(t, s)
-	if r := s.AI(t, s.MustCaller(s.Owner), "adjust_card", adjustment(card["id"])); r.Status == 200 {
+	if r := s.AI(t, s.MustCaller(s.Owner), "adjust_card", adjustment(card["id"])); r.Status == 200 || r.Detail() != "operation requires a draft confirmed by a person" {
 		t.Fatal(r)
 	}
 	if snapshot(t, s) != before {
@@ -323,7 +331,7 @@ func TestAdjustmentWaitsForType(t *testing.T) {
 	}()
 	dbtest.WaitForLockWait(t, s.Pool)
 	dbtest.Commit(t, held)
-	if r := <-done; r.Status != 409 {
+	if r := <-done; r.Status != 409 || r.Detail() != "卡类型已停用" {
 		t.Fatal(r)
 	}
 	adjustmentCount(t, s, card["id"], 0)
@@ -376,6 +384,8 @@ func TestAdjustmentReasonLimits(t *testing.T) {
 		}
 	}
 	in["principal"], in["reason"] = "900.00", reason+"因"
-	s.call("adjust_card", in, 409)
+	if r := s.call("adjust_card", in, 409); r["detail"] != "原因须为一到二百字" {
+		t.Fatal(r)
+	}
 	adjustmentCount(t, s, card["id"], 1)
 }

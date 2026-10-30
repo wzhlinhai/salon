@@ -50,10 +50,13 @@ func (s *fixture) edit(op string, in any, want int) map[string]any {
 	return s.call(op, editArgs(op, in), want)
 }
 func firstLine(o map[string]any) map[string]any { return lines(o)[0].(map[string]any) }
-func (s *fixture) assertUnchanged(op string, in any, want int) {
+func (s *fixture) assertUnchanged(op string, in any, want int, detail string) {
 	s.t.Helper()
 	before := s.snapshot()
-	s.edit(op, in, want)
+	r := s.edit(op, in, want)
+	if r["detail"] != detail {
+		s.t.Fatal(r)
+	}
 	if before != s.snapshot() {
 		s.t.Fatal("refused edit changed data", op)
 	}
@@ -101,9 +104,9 @@ func TestRemoveOrderItem(t *testing.T) {
 		}
 	}
 	s.assertEditAudit("remove_order_item", o, after)
-	s.assertUnchanged("remove_order_item", in, 409)
-	s.assertUnchanged("set_order_item_staff", in, 409)
-	s.assertUnchanged("reprice_order_item", in, 409)
+	s.assertUnchanged("remove_order_item", in, 409, "项目已去掉")
+	s.assertUnchanged("set_order_item_staff", in, 409, "项目已去掉")
+	s.assertUnchanged("reprice_order_item", in, 409, "项目已去掉")
 }
 
 func TestEditLineIsolation(t *testing.T) {
@@ -120,7 +123,7 @@ func TestEditLineIsolation(t *testing.T) {
 		for _, orderID := range []any{another["id"], foreign.Body["id"], uuid.New()} {
 			in := editInput(o)
 			in["order_id"] = orderID
-			s.assertUnchanged(op, in, 404)
+			s.assertUnchanged(op, in, 404, "not found")
 		}
 	}
 }
@@ -187,7 +190,7 @@ func TestSetOrderItemStaffValidation(t *testing.T) {
 	s.call("update_item", update, 200)
 	shortIn := editInput(short)
 	shortIn["staff"] = []orders.OrderItemStaffInput{{Slot: 2, StaffID: s.employee}}
-	s.assertUnchanged("set_order_item_staff", shortIn, 409)
+	s.assertUnchanged("set_order_item_staff", shortIn, 409, "项目没有这个岗位")
 	inactive, _ := s.Hire("离职", "003", "inactive")
 	s.call("deactivate_staff", map[string]any{"staff_id": inactive}, 200)
 	caller := s.MustCaller(s.Owner)
@@ -196,16 +199,23 @@ func TestSetOrderItemStaffValidation(t *testing.T) {
 	if foreign.Status != 200 {
 		t.Fatal(foreign)
 	}
-	for _, staff := range [][]orders.OrderItemStaffInput{
-		{{Slot: 4, StaffID: s.employee}}, {{Slot: 2, StaffID: s.employee}, {Slot: 2, StaffID: s.employee}}, {{Slot: 2, StaffID: inactive}}, {{Slot: 2, StaffID: id(foreign.Body["id"])}}, {{Slot: 2, StaffID: uuid.New()}},
+	for _, tc := range []struct {
+		staff      []orders.OrderItemStaffInput
+		wantDetail string
+	}{
+		{[]orders.OrderItemStaffInput{{Slot: 4, StaffID: s.employee}}, "项目没有这个岗位"},
+		{[]orders.OrderItemStaffInput{{Slot: 2, StaffID: s.employee}, {Slot: 2, StaffID: s.employee}}, "同一岗位不能重复填员工"},
+		{[]orders.OrderItemStaffInput{{Slot: 2, StaffID: inactive}}, "岗位上的员工必须是本店在职员工"},
+		{[]orders.OrderItemStaffInput{{Slot: 2, StaffID: id(foreign.Body["id"])}}, "岗位上的员工必须是本店在职员工"},
+		{[]orders.OrderItemStaffInput{{Slot: 2, StaffID: uuid.New()}}, "岗位上的员工必须是本店在职员工"},
 	} {
-		in["staff"] = staff
-		s.assertUnchanged("set_order_item_staff", in, 409)
+		in["staff"] = tc.staff
+		s.assertUnchanged("set_order_item_staff", in, 409, tc.wantDetail)
 	}
 	update["active"] = false
 	s.call("update_item", update, 200)
 	in["staff"] = []orders.OrderItemStaffInput{{Slot: 1, StaffID: s.employee}}
-	s.assertUnchanged("set_order_item_staff", in, 409)
+	s.assertUnchanged("set_order_item_staff", in, 409, "项目已停用")
 	// 不重新取价的路径不检查目录停用状态。
 	in["staff"] = []orders.OrderItemStaffInput{{Slot: 3, StaffID: s.employee}}
 	s.edit("set_order_item_staff", in, 200)
@@ -228,13 +238,19 @@ func TestRepriceOrderItem(t *testing.T) {
 		if r.Status != 409 && r.Status != 422 {
 			t.Fatal(r)
 		}
+		if r.Status == 409 && r.Detail() != "原因须为一到二百字" {
+			t.Fatal(r)
+		}
+		if r.Status == 422 && r.Detail() != "validation failed" {
+			t.Fatal(r)
+		}
 		if before != s.snapshot() {
 			t.Fatal("invalid reason wrote data")
 		}
 	}
 	in["reason"] = "原因"
 	in["price"] = "-1.00"
-	s.assertUnchanged("reprice_order_item", in, 422)
+	s.assertUnchanged("reprice_order_item", in, 422, "validation failed")
 	in["price"] = "0.00"
 	if o := s.edit("reprice_order_item", in, 200); firstLine(o)["price"] != "0.00" {
 		t.Fatal(o)
@@ -298,7 +314,7 @@ func TestEditWindow(t *testing.T) {
 				_, token := s.Hire("改单员工", fmt.Sprint(counter), fmt.Sprint("edit", counter), id(role["id"]))
 				before := s.snapshot()
 				r := s.HTTPWithToken(t, token, op, editArgs(op, editInput(o)))
-				if r.Status != tc.want {
+				if r.Status != tc.want || tc.want == 403 && r.Detail() != "permission denied" {
 					t.Fatal(r)
 				}
 				if tc.want == 403 && before != s.snapshot() {
@@ -341,7 +357,7 @@ func TestEditScope(t *testing.T) {
 				if involvement == "none" {
 					want = 403
 				}
-				if r.Status != want {
+				if r.Status != want || want == 403 && r.Detail() != "permission denied" {
 					t.Fatal(r)
 				}
 				if want == 403 && before != s.snapshot() {
@@ -526,7 +542,7 @@ func TestEditStaffLock(t *testing.T) {
 	go func() { done <- s.HTTP(t, &caller, "set_order_item_staff", editArgs("set_order_item_staff", in)) }()
 	dbtest.WaitForLockWait(t, s.Pool)
 	dbtest.Commit(t, tx)
-	if r := <-done; r.Status != 409 {
+	if r := <-done; r.Status != 409 || r.Detail() != "岗位上的员工必须是本店在职员工" {
 		t.Fatal(r)
 	}
 	got := s.call("get_order", orders.GetOrderInput{ID: id(o["id"])}, 200)
@@ -609,7 +625,7 @@ func TestEditWindowBusinessDate(t *testing.T) {
 			if tc.hour == 1 && now.UTC().Format(time.DateOnly) == now.In(settings.Location).Format(time.DateOnly) {
 				t.Fatal("fixture must cross UTC/local dates", now)
 			}
-			if err := orders.CheckEditForTest(ctx, ops.Env{Caller: caller, Grant: caller.Grant(perm.OrderEdit), Q: q}, order, now); !errors.Is(err, tc.want) {
+			if err := orders.CheckEditForTest(ctx, ops.Env{Caller: caller, Grant: caller.Grant(perm.OrderEdit), Q: q}, order, now); !errors.Is(err, tc.want) || tc.want != nil && (err == nil || err.Error() != "permission denied") {
 				t.Fatalf("checkEdit at %s: got %v, want %v", now, err, tc.want)
 			}
 		})

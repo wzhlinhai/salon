@@ -89,7 +89,9 @@ func TestRoleEscalationSerializesStaffAuthorization(t *testing.T) {
 			optest.AssertWaiting(t, done)
 			release()
 			optest.WaitResult(t, updated, http.StatusOK)
-			optest.WaitResult(t, done, http.StatusForbidden)
+			if r := optest.WaitResult(t, done, http.StatusForbidden); r.Detail() != "permission denied" {
+				t.Fatal(r)
+			}
 			var count int
 			if err := s.Pool.QueryRow(context.Background(), "SELECT count(*) FROM staff WHERE number='004' OR login_account='taken-over'").Scan(&count); err != nil {
 				t.Fatal(err)
@@ -141,7 +143,13 @@ func TestInactiveLevelAndPositionWaitBeforeAssignment(t *testing.T) {
 				if err := tx.Commit(ctx); err != nil {
 					t.Fatal(err)
 				}
-				optest.WaitResult(t, done, http.StatusConflict)
+				wantDetail := "没有这个级别，或者它已停用"
+				if kind == "position" {
+					wantDetail = "没有这个岗位，或者它已停用"
+				}
+				if r := optest.WaitResult(t, done, http.StatusConflict); r.Detail() != wantDetail {
+					t.Fatal(r)
+				}
 				rows := s.call(s.Owner, "list_staff", map[string]any{}, 200).Body["staff"].([]any)
 				for _, row := range rows {
 					st := row.(map[string]any)

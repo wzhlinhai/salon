@@ -314,7 +314,7 @@ func TestCheckoutPermissionsAndAI(t *testing.T) {
 	caller := s.MustCaller(token)
 	for _, ch := range s.Channels() {
 		r := ch.Call(t, caller, "checkout_orders", in)
-		if r.Status != 403 || before != s.checkoutSnapshot() {
+		if r.Status != 403 || r.Detail() != "permission denied" || before != s.checkoutSnapshot() {
 			t.Fatal(ch.Name, r)
 		}
 	}

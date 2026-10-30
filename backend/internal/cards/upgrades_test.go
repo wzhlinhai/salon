@@ -80,7 +80,9 @@ func TestUpgradeRequiresSalesStaff(t *testing.T) {
 	for _, key := range []string{"principal", "bonus"} {
 		in := upgrade(card["id"], to["id"])
 		in[key] = "0.01"
-		s.call("upgrade_card", in, 409)
+		if r := s.call("upgrade_card", in, 409); r["detail"] != "请选择一到十名不同的业绩归属人" {
+			t.Fatal(r)
+		}
 	}
 	if upgradeSnapshot(t, s) != before {
 		t.Fatal("rejected upgrade changed rows")
@@ -95,7 +97,9 @@ func TestUpgradeCurrentStoredValue(t *testing.T) {
 			in["card_type_id"], in["principal"], in["bonus"] = ct["id"], "0.00", "0.00"
 			card := s.call("open_card", in, 200)
 			before := upgradeSnapshot(t, s)
-			s.call("upgrade_card", upgrade(card["id"], s.cardType), 409)
+			if r := s.call("upgrade_card", upgrade(card["id"], s.cardType), 409); r["detail"] != "仅储值卡支持升级" {
+				t.Fatal(r)
+			}
 			if upgradeSnapshot(t, s) != before {
 				t.Fatal("non-stored upgrade changed rows")
 			}
@@ -105,28 +109,46 @@ func TestUpgradeCurrentStoredValue(t *testing.T) {
 func TestUpgradeTargetRules(t *testing.T) {
 	s := open(t)
 	card := s.call("open_card", s.opening(), 200)
-	s.call("upgrade_card", upgrade(card["id"], s.cardType), 409)
+	if r := s.call("upgrade_card", upgrade(card["id"], s.cardType), 409); r["detail"] != "目标须为启用的其他储值卡类型" {
+		t.Fatal(r)
+	}
 	s.call("upgrade_card", upgrade(card["id"], uuid.New()), 404)
 	ct := s.countType("package")
-	s.call("upgrade_card", upgrade(card["id"], ct["id"]), 409)
+	if r := s.call("upgrade_card", upgrade(card["id"], ct["id"]), 409); r["detail"] != "目标须为启用的其他储值卡类型" {
+		t.Fatal(r)
+	}
 	to := s.call("create_card_type", typeInput("停用"), 200)
 	input := typeInput("停用")
 	input["id"], input["active"] = to["id"], false
 	s.call("update_card_type", input, 200)
-	s.call("upgrade_card", upgrade(card["id"], to["id"]), 409)
+	if r := s.call("upgrade_card", upgrade(card["id"], to["id"]), 409); r["detail"] != "目标须为启用的其他储值卡类型" {
+		t.Fatal(r)
+	}
 	assertSQL(t, s, `SELECT NOT EXISTS(SELECT 1 FROM card_upgrades) AND (SELECT count(*) FROM card_ledger)=1`)
 }
 func TestUpgradeRuleTypeRules(t *testing.T) {
 	s := open(t)
 	to := s.call("create_card_type", typeInput("高级"), 200)
 	ct := s.countType("count")
-	for _, in := range []map[string]any{rule(s.cardType, s.cardType, "single_recharge", "1.00"), rule(s.cardType, to["id"], "single_recharge", "0.00"), rule(ct["id"], to["id"], "single_recharge", "1.00"), rule(s.cardType, ct["id"], "single_recharge", "1.00")} {
-		s.call("create_card_upgrade_rule", in, 409)
+	for _, tc := range []struct {
+		in         map[string]any
+		wantDetail string
+	}{
+		{rule(s.cardType, s.cardType, "single_recharge", "1.00"), "升级类型须不同，门槛须大于零"},
+		{rule(s.cardType, to["id"], "single_recharge", "0.00"), "升级类型须不同，门槛须大于零"},
+		{rule(ct["id"], to["id"], "single_recharge", "1.00"), "升级规则仅支持储值卡"},
+		{rule(s.cardType, ct["id"], "single_recharge", "1.00"), "升级规则仅支持储值卡"},
+	} {
+		if r := s.call("create_card_upgrade_rule", tc.in, 409); r["detail"] != tc.wantDetail {
+			t.Fatal(r)
+		}
 	}
 	input := typeInput("高级")
 	input["id"], input["active"] = to["id"], false
 	s.call("update_card_type", input, 200)
-	s.call("create_card_upgrade_rule", rule(s.cardType, to["id"], "single_recharge", "1.00"), 409)
+	if r := s.call("create_card_upgrade_rule", rule(s.cardType, to["id"], "single_recharge", "1.00"), 409); r["detail"] != "目标卡类型已停用" {
+		t.Fatal(r)
+	}
 	s.call("create_card_upgrade_rule", rule(uuid.New(), s.cardType, "single_recharge", "1.00"), 404)
 }
 func TestUpgradeRuleCycles(t *testing.T) {
@@ -134,12 +156,18 @@ func TestUpgradeRuleCycles(t *testing.T) {
 	b := s.call("create_card_type", typeInput("乙"), 200)
 	c := s.call("create_card_type", typeInput("丙"), 200)
 	ab := s.call("create_card_upgrade_rule", rule(s.cardType, b["id"], "single_recharge", "100.00"), 200)
-	s.call("create_card_upgrade_rule", rule(b["id"], s.cardType, "single_recharge", "100.00"), 409)
+	if r := s.call("create_card_upgrade_rule", rule(b["id"], s.cardType, "single_recharge", "100.00"), 409); r["detail"] != "升级规则不能形成环路" {
+		t.Fatal(r)
+	}
 	s.call("create_card_upgrade_rule", rule(b["id"], c["id"], "single_recharge", "100.00"), 200)
-	s.call("create_card_upgrade_rule", rule(c["id"], s.cardType, "single_recharge", "100.00"), 409)
+	if r := s.call("create_card_upgrade_rule", rule(c["id"], s.cardType, "single_recharge", "100.00"), 409); r["detail"] != "升级规则不能形成环路" {
+		t.Fatal(r)
+	}
 	s.call("update_card_upgrade_rule", map[string]any{"id": ab["id"], "threshold": "200.00", "active": false}, 200)
 	s.call("create_card_upgrade_rule", rule(c["id"], s.cardType, "single_recharge", "100.00"), 200)
-	s.call("update_card_upgrade_rule", map[string]any{"id": ab["id"], "threshold": "200.00", "active": true}, 409)
+	if r := s.call("update_card_upgrade_rule", map[string]any{"id": ab["id"], "threshold": "200.00", "active": true}, 409); r["detail"] != "升级规则不能形成环路" {
+		t.Fatal(r)
+	}
 	for _, ch := range s.Channels() {
 		r := ch.Call(t, s.MustCaller(s.Owner), "list_card_upgrade_rules", map[string]any{})
 		if r.Status != 200 || len(r.Body["items"].([]any)) != 3 {
@@ -260,10 +288,10 @@ func TestUpgradeTransferPermissionsAndAI(t *testing.T) {
 			caller := s.MustCaller(s.Owner)
 			caller.Permissions = perm.All()
 			delete(caller.Permissions, tc.p)
-			if got := s.HTTP(t, &caller, tc.op, tc.in); got.Status != 403 {
+			if got := s.HTTP(t, &caller, tc.op, tc.in); got.Status != 403 || got.Detail() != "permission denied" {
 				t.Fatal(got)
 			}
-			if got := s.AI(t, s.MustCaller(s.Owner), tc.op, tc.in); got.Status == 200 {
+			if got := s.AI(t, s.MustCaller(s.Owner), tc.op, tc.in); got.Status == 200 || got.Detail() != "operation requires a draft confirmed by a person" {
 				t.Fatal(got)
 			}
 			if upgradeSnapshot(t, s) != before {
@@ -275,7 +303,7 @@ func TestUpgradeTransferPermissionsAndAI(t *testing.T) {
 		caller := s.MustCaller(s.Owner)
 		delete(caller.Permissions, perm.CustomerView)
 		r := ch.Call(t, caller, "list_card_upgrades", map[string]any{"card_id": a["id"]})
-		if r.Status != 403 {
+		if r.Status != 403 || r.Detail() != "permission denied" {
 			t.Fatal(r)
 		}
 	}
@@ -376,24 +404,36 @@ func TestTransferRules(t *testing.T) {
 	s := open(t)
 	a := s.call("open_card", s.opening(), 200)
 	b := s.call("open_card", s.opening(), 200)
-	s.call("transfer_card_balance", transfer(a["id"], a["id"]), 409)
+	if r := s.call("transfer_card_balance", transfer(a["id"], a["id"]), 409); r["detail"] != "不能向同一卡转余额" {
+		t.Fatal(r)
+	}
 	in := transfer(a["id"], b["id"])
 	in["principal"], in["bonus"] = "0.00", "0.00"
-	s.call("transfer_card_balance", in, 409)
+	if r := s.call("transfer_card_balance", in, 409); r["detail"] != "转余额合计须大于零" {
+		t.Fatal(r)
+	}
 	in = transfer(a["id"], b["id"])
 	in["reason"] = "   "
-	s.call("transfer_card_balance", in, 409)
+	if r := s.call("transfer_card_balance", in, 409); r["detail"] != "原因须为一到二百字" {
+		t.Fatal(r)
+	}
 	in["reason"] = strings.Repeat("因", 201)
 	s.call("transfer_card_balance", in, 422)
 	ct := s.countType("count")
 	opening := s.opening()
 	opening["card_type_id"], opening["principal"], opening["bonus"] = ct["id"], "0.00", "0.00"
 	c := s.call("open_card", opening, 200)
-	s.call("transfer_card_balance", transfer(a["id"], c["id"]), 409)
+	if r := s.call("transfer_card_balance", transfer(a["id"], c["id"]), 409); r["detail"] != "次卡不能接收余额" {
+		t.Fatal(r)
+	}
 	s.call("adjust_card", map[string]any{"card_id": b["id"], "principal": "99999999.99", "reason": "上限"}, 200)
-	s.call("transfer_card_balance", transfer(a["id"], b["id"]), 409)
+	if r := s.call("transfer_card_balance", transfer(a["id"], b["id"]), 409); r["detail"] != "卡余额超过上限" {
+		t.Fatal(r)
+	}
 	s.call("adjust_card", map[string]any{"card_id": b["id"], "principal": "0.00", "bonus": "99999999.99", "reason": "赠送上限"}, 200)
-	s.call("transfer_card_balance", transfer(a["id"], b["id"]), 409)
+	if r := s.call("transfer_card_balance", transfer(a["id"], b["id"]), 409); r["detail"] != "卡余额超过上限" {
+		t.Fatal(r)
+	}
 	assertSQL(t, s, `SELECT NOT EXISTS(SELECT 1 FROM card_transfers)`)
 }
 func TestTransferScope(t *testing.T) {
@@ -579,7 +619,11 @@ func TestUpgradeRuleAuditTarget(t *testing.T) {
 	assertSQL(t, s, `SELECT count(*)=1 AND bool_and(target_kind='card_upgrade_rule' AND customer_id IS NULL) FROM audit_log WHERE target_id=$1`, r["id"])
 }
 func TestUpgradeReferenceLocks(t *testing.T) {
-	for _, kind := range []string{"staff", "target"} {
+	for _, tc := range []struct {
+		kind       string
+		wantDetail string
+	}{{"staff", "业绩归属人必须是本店在职员工"}, {"target", "目标须为启用的其他储值卡类型"}} {
+		kind := tc.kind
 		t.Run(kind, func(t *testing.T) {
 			s := open(t)
 			card := s.call("open_card", s.opening(), 200)
@@ -597,7 +641,7 @@ func TestUpgradeReferenceLocks(t *testing.T) {
 			go func() { done <- s.HTTPWithToken(t, s.Owner, "upgrade_card", in) }()
 			dbtest.WaitForLockWait(t, s.Pool)
 			dbtest.Commit(t, held)
-			if r := <-done; r.Status != 409 {
+			if r := <-done; r.Status != 409 || r.Detail() != tc.wantDetail {
 				t.Fatal(r)
 			}
 		})
@@ -622,6 +666,9 @@ func TestUpgradeRulesConcurrentCycle(t *testing.T) {
 		select {
 		case r := <-done:
 			counts[r.Status]++
+			if r.Status == 409 && r.Detail() != "升级规则不能形成环路" {
+				t.Fatal(r)
+			}
 		case <-time.After(8 * time.Second):
 			t.Fatal("rule operation timeout")
 		}
@@ -643,7 +690,9 @@ func TestUpgradeRuleRetainsStoredValueTypes(t *testing.T) {
 	for _, id := range []any{s.cardType, to["id"]} {
 		in := countType("不能换种类", "package", countItem(s.item(fmt.Sprint(id))))
 		in["id"], in["active"] = id, true
-		s.call("update_card_type", in, 409)
+		if r := s.call("update_card_type", in, 409); r["detail"] != "升级规则引用的卡类型不能改变种类" {
+			t.Fatal(r)
+		}
 	}
 }
 func TestUpgradeRuleReferenceLocks(t *testing.T) {
@@ -671,7 +720,7 @@ func TestUpgradeRuleReferenceLocks(t *testing.T) {
 			if target {
 				want = 409
 			}
-			if r.Status != want {
+			if r.Status != want || want == 409 && r.Detail() != "目标卡类型已停用" {
 				t.Fatal(r)
 			}
 		})
