@@ -14,6 +14,17 @@ class CIWaitTests(unittest.TestCase):
             root = Path(folder)
             (root / 'gh').write_text('''#!/bin/bash
 printf '%s\\n' "$*" >> "$FIXTURE/calls"
+count=0
+if [[ -f $FIXTURE/count ]]; then read -r count < "$FIXTURE/count"; fi
+count=$((count + 1))
+echo "$count" > "$FIXTURE/count"
+if [[ $SCENARIO == outage || ( $SCENARIO == recover && $count -le 3 ) ]]; then
+  echo 'partial failed response'
+  echo 'connection reset by peer' >&2
+  exit 2
+fi
+# Three failures before each success must never accumulate across successes.
+if [[ $SCENARIO == intermittent && $((count % 4)) != 0 ]]; then exit 2; fi
 case "$1 $2" in
   'pr view') echo head-sha ;;
   'api repos/{owner}/{repo}/commits/head-sha') echo '2026-01-01T00:00:00Z' ;;
@@ -22,6 +33,18 @@ case "$1 $2" in
     elif [[ $SCENARIO == late && ! -f $FIXTURE/slept ]]; then echo pending
     else echo done; fi ;;
   'pr checks')
+    mode=display
+    if [[ $* == *--json* ]]; then mode=json; fi
+    attempts=0
+    if [[ -f $FIXTURE/checks-$mode-count ]]; then read -r attempts < "$FIXTURE/checks-$mode-count"; fi
+    attempts=$((attempts + 1))
+    echo "$attempts" > "$FIXTURE/checks-$mode-count"
+    if [[ ( $mode == json && $SCENARIO == json-outage ) ||
+          ( $mode == json && $SCENARIO == json-recover && $attempts -le 3 ) ||
+          ( $mode == display && $SCENARIO == display-recover && $attempts -le 3 ) ]]; then
+      echo 'connection reset by peer' >&2
+      exit 1
+    fi
     if [[ $* == *--json* ]]; then
       case "$SCENARIO" in
         fail) printf 'pass\\nfail\\n'; exit 1 ;;
@@ -67,6 +90,45 @@ esac
         self.assertEqual(result.returncode, 2)
         self.assertEqual(result.stderr, 'no workflow run appeared within ten minutes of head commit head-sha\n')
         self.assertFalse(any(call.startswith('pr checks') for call in calls))
+
+    def test_transient_failures_recover(self):
+        for scenario in ('recover', 'intermittent'):
+            with self.subTest(scenario=scenario):
+                result, calls = self.run_fixture(scenario)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn('backend pass', result.stdout)
+                self.assertGreater(len(calls), 6)
+
+    def test_five_consecutive_failures_exit_two(self):
+        result, calls = self.run_fixture('outage')
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(len(calls), 5)
+        self.assertEqual(result.stderr, 'connection reset by peer\n' * 5)
+
+    def test_json_checks_empty_exit_one_stops_after_five_attempts(self):
+        result, calls = self.run_fixture('json-outage')
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertEqual(result.stdout, '')
+        self.assertEqual(result.stderr, 'connection reset by peer\n' * 5)
+        self.assertEqual(sum(call.startswith('pr checks') and '--json' in call for call in calls), 5)
+        self.assertEqual(sum(call.startswith('pr view') for call in calls), 1)
+        self.assertNotIn('pr checks 134', calls)
+
+    def test_json_checks_empty_exit_one_recovers(self):
+        result, calls = self.run_fixture('json-recover')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, 'backend pass\nadmin pass\ne2e pass\n')
+        self.assertEqual(result.stderr, 'connection reset by peer\n' * 3)
+        self.assertEqual(sum(call.startswith('pr checks') and '--json' in call for call in calls), 4)
+        self.assertEqual(calls.count('pr checks 134'), 1)
+
+    def test_display_checks_empty_exit_one_waits_for_recovery(self):
+        result, calls = self.run_fixture('display-recover')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, 'backend pass\nadmin pass\ne2e pass\n')
+        self.assertEqual(result.stderr, 'connection reset by peer\n' * 3)
+        self.assertEqual(calls.count('pr checks 134'), 4)
+        self.assertEqual(sum(call.startswith('pr checks') and '--json' in call for call in calls), 1)
 
     def test_usage(self):
         for args in ([], ['0'], ['abc'], ['1', '2']):

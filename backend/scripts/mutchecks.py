@@ -19,9 +19,10 @@ e2e 项另有 spec，即相对 admin/ 的测试文件，
 保护文件、所在包中定义 guard 的 _test.go，或 e2e 的 spec 改动都会选中；
 查询或迁移目录中任意文件改动也会选中该目录的保护。选中名称逐行输出到 stderr。
 无 --since 的 --locate 始终检查名称选择范围（不指定名称时为整份清单）。
-省略清单时必须带 --locate，按路径排序检查 .dev/codex/*/manifest.py 的全部清单，
-逐份输出选中、通过、失败数量；任一项定位失败就非零退出。
-无清单形式为 mutchecks.py --locate [--since <git-ref>]，不接受名称。
+省略清单时按路径排序处理 .dev/codex/*/manifest.py：
+mutchecks.py --locate [--since <git-ref>] 只定位；
+mutchecks.py --since <git-ref> [--jobs N] 正式运行选中项（必须带 --since，不接受名称）。
+逐份输出选中、通过、失败数量和最终总计；任一清单失败就非零退出。
 正式运行先按包合并选中 go 项的 guards，以 go test -count=1 -run '^(GuardA|GuardB|...)$'
 运行这些顶层守护测试（含子测试）；--jobs 1 串行，N > 1 时主工作树至多 N 个包并发，全部通过后
 才允许任何变异；基线失败时打印测试输出并退出，避免把已有故障算成保护生效。
@@ -533,9 +534,10 @@ def main():
     if args.manifest is None:
         if args.names:
             parser.error('names are not supported without a manifest')
-        if not args.locate:
-            parser.error('manifest is required without --locate')
+        if not args.locate and args.since is None:
+            parser.error('--since is required without a manifest or --locate')
         failed = False
+        total_selected = total_passed = total_failed = 0
         for manifest in sorted((ROOT / '.dev/codex').glob('*/manifest.py')):
             try:
                 entries = load_manifest(manifest)['ENTRIES']
@@ -545,16 +547,29 @@ def main():
             except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as exc:
                 print(f'{manifest.relative_to(ROOT)}: {exc}', file=sys.stderr)
                 failed = True
+                total_failed += 1
+                print(f'{manifest.relative_to(ROOT)} selected=0 passed=0 failed=1', flush=True)
                 continue
             errors = 0
-            for entry in selected:
-                try:
-                    locate(entry)
-                except (OSError, ValueError) as exc:
-                    print(f"{manifest.relative_to(ROOT)} {entry['step']}/{entry['name']}: {exc}", file=sys.stderr)
-                    errors += 1
+            if args.locate:
+                for entry in selected:
+                    try:
+                        locate(entry)
+                    except (OSError, ValueError) as exc:
+                        print(f"{manifest.relative_to(ROOT)} {entry['step']}/{entry['name']}: {exc}", file=sys.stderr)
+                        errors += 1
+            else:
+                code, passed = run_manifest(selected, manifest, args)
+                if code == 130:
+                    return code
+                errors = len(selected) - passed
+                failed |= code != 0
             print(f'{manifest.relative_to(ROOT)} selected={len(selected)} passed={len(selected) - errors} failed={errors}', flush=True)
             failed |= errors > 0
+            total_selected += len(selected)
+            total_passed += len(selected) - errors
+            total_failed += errors
+        print(f'total selected={total_selected} passed={total_passed} failed={total_failed}', flush=True)
         return int(failed)
     manifest = args.manifest.resolve()
     try:
@@ -566,15 +581,27 @@ def main():
         parser.error(exc.stderr.decode(errors='replace') if isinstance(exc.stderr, bytes) else exc.stderr)
     except (OSError, ValueError, KeyError) as exc:
         parser.error(str(exc))
+    return run_manifest(selected, manifest, args)[0]
+
+
+def run_manifest(selected, manifest, args):
+    """Run one manifest through the existing baseline/worker path and count passes."""
     for entry in selected:
         print(entry['step'] + '/' + entry['name'], file=sys.stderr)
     if not args.locate and not args.worker_logs and (ROOT / '.dev/mutcheck-worktrees').exists():
         cleanup_workers(ROOT / '.dev/mutcheck-worktrees')
     if not selected:
         print('no affected entries', file=sys.stderr)
-        return 0
+        return 0, 0
     logs = args.worker_logs or Path(tempfile.mkdtemp(prefix='mutchecks-', dir=manifest.parent))
     print(f'logs={logs}', file=sys.stderr)
+    code = run_selected(selected, manifest, args, logs)
+    lines = (logs / 'results.log').read_text().splitlines()
+    passed = sum(line.endswith(' PASS') for line in merge_results(selected, lines))
+    return code, passed
+
+
+def run_selected(selected, manifest, args, logs):
     failed = False
     with (logs / 'results.log').open('w') as results:
         if args.jobs > 1 and not args.locate:

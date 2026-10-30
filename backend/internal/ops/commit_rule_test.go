@@ -23,6 +23,7 @@ func TestCommitRuleKeepsWrites(t *testing.T) {
 	r := ops.NewRegistry(s.Pool, api)
 	c := s.MustCaller(s.Owner)
 	var rule *ops.RuleError
+	// rejection-detail: 测试 CommitRule 的错误类型和状态映射，提示文字在下方 HTTP 断言。
 	if !errors.As(ops.CommitRule("x"), &rule) || ops.StatusOf(rule) != 409 {
 		t.Fatal(rule)
 	}

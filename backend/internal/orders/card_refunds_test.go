@@ -82,11 +82,7 @@ func TestRefundCheckoutAndVoid(t *testing.T) {
 			}
 			for _, ch := range s.Channels() {
 				r := ch.Call(t, s.MustCaller(s.Owner), "preview_checkout", orders.PreviewCheckoutInput{OrderID: id(o["id"]), CardID: new(id(c["id"]))})
-				detail, _ := r.Body["detail"].(string)
-				if r.Err != nil {
-					detail = r.Err.Error()
-				}
-				if r.Status != 409 || detail != "卡已退" || before != s.voidSnapshot() {
+				if r.Status != 409 || r.Detail() != "卡已退" || before != s.voidSnapshot() {
 					t.Fatal(ch.Name, r)
 				}
 			}

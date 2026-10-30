@@ -383,8 +383,9 @@ func TestCustomerWritePermissionsAndAI(t *testing.T) {
 			c.Permissions = perm.All()
 			delete(c.Permissions, tc.p)
 			r := s.HTTP(t, &c, tc.op, tc.args)
-			assertEqual(t, r.Status, 403)
-			assertEqual(t, r.Detail(), "permission denied")
+			if r.Status != 403 || r.Detail() != "permission denied" {
+				t.Fatal(r)
+			}
 			assertEqual(t, snapshot(t, s), before)
 			r = s.AI(t, owner, tc.op, tc.args)
 			if r.Status == 200 || !strings.Contains(fmt.Sprint(r.Err), "draft") {

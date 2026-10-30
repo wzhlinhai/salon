@@ -14,6 +14,7 @@ golangci-lint run ./...                        # CI 同样运行，配置见 .go
 scripts/mutcheck.sh [--run <regex>] <文件> <原文> <替换> [包] # 临时改坏一处，确认有测试失败，然后还原；改查询 SQL 时自动重新生成
 scripts/mutcheck.sh --restore                  # 恢复中断的变异验证，清理未发布的备份槽
 scripts/mutchecks.py <清单> [--since <git-ref>] [--locate] [名称...] # go 项只运行 guards（含子测试）；每包先跑完整基线
+scripts/mutchecks.py --since <git-ref> [--jobs N]          # 不带清单：逐份运行 .dev/codex/*/manifest.py 的受影响项
 DATABASE_URL=postgres://... go run ./cmd/salon migrate up
 DATABASE_URL=postgres://... BOOTSTRAP_PASSWORD=... go run ./cmd/salon bootstrap \
   -tenant 本店 -store 本店 -owner-name 姓名 -owner-number 001 -owner-account boss
