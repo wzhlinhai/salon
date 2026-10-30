@@ -30,11 +30,11 @@ func TestPerformanceRead(t *testing.T) {
 	for _, ch := range s.Channels() {
 		t.Run(ch.Name, func(t *testing.T) {
 			all := ch.Call(t, owner, "list_performance", args)
-			if all.Status != 200 || len(all.Body["entries"].([]any)) != 3 || all.Body["totals"].(map[string]any)["paid_amount"] != "200.00" {
+			if all.Status != 200 || len(all.Body["entries"].([]any)) != 3 || all.Body["totals"].([]any)[0].(map[string]any)["paid_amount"] != "200.00" {
 				t.Fatal(all)
 			}
 			own := ch.Call(t, self, "list_performance", args)
-			if own.Status != 200 || len(own.Body["entries"].([]any)) != 1 || own.Body["totals"].(map[string]any)["paid_amount"] != "50.00" {
+			if own.Status != 200 || len(own.Body["entries"].([]any)) != 1 || own.Body["totals"].([]any)[0].(map[string]any)["paid_amount"] != "50.00" {
 				t.Fatal(own)
 			}
 			ownEntry := own.Body["entries"].([]any)[0].(map[string]any)
@@ -43,11 +43,11 @@ func TestPerformanceRead(t *testing.T) {
 			}
 			filtered := map[string]any{"date_from": day, "date_to": day, "staff_id": s.employee}
 			r := ch.Call(t, self, "list_performance", filtered)
-			if r.Status != 200 || len(r.Body["entries"].([]any)) != 0 || r.Body["totals"].(map[string]any)["paid_amount"] != "0" {
+			if r.Status != 200 || len(r.Body["entries"].([]any)) != 0 || r.Body["totals"].([]any)[0].(map[string]any)["paid_amount"] != "0" {
 				t.Fatal(r)
 			}
 			r = ch.Call(t, owner, "list_performance", filtered)
-			if r.Status != 200 || len(r.Body["entries"].([]any)) != 1 || r.Body["totals"].(map[string]any)["paid_amount"] != "50.00" {
+			if r.Status != 200 || len(r.Body["entries"].([]any)) != 1 || r.Body["totals"].([]any)[0].(map[string]any)["paid_amount"] != "50.00" {
 				t.Fatal(r)
 			}
 			r = ch.Call(t, denied, "list_performance", args)
@@ -102,11 +102,11 @@ func TestPerformanceStoreTenantScope(t *testing.T) {
 		day := settings.Date(time.Now()).Format(time.DateOnly)
 		args := map[string]any{"date_from": day, "date_to": day}
 		r := ch.Call(t, s.MustCaller(s.Owner), "list_performance", args)
-		if r.Status != 200 || len(r.Body["entries"].([]any)) != 1 || r.Body["totals"].(map[string]any)["paid_amount"] != "100.00" {
+		if r.Status != 200 || len(r.Body["entries"].([]any)) != 1 || r.Body["totals"].([]any)[0].(map[string]any)["paid_amount"] != "100.00" {
 			t.Fatal(r)
 		}
 		r = ch.Call(t, foreignCaller, "list_performance", args)
-		if r.Status != 200 || len(r.Body["entries"].([]any)) != 0 || r.Body["totals"].(map[string]any)["paid_amount"] != "0" {
+		if r.Status != 200 || len(r.Body["entries"].([]any)) != 0 || r.Body["totals"].([]any)[0].(map[string]any)["paid_amount"] != "0" {
 			t.Fatal(r)
 		}
 	}

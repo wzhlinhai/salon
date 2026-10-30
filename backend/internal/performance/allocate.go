@@ -17,11 +17,21 @@ type Slot struct {
 	SharePercent *int16
 }
 
-// Line 是参与项目业绩分配的有效项目行。
+// Line 是结账时参与项目业绩、耗卡业绩和手工费计算的有效项目行。
 type Line struct {
-	OrderItemID uuid.UUID
-	Net         money.Amount
-	Slots       []Slot
+	OrderItemID     uuid.UUID
+	Net             money.Amount
+	Slots           []Slot
+	Price           money.Amount
+	LaborFeeAmount  *money.Amount
+	LaborFeePercent *money.Percent
+	Count           *CountConsumption
+}
+
+// CountConsumption 是扣次流水使用的次数种类及随卡留存的单次金额。
+type CountConsumption struct {
+	Method    string
+	UnitPrice money.Amount
 }
 
 // Category 是按卡流水拆分后的支付方式金额。
@@ -31,6 +41,7 @@ type Category struct {
 }
 
 type allocation struct {
+	kind                string
 	orderItemID         uuid.UUID
 	slot                *int16
 	positionID, staffID *uuid.UUID
@@ -61,6 +72,7 @@ func mulDiv(a, b, n int64) int64 {
 }
 
 func allocate(lines []Line, categories []Category, split string, ratios map[string]int) []allocation {
+	lines = slices.DeleteFunc(slices.Clone(lines), func(l Line) bool { return l.Count != nil })
 	amounts := make([]int64, len(methods))
 	for _, c := range categories {
 		i := slices.Index(methods, c.Method)
@@ -135,7 +147,7 @@ func splitCell(line Line, method string, cell int64, split string, ratio int) []
 	}
 	entry := func(paid int64) allocation {
 		a := fromFen(paid)
-		return allocation{orderItemID: line.OrderItemID, method: method, paidAmount: a, ratio: int16(ratio), amount: a.PercentOf(ratio)}
+		return allocation{kind: "item", orderItemID: line.OrderItemID, method: method, paidAmount: a, ratio: int16(ratio), amount: a.PercentOf(ratio)}
 	}
 	if sum == 0 {
 		return []allocation{entry(cell)}
@@ -155,6 +167,38 @@ func splitCell(line Line, method string, cell int64, split string, ratio int) []
 		a := entry(paid[i])
 		a.slot, a.positionID, a.staffID = &s.Slot, &s.PositionID, s.StaffID
 		out = append(out, a)
+	}
+	return out
+}
+
+func consumeAndLabor(lines []Line, split string, ratios map[string]int) []allocation {
+	out := []allocation{}
+	for _, line := range lines {
+		if line.Count != nil && fen(line.Count.UnitPrice) != 0 {
+			entries := splitCell(line, line.Count.Method, fen(line.Count.UnitPrice), split, ratios[line.Count.Method])
+			for _, e := range entries {
+				e.kind = "consume"
+				out = append(out, e)
+			}
+		}
+		fee := money.Amount{}
+		if line.LaborFeeAmount != nil {
+			fee = *line.LaborFeeAmount
+		}
+		if line.LaborFeePercent != nil {
+			fee = line.Price.Share(*line.LaborFeePercent)
+		}
+		if fen(fee) == 0 {
+			continue
+		}
+		for _, e := range splitCell(line, "labor", fen(fee), split, 100) {
+			// 手工费只给服务员工，无人或已填岗位权重为零时不记门店记录。
+			if e.staffID == nil {
+				continue
+			}
+			e.kind = "labor"
+			out = append(out, e)
+		}
 	}
 	return out
 }

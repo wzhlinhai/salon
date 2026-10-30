@@ -2123,6 +2123,8 @@ export interface components {
             date_from: string;
             /** Format: date */
             date_to: string;
+            /** @enum {string} */
+            kind?: "item" | "consume" | "labor";
             /** Format: int32 */
             limit?: number;
             staff_id?: string;
@@ -2221,6 +2223,10 @@ export interface components {
             /** @enum {string} */
             item_kind: "service" | "goods";
             item_name: string;
+            /** @description 加项目时随项目行留存的手工费 */
+            labor_fee_amount: string | null;
+            /** @description 加项目时随项目行留存的手工费 */
+            labor_fee_percent: string | null;
             level_id: string | null;
             positions: components["schemas"]["OrderItemPosition"][];
             price: string;
@@ -2305,9 +2311,9 @@ export interface components {
             id: string;
             item_name: string;
             /** @enum {string} */
-            kind: "item";
+            kind: "item" | "consume" | "labor";
             /** @enum {string} */
-            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "red_packet" | "card_principal" | "card_bonus";
+            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "red_packet" | "card_principal" | "card_bonus" | "count_paid" | "count_gift" | "labor";
             order_id: string;
             order_item_id: string;
             /** @description 非负实收份额，reversal 为 true 时计负数 */
@@ -2324,11 +2330,13 @@ export interface components {
         };
         PerformanceList: {
             entries: components["schemas"]["PerformanceEntry"][];
-            totals: components["schemas"]["PerformanceTotals"];
+            totals: components["schemas"]["PerformanceTotals"][];
         };
         PerformanceTotals: {
             /** @description 业绩净额，可为负数 */
             amount: string;
+            /** @enum {string} */
+            kind: "item" | "consume" | "labor";
             /** @description 实收份额净额，可为负数 */
             paid_amount: string;
         };

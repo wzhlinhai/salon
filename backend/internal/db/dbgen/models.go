@@ -356,23 +356,25 @@ type Order struct {
 }
 
 type OrderItem struct {
-	TenantID      uuid.UUID
-	StoreID       uuid.UUID
-	ID            uuid.UUID
-	OrderID       uuid.UUID
-	ItemID        uuid.UUID
-	ItemName      string
-	Price         money.Amount
-	PriceSource   string
-	LevelID       *uuid.UUID
-	AddedBy       uuid.UUID
-	AddedAt       pgtype.Timestamptz
-	RemovedAt     pgtype.Timestamptz
-	RemovedBy     *uuid.UUID
-	RepriceReason *string
-	CardTypeID    *uuid.UUID
-	Discount      money.Amount
-	ItemKind      string
+	TenantID        uuid.UUID
+	StoreID         uuid.UUID
+	ID              uuid.UUID
+	OrderID         uuid.UUID
+	ItemID          uuid.UUID
+	ItemName        string
+	Price           money.Amount
+	PriceSource     string
+	LevelID         *uuid.UUID
+	AddedBy         uuid.UUID
+	AddedAt         pgtype.Timestamptz
+	RemovedAt       pgtype.Timestamptz
+	RemovedBy       *uuid.UUID
+	RepriceReason   *string
+	CardTypeID      *uuid.UUID
+	Discount        money.Amount
+	ItemKind        string
+	LaborFeeAmount  *money.Amount
+	LaborFeePercent *money.Percent
 }
 
 type OrderItemPosition struct {

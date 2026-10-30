@@ -56,7 +56,7 @@ func TestCheckoutPerformanceMixed(t *testing.T) {
 	o := s.customerOrder(line, line)
 	s.paid(o, payment("cash", "20"), cardPayment(card, "100"), packetPayment(packet, "40"), payment("debt", "40"))
 	list := s.performanceList()
-	if list["totals"].(map[string]any)["paid_amount"] != "200.00" || list["totals"].(map[string]any)["amount"] != "200.00" {
+	if list["totals"].([]any)[0].(map[string]any)["paid_amount"] != "200.00" || list["totals"].([]any)[0].(map[string]any)["amount"] != "200.00" {
 		t.Fatal(list)
 	}
 	entries := list["entries"].([]any)
@@ -107,9 +107,10 @@ func TestCheckoutPerformanceExclusions(t *testing.T) {
 	removed := items[2].(map[string]any)
 	s.call("remove_order_item", orders.RemoveOrderItemInput{OrderID: id(o["id"]), OrderItemID: id(removed["id"])}, 200)
 	s.paid(o, payment("cash", "100"), countPayment(card, items[1].(map[string]any), "100"))
-	list := s.performanceList()
+	day := settings.Date(time.Now()).Format(time.DateOnly)
+	list := s.call("list_performance", map[string]any{"date_from": day, "date_to": day, "limit": 200, "kind": "item"}, 200)
 	entries := list["entries"].([]any)
-	if len(entries) != 2 || list["totals"].(map[string]any)["paid_amount"] != "100.00" {
+	if len(entries) != 2 || list["totals"].([]any)[0].(map[string]any)["paid_amount"] != "100.00" {
 		t.Fatal(list)
 	}
 	for _, v := range entries {

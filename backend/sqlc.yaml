@@ -82,6 +82,16 @@ sql:
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money
               type: Amount
+          - column: order_items.labor_fee_amount
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+              pointer: true
+          - column: order_items.labor_fee_percent
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Percent
+              pointer: true
           - column: order_items.price
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money

@@ -10,7 +10,7 @@ import (
 
 func TestPerformanceSettings(t *testing.T) {
 	s := open(t)
-	defaults := map[string]any{"performance_split": "by_position", "performance_ratio_cash": float64(100), "performance_ratio_unionpay": float64(100), "performance_ratio_wechat": float64(100), "performance_ratio_alipay": float64(100), "performance_ratio_debt": float64(100), "performance_ratio_card_principal": float64(100), "performance_ratio_card_bonus": float64(0), "performance_ratio_red_packet": float64(0)}
+	defaults := map[string]any{settings.KeyPerformanceRatioCountPaid: float64(100), settings.KeyPerformanceRatioCountGift: float64(0), "performance_split": "by_position", "performance_ratio_cash": float64(100), "performance_ratio_unionpay": float64(100), "performance_ratio_wechat": float64(100), "performance_ratio_alipay": float64(100), "performance_ratio_debt": float64(100), "performance_ratio_card_principal": float64(100), "performance_ratio_card_bonus": float64(0), "performance_ratio_red_packet": float64(0)}
 	for _, ch := range s.Channels() {
 		r := ch.Call(t, s.owner, "get_settings", map[string]any{})
 		for k, want := range defaults {
@@ -44,7 +44,7 @@ func TestPerformanceSettings(t *testing.T) {
 		if r.PerformanceSplit() != "equal" {
 			t.Fatal(r.PerformanceSplit())
 		}
-		for _, m := range []string{"cash", "unionpay", "wechat", "alipay", "debt", "red_packet", "card_principal", "card_bonus"} {
+		for _, m := range []string{"cash", "unionpay", "wechat", "alipay", "debt", "red_packet", "card_principal", "card_bonus", "count_paid", "count_gift"} {
 			if r.PerformanceRatio(m) != 37 {
 				t.Fatal(m)
 			}

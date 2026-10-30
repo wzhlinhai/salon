@@ -215,6 +215,10 @@ func (r Rules) PerformanceSplit() string {
 func (r Rules) PerformanceRatio(category string) int {
 	var key string
 	switch category {
+	case "count_paid":
+		key = KeyPerformanceRatioCountPaid
+	case "count_gift":
+		key = KeyPerformanceRatioCountGift
 	case "cash":
 		key = KeyPerformanceRatioCash
 	case "unionpay":

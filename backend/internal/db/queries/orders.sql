@@ -12,8 +12,8 @@ SELECT * FROM orders WHERE store_id=$1 AND id=$2;
 SELECT * FROM orders WHERE store_id=$1 AND status='open' ORDER BY opened_at,id;
 
 -- name: CreateOrderItem :one
-INSERT INTO order_items (tenant_id,store_id,order_id,item_id,item_name,price,price_source,level_id,added_by,item_kind)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *;
+INSERT INTO order_items (tenant_id,store_id,order_id,item_id,item_name,price,price_source,level_id,added_by,item_kind,labor_fee_amount,labor_fee_percent)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *;
 
 -- name: AddOrderItemPosition :exec
 INSERT INTO order_item_positions (tenant_id,store_id,order_item_id,slot,position_id,required,staff_id,share_percent)
@@ -72,9 +72,10 @@ INSERT INTO order_payments (tenant_id,store_id,checkout_id,order_id,method,amoun
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id;
 
 -- name: ListOrderPayments :many
-SELECT p.*, d.id AS debt_id, (-l.principal_delta)::numeric AS principal, (-l.bonus_delta)::numeric AS bonus, c.item_id AS count_item_id, (-COALESCE(c.paid_delta,0))::int AS paid, (-COALESCE(c.gift_delta,0))::int AS gift
+SELECT p.*, d.id AS debt_id, (-l.principal_delta)::numeric AS principal, (-l.bonus_delta)::numeric AS bonus, c.item_id AS count_item_id, (-COALESCE(c.paid_delta,0))::int AS paid, (-COALESCE(c.gift_delta,0))::int AS gift, ci.unit_price::numeric AS count_unit_price
 FROM order_payments p LEFT JOIN card_ledger l ON l.id = p.card_ledger_id
 LEFT JOIN card_count_ledger c ON c.id = p.card_count_ledger_id
+LEFT JOIN card_items ci ON ci.card_id=p.card_id AND ci.item_id=c.item_id
 LEFT JOIN debts d ON d.order_payment_id=p.id
 WHERE p.store_id=$1 AND p.order_id=ANY(sqlc.arg(order_ids)::uuid[]) ORDER BY p.id;
 
