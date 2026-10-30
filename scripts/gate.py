@@ -2,6 +2,8 @@
 """Run a gate and keep its complete output and exit status for review.
 
 Usage: scripts/gate.py <log-dir> <label> [--cwd <dir>] -- <command...>
+Summary: scripts/gate.py --summary <log-dir> [--prefix <label-prefix>]
+Print label, exit (or interrupted), seconds in record order; missing gates.jsonl exits 2.
 Example: scripts/gate.py .dev/codex/my-task lint --cwd admin -- npm run lint
 
 Paths are relative to the directory where you invoke this script. The command
@@ -29,6 +31,19 @@ import time
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    if sys.argv[1:2] == ['--summary']:
+        parser.add_argument('--summary', type=Path, required=True)
+        parser.add_argument('--prefix', default='')
+        args = parser.parse_args()
+        records = args.summary / 'gates.jsonl'
+        if not records.is_file():
+            return 2
+        for line in records.read_text().splitlines():
+            record = json.loads(line)
+            if record['label'].startswith(args.prefix):
+                code = record.get('exit')
+                print(f"{record['label']} exit={code if code is not None else 'interrupted'} seconds={record['seconds']}")
+        return 0
     parser.add_argument('log_dir', type=Path)
     parser.add_argument('label')
     parser.add_argument('--cwd', type=Path, default=Path.cwd())
