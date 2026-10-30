@@ -321,12 +321,13 @@ type ItemMemberPrice struct {
 }
 
 type ItemPosition struct {
-	TenantID   uuid.UUID
-	StoreID    uuid.UUID
-	ItemID     uuid.UUID
-	Slot       int16
-	PositionID uuid.UUID
-	Required   bool
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	ItemID       uuid.UUID
+	Slot         int16
+	PositionID   uuid.UUID
+	Required     bool
+	SharePercent *int16
 }
 
 type Level struct {
@@ -375,13 +376,14 @@ type OrderItem struct {
 }
 
 type OrderItemPosition struct {
-	TenantID    uuid.UUID
-	StoreID     uuid.UUID
-	OrderItemID uuid.UUID
-	Slot        int16
-	PositionID  uuid.UUID
-	Required    bool
-	StaffID     *uuid.UUID
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	OrderItemID  uuid.UUID
+	Slot         int16
+	PositionID   uuid.UUID
+	Required     bool
+	StaffID      *uuid.UUID
+	SharePercent *int16
 }
 
 type OrderPayment struct {
@@ -408,6 +410,28 @@ type OrderVoid struct {
 	BusinessDate pgtype.Date
 	VoidedBy     uuid.UUID
 	At           pgtype.Timestamptz
+}
+
+type PerformanceEntry struct {
+	TenantID           uuid.UUID
+	StoreID            uuid.UUID
+	ID                 uuid.UUID
+	Kind               string
+	BusinessDate       pgtype.Date
+	OrderID            uuid.UUID
+	OrderItemID        uuid.UUID
+	CheckoutID         uuid.UUID
+	SettingsSnapshotID uuid.UUID
+	Slot               *int16
+	PositionID         *uuid.UUID
+	StaffID            *uuid.UUID
+	Method             string
+	PaidAmount         money.Amount
+	Ratio              int16
+	Amount             money.Amount
+	VoidID             *uuid.UUID
+	ReversesID         *uuid.UUID
+	CreatedAt          pgtype.Timestamptz
 }
 
 type Position struct {

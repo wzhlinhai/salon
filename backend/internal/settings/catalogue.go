@@ -54,17 +54,26 @@ type Def struct {
 
 // 设置项的 Key。
 const (
-	KeyCardDeductionOrder    = "card_deduction_order"
-	KeyCardCountOrder        = "card_count_order"
-	KeyCardSelection         = "card_selection"
-	KeyOthersCardPayment     = "others_card_payment"
-	KeyMemberPriceRule       = "member_price_rule"
-	KeyPointsPerRechargeYuan = "points_per_recharge_yuan"
-	KeyCardRefundBonus       = "card_refund_bonus"
-	KeyCardRefundFeePercent  = "card_refund_fee_percent"
-	KeyVoidWindowMinutes     = "void_window_minutes"
-	KeyBusinessHours         = "business_hours"
-	KeyBusinessDayEnd        = "business_day_end"
+	KeyCardDeductionOrder            = "card_deduction_order"
+	KeyCardCountOrder                = "card_count_order"
+	KeyCardSelection                 = "card_selection"
+	KeyOthersCardPayment             = "others_card_payment"
+	KeyMemberPriceRule               = "member_price_rule"
+	KeyPointsPerRechargeYuan         = "points_per_recharge_yuan"
+	KeyPerformanceSplit              = "performance_split"
+	KeyPerformanceRatioCash          = "performance_ratio_cash"
+	KeyPerformanceRatioUnionpay      = "performance_ratio_unionpay"
+	KeyPerformanceRatioWechat        = "performance_ratio_wechat"
+	KeyPerformanceRatioAlipay        = "performance_ratio_alipay"
+	KeyPerformanceRatioDebt          = "performance_ratio_debt"
+	KeyPerformanceRatioCardPrincipal = "performance_ratio_card_principal"
+	KeyPerformanceRatioCardBonus     = "performance_ratio_card_bonus"
+	KeyPerformanceRatioRedPacket     = "performance_ratio_red_packet"
+	KeyCardRefundBonus               = "card_refund_bonus"
+	KeyCardRefundFeePercent          = "card_refund_fee_percent"
+	KeyVoidWindowMinutes             = "void_window_minutes"
+	KeyBusinessHours                 = "business_hours"
+	KeyBusinessDayEnd                = "business_day_end"
 )
 
 // Catalogue 是全部门店设置，顺序即设置页面的显示顺序。后续模块的业务规则在这里添加。
@@ -82,6 +91,15 @@ var Catalogue = []Def{
 	{Key: KeyOthersCardPayment, Label: "用别人的卡", Hint: "顾客能否用别人（例如家人）的卡余额付自己的单", Kind: KindChoice, Default: "not_allowed", Options: []ChoiceOption{{Value: "not_allowed", Label: "不允许"}, {Value: "allowed", Label: "允许"}}},
 	{Key: KeyCardCountOrder, Label: "扣次顺序", Hint: "扣次时先扣购买次数还是赠送次数，先扣的用完再扣另一种", Kind: KindChoice, Default: "paid_first", Options: []ChoiceOption{{Value: "paid_first", Label: "先扣购买次数"}, {Value: "gift_first", Label: "先扣赠送次数"}}},
 	{Key: KeyCardSelection, Label: "选卡规则", Hint: "结账只说用卡余额付、不指定哪张卡时怎么挑卡：手动选卡必须指定；按折扣率先扣这单实收最低的卡；按余额先扣余额少的卡，一张不够接着扣下一张", Kind: KindChoice, Default: "manual", Options: []ChoiceOption{{Value: "manual", Label: "手动选卡"}, {Value: "by_discount", Label: "按折扣率"}, {Value: "by_balance", Label: "按余额"}}},
+	{Key: KeyPerformanceSplit, Label: "多人分业绩", Kind: KindChoice, Default: "by_position", Options: []ChoiceOption{{Value: "by_position", Label: "按岗位比例"}, {Value: "equal", Label: "均分"}}, Hint: "一个项目几个人做时业绩怎么分；项目没设岗位比例时均分"},
+	{Key: KeyPerformanceRatioCash, Label: "现金业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
+	{Key: KeyPerformanceRatioUnionpay, Label: "银联业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
+	{Key: KeyPerformanceRatioWechat, Label: "微信业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
+	{Key: KeyPerformanceRatioAlipay, Label: "支付宝业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
+	{Key: KeyPerformanceRatioDebt, Label: "挂账业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
+	{Key: KeyPerformanceRatioCardPrincipal, Label: "卡余额本金业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
+	{Key: KeyPerformanceRatioCardBonus, Label: "卡余额赠送金业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 0, Hint: "这种支付方式付的钱按百分之几计入业绩"},
+	{Key: KeyPerformanceRatioRedPacket, Label: "红包业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 0, Hint: "这种支付方式付的钱按百分之几计入业绩"},
 	{
 		Key: KeyCardRefundBonus, Label: "退卡赠送金", Kind: KindChoice, Default: "forfeit",
 		Options: []ChoiceOption{{Value: "forfeit", Label: "不退、作废"}, {Value: "deduct_used", Label: "扣回已用掉的赠送金"}},

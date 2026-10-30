@@ -50,10 +50,11 @@ type OrderItem struct {
 
 // OrderItemPosition 是项目行保留的岗位及参与员工。
 type OrderItemPosition struct {
-	Slot       int16      `json:"slot"`
-	PositionID uuid.UUID  `json:"position_id"`
-	Required   bool       `json:"required"`
-	StaffID    *uuid.UUID `json:"staff_id" nullable:"true"`
+	SharePercent *int16     `json:"share_percent" nullable:"true" minimum:"0" maximum:"100" doc:"岗位比例，添加项目行时留存"`
+	Slot         int16      `json:"slot"`
+	PositionID   uuid.UUID  `json:"position_id"`
+	Required     bool       `json:"required"`
+	StaffID      *uuid.UUID `json:"staff_id" nullable:"true"`
 }
 
 // OrderItemStaffInput 是一个项目岗位上的员工。

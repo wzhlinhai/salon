@@ -147,7 +147,7 @@ func TestAuditPacketDebtMigration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := provider.Up(ctx); err != nil {
+	if _, err := provider.UpTo(ctx, 27); err != nil {
 		t.Fatal(err)
 	}
 	check := func(down bool) {

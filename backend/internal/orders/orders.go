@@ -116,7 +116,7 @@ func addItem(ctx context.Context, env ops.Env, orderID uuid.UUID, in OrderItemIn
 		return err
 	}
 	for _, p := range positions {
-		if err := env.Q.AddOrderItemPosition(ctx, dbgen.AddOrderItemPositionParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, OrderItemID: row.ID, Slot: p.Slot, PositionID: p.PositionID, Required: p.Required, StaffID: assigned[p.Slot]}); err != nil {
+		if err := env.Q.AddOrderItemPosition(ctx, dbgen.AddOrderItemPositionParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, OrderItemID: row.ID, Slot: p.Slot, PositionID: p.PositionID, Required: p.Required, StaffID: assigned[p.Slot], SharePercent: p.SharePercent}); err != nil {
 			return err
 		}
 	}
@@ -190,7 +190,7 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 	}
 	byItem := map[uuid.UUID][]OrderItemPosition{}
 	for _, p := range positions {
-		byItem[p.OrderItemID] = append(byItem[p.OrderItemID], OrderItemPosition{Slot: p.Slot, PositionID: p.PositionID, Required: p.Required, StaffID: p.StaffID})
+		byItem[p.OrderItemID] = append(byItem[p.OrderItemID], OrderItemPosition{Slot: p.Slot, PositionID: p.PositionID, Required: p.Required, StaffID: p.StaffID, SharePercent: p.SharePercent})
 	}
 	byOrder := map[uuid.UUID][]OrderItem{}
 	totals := map[uuid.UUID]money.Total{}

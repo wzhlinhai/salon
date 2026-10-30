@@ -14,18 +14,19 @@ import (
 )
 
 const addOrderItemPosition = `-- name: AddOrderItemPosition :exec
-INSERT INTO order_item_positions (tenant_id,store_id,order_item_id,slot,position_id,required,staff_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7)
+INSERT INTO order_item_positions (tenant_id,store_id,order_item_id,slot,position_id,required,staff_id,share_percent)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 `
 
 type AddOrderItemPositionParams struct {
-	TenantID    uuid.UUID
-	StoreID     uuid.UUID
-	OrderItemID uuid.UUID
-	Slot        int16
-	PositionID  uuid.UUID
-	Required    bool
-	StaffID     *uuid.UUID
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	OrderItemID  uuid.UUID
+	Slot         int16
+	PositionID   uuid.UUID
+	Required     bool
+	StaffID      *uuid.UUID
+	SharePercent *int16
 }
 
 func (q *Queries) AddOrderItemPosition(ctx context.Context, arg AddOrderItemPositionParams) error {
@@ -37,6 +38,7 @@ func (q *Queries) AddOrderItemPosition(ctx context.Context, arg AddOrderItemPosi
 		arg.PositionID,
 		arg.Required,
 		arg.StaffID,
+		arg.SharePercent,
 	)
 	return err
 }
@@ -376,7 +378,7 @@ func (q *Queries) ListOpenOrders(ctx context.Context, storeID uuid.UUID) ([]Orde
 }
 
 const listOrderItemPositions = `-- name: ListOrderItemPositions :many
-SELECT tenant_id, store_id, order_item_id, slot, position_id, required, staff_id FROM order_item_positions WHERE store_id=$1 AND order_item_id=ANY($2::uuid[]) ORDER BY order_item_id,slot
+SELECT tenant_id, store_id, order_item_id, slot, position_id, required, staff_id, share_percent FROM order_item_positions WHERE store_id=$1 AND order_item_id=ANY($2::uuid[]) ORDER BY order_item_id,slot
 `
 
 type ListOrderItemPositionsParams struct {
@@ -401,6 +403,7 @@ func (q *Queries) ListOrderItemPositions(ctx context.Context, arg ListOrderItemP
 			&i.PositionID,
 			&i.Required,
 			&i.StaffID,
+			&i.SharePercent,
 		); err != nil {
 			return nil, err
 		}
