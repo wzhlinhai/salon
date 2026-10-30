@@ -50,7 +50,7 @@ func start() {
 	adminDSN, startErr = c.ConnectionString(ctx, "sslmode=disable")
 }
 
-// NewEmptyPool 新建一个空数据库（未执行迁移）并返回连接池。测试结束时连接池关闭。
+// NewEmptyPool 新建一个空数据库（未执行迁移）并返回连接池。测试结束时关闭连接池并删除数据库。
 func NewEmptyPool(t testing.TB) *pgxpool.Pool {
 	t.Helper()
 	once.Do(start)
@@ -68,6 +68,18 @@ func NewEmptyPool(t testing.TB) *pgxpool.Pool {
 	if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
 		t.Fatal(err)
 	}
+
+	t.Cleanup(func() {
+		admin, err := pgx.Connect(ctx, adminDSN)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer func() { _ = admin.Close(ctx) }()
+		if _, err := admin.Exec(ctx, "DROP DATABASE "+name+" WITH (FORCE)"); err != nil {
+			t.Error(err)
+		}
+	})
 
 	cfg, err := pgxpool.ParseConfig(adminDSN)
 	if err != nil {
