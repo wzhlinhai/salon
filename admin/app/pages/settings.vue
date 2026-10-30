@@ -200,7 +200,7 @@ onMounted(loadSources)
             <UFormField label="关门"><UInput v-model="form.close" type="time" /></UFormField>
           </div>
           <UFormField v-else-if="editing.kind === 'choice'" label="做法"><USelect v-model="form.choice" aria-label="做法" :items="editing.options" value-key="value" label-key="label" /></UFormField>
-          <UFormField v-else-if="editing.kind === 'integer'" label="每积一分的本金元数"><UInput v-model="form.integer" type="number" :min="editing.min" :max="editing.max" :step="1" /></UFormField>
+          <UFormField v-else-if="editing.kind === 'integer'" :label="editing.label"><UInput v-model="form.integer" type="number" :min="editing.min" :max="editing.max" :step="1" /></UFormField>
           <UFormField v-else label="时间"><UInput v-model="form.time" type="time" /></UFormField>
           <UFormField label="生效日期" help="不能早于今天"><UInput v-model="form.from" type="date" :min="today" /></UFormField>
           <p class="text-xs text-muted">系统默认：{{ show(editing.kind, editing.default) }}</p>

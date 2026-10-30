@@ -18,7 +18,7 @@ type CardType struct {
 	Kind            string         `json:"kind"`
 	ValidityKind    string         `json:"validity_kind"`
 	ValidityDate    *string        `json:"validity_date,omitempty"`
-	ValidityDays    *int32         `json:"validity_days,omitempty"`
+	ValidityDays    *int32         `json:"validity_days,omitempty" maximum:"36500"`
 	Active          bool           `json:"active"`
 	CreatedAt       time.Time      `json:"created_at"`
 }
@@ -31,7 +31,7 @@ type CreateCardTypeInput struct {
 	Kind            string              `json:"kind" enum:"stored_value,count,package"`
 	ValidityKind    string              `json:"validity_kind" enum:"none,fixed_date,days_after_open"`
 	ValidityDate    *string             `json:"validity_date,omitempty"`
-	ValidityDays    *int32              `json:"validity_days,omitempty"`
+	ValidityDays    *int32              `json:"validity_days,omitempty" maximum:"36500"`
 }
 
 // UpdateCardTypeInput 是编辑或停用卡类型的参数。

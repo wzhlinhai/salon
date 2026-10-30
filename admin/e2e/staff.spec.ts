@@ -97,3 +97,27 @@ for (const kind of ['档案', '角色', '账号']) {
     await expect(page.getByText(kind === '档案' ? '已保存' : kind === '角色' ? '角色已更新' : '登录账号已设置', { exact: true })).toHaveCount(0)
   })
 }
+
+test('新建员工断网后恢复并可重试', async ({ page }) => {
+  await login(page, owner.account, owner.password)
+  await page.goto('/staff')
+  await page.getByRole('button', { name: '新建员工', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '新建员工', exact: true })
+  const name = `重试员工${Date.now()}`
+  await dialog.getByLabel('姓名', { exact: true }).fill(name)
+  await dialog.getByLabel('编号', { exact: true }).fill(`编号${name}`)
+  let abort = true
+  await page.route('**/api/ops/create_staff', async (route) => {
+    if (abort) {
+      abort = false
+      await route.abort()
+    } else await route.continue()
+  })
+  const button = dialog.getByRole('button', { name: '保存', exact: true })
+  await button.click()
+  await expect(page.getByText('网络连接失败，请重试', { exact: true })).toBeVisible()
+  await expect(button).toBeEnabled()
+  await button.click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('cell', { name, exact: true })).toBeVisible()
+})

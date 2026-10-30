@@ -67,3 +67,29 @@ func TestPointsUseBusinessDateRate(t *testing.T) {
 		t.Fatal(day, delta, err)
 	}
 }
+
+func TestValidityDaysMaximum(t *testing.T) {
+	s := open(t)
+	in := typeInput("百年卡")
+	in["validity_kind"] = "days_after_open"
+	in["validity_days"] = 36501
+	r := s.call("create_card_type", in, 422)
+	if r["detail"] != "validation failed" {
+		t.Fatal(r)
+	}
+	foundMaximum := false
+	for _, raw := range r["errors"].([]any) {
+		err := raw.(map[string]any)
+		if err["location"] == "body.validity_days" && err["message"] == "expected number <= 36500" {
+			foundMaximum = true
+			break
+		}
+	}
+	if !foundMaximum {
+		t.Fatal(r)
+	}
+	in["validity_days"] = 36500
+	if r := s.call("create_card_type", in, 200); r["validity_days"] != float64(36500) {
+		t.Fatal(r)
+	}
+}

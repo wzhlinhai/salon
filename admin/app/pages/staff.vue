@@ -25,6 +25,10 @@ async function load() {
     api.POST('/api/ops/list_positions', { body: {} })
   ])
   if (!request()) return
+  if (!s.data || !r.data || !l.data || !p.data) {
+    toast.add({ title: errorText(s.error ?? r.error ?? l.error ?? p.error), color: 'error' })
+    return
+  }
   staff.value = s.data?.staff ?? []
   roles.value = r.data?.roles ?? []
   levels.value = l.data?.items ?? []
@@ -61,82 +65,96 @@ function done(error: unknown, ok: unknown, message: string, current: () => boole
 }
 
 // 新建、修改档案
-const profileGuard = useRequestGuard()
-const profileOpen = ref(false)
+const profileEditor = useModalForm()
+const { open: profileOpen, saving: profileSaving } = profileEditor
 const editing = ref<Staff | null>(null)
 const profile = reactive({ name: '', number: '', level: NONE, position: NONE, role_ids: [] as string[] })
 
 function openProfile(s: Staff | null) {
-  profileGuard.next()
-  editing.value = s
-  Object.assign(profile, {
-    name: s?.name ?? '',
-    number: s?.number ?? '',
-    level: s?.level?.id ?? NONE,
-    position: s?.position?.id ?? NONE,
-    role_ids: []
+  profileEditor.begin(() => {
+    editing.value = s
+    Object.assign(profile, {
+      name: s?.name ?? '',
+      number: s?.number ?? '',
+      level: s?.level?.id ?? NONE,
+      position: s?.position?.id ?? NONE,
+      role_ids: []
+    })
   })
-  profileOpen.value = true
 }
 
 async function saveProfile() {
-  const current = profileGuard.hold()
-  const common = {
-    name: profile.name,
-    number: profile.number,
-    level_id: profile.level === NONE ? undefined : profile.level,
-    position_id: profile.position === NONE ? undefined : profile.position
-  }
-  const res = editing.value
-    ? await api.POST('/api/ops/update_staff', { body: { ...common, staff_id: editing.value.id } })
-    : await api.POST('/api/ops/create_staff', { body: { ...common, role_ids: profile.role_ids } })
-  if (done(res.error, res.data, '已保存', current)) profileOpen.value = false
+  await profileEditor.save(async (current) => {
+    const common = {
+      name: profile.name,
+      number: profile.number,
+      level_id: profile.level === NONE ? undefined : profile.level,
+      position_id: profile.position === NONE ? undefined : profile.position
+    }
+    const res = editing.value
+      ? await api.POST('/api/ops/update_staff', { body: { ...common, staff_id: editing.value.id } })
+      : await api.POST('/api/ops/create_staff', { body: { ...common, role_ids: profile.role_ids } })
+    if (done(res.error, res.data, '已保存', current)) profileOpen.value = false
+  })
 }
 
 // 角色
-const rolesGuard = useRequestGuard()
-const rolesOpen = ref(false)
+const rolesEditor = useModalForm()
+const { open: rolesOpen, saving: rolesSaving } = rolesEditor
 const roleTarget = ref<Staff | null>(null)
 const roleSelection = ref<string[]>([])
 
 function openRoles(s: Staff) {
-  rolesGuard.next()
-  roleTarget.value = s
-  roleSelection.value = s.roles.map(r => r.id)
-  rolesOpen.value = true
+  rolesEditor.begin(() => {
+    roleTarget.value = s
+    roleSelection.value = s.roles.map(r => r.id)
+  })
 }
 
 async function saveRoles() {
-  const current = rolesGuard.hold()
-  const res = await api.POST('/api/ops/set_staff_roles', {
-    body: { staff_id: roleTarget.value!.id, role_ids: roleSelection.value }
+  await rolesEditor.save(async (current) => {
+    const res = await api.POST('/api/ops/set_staff_roles', {
+      body: { staff_id: roleTarget.value!.id, role_ids: roleSelection.value }
+    })
+    if (done(res.error, res.data, '角色已更新', current)) rolesOpen.value = false
   })
-  if (done(res.error, res.data, '角色已更新', current)) rolesOpen.value = false
 }
 
 // 登录账号
-const loginGuard = useRequestGuard()
-const loginOpen = ref(false)
+const loginEditor = useModalForm()
+const { open: loginOpen, saving: loginSaving } = loginEditor
 const loginTarget = ref<Staff | null>(null)
 const login = reactive({ login_account: '', password: '' })
 
 function openLogin(s: Staff) {
-  loginGuard.next()
-  loginTarget.value = s
-  Object.assign(login, { login_account: s.login_account ?? '', password: '' })
-  loginOpen.value = true
+  loginEditor.begin(() => {
+    loginTarget.value = s
+    Object.assign(login, { login_account: s.login_account ?? '', password: '' })
+  })
 }
 
 async function saveLogin() {
-  const current = loginGuard.hold()
-  const res = await api.POST('/api/ops/set_staff_login', { body: { ...login, staff_id: loginTarget.value!.id } })
-  if (done(res.error, res.data, '登录账号已设置', current)) loginOpen.value = false
+  await loginEditor.save(async (current) => {
+    const res = await api.POST('/api/ops/set_staff_login', { body: { ...login, staff_id: loginTarget.value!.id } })
+    if (done(res.error, res.data, '登录账号已设置', current)) loginOpen.value = false
+  })
 }
 
+const activeGuard = useRequestGuard()
+const activeSaving = reactive<Record<string, boolean>>({})
+
 async function setActive(s: Staff, active: boolean) {
-  const path = active ? '/api/ops/reactivate_staff' : '/api/ops/deactivate_staff'
-  const res = await api.POST(path, { body: { staff_id: s.id } })
-  done(res.error, res.data, active ? '已恢复' : '已停用')
+  if (activeSaving[s.id]) return
+  const current = activeGuard.hold()
+  activeSaving[s.id] = true
+  try {
+    const path = active ? '/api/ops/reactivate_staff' : '/api/ops/deactivate_staff'
+    const res = await api.POST(path, { body: { staff_id: s.id } })
+    if (!current()) return
+    done(res.error, res.data, active ? '已恢复' : '已停用')
+  } finally {
+    if (current()) activeSaving[s.id] = false
+  }
 }
 </script>
 
@@ -165,8 +183,8 @@ async function setActive(s: Staff, active: boolean) {
           <UButton size="xs" variant="ghost" @click="openProfile(row.original)">档案</UButton>
           <UButton size="xs" variant="ghost" @click="openRoles(row.original)">角色</UButton>
           <UButton size="xs" variant="ghost" @click="openLogin(row.original)">账号</UButton>
-          <UButton v-if="row.original.active" size="xs" variant="ghost" color="error" @click="setActive(row.original, false)">停用</UButton>
-          <UButton v-else size="xs" variant="ghost" @click="setActive(row.original, true)">恢复</UButton>
+          <UButton v-if="row.original.active" size="xs" variant="ghost" color="error" :loading="activeSaving[row.original.id]" @click="setActive(row.original, false)">停用</UButton>
+          <UButton v-else size="xs" variant="ghost" :loading="activeSaving[row.original.id]" @click="setActive(row.original, true)">恢复</UButton>
         </div>
       </template>
     </UTable>
@@ -184,7 +202,7 @@ async function setActive(s: Staff, active: boolean) {
         </div>
       </template>
       <template #footer>
-        <UButton @click="saveProfile">保存</UButton>
+        <UButton :loading="profileSaving" @click="saveProfile">保存</UButton>
       </template>
     </UModal>
 
@@ -194,7 +212,7 @@ async function setActive(s: Staff, active: boolean) {
         <USelectMenu v-model="roleSelection" :items="roleItems" value-key="value" multiple class="w-full" />
       </template>
       <template #footer>
-        <UButton @click="saveRoles">保存</UButton>
+        <UButton :loading="rolesSaving" @click="saveRoles">保存</UButton>
       </template>
     </UModal>
 
@@ -206,7 +224,7 @@ async function setActive(s: Staff, active: boolean) {
         </div>
       </template>
       <template #footer>
-        <UButton @click="saveLogin">保存</UButton>
+        <UButton :loading="loginSaving" @click="saveLogin">保存</UButton>
       </template>
     </UModal>
   </div>

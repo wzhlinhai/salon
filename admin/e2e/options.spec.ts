@@ -81,3 +81,32 @@ test('添加级别的旧响应不清空下一条输入', async ({ page }) => {
   await expect(page.locator(`input[value="${name}"]`)).toHaveValue(name)
   await expect(input).toHaveValue(`${name}下一条`)
 })
+
+test('添加级别断网后恢复并可重试', async ({ page }) => {
+  await login(page, owner.account, owner.password)
+  await page.goto('/options')
+  const form = page.locator('form').filter({ has: page.getByPlaceholder('新级别', { exact: true }) })
+  const name = `重试级别${Date.now()}`
+  await form.getByRole('textbox').fill(name)
+  let abort = true
+  await page.route('**/api/ops/create_level', async (route) => {
+    if (abort) {
+      abort = false
+      await route.abort()
+    } else await route.continue()
+  })
+  const button = form.getByRole('button', { name: '添加', exact: true })
+  await button.click()
+  await expect(page.getByText('网络连接失败，请重试', { exact: true })).toBeVisible()
+  await expect(button).toBeEnabled()
+  await button.click()
+  await expect(form.getByRole('textbox')).toHaveValue('')
+  await expect(page.locator(`input[value="${name}"]`)).toHaveValue(name)
+})
+
+test('级别列表失败显示错误提示', async ({ page }) => {
+  await login(page, owner.account, owner.password)
+  await page.route('**/api/ops/list_levels', route => route.abort())
+  await page.goto('/options')
+  await expect(page.getByText('网络连接失败，请重试', { exact: true })).toBeVisible()
+})

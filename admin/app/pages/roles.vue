@@ -21,6 +21,10 @@ async function load() {
     api.POST('/api/ops/list_permissions', { body: {} })
   ])
   if (!request()) return
+  if (!r.data || !p.data) {
+    toast.add({ title: errorText(r.error ?? p.error), color: 'error' })
+    return
+  }
   roles.value = r.data?.roles ?? []
   catalogue.value = p.data?.permissions ?? []
 }
@@ -35,61 +39,77 @@ function mine(name: string) {
 const label = (name: string) => catalogue.value.find(d => d.name === name)?.label ?? name
 
 interface Row { on: boolean, scope: 'self' | 'store', days: string }
-const editorGuard = useRequestGuard()
-const open = ref(false)
+const editor = useModalForm()
+const { open, saving } = editor
 const editing = ref<Role | null>(null)
 const name = ref('')
 const rows = reactive<Record<string, Row>>({})
 
 function openEditor(role: Role | null) {
-  editorGuard.next()
-  editing.value = role
-  name.value = role?.name ?? ''
-  for (const d of catalogue.value) {
-    const g = role?.permissions.find(p => p.permission === d.name)
-    rows[d.name] = {
-      on: !!g,
-      scope: (g?.scope as 'self' | 'store') ?? 'store',
-      days: g?.window_days == null ? '' : String(g.window_days)
+  editor.begin(() => {
+    editing.value = role
+    name.value = role?.name ?? ''
+    for (const d of catalogue.value) {
+      const g = role?.permissions.find(p => p.permission === d.name)
+      rows[d.name] = {
+        on: !!g,
+        scope: (g?.scope as 'self' | 'store') ?? 'store',
+        days: g?.window_days == null ? '' : String(g.window_days)
+      }
     }
-  }
-  open.value = true
+  })
 }
 
 async function save() {
-  const current = editorGuard.hold()
-  const permissions = catalogue.value
-    .filter(d => rows[d.name]?.on)
-    .map((d) => {
-      const r = rows[d.name]!
-      return {
-        permission: d.name,
-        scope: d.scoped ? r.scope : undefined,
-        window_days: d.windowed && r.days !== '' ? Number(r.days) : undefined
-      }
-    })
-  const res = editing.value
-    ? await api.POST('/api/ops/update_role', { body: { role_id: editing.value.id, name: name.value, permissions } })
-    : await api.POST('/api/ops/create_role', { body: { name: name.value, permissions } })
-  if (!current()) {
-    if (res.data) load()
-    else toast.add({ title: errorText(res.error), color: 'error' })
+  if (catalogue.value.some(d => d.windowed && rows[d.name]?.on && rows[d.name]!.days !== '' && !/^\d+$/.test(rows[d.name]!.days))) {
+    toast.add({ title: '天数须为非负整数或留空', color: 'error' })
     return
   }
-  if (res.data) {
-    toast.add({ title: '已保存', color: 'success' })
-    open.value = false
-    load()
-  } else {
-    toast.add({ title: errorText(res.error), color: 'error' })
-  }
+  await editor.save(async (current) => {
+    const permissions = catalogue.value
+      .filter(d => rows[d.name]?.on)
+      .map((d) => {
+        const r = rows[d.name]!
+        return {
+          permission: d.name,
+          scope: d.scoped ? r.scope : undefined,
+          window_days: d.windowed && r.days !== '' ? Number(r.days) : undefined
+        }
+      })
+    const res = editing.value
+      ? await api.POST('/api/ops/update_role', { body: { role_id: editing.value.id, name: name.value, permissions } })
+      : await api.POST('/api/ops/create_role', { body: { name: name.value, permissions } })
+    if (!current()) {
+      if (res.data) load()
+      else toast.add({ title: errorText(res.error), color: 'error' })
+      return
+    }
+    if (res.data) {
+      toast.add({ title: '已保存', color: 'success' })
+      open.value = false
+      load()
+    } else {
+      toast.add({ title: errorText(res.error), color: 'error' })
+    }
+  })
 }
 
+const removeGuard = useRequestGuard()
+const removing = reactive<Record<string, boolean>>({})
+
 async function remove(role: Role) {
+  if (removing[role.id]) return
   if (!confirm(`删除角色「${role.name}」？拥有该角色的员工会失去它。`)) return
-  const res = await api.POST('/api/ops/delete_role', { body: { role_id: role.id } })
-  if (!res.data) toast.add({ title: errorText(res.error), color: 'error' })
-  load()
+  const current = removeGuard.hold()
+  removing[role.id] = true
+  try {
+    const res = await api.POST('/api/ops/delete_role', { body: { role_id: role.id } })
+    if (!current()) return
+    if (!res.data) toast.add({ title: errorText(res.error), color: 'error' })
+    load()
+  } finally {
+    if (current()) removing[role.id] = false
+  }
 }
 
 function summary(g: components['schemas']['GrantSpec']) {
@@ -117,7 +137,7 @@ function summary(g: components['schemas']['GrantSpec']) {
           </div>
           <div v-if="!role.is_owner" class="flex gap-1">
             <UButton size="xs" variant="ghost" @click="openEditor(role)">编辑</UButton>
-            <UButton size="xs" variant="ghost" color="error" @click="remove(role)">删除</UButton>
+            <UButton size="xs" variant="ghost" color="error" :loading="removing[role.id]" @click="remove(role)">删除</UButton>
           </div>
         </div>
       </template>
@@ -143,8 +163,8 @@ function summary(g: components['schemas']['GrantSpec']) {
             <UInput
               v-if="d.windowed && rows[d.name]!.on"
               v-model="rows[d.name]!.days"
-              type="number"
-              min="0"
+              type="text"
+              inputmode="numeric"
               placeholder="不限天数"
               class="w-28"
             />
@@ -153,7 +173,7 @@ function summary(g: components['schemas']['GrantSpec']) {
         <p class="text-xs text-muted mt-3">天数填 0 表示只能处理当天的单，不填表示不限。灰色的权限你自己没有，不能授予。</p>
       </template>
       <template #footer>
-        <UButton @click="save">保存</UButton>
+        <UButton :loading="saving" @click="save">保存</UButton>
       </template>
     </UModal>
   </div>

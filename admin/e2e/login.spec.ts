@@ -105,3 +105,23 @@ test('换账号后迟到的 get_me 不覆盖当前身份', async ({ page }) => {
   expect((await oldLoad).staff.id).toBe(identityB.staff.id)
   await expect(page.getByRole('heading', { name: `你好，${identityB.staff.name}`, exact: true })).toBeVisible()
 })
+
+test('修改密码断网后恢复并可重试', async ({ page }) => {
+  const employee = await hire('前台')
+  await login(page, employee.account, employee.password)
+  await page.getByLabel('原密码', { exact: true }).fill(employee.password)
+  await page.getByLabel('新密码（至少 8 位）', { exact: true }).fill('retry-e2e-password')
+  let abort = true
+  await page.route('**/api/ops/change_my_password', async (route) => {
+    if (abort) {
+      abort = false
+      await route.abort()
+    } else await route.continue()
+  })
+  const button = page.getByRole('button', { name: '修改', exact: true })
+  await button.click()
+  await expect(page.getByText('网络连接失败，请重试', { exact: true })).toBeVisible()
+  await expect(button).toBeEnabled()
+  await button.click()
+  await expect(page).toHaveURL(/\/login$/)
+})

@@ -176,7 +176,7 @@ test('修改会员价取价和充值积分', async ({ page }) => {
   await expect(choice).toContainText(`${tomorrow} 起改为 取较低价`)
   const integer = page.locator('[data-setting=points_per_recharge_yuan]')
   await integer.getByRole('button', { name: '修改', exact: true }).click()
-  await page.getByLabel('每积一分的本金元数', { exact: true }).fill('10')
+  await page.getByLabel('充值积分', { exact: true }).fill('10')
   await page.getByLabel('生效日期', { exact: true }).fill(tomorrow)
   await page.getByRole('button', { name: '保存', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
@@ -188,4 +188,11 @@ test('修改会员价取价和充值积分', async ({ page }) => {
     await expect(page.getByRole('dialog')).toHaveCount(0)
     await expect(card).toContainText('系统默认')
   }
+})
+
+test('退卡手续费编辑使用自己的标签', async ({ page }) => {
+  await login(page, owner.account, owner.password)
+  await page.goto('/settings')
+  await page.locator('[data-setting=card_refund_fee_percent]').getByRole('button', { name: '修改', exact: true }).click()
+  await expect(page.getByRole('dialog').getByLabel('退卡手续费', { exact: true })).toBeVisible()
 })

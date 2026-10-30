@@ -314,14 +314,24 @@ func TestRedPacketAudit(t *testing.T) {
 	s := open(t)
 	p := s.packet("sold")
 	s.call("revoke_red_packet", revoke(p), 200)
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	var count int
+	if err := tx.QueryRow(context.Background(), "SELECT count(*) FROM audit_log WHERE target_kind=$1 AND target_id=$2 AND customer_id=$3", "red_packet", p["id"], s.customer).Scan(&count); err != nil || count != 2 {
+		t.Fatal(count, err)
+	}
+	if err := tx.Rollback(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
 	for _, ch := range s.Channels() {
 		c := s.MustCaller(s.Owner)
 		delete(c.Permissions, perm.CustomerFullPhone)
-		r := ch.Call(t, c, "list_audit_log", map[string]any{"target_id": s.customer})
+		r := ch.Call(t, c, "list_audit_log", map[string]any{"target_id": p["id"]})
 		if r.Status != 200 {
 			t.Fatal(r)
 		}
-		raw, err := json.Marshal(r.Body)
+		customerLog := ch.Call(t, c, "list_audit_log", map[string]any{"target_id": s.customer})
+		raw, err := json.Marshal(customerLog.Body)
 		if err != nil || strings.Contains(string(raw), "13800131234") || !strings.Contains(string(raw), "138****1234") {
 			t.Fatal(string(raw), err)
 		}
@@ -333,7 +343,7 @@ func TestRedPacketAudit(t *testing.T) {
 				continue
 			}
 			seen[action] = true
-			if entry["target_kind"] != "customer" || entry["target_id"] != s.customer.String() {
+			if entry["target_kind"] != "red_packet" || entry["target_id"] != p["id"] {
 				t.Fatal(entry)
 			}
 			after := entry["after"].(map[string]any)
