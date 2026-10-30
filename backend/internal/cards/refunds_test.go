@@ -140,12 +140,12 @@ func TestRefundAccess(t *testing.T) {
 			if op == "preview_card_refund" {
 				args = map[string]any{"card_id": card["id"]}
 			}
-			if r := s.HTTP(t, &caller, op, args); r.Status != variant.status {
+			if r := s.HTTP(t, &caller, op, args); r.Status != variant.status || variant.status == 403 && r.Detail() != "permission denied" {
 				t.Fatal(variant.name, op, r)
 			}
 		}
 	}
-	if r := s.AI(t, s.MustCaller(s.Owner), "refund_card", in); r.Status != 409 {
+	if r := s.AI(t, s.MustCaller(s.Owner), "refund_card", in); r.Status != 409 || r.Detail() != "operation requires a draft confirmed by a person" {
 		t.Fatal(r)
 	}
 	if before != s.refundSnapshot() {
@@ -226,6 +226,11 @@ func TestRefundSerializes(t *testing.T) {
 	if a.Status != 200 && a.Status != 409 || a.Status == b.Status {
 		t.Fatal(a, b)
 	}
+	for _, r := range []optest.Result{a, b} {
+		if r.Status == 409 && r.Detail() != "卡已退" {
+			t.Fatal(r)
+		}
+	}
 }
 
 func TestRefundPreviewAccessChannels(t *testing.T) {
@@ -244,7 +249,7 @@ func TestRefundPreviewAccessChannels(t *testing.T) {
 				delete(caller.Permissions, perm.CardAdjust)
 			}
 			r := ch.Call(t, caller, "preview_card_refund", map[string]any{"card_id": card["id"]})
-			if r.Status != want {
+			if r.Status != want || want == 403 && r.Detail() != "permission denied" {
 				t.Fatal(ch.Name, r)
 			}
 		}

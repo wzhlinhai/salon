@@ -97,7 +97,9 @@ func TestInactiveCardType(t *testing.T) {
 	in["id"] = s.cardType
 	in["active"] = false
 	s.call("update_card_type", in, 200)
-	s.call("open_card", s.opening(), 409)
+	if r := s.call("open_card", s.opening(), 409); r["detail"] != "卡类型已停用" {
+		t.Fatal(r)
+	}
 }
 func TestSalesStaffRules(t *testing.T) {
 	for _, mode := range []string{"inactive", "unknown", "empty", "duplicate"} {
@@ -127,7 +129,13 @@ func TestSalesStaffRules(t *testing.T) {
 					in = s.recharge(card["id"])
 				}
 				in["sales_staff_ids"] = ids
-				s.call(op, in, want)
+				wantDetail := "业绩归属人必须是本店在职员工"
+				if want == 422 {
+					wantDetail = "validation failed"
+				}
+				if r := s.call(op, in, want); r["detail"] != wantDetail {
+					t.Fatal(r)
+				}
 			}
 		})
 	}
@@ -136,7 +144,9 @@ func TestMergedCustomer(t *testing.T) {
 	s := open(t)
 	keep := s.call("create_customer", map[string]any{}, 200)["customer"].(map[string]any)["id"]
 	s.call("merge_customers", map[string]any{"keep_id": keep, "merged_id": s.customer}, 200)
-	s.call("open_card", s.opening(), 409)
+	if r := s.call("open_card", s.opening(), 409); r["detail"] != "该顾客已合并到另一位顾客" {
+		t.Fatal(r)
+	}
 }
 func TestZeroRecharge(t *testing.T) {
 	s := open(t)
@@ -144,19 +154,34 @@ func TestZeroRecharge(t *testing.T) {
 	in := s.recharge(card["id"])
 	in["principal"] = "0.00"
 	in["bonus"] = "0.00"
-	s.call("recharge_card", in, 409)
+	if r := s.call("recharge_card", in, 409); r["detail"] != "充值本金与赠送金合计必须大于零" {
+		t.Fatal(r)
+	}
 }
 func TestValidityRules(t *testing.T) {
 	s := open(t)
-	for _, in := range []map[string]any{
-		{"validity_kind": "none", "validity_days": 1}, {"validity_kind": "fixed_date"}, {"validity_kind": "fixed_date", "validity_date": "bad"}, {"validity_kind": "days_after_open", "validity_days": 0}, {"validity_kind": "days_after_open", "validity_days": -1}, {"validity_kind": "days_after_open", "validity_days": 1, "validity_date": "2030-01-01"},
+	for _, tc := range []struct {
+		in         map[string]any
+		wantDetail string
+	}{
+		{map[string]any{"validity_kind": "none", "validity_days": 1}, "不限有效期不能填写日期或天数"},
+		{map[string]any{"validity_kind": "fixed_date"}, "固定日期必须填写日期，不能填写天数"},
+		{map[string]any{"validity_kind": "fixed_date", "validity_date": "bad"}, "有效期日期无效"},
+		{map[string]any{"validity_kind": "days_after_open", "validity_days": 0}, "开卡后天数必须大于零，不能填写固定日期"},
+		{map[string]any{"validity_kind": "days_after_open", "validity_days": -1}, "开卡后天数必须大于零，不能填写固定日期"},
+		{map[string]any{"validity_kind": "days_after_open", "validity_days": 1, "validity_date": "2030-01-01"}, "开卡后天数必须大于零，不能填写固定日期"},
 	} {
+		in := tc.in
 		in["name"] = "无效"
 		in["kind"] = "stored_value"
-		s.call("create_card_type", in, 409)
+		if r := s.call("create_card_type", in, 409); r["detail"] != tc.wantDetail {
+			t.Fatal(r)
+		}
 		in["id"] = s.cardType
 		in["active"] = true
-		s.call("update_card_type", in, 409)
+		if r := s.call("update_card_type", in, 409); r["detail"] != tc.wantDetail {
+			t.Fatal(r)
+		}
 	}
 	in := typeInput("固定")
 	in["validity_kind"] = "fixed_date"
@@ -181,12 +206,12 @@ func TestPermissions(t *testing.T) {
 		caller.Permissions = perm.All()
 		delete(caller.Permissions, tc.p)
 		r := s.HTTP(t, &caller, tc.op, tc.in)
-		if r.Status != 403 {
+		if r.Status != 403 || r.Detail() != "permission denied" {
 			t.Fatalf("%s %v", tc.op, r)
 		}
 		if tc.p == perm.CustomerView {
 			for _, ch := range s.Channels() {
-				if r := ch.Call(t, caller, tc.op, tc.in); r.Status != 403 {
+				if r := ch.Call(t, caller, tc.op, tc.in); r.Status != 403 || r.Detail() != "permission denied" {
 					t.Fatalf("%s %s %v", ch.Name, tc.op, r)
 				}
 			}
@@ -206,7 +231,7 @@ func TestAIWritesRefused(t *testing.T) {
 		in any
 	}{{"open_card", s.opening()}, {"recharge_card", s.recharge(card["id"])}, {"create_card_type", typeInput("新卡")}, {"update_card_type", map[string]any{"id": s.cardType, "name": "改名", "kind": "stored_value", "validity_kind": "none", "active": false}}} {
 		r := s.AI(t, s.MustCaller(s.Owner), tc.op, tc.in)
-		if r.Status == 200 {
+		if r.Status == 200 || r.Detail() != "operation requires a draft confirmed by a person" {
 			t.Fatal(r)
 		}
 		if after := snapshot(t, s); after != before {
@@ -324,7 +349,7 @@ func TestOpenWaitsForMerge(t *testing.T) {
 	dbtest.WaitForLockWait(t, s.Pool)
 	dbtest.Commit(t, tx)
 	r := <-done
-	if r.Status != 409 {
+	if r.Status != 409 || r.Detail() != "该顾客已合并到另一位顾客" {
 		t.Fatal(r)
 	}
 	check := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
@@ -435,7 +460,11 @@ func TestCardTypeLocksBeforeAudit(t *testing.T) {
 	}
 }
 func TestOpenReferenceShareLocks(t *testing.T) {
-	for _, kind := range []string{"staff", "card_type"} {
+	for _, tc := range []struct {
+		kind       string
+		wantDetail string
+	}{{"staff", "业绩归属人必须是本店在职员工"}, {"card_type", "卡类型已停用"}} {
+		kind := tc.kind
 		t.Run(kind, func(t *testing.T) {
 			s := open(t)
 			in := s.opening()
@@ -451,7 +480,7 @@ func TestOpenReferenceShareLocks(t *testing.T) {
 			go func() { done <- s.HTTPWithToken(t, s.Owner, "open_card", in) }()
 			dbtest.WaitForLockWait(t, s.Pool)
 			dbtest.Commit(t, tx)
-			if r := <-done; r.Status != 409 {
+			if r := <-done; r.Status != 409 || r.Detail() != tc.wantDetail {
 				t.Fatal(r)
 			}
 		})
@@ -459,14 +488,20 @@ func TestOpenReferenceShareLocks(t *testing.T) {
 }
 func TestCardTypeNamesAndMissingRows(t *testing.T) {
 	s := open(t)
-	s.call("create_card_type", typeInput("储值"), 409)
+	if r := s.call("create_card_type", typeInput("储值"), 409); r["detail"] != "卡类型名称已存在" {
+		t.Fatal(r)
+	}
 	in := typeInput("储值")
 	other := s.call("create_card_type", typeInput("第二种"), 200)
 	in["id"] = other["id"]
 	in["active"] = true
-	s.call("update_card_type", in, 409)
+	if r := s.call("update_card_type", in, 409); r["detail"] != "卡类型名称已存在" {
+		t.Fatal(r)
+	}
 	in["name"] = " "
-	s.call("update_card_type", in, 409)
+	if r := s.call("update_card_type", in, 409); r["detail"] != "请填写卡类型名称" {
+		t.Fatal(r)
+	}
 	in["name"] = "不存在"
 	in["id"] = uuid.New()
 	s.call("update_card_type", in, 404)

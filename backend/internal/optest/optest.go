@@ -102,6 +102,17 @@ type Result struct {
 	Err    error
 }
 
+// Detail 返回拒绝的提示文字：HTTP 取响应的 detail，AI 取错误文字。
+func (r Result) Detail() string {
+	if detail, ok := r.Body["detail"].(string); ok {
+		return detail
+	}
+	if r.Err != nil {
+		return r.Err.Error()
+	}
+	return ""
+}
+
 // HTTP 以 caller 身份通过 HTTP 调用操作。caller 为 nil 时不带登录信息。
 func (a *App) HTTP(t testing.TB, caller *ops.Caller, op string, args any) Result {
 	t.Helper()

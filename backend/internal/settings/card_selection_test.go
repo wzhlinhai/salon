@@ -23,7 +23,9 @@ func TestCardSelectionSettings(t *testing.T) {
 			t.Fatal(got)
 		}
 	}
-	s.change(s.owner, settings.KeyCardSelection, "invalid", day(0), 409)
+	if r := s.change(s.owner, settings.KeyCardSelection, "invalid", day(0), 409); r.Detail() != "选卡规则的做法无效" {
+		t.Fatal(r)
+	}
 	s.change(s.owner, settings.KeyCardSelection, "by_balance", day(0), 200)
 	for _, ch := range s.Channels() {
 		got := setting(t, ch.Call(t, s.owner, "get_settings", map[string]any{}), settings.KeyCardSelection)

@@ -17,7 +17,9 @@ func TestVoidWindowSetting(t *testing.T) {
 		}
 	}
 	for _, n := range []int{-1, 61} {
-		s.change(s.owner, settings.KeyVoidWindowMinutes, n, day(0), 409)
+		if r := s.change(s.owner, settings.KeyVoidWindowMinutes, n, day(0), 409); r.Detail() != "撤单授权窗口须为 0 到 60 的整数" {
+			t.Fatal(r)
+		}
 	}
 	s.change(s.owner, settings.KeyVoidWindowMinutes, 60, day(0), 200)
 	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {

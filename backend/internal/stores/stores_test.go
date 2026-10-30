@@ -85,7 +85,7 @@ func TestPermissionDeniedOnBothChannels(t *testing.T) {
 	for _, ch := range e.app.Channels() {
 		for _, c := range cases {
 			t.Run(ch.Name+"/"+c.name, func(t *testing.T) {
-				if r := ch.Call(t, c.caller, c.op, c.args); r.Status != http.StatusForbidden {
+				if r := ch.Call(t, c.caller, c.op, c.args); r.Status != http.StatusForbidden || r.Detail() != "permission denied" {
 					t.Fatalf("got %d %v %v, want 403", r.Status, r.Body, r.Err)
 				}
 			})
@@ -117,7 +117,7 @@ func TestRenameStoreRunsOverHTTP(t *testing.T) {
 func TestDraftOperationCannotBeExecutedByAI(t *testing.T) {
 	e := setup(t)
 	r := e.app.AI(t, e.manager, "rename_store", map[string]any{"name": "AI 改的名字"})
-	if r.Status != http.StatusConflict {
+	if r.Status != http.StatusConflict || r.Detail() != "operation requires a draft confirmed by a person" {
 		t.Fatalf("got %d %v %v, want draft required", r.Status, r.Body, r.Err)
 	}
 	if got := e.storeName(); got != "本店门店" {

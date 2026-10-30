@@ -277,25 +277,28 @@ func (s *shop) changeCount() int {
 func TestInvalidChangesAreRejected(t *testing.T) {
 	s := open(t)
 	cases := []struct {
-		name  string
-		key   string
-		value any
-		from  string
+		name       string
+		key        string
+		value      any
+		from       string
+		wantDetail string
 	}{
-		{"effective before today", "business_hours", map[string]any{"open": "10:00", "close": "21:00"}, day(-1)},
+		{"effective before today", "business_hours", map[string]any{"open": "10:00", "close": "21:00"}, day(-1), "生效日期不能早于今天（" + day(0) + "）"},
 		// 当天改营业日结束时间，会改变今天已经发生的业务属于哪一天。
-		{"day end effective today", "business_day_end", "02:00", day(0)},
-		{"unknown setting", "no_such_setting", "02:00", day(1)},
-		{"not a time", "business_day_end", "0:30", day(1)},
-		{"day end at noon", "business_day_end", "12:00", day(1)},
-		{"hours with wrong shape", "business_hours", "09:00-22:00", day(1)},
-		{"hours with extra field", "business_hours", map[string]any{"open": "09:00", "close": "22:00", "lunch": "12:00"}, day(1)},
-		{"open not before close", "business_hours", map[string]any{"open": "22:00", "close": "09:00"}, day(1)},
+		{"day end effective today", "business_day_end", "02:00", day(0), "营业日结束时间最早从明天（" + day(1) + "）开始执行"},
+		{"unknown setting", "no_such_setting", "02:00", day(1), "没有这项设置：no_such_setting"},
+		{"not a time", "business_day_end", "0:30", day(1), "营业日结束时间的格式是 \"HH:MM\""},
+		{"day end at noon", "business_day_end", "12:00", day(1), "营业日结束时间要在 00:00 到 11:59 之间"},
+		{"hours with wrong shape", "business_hours", "09:00-22:00", day(1), "营业时段的格式是 {\"open\": \"HH:MM\", \"close\": \"HH:MM\"}"},
+		{"hours with extra field", "business_hours", map[string]any{"open": "09:00", "close": "22:00", "lunch": "12:00"}, day(1), "营业时段的格式是 {\"open\": \"HH:MM\", \"close\": \"HH:MM\"}"},
+		{"open not before close", "business_hours", map[string]any{"open": "22:00", "close": "09:00"}, day(1), "开门时间要早于关门时间"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			s.t = t
-			s.change(s.owner, c.key, c.value, c.from, http.StatusConflict)
+			if r := s.change(s.owner, c.key, c.value, c.from, http.StatusConflict); r.Detail() != c.wantDetail {
+				t.Fatal(r)
+			}
 		})
 	}
 	s.t = t
@@ -324,7 +327,7 @@ func TestPermissionDeniedOnBothChannels(t *testing.T) {
 	for _, ch := range s.Channels() {
 		for _, c := range cases {
 			t.Run(ch.Name+"/"+c.name, func(t *testing.T) {
-				if r := ch.Call(t, c.caller, c.op, c.args); r.Status != http.StatusForbidden {
+				if r := ch.Call(t, c.caller, c.op, c.args); r.Status != http.StatusForbidden || r.Detail() != "permission denied" {
 					t.Fatalf("got %d %v %v, want 403", r.Status, r.Body, r.Err)
 				}
 			})
@@ -338,7 +341,7 @@ func TestPermissionDeniedOnBothChannels(t *testing.T) {
 func TestAICannotChangeSettingsDirectly(t *testing.T) {
 	s := open(t)
 	r := s.AI(t, s.owner, "change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": day(1)})
-	if r.Status != http.StatusConflict {
+	if r.Status != http.StatusConflict || r.Detail() != "operation requires a draft confirmed by a person" {
 		t.Fatalf("got %d %v %v, want draft required", r.Status, r.Body, r.Err)
 	}
 	if n := s.changeCount(); n != 0 {
@@ -427,14 +430,17 @@ func TestConcurrentChangesToOneSettingKeepTheTrail(t *testing.T) {
 func TestChoiceAndIntegerValidation(t *testing.T) {
 	s := open(t)
 	for _, tc := range []struct {
-		key   string
-		value any
+		key        string
+		value      any
+		wantDetail string
 	}{
-		{settings.KeyMemberPriceRule, "anything"}, {settings.KeyMemberPriceRule, 1},
-		{settings.KeyPointsPerRechargeYuan, -1}, {settings.KeyPointsPerRechargeYuan, 100001},
-		{settings.KeyPointsPerRechargeYuan, 1.5}, {settings.KeyPointsPerRechargeYuan, "10"},
+		{settings.KeyMemberPriceRule, "anything", "会员价取价的做法无效"}, {settings.KeyMemberPriceRule, 1, "会员价取价须选择一种做法"},
+		{settings.KeyPointsPerRechargeYuan, -1, "充值积分须为 0 到 100000 的整数"}, {settings.KeyPointsPerRechargeYuan, 100001, "充值积分须为 0 到 100000 的整数"},
+		{settings.KeyPointsPerRechargeYuan, 1.5, "充值积分须为 0 到 100000 的整数"}, {settings.KeyPointsPerRechargeYuan, "10", "充值积分须为 0 到 100000 的整数"},
 	} {
-		s.change(s.owner, tc.key, tc.value, day(0), 409)
+		if r := s.change(s.owner, tc.key, tc.value, day(0), 409); r.Detail() != tc.wantDetail {
+			t.Fatal(r)
+		}
 	}
 	if s.changeCount() != 0 {
 		t.Fatal("invalid settings persisted")

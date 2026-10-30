@@ -171,8 +171,8 @@ func TestMergeEditScopeWindow(t *testing.T) {
 	caller := s.MustCaller(s.Owner)
 	caller.StaffID = s.employee
 	caller.Permissions[perm.OrderEdit] = ops.Grant{Scope: ops.ScopeSelf}
-	s.assertMergeRefused(caller, mergeInput(a, b), 403, "")
-	s.assertMergeRefused(caller, mergeInput(b, a), 403, "")
+	s.assertMergeRefused(caller, mergeInput(a, b), 403, "permission denied")
+	s.assertMergeRefused(caller, mergeInput(b, a), 403, "permission denied")
 	caller = s.MustCaller(s.Owner)
 	old := s.openAt(caller, time.Now().AddDate(0, 0, -2), s.line())
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
@@ -180,8 +180,8 @@ func TestMergeEditScopeWindow(t *testing.T) {
 	dbtest.Commit(t, tx)
 	caller.Permissions[perm.OrderEdit] = ops.Grant{Scope: ops.ScopeStore, WindowDays: new(0)}
 	// 只放旧单在列表里；先检查窗口，不能先报营业日不同。
-	s.assertMergeRefused(caller, mergeInput(a, old), 403, "")
-	s.assertMergeRefused(caller, mergeInput(old, a), 403, "")
+	s.assertMergeRefused(caller, mergeInput(a, old), 403, "permission denied")
+	s.assertMergeRefused(caller, mergeInput(old, a), 403, "permission denied")
 }
 
 func TestMergeAfterCustomersMerge(t *testing.T) {

@@ -19,7 +19,9 @@ func TestUpgradeRuleDeactivateInactiveTarget(t *testing.T) {
 	if out["active"] != false {
 		t.Fatal(out)
 	}
-	s.call("update_card_upgrade_rule", map[string]any{"id": r["id"], "threshold": "10.00", "active": true}, 409)
+	if r := s.call("update_card_upgrade_rule", map[string]any{"id": r["id"], "threshold": "10.00", "active": true}, 409); r["detail"] != "目标卡类型已停用" {
+		t.Fatal(r)
+	}
 	assertSQL(t, s, `SELECT NOT active FROM card_upgrade_rules WHERE id=$1`, r["id"])
 }
 

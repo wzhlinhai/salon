@@ -178,7 +178,9 @@ func TestCustomerProtection(t *testing.T) {
 	before := s.snapshot()
 	in := s.opening()
 	in.CustomerID = &s.customer
-	s.call("open_order", in, 409)
+	if r := s.call("open_order", in, 409); r["detail"] != "该顾客已合并到另一位顾客" {
+		t.Fatal(r)
+	}
 	if before != s.snapshot() {
 		t.Fatal("merged customer wrote rows")
 	}
@@ -220,15 +222,18 @@ func TestValidationRollback(t *testing.T) {
 	disabledIn["active"] = false
 	s.call("update_item", disabledIn, 200)
 	for _, tc := range []struct {
-		name string
-		line orders.OrderItemInput
-		want int
-	}{{"unknown item", orders.OrderItemInput{ItemID: uuid.New(), Staff: []orders.OrderItemStaffInput{}}, 404}, {"inactive item", orders.OrderItemInput{ItemID: id(disabled["id"]), Staff: []orders.OrderItemStaffInput{}}, 409}, {"unknown slot", s.line(4), 409}, {"duplicate slot", s.line(1, 1), 409}, {"unknown staff", orders.OrderItemInput{ItemID: s.item, Staff: []orders.OrderItemStaffInput{{Slot: 1, StaffID: uuid.New()}}}, 409}} {
+		name       string
+		line       orders.OrderItemInput
+		want       int
+		wantDetail string
+	}{{"unknown item", orders.OrderItemInput{ItemID: uuid.New(), Staff: []orders.OrderItemStaffInput{}}, 404, "not found"}, {"inactive item", orders.OrderItemInput{ItemID: id(disabled["id"]), Staff: []orders.OrderItemStaffInput{}}, 409, "项目已停用"}, {"unknown slot", s.line(4), 409, "项目没有这个岗位"}, {"duplicate slot", s.line(1, 1), 409, "同一岗位不能重复填员工"}, {"unknown staff", orders.OrderItemInput{ItemID: s.item, Staff: []orders.OrderItemStaffInput{{Slot: 1, StaffID: uuid.New()}}}, 409, "岗位上的员工必须是本店在职员工"}} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := *s
 			s.t = t
 			before := s.snapshot()
-			s.call("open_order", s.opening(s.line(), tc.line), tc.want)
+			if r := s.call("open_order", s.opening(s.line(), tc.line), tc.want); r["detail"] != tc.wantDetail {
+				t.Fatal(r)
+			}
 			if before != s.snapshot() {
 				t.Fatal("failed opening left rows including auto customer")
 			}
@@ -375,7 +380,7 @@ func TestPermissions(t *testing.T) {
 		t.Run(tc.op, func(t *testing.T) {
 			before := s.snapshot()
 			r := s.HTTP(t, &caller, tc.op, tc.in)
-			if r.Status != 403 {
+			if r.Status != 403 || r.Detail() != "permission denied" {
 				t.Fatal(r)
 			}
 			if before != s.snapshot() {
@@ -383,7 +388,7 @@ func TestPermissions(t *testing.T) {
 			}
 			if tc.op == "get_order" || tc.op == "list_open_orders" {
 				for _, ch := range s.Channels() {
-					if r := ch.Call(t, caller, tc.op, tc.in); r.Status != 403 {
+					if r := ch.Call(t, caller, tc.op, tc.in); r.Status != 403 || r.Detail() != "permission denied" {
 						t.Fatal(r)
 					}
 				}
@@ -401,7 +406,7 @@ func TestPermissions(t *testing.T) {
 			}
 			before := s.snapshot()
 			r := s.HTTPWithToken(t, token, op, editArgs(op, editInput(editable)))
-			if r.Status != want {
+			if r.Status != want || want == 403 && r.Detail() != "permission denied" {
 				t.Fatal(permission, op, r)
 			}
 			if want == 403 && before != s.snapshot() {
@@ -417,7 +422,7 @@ func TestPermissions(t *testing.T) {
 	delete(caller.Permissions, perm.OrderReprice)
 	for _, op := range []string{"remove_order_item", "set_order_item_staff", "reprice_order_item"} {
 		before := s.snapshot()
-		if r := s.HTTP(t, &caller, op, editArgs(op, editInput(editable))); r.Status != 403 {
+		if r := s.HTTP(t, &caller, op, editArgs(op, editInput(editable))); r.Status != 403 || r.Detail() != "permission denied" {
 			t.Fatal(op, r)
 		}
 		if before != s.snapshot() {

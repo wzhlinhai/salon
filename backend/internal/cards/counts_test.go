@@ -41,24 +41,31 @@ func TestCardTypeItemRules(t *testing.T) {
 	s := open(t)
 	item := s.item("剪发")
 	for i, tc := range []struct {
-		kind   string
-		items  []map[string]any
-		status int
+		kind       string
+		items      []map[string]any
+		status     int
+		wantDetail string
 	}{
-		{"stored_value", nil, 200}, {"stored_value", []map[string]any{countItem(item)}, 409},
-		{"count", nil, 409}, {"package", nil, 409}, {"count", []map[string]any{countItem(item)}, 200}, {"package", []map[string]any{countItem(item)}, 200},
-		{"count", []map[string]any{countItem(item), countItem(item)}, 409}, {"count", []map[string]any{countItem(uuid.NewString())}, 409},
+		{"stored_value", nil, 200, ""}, {"stored_value", []map[string]any{countItem(item)}, 409, "储值卡不能含项目，次卡和套餐须含一到二十个项目"},
+		{"count", nil, 409, "储值卡不能含项目，次卡和套餐须含一到二十个项目"}, {"package", nil, 409, "储值卡不能含项目，次卡和套餐须含一到二十个项目"}, {"count", []map[string]any{countItem(item)}, 200, ""}, {"package", []map[string]any{countItem(item)}, 200, ""},
+		{"count", []map[string]any{countItem(item), countItem(item)}, 409, "项目不能重复，购买次数须大于零，赠送次数不能为负"}, {"count", []map[string]any{countItem(uuid.NewString())}, 409, "项目必须是本店启用的项目"},
 	} {
-		s.call("create_card_type", countType(fmt.Sprint("种类", i), tc.kind, tc.items...), tc.status)
+		if r := s.call("create_card_type", countType(fmt.Sprint("种类", i), tc.kind, tc.items...), tc.status); tc.status == 409 && r["detail"] != tc.wantDetail {
+			t.Fatal(r)
+		}
 	}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	dbtest.Exec(t, tx, "UPDATE items SET active=false WHERE id=$1", item)
 	dbtest.Commit(t, tx)
-	s.call("create_card_type", countType("停用项目", "count", countItem(item)), 409)
+	if r := s.call("create_card_type", countType("停用项目", "count", countItem(item)), 409); r["detail"] != "项目必须是本店启用的项目" {
+		t.Fatal(r)
+	}
 	for _, id := range []string{item, uuid.NewString()} {
 		in := countType("编辑无效项目", "count", countItem(id))
 		in["id"], in["active"] = s.cardType, true
-		s.call("update_card_type", in, 409)
+		if r := s.call("update_card_type", in, 409); r["detail"] != "项目必须是本店启用的项目" {
+			t.Fatal(r)
+		}
 	}
 }
 func TestCardTypeItemLimits(t *testing.T) {
@@ -122,7 +129,9 @@ func TestCardTypeItemDiff(t *testing.T) {
 	changed := countItem(a)
 	changed["gift_count"] = 4
 	in["items"] = []any{changed, countItem(c)}
-	s.call("update_card_type", in, 409)
+	if r := s.call("update_card_type", in, 409); r["detail"] != "项目必须是本店启用的项目" {
+		t.Fatal(r)
+	}
 }
 func TestCardTypeKindChange(t *testing.T) {
 	s := open(t)
@@ -135,7 +144,9 @@ func TestCardTypeKindChange(t *testing.T) {
 	opening := s.opening()
 	s.call("open_card", opening, 200)
 	in["kind"] = "count"
-	s.call("update_card_type", in, 409)
+	if r := s.call("update_card_type", in, 409); r["detail"] != "已有卡的卡类型不能改变种类" {
+		t.Fatal(r)
+	}
 }
 func TestCountOpeningSnapshot(t *testing.T) {
 	for _, kind := range []string{"count", "package"} {
@@ -178,10 +189,14 @@ func TestCountZeroPrincipal(t *testing.T) {
 	in := s.opening()
 	in["card_type_id"] = card["card_type_id"]
 	in["bonus"] = "0.00"
-	s.call("open_card", in, 409)
+	if r := s.call("open_card", in, 409); r["detail"] != "次卡本金和赠送金必须为零" {
+		t.Fatal(r)
+	}
 	in["principal"] = "0.00"
 	in["bonus"] = "1.00"
-	s.call("open_card", in, 409)
+	if r := s.call("open_card", in, 409); r["detail"] != "次卡本金和赠送金必须为零" {
+		t.Fatal(r)
+	}
 }
 func TestCountRecharge(t *testing.T) {
 	s := open(t)
@@ -330,14 +345,18 @@ func TestAdjustCountLimits(t *testing.T) {
 func TestCountsNoop(t *testing.T) {
 	s := open(t)
 	card, item, _ := s.countCard("count")
-	s.call("adjust_card", map[string]any{"card_id": card["id"], "counts": []any{target(item, 10, 3)}, "reason": "相同"}, 409)
+	if r := s.call("adjust_card", map[string]any{"card_id": card["id"], "counts": []any{target(item, 10, 3)}, "reason": "相同"}, 409); r["detail"] != "调整单没有任何改动" {
+		t.Fatal(r)
+	}
 	s.call("adjust_card", map[string]any{"card_id": card["id"], "counts": []any{target(item, 10, 2)}, "reason": "只改次数"}, 200)
 	adjustmentCount(t, s, card["id"], 1)
 }
 func TestCountUnknownItem(t *testing.T) {
 	s := open(t)
 	card, _, _ := s.countCard("count")
-	s.call("adjust_card", map[string]any{"card_id": card["id"], "counts": []any{target(uuid.NewString(), 1, 0)}, "reason": "未知项目"}, 409)
+	if r := s.call("adjust_card", map[string]any{"card_id": card["id"], "counts": []any{target(uuid.NewString(), 1, 0)}, "reason": "未知项目"}, 409); r["detail"] != "项目不在卡上" {
+		t.Fatal(r)
+	}
 }
 func TestListCountsScope(t *testing.T) {
 	s := open(t)
@@ -395,10 +414,10 @@ func TestCountWritesPermissionAndAI(t *testing.T) {
 		caller := s.MustCaller(s.Owner)
 		caller.Permissions = perm.All()
 		delete(caller.Permissions, tc.permission)
-		if r := s.HTTP(t, &caller, tc.op, tc.in); r.Status != 403 {
+		if r := s.HTTP(t, &caller, tc.op, tc.in); r.Status != 403 || r.Detail() != "permission denied" {
 			t.Fatal(r)
 		}
-		if r := s.AI(t, s.MustCaller(s.Owner), tc.op, tc.in); r.Status == 200 {
+		if r := s.AI(t, s.MustCaller(s.Owner), tc.op, tc.in); r.Status == 200 || r.Detail() != "operation requires a draft confirmed by a person" {
 			t.Fatal(r)
 		}
 	}
@@ -409,7 +428,7 @@ func TestCountWritesPermissionAndAI(t *testing.T) {
 	caller.Permissions = perm.All()
 	delete(caller.Permissions, perm.CustomerView)
 	for _, ch := range s.Channels() {
-		if r := ch.Call(t, caller, "list_card_counts", map[string]any{"card_id": card["id"]}); r.Status != 403 {
+		if r := ch.Call(t, caller, "list_card_counts", map[string]any{"card_id": card["id"]}); r.Status != 403 || r.Detail() != "permission denied" {
 			t.Fatal(r)
 		}
 	}
@@ -457,7 +476,7 @@ func TestOpenCountsWaitsForItem(t *testing.T) {
 	dbtest.WaitForLockWait(t, s.Pool)
 	dbtest.Exec(t, held, "UPDATE items SET active=false WHERE id=$1", item)
 	dbtest.Commit(t, held)
-	if r := <-done; r.Status != 409 {
+	if r := <-done; r.Status != 409 || r.Detail() != "项目必须是本店启用的项目" {
 		t.Fatal(r)
 	}
 }

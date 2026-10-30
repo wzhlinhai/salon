@@ -94,6 +94,9 @@ func TestCheckoutWaitsForVoidRedPacket(t *testing.T) {
 		select {
 		case r := <-done:
 			statuses[r.Status]++
+			if r.Status == 409 && r.Detail() != "红包已用" {
+				t.Fatal(r)
+			}
 		case <-time.After(10 * time.Second):
 			t.Fatal("checkout timed out")
 		}

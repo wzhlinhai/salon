@@ -23,7 +23,9 @@ func TestCountPaymentSettings(t *testing.T) {
 			t.Fatal(got)
 		}
 	}
-	s.change(s.owner, settings.KeyCardCountOrder, "invalid", day(0), 409)
+	if r := s.change(s.owner, settings.KeyCardCountOrder, "invalid", day(0), 409); r.Detail() != "扣次顺序的做法无效" {
+		t.Fatal(r)
+	}
 	s.change(s.owner, settings.KeyCardCountOrder, "gift_first", day(0), 200)
 	for _, ch := range s.Channels() {
 		got := setting(t, ch.Call(t, s.owner, "get_settings", map[string]any{}), settings.KeyCardCountOrder)

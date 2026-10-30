@@ -123,7 +123,7 @@ func TestVoidPermissionAndAI(t *testing.T) {
 	for _, ch := range s.Channels() {
 		before := s.voidSnapshot()
 		r := ch.Call(t, c, "void_order", voidInput(o))
-		if r.Status != 403 || before != s.voidSnapshot() {
+		if r.Status != 403 || r.Detail() != "permission denied" || before != s.voidSnapshot() {
 			t.Fatal(ch.Name, r)
 		}
 	}
@@ -326,7 +326,7 @@ func TestVoidWindow(t *testing.T) {
 					t.Fatal(r)
 				}
 			} else {
-				s.voidRefused(c, voidInput(o), 403, "")
+				s.voidRefused(c, voidInput(o), 403, "permission denied")
 				s.void(o)
 			}
 		}
@@ -352,7 +352,7 @@ func TestVoidWindow(t *testing.T) {
 			}
 			return err
 		})
-		if age == 0 && err != nil || age == 1 && (!errors.Is(err, ops.ErrForbidden) || before != s.voidSnapshot()) {
+		if age == 0 && err != nil || age == 1 && (!errors.Is(err, ops.ErrForbidden) || err.Error() != "permission denied" || before != s.voidSnapshot()) {
 			t.Fatal(err)
 		}
 	}

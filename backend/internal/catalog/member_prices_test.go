@@ -185,14 +185,22 @@ func TestMemberPriceReferences(t *testing.T) {
 	}{{ct, 409}, {uuid.NewString(), 404}} {
 		in := input("新引用")
 		in["member_prices"] = []any{map[string]any{"card_type_id": tc.id, "price": "10.00"}}
-		s.call("create_item", in, tc.status)
-		s.call("update_item", update(in, item["id"]), tc.status)
+		if r := s.call("create_item", in, tc.status); tc.status == 409 && r["detail"] != "不能新增停用卡类型的会员价" {
+			t.Fatal(r)
+		}
+		if r := s.call("update_item", update(in, item["id"]), tc.status); tc.status == 409 && r["detail"] != "不能新增停用卡类型的会员价" {
+			t.Fatal(r)
+		}
 	}
 	in := input("重复")
 	ct = s.cardType("启用")
 	in["member_prices"] = []any{map[string]any{"card_type_id": ct, "price": "1.00"}, map[string]any{"card_type_id": ct, "price": "2.00"}}
-	s.call("create_item", in, 409)
-	s.call("update_item", update(in, item["id"]), 409)
+	if r := s.call("create_item", in, 409); r["detail"] != "会员价的卡类型不能重复" {
+		t.Fatal(r)
+	}
+	if r := s.call("update_item", update(in, item["id"]), 409); r["detail"] != "会员价的卡类型不能重复" {
+		t.Fatal(r)
+	}
 	rows := []any{}
 	for range 21 {
 		rows = append(rows, map[string]any{"card_type_id": ct, "price": "1.00"})
@@ -223,7 +231,7 @@ func TestMemberPriceShareLock(t *testing.T) {
 			if err := tx.Commit(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			if r := <-done; r.Status != 409 {
+			if r := <-done; r.Status != 409 || r.Detail() != "不能新增停用卡类型的会员价" {
 				t.Fatal(r)
 			}
 		})
@@ -242,10 +250,10 @@ func TestMemberPriceWritePermissionsAndAI(t *testing.T) {
 		args map[string]any
 	}{{"create_item", in}, {"update_item", update(in, item["id"])}} {
 		before := s.call("list_items", map[string]any{}, 200)
-		if r := s.HTTPWithToken(t, token, tc.op, tc.args); r.Status != 403 {
+		if r := s.HTTPWithToken(t, token, tc.op, tc.args); r.Status != 403 || r.Detail() != "permission denied" {
 			t.Fatal(r)
 		}
-		if r := s.AI(t, s.MustCaller(s.Owner), tc.op, tc.args); r.Status != 409 {
+		if r := s.AI(t, s.MustCaller(s.Owner), tc.op, tc.args); r.Status != 409 || r.Detail() != "operation requires a draft confirmed by a person" {
 			t.Fatal(r)
 		}
 		if after := s.call("list_items", map[string]any{}, 200); !reflect.DeepEqual(before, after) {

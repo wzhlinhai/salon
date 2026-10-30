@@ -138,14 +138,14 @@ func TestDebtPermissionsAndAI(t *testing.T) {
 		for _, ch := range s.Channels() {
 			before := s.snapshot()
 			r := ch.Call(t, c, tc.op, tc.in)
-			if r.Status != 403 || before != s.snapshot() {
+			if r.Status != 403 || r.Detail() != "permission denied" || before != s.snapshot() {
 				t.Fatal(ch.Name, tc.op, r)
 			}
 		}
 		if tc.op == "repay_debt" || tc.op == "register_historical_debt" {
 			before := s.snapshot()
 			r := s.AI(t, s.MustCaller(s.Owner), tc.op, tc.in)
-			if r.Status != 409 || before != s.snapshot() {
+			if r.Status != 409 || r.Detail() != "operation requires a draft confirmed by a person" || before != s.snapshot() {
 				t.Fatal(tc.op, r)
 			}
 		}

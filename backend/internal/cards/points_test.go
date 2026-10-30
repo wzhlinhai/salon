@@ -170,7 +170,7 @@ func TestPointsScope(t *testing.T) {
 	}
 	delete(caller.Permissions, perm.CustomerView)
 	for _, ch := range s.Channels() {
-		if r := ch.Call(t, caller, "list_card_points", map[string]any{"card_id": card["id"]}); r.Status != 403 {
+		if r := ch.Call(t, caller, "list_card_points", map[string]any{"card_id": card["id"]}); r.Status != 403 || r.Detail() != "permission denied" {
 			t.Fatal(r)
 		}
 	}
@@ -277,10 +277,10 @@ func TestPointsWritesPermissionsAndAI(t *testing.T) {
 		denied := caller
 		denied.Permissions = perm.All()
 		delete(denied.Permissions, tc.p)
-		if r := s.HTTP(t, &denied, tc.op, tc.in); r.Status != 403 {
+		if r := s.HTTP(t, &denied, tc.op, tc.in); r.Status != 403 || r.Detail() != "permission denied" {
 			t.Fatal(r)
 		}
-		if r := s.AI(t, caller, tc.op, tc.in); r.Status != 409 {
+		if r := s.AI(t, caller, tc.op, tc.in); r.Status != 409 || r.Detail() != "operation requires a draft confirmed by a person" {
 			t.Fatal(r)
 		}
 		if after := snapshot(t, s); after != before {
