@@ -667,6 +667,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_commissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按营业日查询提成与解释 */
+        post: operations["list_commissions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_customer_cards": {
         parameters: {
             query?: never;
@@ -1840,6 +1857,25 @@ export interface components {
             label: string;
             value: string;
         };
+        Commission: {
+            amount: string;
+            /** Format: date */
+            business_date: string;
+            explanation: components["schemas"]["CommissionExplanation"];
+            id: string;
+            reversal: boolean;
+            /** @enum {string} */
+            source: "item" | "consume" | "labor" | "sale";
+            staff: components["schemas"]["Ref"];
+        };
+        CommissionBase: {
+            amount: string;
+            /** @enum {string} */
+            kind: "line_price" | "paid" | "performance" | "cash_performance" | "card_performance";
+            line_paid?: string;
+            line_price?: string;
+            unit_paid?: string;
+        };
         CommissionCellView: {
             designated?: boolean;
             fixed_amount?: string;
@@ -1852,6 +1888,39 @@ export interface components {
             staff: components["schemas"]["Ref"];
             staff_id: string;
         };
+        CommissionExplanation: {
+            base: components["schemas"]["CommissionBase"];
+            designated: boolean | null;
+            entries: components["schemas"]["CommissionPerformanceEntry"][];
+            match: components["schemas"]["CommissionMatch"];
+            member: boolean | null;
+            origin: components["schemas"]["CommissionOrigin"];
+            reverses?: string;
+            version: components["schemas"]["CommissionVersion"];
+        };
+        CommissionList: {
+            entries: components["schemas"]["Commission"][];
+            total: string;
+            totals: components["schemas"]["CommissionSourceTotal"][];
+        };
+        CommissionMatch: {
+            cell?: components["schemas"]["Cell"];
+            /** @enum {string} */
+            kind: "cell" | "override_staff_item" | "override_item" | "override_staff";
+            override?: components["schemas"]["Override"];
+        };
+        CommissionOrigin: {
+            card_ledger_id?: string;
+            checkout_id?: string;
+            item?: components["schemas"]["Ref"];
+            order_id?: string;
+            order_item_id?: string;
+            position?: components["schemas"]["Ref"];
+            red_packet_id?: string;
+            /** Format: int32 */
+            slot?: number;
+            void_id?: string;
+        };
         CommissionOverrideView: {
             fixed_amount?: string;
             item?: components["schemas"]["Ref"];
@@ -1861,6 +1930,14 @@ export interface components {
             source: "item" | "consume" | "labor" | "sale";
             staff?: components["schemas"]["Ref"];
             staff_id?: string;
+        };
+        CommissionPerformanceEntry: {
+            amount: string;
+            id: string;
+            method: string;
+            paid_amount: string;
+            /** Format: int32 */
+            ratio: number;
         };
         CommissionRuleView: {
             /** @enum {string} */
@@ -1905,6 +1982,18 @@ export interface components {
             excluded_staff: components["schemas"]["CommissionExcludedStaffView"][];
             overrides: components["schemas"]["CommissionOverrideView"][];
             rules: components["schemas"]["CommissionRuleView"][];
+        };
+        CommissionSourceTotal: {
+            amount: string;
+            /** @enum {string} */
+            source: "item" | "consume" | "labor" | "sale";
+        };
+        CommissionVersion: {
+            /** Format: date */
+            effective_from: string;
+            id: string;
+            /** Format: int32 */
+            version: number;
         };
         CreateCardTypeInput: {
             discount_percent?: string | null;
@@ -2283,6 +2372,18 @@ export interface components {
             /** Format: int32 */
             limit?: number;
         };
+        ListCommissionsInput: {
+            before_id?: string;
+            /** Format: date */
+            date_from: string;
+            /** Format: date */
+            date_to: string;
+            /** Format: int32 */
+            limit?: number;
+            /** @enum {string} */
+            source?: "item" | "consume" | "labor" | "sale";
+            staff_id?: string;
+        };
         ListCustomerCardsInput: {
             customer_id: string;
         };
@@ -2514,6 +2615,7 @@ export interface components {
             item_name: string | null;
             /** @enum {string} */
             kind: "item" | "consume" | "labor" | "sale";
+            member: boolean | null;
             /** @enum {string} */
             method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "red_packet" | "card_principal" | "card_bonus" | "count_paid" | "count_gift" | "labor" | "card_open" | "card_recharge" | "card_upgrade" | "red_packet_sold";
             /** @description 结账来源，销售业绩为空 */
@@ -4313,6 +4415,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CommissionSchemeVersionList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_commissions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListCommissionsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommissionList"];
                 };
             };
             /** @description Error */

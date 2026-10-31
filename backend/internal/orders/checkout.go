@@ -330,7 +330,11 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 					categories = append(categories, performance.Category{Method: p.Method, Amount: p.Amount})
 				}
 			}
-			if err := performance.RecordCheckout(ctx, env, performance.CheckoutInput{CheckoutID: checkout.ID, BusinessDate: day, OrderID: rows[i].ID, SettingsSnapshotID: rows[i].SettingsSnapshotID, Rules: rules[i], Lines: performanceLines, Payments: categories, Designated: rows[i].Designated, Gender: rows[i].Gender}); err != nil {
+			member, err := cards.HasValidCard(ctx, env.Q, env.Caller.StoreID, rows[i].CustomerID, day)
+			if err != nil {
+				return err
+			}
+			if err := performance.RecordCheckout(ctx, env, performance.CheckoutInput{Member: member, CheckoutID: checkout.ID, BusinessDate: day, OrderID: rows[i].ID, SettingsSnapshotID: rows[i].SettingsSnapshotID, Rules: rules[i], Lines: performanceLines, Payments: categories, Designated: rows[i].Designated, Gender: rows[i].Gender}); err != nil {
 				return err
 			}
 

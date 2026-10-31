@@ -120,6 +120,8 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 ## 业绩
 
+performance_entries.member 在非 sale 时必填，既有非销售行迁移为 false；sale 必须 NULL，由 CHECK 保护。RecordCheckout 把同一张单的判断写入 item、consume、labor 的所有记录；ReversePerformanceOrder 原样复制。list_performance 暴露这个可空布尔值，与提成解释一致。
+
 客数存于独立的 `guest_visits` 追加表。每张未合并的结账单计一个客次，一起结账仍逐单计。归属按开单规则快照的 `guest_count_split`：`first_slot` 取行序中首个有员工的有效项目行内最低已填岗位员工；`equal` 按行序、岗位序首次出现的不同员工均分。去掉的行不参与。份额向下取整到四位小数，余数全部给第一名员工，合计恰为 1；无人时记 staff 为空的门店记录、份额 1。复制单上的指定和男客、女客属性。撤单以撤单营业日追加正份额的冲回记录，统计时计负，原记录不改；每条仅冲回一次。`list_guest_visits` 按营业日、员工和本人或全店范围返回分页明细及完整范围的客数、指定、非指定、男客、女客净合计，只做一条明细和一条合计查询。表采用租户组合外键、RLS，仅授予 SELECT、INSERT。
 
 `internal/performance` 拥有业绩表、纯分配函数和 `list_performance`。结账在支付写入后、标记已结账前，在已有单锁的事务内按各单规则快照追加记录；撤单在已有单锁的事务内逐条追加冲回，不改原记录，不另记操作日志。结账记录用结账营业日，冲回用撤单营业日。
@@ -136,12 +138,26 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 ## 提成
 
-`internal/commission` 保存提成方案与版本，不计算提成、不含阶梯。整体方案含 rules、overrides、excluded_staff。每种来源 item、consume、labor、sale 至多一条规则；项目业绩可选 line_price（原价）、paid（折后价）、performance、cash_performance、card_performance，其他来源只允许 performance。规则按岗位、指定或非指定、会员或散客的开关决定格子键，每个键恰在相应开关开启时出现，格子键不重复；销售业绩不允许这些区分。格子可为空表，未填格子不计提成；每格恰有比例（0–100）或非负固定金额之一，使用 money 的精确字符串类型。
+`internal/commission` 保存提成方案与版本，并从业绩记录计算提成，不含阶梯。整体方案含 rules、overrides、excluded_staff。每种来源 item、consume、labor、sale 至多一条规则；项目业绩可选 line_price（原价）、paid（折后价）、performance、cash_performance、card_performance，其他来源只允许 performance。规则按岗位、指定或非指定、会员或散客的开关决定格子键，每个键恰在相应开关开启时出现，格子键不重复；销售业绩不允许这些区分。格子可为空表，未填格子不计提成；每格恰有比例（0–100）或非负固定金额之一，使用 money 的精确字符串类型。
 
-覆盖比例至少指定员工或项目，允许员工 × 项目、项目、员工三种覆盖，后续计算按此顺序优先于规则默认。每个来源、员工、项目组合不能重复，来源必须在同一方案内有规则；销售业绩不能有项目覆盖。覆盖值也是比例或固定金额之一。不计提成员工不能重复。所有岗位、项目、员工引用由所属包一类一次批量查询校验本店归属，允许离职或停用，不加行锁：这些表无 DELETE 权限，状态也不影响合法性。会员含义为结账时顾客名下有有效卡，本步只保存会员区分维度。
+覆盖比例至少指定员工或项目，允许员工 × 项目、项目、员工三种覆盖，计算按此顺序优先于规则默认。每个来源、员工、项目组合不能重复，来源必须在同一方案内有规则；销售业绩不能有项目覆盖。覆盖值也是比例或固定金额之一。不计提成员工不能重复。所有岗位、项目、员工引用由所属包一类一次批量查询校验本店归属，允许离职或停用，不加行锁：这些表无 DELETE 权限，状态也不影响合法性。会员含义为结账时顾客名下有有效卡，结账时留存会员判断，不在查询时重新判断。
 
 `commission_scheme_versions` 只追加，salon_app 仅有 SELECT、INSERT，租户 RLS 与门店、修改人的组合外键保护租户隔离。保存先获取每店独立的事务咨询锁（`/commission_scheme`，与设置项锁区分），再取营业日、最新版本、校验日期与方案、分配 latest + 1 版本号并写入。同日可多次保存，生效日期不能早于 settings.BusinessDate 算出的今天，也不能早于最新版本。旧版本不改不删，规则按 item、consume、labor、sale 归一排序，格子和覆盖保持输入顺序。
 
-`save_commission_scheme`（Write、AIDraft）、`list_commission_scheme_versions` 和 `get_commission_scheme`（Read、AIDirect）均要求 settings.manage。列表版本号倒序、limit / before_version 翻页，含修改人名称而无方案内容；查询参数必须且只能指定版本号或营业日，保存与查询返回同样的完整名称视图。按营业日选择 effective_from ≤ 日期的最大生效日期，再取版本号最高的一版，即同日最后保存的方案。导出的 VersionInForce 还接受可选 saved-no-later-than 时刻，先排除该时刻之后保存的版本，供第二步按业绩写入时刻选版。名称按员工、岗位、项目批量读取，查询数不随引用数量增加。
+`save_commission_scheme`（Write、AIDraft）、`list_commission_scheme_versions` 和 `get_commission_scheme`（Read、AIDirect）均要求 settings.manage。列表版本号倒序、limit / before_version 翻页，含修改人名称而无方案内容；查询参数必须且只能指定版本号或营业日，保存与查询返回同样的完整名称视图。按营业日选择 effective_from ≤ 日期的最大生效日期，再取版本号最高的一版，即同日最后保存的方案。导出的 VersionInForce 还接受可选 saved-no-later-than 时刻，先排除该时刻之后保存的版本，供计算按业绩写入时刻选版。名称按员工、岗位、项目批量读取，查询数不随引用数量增加。
 
 保存与 audit.Record 在同一事务，目标 commission_scheme，action 为 save_commission_scheme，before 为上一个最新版本视图（首次 nil），after 为新版本视图。日志不关联顾客，不包含手机号；日志查询对这一种类额外要求 settings.manage，避免操作日志权限泄露方案里的员工覆盖。业务规则通过 ops.Rule，沿用仓库统一的 HTTP 409；请求格式、金额和百分比格式校验为 422。
+
+提成计算以一次结账内的（kind、order_item_id、slot）为一笔，将同笔全部支付方式的业绩记录合并；同一员工占两个岗位仍算两笔。sale 每条业绩单独一笔。staff_id 为空的门店未分配记录不产生提成。导出 Commissions(ctx, q, storeID, from, to, staffID) 供后续月锁、员工端和解释功能调用，提成不另存表；零金额也返回解释。
+
+版本只批量读取一次，由 selectVersion 这个纯函数统一选择：effective_from 不晚于业绩营业日，saved_at 不晚于单位内最早 created_at，取最大生效日期，再取最高版本号。VersionInForce 和 get_commission_scheme 的日期查询也共用它。无版本或员工在 excluded_staff 中不计提成。先查员工 × 项目覆盖，再查项目、员工覆盖，最后按岗位、指定、会员键找规则格子；覆盖即使没有匹配格子仍然生效，但必须有该来源规则。项目覆盖仅作用于 item、consume、labor。没有命中项不产生提成。
+
+item 基数按单位汇总：paid 为 paid_amount 之和；performance 为 amount 之和；cash_performance 只含现金、银联、微信、支付宝、挂账；card_performance 只含本金、赠送金。红包仅在 performance 中。line_price 为结账时 order_items.price（折扣前，含级别价、会员价与改价）乘单位实收 / 本次结账该项目行全部 item 记录的实收，分母包括门店未分配记录。consume、labor、sale 基数均为单位 amount 之和。分到员工及乘比例都通过 money 四舍五入到分，固定金额每笔一次，基数为零仍计固定金额。
+
+冲回按（void_id、kind、order_item_id、slot）组成新笔，逐个 reverses_id 批量取得原记录，使用原单位的版本、命中项、基数与金额，金额取负，解释带原单位 ID；营业日为冲回日，因此归入冲回所在月。
+
+结账在支付写入后、业绩写入前，以 cards.HasValidCard 为每张单读取一次会员判断：本店、该单顾客、active，复用卡支付 checkExpiry 的到期日规则，到期当天有效；不限卡种和余额。这是一个当时已提交状态的快照，不依赖该结果扣余额、次数或改变卡，卡随后开通、调整或退卡不应重算历史会员事实，所以无需新增行锁。该读取位于已有的单 → 卡 → 红包 → 卡类型 → 项目锁之后，不回锁顾客或其他卡，不逆转结账锁顺序。
+
+list_commissions 是 Read / AIDirect，要求 performance.view。本人与全店范围沿用 list_performance；本人范围叠加他人的 staff_id 时为空，不能扩大范围。按营业日范围（相隔最多 92 天）、staff_id、source 筛选。以营业日降序、单位最早 created_at 降序、稳定单位 ID 降序排列；单位 ID 为该笔最小业绩记录 ID，limit / before_id 翻页。total 与按 item、consume、labor、sale 的 totals 使用完整筛选范围，原笔减冲回，不受分页影响。entries、explanation、totals 都在同一权限范围内，不含任何顾客字段。
+
+加载始终为七条批查询：范围业绩、冲回原记录、项目行事实、全部方案版本、员工名称、岗位名称、项目名称。项目行事实只读取 order_items.price / item_id、orders.designated 与业绩实收之和，不回读单据重算价格、支付或业绩。查询数不随单位数增长，由 TestCommissionReadQueryCount 通过 HTTP 与 AI 验证。

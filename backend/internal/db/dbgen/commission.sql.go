@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/wzhlinhai/salon/backend/internal/money"
 )
 
 const addCommissionScheme = `-- name: AddCommissionScheme :one
@@ -49,33 +50,201 @@ func (q *Queries) AddCommissionScheme(ctx context.Context, arg AddCommissionSche
 	return i, err
 }
 
-const effectiveCommissionScheme = `-- name: EffectiveCommissionScheme :one
-SELECT tenant_id, store_id, id, version, effective_from, scheme, saved_by, saved_at FROM commission_scheme_versions
-WHERE store_id = $1 AND effective_from <= $2::date
- AND ($3::timestamptz IS NULL OR saved_at <= $3)
-ORDER BY effective_from DESC, version DESC LIMIT 1
+const allCommissionSchemeVersions = `-- name: AllCommissionSchemeVersions :many
+SELECT tenant_id, store_id, id, version, effective_from, scheme, saved_by, saved_at FROM commission_scheme_versions WHERE store_id = $1 ORDER BY version
 `
 
-type EffectiveCommissionSchemeParams struct {
-	StoreID          uuid.UUID
-	BusinessDate     pgtype.Date
-	SavedNoLaterThan pgtype.Timestamptz
+func (q *Queries) AllCommissionSchemeVersions(ctx context.Context, storeID uuid.UUID) ([]CommissionSchemeVersion, error) {
+	rows, err := q.db.Query(ctx, allCommissionSchemeVersions, storeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CommissionSchemeVersion
+	for rows.Next() {
+		var i CommissionSchemeVersion
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ID,
+			&i.Version,
+			&i.EffectiveFrom,
+			&i.Scheme,
+			&i.SavedBy,
+			&i.SavedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-func (q *Queries) EffectiveCommissionScheme(ctx context.Context, arg EffectiveCommissionSchemeParams) (CommissionSchemeVersion, error) {
-	row := q.db.QueryRow(ctx, effectiveCommissionScheme, arg.StoreID, arg.BusinessDate, arg.SavedNoLaterThan)
-	var i CommissionSchemeVersion
-	err := row.Scan(
-		&i.TenantID,
-		&i.StoreID,
-		&i.ID,
-		&i.Version,
-		&i.EffectiveFrom,
-		&i.Scheme,
-		&i.SavedBy,
-		&i.SavedAt,
+const commissionLineFacts = `-- name: CommissionLineFacts :many
+SELECT i.id, i.item_id, i.price, o.designated, e.checkout_id,
+COALESCE(sum(e.paid_amount) FILTER (WHERE e.kind = 'item'),0)::text AS line_paid
+FROM performance_entries e JOIN order_items i ON i.id = e.order_item_id JOIN orders o ON o.id = e.order_id
+WHERE e.store_id = $1 AND e.order_item_id = ANY($2::uuid[]) AND e.reverses_id IS NULL
+GROUP BY i.id, i.item_id, i.price, o.designated, e.checkout_id
+`
+
+type CommissionLineFactsParams struct {
+	StoreID uuid.UUID
+	Ids     []uuid.UUID
+}
+
+type CommissionLineFactsRow struct {
+	ID         uuid.UUID
+	ItemID     uuid.UUID
+	Price      money.Amount
+	Designated bool
+	CheckoutID *uuid.UUID
+	LinePaid   string
+}
+
+func (q *Queries) CommissionLineFacts(ctx context.Context, arg CommissionLineFactsParams) ([]CommissionLineFactsRow, error) {
+	rows, err := q.db.Query(ctx, commissionLineFacts, arg.StoreID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CommissionLineFactsRow
+	for rows.Next() {
+		var i CommissionLineFactsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ItemID,
+			&i.Price,
+			&i.Designated,
+			&i.CheckoutID,
+			&i.LinePaid,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const commissionOriginalEntries = `-- name: CommissionOriginalEntries :many
+SELECT tenant_id, store_id, id, kind, business_date, order_id, order_item_id, checkout_id, settings_snapshot_id, slot, position_id, staff_id, method, paid_amount, ratio, amount, void_id, reverses_id, created_at, card_ledger_id, red_packet_id, purchase, member FROM performance_entries WHERE store_id = $1 AND id = ANY($2::uuid[])
+`
+
+type CommissionOriginalEntriesParams struct {
+	StoreID uuid.UUID
+	Ids     []uuid.UUID
+}
+
+func (q *Queries) CommissionOriginalEntries(ctx context.Context, arg CommissionOriginalEntriesParams) ([]PerformanceEntry, error) {
+	rows, err := q.db.Query(ctx, commissionOriginalEntries, arg.StoreID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PerformanceEntry
+	for rows.Next() {
+		var i PerformanceEntry
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ID,
+			&i.Kind,
+			&i.BusinessDate,
+			&i.OrderID,
+			&i.OrderItemID,
+			&i.CheckoutID,
+			&i.SettingsSnapshotID,
+			&i.Slot,
+			&i.PositionID,
+			&i.StaffID,
+			&i.Method,
+			&i.PaidAmount,
+			&i.Ratio,
+			&i.Amount,
+			&i.VoidID,
+			&i.ReversesID,
+			&i.CreatedAt,
+			&i.CardLedgerID,
+			&i.RedPacketID,
+			&i.Purchase,
+			&i.Member,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const commissionPerformance = `-- name: CommissionPerformance :many
+SELECT tenant_id, store_id, id, kind, business_date, order_id, order_item_id, checkout_id, settings_snapshot_id, slot, position_id, staff_id, method, paid_amount, ratio, amount, void_id, reverses_id, created_at, card_ledger_id, red_packet_id, purchase, member FROM performance_entries
+WHERE store_id = $1 AND business_date BETWEEN $2::date AND $3::date
+AND staff_id IS NOT NULL AND ($4::uuid IS NULL OR staff_id = $4)
+`
+
+type CommissionPerformanceParams struct {
+	StoreID  uuid.UUID
+	DateFrom pgtype.Date
+	DateTo   pgtype.Date
+	StaffID  *uuid.UUID
+}
+
+func (q *Queries) CommissionPerformance(ctx context.Context, arg CommissionPerformanceParams) ([]PerformanceEntry, error) {
+	rows, err := q.db.Query(ctx, commissionPerformance,
+		arg.StoreID,
+		arg.DateFrom,
+		arg.DateTo,
+		arg.StaffID,
 	)
-	return i, err
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PerformanceEntry
+	for rows.Next() {
+		var i PerformanceEntry
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ID,
+			&i.Kind,
+			&i.BusinessDate,
+			&i.OrderID,
+			&i.OrderItemID,
+			&i.CheckoutID,
+			&i.SettingsSnapshotID,
+			&i.Slot,
+			&i.PositionID,
+			&i.StaffID,
+			&i.Method,
+			&i.PaidAmount,
+			&i.Ratio,
+			&i.Amount,
+			&i.VoidID,
+			&i.ReversesID,
+			&i.CreatedAt,
+			&i.CardLedgerID,
+			&i.RedPacketID,
+			&i.Purchase,
+			&i.Member,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getCommissionSchemeVersion = `-- name: GetCommissionSchemeVersion :one

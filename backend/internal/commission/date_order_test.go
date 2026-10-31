@@ -28,6 +28,17 @@ func TestCommissionEffectiveDateOrder(t *testing.T) {
 			t.Fatal(ch.Name, r)
 		}
 	}
+	// 保留先见新日期的断言，再追加先见旧日期、后见获胜日期的真实加载路径。
+	tx = dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	dbtest.Exec(t, tx, `INSERT INTO commission_scheme_versions(tenant_id,store_id,version,effective_from,scheme,saved_by) VALUES($1,$2,3,$3,'{"rules":[],"overrides":[],"excluded_staff":[]}',$4)`, s.Res.TenantID, s.Res.StoreID, day.AddDate(0, 0, 3), s.Res.OwnerID)
+	dbtest.Commit(t, tx)
+	for _, ch := range s.Channels() {
+		r := ch.Call(t, s.MustCaller(s.Owner), "get_commission_scheme", map[string]any{"date": day.AddDate(0, 0, 4).Format(time.DateOnly)})
+		if r.Status != 200 || r.Body["version"] != float64(3) {
+			t.Fatal(ch.Name, r)
+		}
+	}
+
 }
 
 func TestCommissionBusinessDayBoundary(t *testing.T) {
