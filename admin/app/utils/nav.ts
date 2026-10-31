@@ -7,5 +7,6 @@ export const navItems = [
   { label: '角色与权限', icon: 'i-lucide-shield', to: '/roles', permission: 'role.manage' },
   { label: '项目与价格', icon: 'i-lucide-scissors', to: '/items', permission: 'settings.manage' },
   { label: '卡类型', icon: 'i-lucide-credit-card', to: '/card-types', permission: 'settings.manage' },
+  { label: '提成规则', icon: 'i-lucide-percent', to: '/commission', permission: 'settings.manage' },
   { label: '门店设置', icon: 'i-lucide-settings', to: '/settings', permission: '' }
 ]
