@@ -89,3 +89,6 @@ SELECT * FROM customers WHERE store_id=$1 AND id=$2 FOR SHARE;
 
 -- name: GetCustomers :many
 SELECT * FROM customers WHERE store_id=sqlc.arg(store_id) AND id=ANY(sqlc.arg(ids)::uuid[]);
+
+-- name: LockCardOpeningCustomer :one
+SELECT * FROM customers WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE;

@@ -12,7 +12,7 @@ AND NOT EXISTS (SELECT 1 FROM performance_entries r WHERE r.reverses_id=e.id);
 -- name: ListPerformance :many
 SELECT e.*, i.item_name, s.name AS staff_name
 FROM performance_entries e
-JOIN order_items i ON i.id=e.order_item_id
+LEFT JOIN order_items i ON i.id=e.order_item_id
 LEFT JOIN staff s ON s.id=e.staff_id
 WHERE e.store_id=sqlc.arg(store_id)
 AND e.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
@@ -32,3 +32,7 @@ AND (sqlc.narg(self_id)::uuid IS NULL OR e.staff_id=sqlc.narg(self_id))
 AND (sqlc.narg(kind)::text IS NULL OR e.kind=sqlc.narg(kind))
 AND (sqlc.narg(staff_id)::uuid IS NULL OR e.staff_id=sqlc.narg(staff_id))
 GROUP BY e.kind;
+
+-- name: AddSalePerformance :exec
+INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,staff_id,method,paid_amount,ratio,amount,card_ledger_id,red_packet_id,purchase)
+VALUES ($1,$2,'sale',$3,$4,$5,$6,100,$6,$7,$8,$9);

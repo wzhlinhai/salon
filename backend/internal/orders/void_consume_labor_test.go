@@ -19,7 +19,7 @@ func TestVoidConsumeLabor(t *testing.T) {
 	c := s.countCard(line, "count", 1, 0)
 	o := s.customerOrder(line)
 	s.paid(o, countPayment(c, firstLine(o), "100"))
-	original := s.performanceList()["entries"].([]any)
+	original := withoutSale(s.performanceList()["entries"].([]any))
 	day := settings.Date(time.Now()).AddDate(0, 0, 1)
 	if err := db.InTenant(context.Background(), s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error {
 		_, err := orders.VoidOrderAtForTest(context.Background(), ops.Env{Caller: s.MustCaller(s.Owner), Q: q}, new(voidInput(o)), day.Add(8*time.Hour))
@@ -29,10 +29,10 @@ func TestVoidConsumeLabor(t *testing.T) {
 	}
 	for _, ch := range s.Channels() {
 		r := ch.Call(t, s.MustCaller(s.Owner), "list_performance", map[string]any{"date_from": day.AddDate(0, 0, -1).Format(time.DateOnly), "date_to": day.Format(time.DateOnly)})
-		if r.Status != 200 || len(r.Body["entries"].([]any)) != 8 {
+		if r.Status != 200 || len(withoutSale(r.Body["entries"].([]any))) != 8 {
 			t.Fatal(r)
 		}
-		for _, v := range r.Body["totals"].([]any) {
+		for _, v := range withoutSale(r.Body["totals"].([]any)) {
 			total := v.(map[string]any)
 			want := "0.00"
 			if total["kind"] == "item" {
@@ -42,7 +42,7 @@ func TestVoidConsumeLabor(t *testing.T) {
 				t.Fatal(r)
 			}
 		}
-		for _, v := range r.Body["entries"].([]any)[:4] {
+		for _, v := range withoutSale(r.Body["entries"].([]any))[:4] {
 			e := v.(map[string]any)
 			if e["reversal"] != true || e["business_date"] != day.Format(time.DateOnly) {
 				t.Fatal(e)

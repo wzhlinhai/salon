@@ -74,7 +74,7 @@ func TestPerformanceSchema(t *testing.T) {
 	if err := s.Pool.QueryRow(context.Background(), `SELECT count(*) FROM pg_constraint WHERE conrelid='performance_entries'::regclass AND contype='f' AND cardinality(conkey)=2`).Scan(&fks); err != nil {
 		t.Fatal(err)
 	}
-	if fks != 9 {
+	if fks != 11 {
 		t.Fatal("missing composite foreign keys", fks)
 	}
 	s.performanceLine(100)

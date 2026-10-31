@@ -159,7 +159,7 @@ func TestPerformanceReverseUnreversed(t *testing.T) {
 	if err := tx.QueryRow(context.Background(), "SELECT id FROM order_voids WHERE order_id=$1", o["id"]).Scan(&v); err != nil {
 		t.Fatal(err)
 	}
-	err := q.ReversePerformanceOrder(context.Background(), dbgen.ReversePerformanceOrderParams{StoreID: s.Res.StoreID, OrderID: id(o["id"]), VoidID: &v, Day: pgDateForPerformance(settings.Date(time.Now()))})
+	err := q.ReversePerformanceOrder(context.Background(), dbgen.ReversePerformanceOrderParams{StoreID: s.Res.StoreID, OrderID: new(id(o["id"])), VoidID: &v, Day: pgDateForPerformance(settings.Date(time.Now()))})
 	if err != nil {
 		t.Fatal(err)
 	}

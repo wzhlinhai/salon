@@ -420,10 +420,10 @@ type PerformanceEntry struct {
 	ID                 uuid.UUID
 	Kind               string
 	BusinessDate       pgtype.Date
-	OrderID            uuid.UUID
-	OrderItemID        uuid.UUID
-	CheckoutID         uuid.UUID
-	SettingsSnapshotID uuid.UUID
+	OrderID            *uuid.UUID
+	OrderItemID        *uuid.UUID
+	CheckoutID         *uuid.UUID
+	SettingsSnapshotID *uuid.UUID
 	Slot               *int16
 	PositionID         *uuid.UUID
 	StaffID            *uuid.UUID
@@ -434,6 +434,9 @@ type PerformanceEntry struct {
 	VoidID             *uuid.UUID
 	ReversesID         *uuid.UUID
 	CreatedAt          pgtype.Timestamptz
+	CardLedgerID       *uuid.UUID
+	RedPacketID        *uuid.UUID
+	Purchase           *string
 }
 
 type Position struct {

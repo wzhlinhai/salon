@@ -203,3 +203,8 @@ SELECT l.* FROM card_ledger l JOIN order_payments p ON p.card_ledger_id=l.id WHE
 
 -- name: VoidCountConsumes :many
 SELECT l.* FROM card_count_ledger l JOIN order_payments p ON p.card_count_ledger_id=l.id WHERE p.store_id=$1 AND p.order_id=$2 ORDER BY p.id;
+
+-- name: CardOpeningSale :one
+SELECT COALESCE((SELECT sum(unit_price * paid_count_opened) FROM card_items WHERE card_id=c.id),0)::text AS counts_value,
+EXISTS (SELECT 1 FROM cards earlier WHERE earlier.store_id=c.store_id AND earlier.customer_id=c.customer_id AND earlier.id<>c.id) AS has_earlier
+FROM cards c WHERE c.id=$1;

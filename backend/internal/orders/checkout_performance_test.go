@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -25,6 +26,12 @@ func (s *fixture) performanceList() map[string]any {
 	day := settings.Date(time.Now()).Format(time.DateOnly)
 	return s.call("list_performance", map[string]any{"date_from": day, "date_to": day, "limit": 200}, 200)
 }
+func withoutSale(entries []any) []any {
+	return slices.DeleteFunc(slices.Clone(entries), func(v any) bool {
+		return v.(map[string]any)["kind"] == "sale"
+	})
+}
+
 func (s *fixture) performanceLine(shares ...any) orders.OrderItemInput {
 	s.t.Helper()
 	in := s.itemInput("业绩"+uuid.NewString(), 0)
@@ -59,7 +66,7 @@ func TestCheckoutPerformanceMixed(t *testing.T) {
 	if list["totals"].([]any)[0].(map[string]any)["paid_amount"] != "200.00" || list["totals"].([]any)[0].(map[string]any)["amount"] != "200.00" {
 		t.Fatal(list)
 	}
-	entries := list["entries"].([]any)
+	entries := withoutSale(list["entries"].([]any))
 	if len(entries) != 20 {
 		t.Fatal(entries)
 	}
@@ -169,7 +176,7 @@ func TestPerformanceRatioCategories(t *testing.T) {
 	p := s.redPacket(s.customer, "10")
 	o := s.customerOrder(line)
 	s.paid(o, payment("cash", "10"), payment("unionpay", "10"), payment("wechat", "10"), payment("alipay", "10"), payment("debt", "30"), packetPayment(p, "10"), cardPayment(c, "20"))
-	entries := s.performanceList()["entries"].([]any)
+	entries := withoutSale(s.performanceList()["entries"].([]any))
 	if len(entries) != 8 {
 		t.Fatal(entries)
 	}

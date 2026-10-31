@@ -55,3 +55,12 @@ func (a Total) Deduct(deduction Amount) Total {
 func (a Total) PercentOf(percent int) Total {
 	return Total{value: percentOf(a.value, percent)}
 }
+
+// Split 将累计金额按份数向下均分到分，返回每份金额和余数；份数必须为正。
+func (a Total) Split(parts int) (Total, Total) {
+	if parts <= 0 {
+		panic("money: split parts must be positive")
+	}
+	share, remainder := a.value.QuoRem(decimal.NewFromInt(int64(parts)), 2)
+	return Total{value: share}, Total{value: remainder}
+}

@@ -1,0 +1,46 @@
+-- +goose Up
+ALTER TABLE performance_entries
+ DROP CONSTRAINT performance_entries_kind_check,
+ DROP CONSTRAINT performance_entries_method_check,
+ DROP CONSTRAINT performance_entries_check1,
+ ALTER COLUMN order_id DROP NOT NULL,
+ ALTER COLUMN order_item_id DROP NOT NULL,
+ ALTER COLUMN checkout_id DROP NOT NULL,
+ ALTER COLUMN settings_snapshot_id DROP NOT NULL,
+ ADD COLUMN card_ledger_id uuid,
+ ADD COLUMN red_packet_id uuid,
+ ADD COLUMN purchase text,
+ ADD FOREIGN KEY (tenant_id, card_ledger_id) REFERENCES card_ledger (tenant_id, id),
+ ADD FOREIGN KEY (tenant_id, red_packet_id) REFERENCES red_packets (tenant_id, id),
+ ADD CONSTRAINT performance_entries_kind_check CHECK (kind IN ('item','consume','labor','sale')),
+ ADD CONSTRAINT performance_entries_method_check CHECK (method IN ('cash','unionpay','wechat','alipay','debt','red_packet','card_principal','card_bonus','count_paid','count_gift','labor','card_open','card_recharge','card_upgrade','red_packet_sold')),
+ ADD CONSTRAINT performance_entries_sale_method_check CHECK ((kind = 'sale') = (method IN ('card_open','card_recharge','card_upgrade','red_packet_sold'))),
+ ADD CONSTRAINT performance_entries_order_source_check CHECK ((kind = 'sale' AND order_id IS NULL AND order_item_id IS NULL AND checkout_id IS NULL AND settings_snapshot_id IS NULL) OR (kind <> 'sale' AND order_id IS NOT NULL AND order_item_id IS NOT NULL AND checkout_id IS NOT NULL AND settings_snapshot_id IS NOT NULL)),
+ ADD CONSTRAINT performance_entries_non_sale_slot_check CHECK (kind = 'sale' OR ((slot IS NULL) = (staff_id IS NULL) AND (slot IS NULL) = (position_id IS NULL))),
+ ADD CONSTRAINT performance_entries_sale_staff_check CHECK (kind <> 'sale' OR (staff_id IS NOT NULL AND slot IS NULL AND position_id IS NULL)),
+ ADD CONSTRAINT performance_entries_sale_ratio_check CHECK (kind <> 'sale' OR ratio = 100),
+ ADD CONSTRAINT performance_entries_sale_source_check CHECK ((kind = 'sale' AND ((card_ledger_id IS NOT NULL AND red_packet_id IS NULL AND method IN ('card_open','card_recharge','card_upgrade')) OR (card_ledger_id IS NULL AND red_packet_id IS NOT NULL AND method = 'red_packet_sold'))) OR (kind <> 'sale' AND card_ledger_id IS NULL AND red_packet_id IS NULL)),
+ ADD CONSTRAINT performance_entries_purchase_check CHECK ((kind = 'sale' AND purchase IS NOT NULL AND purchase IN ('first','repeat') AND (purchase <> 'first' OR method = 'card_open')) OR (kind <> 'sale' AND purchase IS NULL));
+
+-- +goose Down
+DELETE FROM performance_entries WHERE kind = 'sale';
+ALTER TABLE performance_entries
+ DROP CONSTRAINT performance_entries_sale_method_check,
+ DROP CONSTRAINT performance_entries_order_source_check,
+ DROP CONSTRAINT performance_entries_non_sale_slot_check,
+ DROP CONSTRAINT performance_entries_sale_staff_check,
+ DROP CONSTRAINT performance_entries_sale_ratio_check,
+ DROP CONSTRAINT performance_entries_sale_source_check,
+ DROP CONSTRAINT performance_entries_purchase_check,
+ DROP CONSTRAINT performance_entries_kind_check,
+ DROP CONSTRAINT performance_entries_method_check,
+ DROP COLUMN card_ledger_id,
+ DROP COLUMN red_packet_id,
+ DROP COLUMN purchase,
+ ALTER COLUMN order_id SET NOT NULL,
+ ALTER COLUMN order_item_id SET NOT NULL,
+ ALTER COLUMN checkout_id SET NOT NULL,
+ ALTER COLUMN settings_snapshot_id SET NOT NULL,
+ ADD CONSTRAINT performance_entries_check1 CHECK ((slot IS NULL) = (staff_id IS NULL) AND (slot IS NULL) = (position_id IS NULL)),
+ ADD CONSTRAINT performance_entries_kind_check CHECK (kind IN ('item','consume','labor')),
+ ADD CONSTRAINT performance_entries_method_check CHECK (method IN ('cash','unionpay','wechat','alipay','debt','red_packet','card_principal','card_bonus','count_paid','count_gift','labor'));

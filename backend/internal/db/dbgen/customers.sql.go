@@ -331,6 +331,35 @@ func (q *Queries) ListCustomerViewStaff(ctx context.Context, ids []uuid.UUID) ([
 	return items, nil
 }
 
+const lockCardOpeningCustomer = `-- name: LockCardOpeningCustomer :one
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at FROM customers WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
+`
+
+type LockCardOpeningCustomerParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) LockCardOpeningCustomer(ctx context.Context, arg LockCardOpeningCustomerParams) (Customer, error) {
+	row := q.db.QueryRow(ctx, lockCardOpeningCustomer, arg.StoreID, arg.ID)
+	var i Customer
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Name,
+		&i.Phone,
+		&i.Gender,
+		&i.SourceID,
+		&i.ResponsibleStaffID,
+		&i.Note,
+		&i.MergedInto,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const lockCustomer = `-- name: LockCustomer :one
 SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at FROM customers WHERE id = $1 FOR NO KEY UPDATE
 `
