@@ -61,7 +61,7 @@ test('设置页迟到的旧 get_settings 不覆盖新结果', async ({ page }) =
   await page.getByLabel('生效日期').fill(tomorrow)
   await page.getByRole('button', { name: '保存', exact: true }).click()
   await started
-  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: '修改营业日结束时间', exact: true })).toHaveCount(0)
   await card.getByRole('button', { name: '修改', exact: true }).click()
   await page.getByLabel('时间', { exact: true }).fill('02:15')
   await page.getByLabel('生效日期').fill(tomorrow)
@@ -148,8 +148,8 @@ test('设置旧保存只刷新列表，不关闭另一个设置窗口', async ({
   await page.getByLabel('生效日期', { exact: true }).fill(tomorrow)
   await page.getByRole('button', { name: '保存', exact: true }).click()
   await pending
-  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
-  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await page.getByRole('dialog', { name: '修改营业日结束时间', exact: true }).getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '修改营业日结束时间', exact: true })).toHaveCount(0)
   await page.locator('[data-setting=business_hours]').getByRole('button', { name: '修改', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '修改营业时段', exact: true })
   await expect(dialog.getByLabel('开门', { exact: true })).toBeVisible()
@@ -172,20 +172,20 @@ test('修改会员价取价和充值积分', async ({ page }) => {
     .then(d => new Date(Date.parse(d! + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10))
   await page.getByLabel('生效日期', { exact: true }).fill(tomorrow)
   await page.getByRole('button', { name: '保存', exact: true }).click()
-  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: '修改会员价取价', exact: true })).toHaveCount(0)
   await expect(choice).toContainText(`${tomorrow} 起改为 取较低价`)
   const integer = page.locator('[data-setting=points_per_recharge_yuan]')
   await integer.getByRole('button', { name: '修改', exact: true }).click()
   await page.getByLabel('充值积分', { exact: true }).fill('10')
   await page.getByLabel('生效日期', { exact: true }).fill(tomorrow)
   await page.getByRole('button', { name: '保存', exact: true }).click()
-  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: '修改充值积分', exact: true })).toHaveCount(0)
   await expect(integer).toContainText('10')
-  for (const card of [choice, integer]) {
+  for (const [card, name] of [[choice, '修改会员价取价'], [integer, '修改充值积分']] as const) {
     await card.getByRole('button', { name: '修改', exact: true }).click()
     await page.getByLabel('生效日期', { exact: true }).fill(tomorrow)
     await page.getByRole('button', { name: '恢复系统默认', exact: true }).click()
-    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(page.getByRole('dialog', { name, exact: true })).toHaveCount(0)
     await expect(card).toContainText('系统默认')
   }
 })
@@ -194,7 +194,7 @@ test('退卡手续费编辑使用自己的标签', async ({ page }) => {
   await login(page, owner.account, owner.password)
   await page.goto('/settings')
   await page.locator('[data-setting=card_refund_fee_percent]').getByRole('button', { name: '修改', exact: true }).click()
-  await expect(page.getByRole('dialog').getByLabel('退卡手续费', { exact: true })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: '修改退卡手续费', exact: true }).getByLabel('退卡手续费', { exact: true })).toBeVisible()
 })
 
 test('业绩九项设置由目录显示', async ({ page }) => {

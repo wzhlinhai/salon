@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import type { components } from '../app/utils/api'
-import { api, apiLogin, hire, login, navLabels, owner } from './helpers'
+import { api, apiLogin, hire, login, navLabels, owner, uniqueSuffix } from './helpers'
 
 type Schema = components['schemas']
 type View = Schema['CommissionSchemeVersionView']
@@ -54,7 +54,7 @@ function inputScheme(view: View): Schema['CommissionScheme'] {
 
 test('老板新建方案', async ({ page }) => {
   const { token, today } = await seed()
-  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
+  const suffix = uniqueSuffix()
   const first = await api<Schema['Position']>(token, 'create_position', { name: `大工${suffix}` })
   const second = await api<Schema['Position']>(token, 'create_position', { name: `助理${suffix}` })
   const staff = await api<Schema['Staff']>(token, 'create_staff', { name: `提成员工${suffix}`, number: suffix, role_ids: [] })
@@ -205,7 +205,7 @@ test('提成版本迟到的旧详情不覆盖当前版本', async ({ page }) => 
 
 test('历史岗位和离职员工在编辑后保留', async ({ page }) => {
   const { token, version } = await seed()
-  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
+  const suffix = uniqueSuffix()
   const position = await api<Schema['Position']>(token, 'create_position', { name: `历史岗位${suffix}` })
   const staff = await api<Schema['Staff']>(token, 'create_staff', { name: `离职员工${suffix}`, number: suffix, role_ids: [] })
   const scheme: Schema['CommissionScheme'] = {
@@ -274,7 +274,7 @@ test('提成方案加载中的自动选择不覆盖手动选择', async ({ page 
 
 test('关闭来源规则时移除该来源的覆盖比例', async ({ page }) => {
   const { token, version } = await seed()
-  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
+  const suffix = uniqueSuffix()
   const staff = await api<Schema['Staff']>(token, 'create_staff', { name: `覆盖员工${suffix}`, number: suffix, role_ids: [] })
   const scheme = inputScheme(version)
   scheme.rules.push({ source: 'consume', base: 'performance', by_position: false, by_designated: false, by_member: false, cells: [{ percent: '10.00' }] })

@@ -76,7 +76,8 @@ for (const kind of ['档案', '角色', '账号']) {
     })
     const rowA = page.getByRole('row').filter({ has: page.getByRole('cell', { name: a.name, exact: true }) })
     await rowA.getByRole('button', { name: kind, exact: true }).click()
-    const dialog = page.getByRole('dialog')
+    const title = (name: string) => kind === '档案' ? '修改档案' : `${kind === '角色' ? '设置角色' : '登录账号'}：${name}`
+    let dialog = page.getByRole('dialog', { name: title(a.name), exact: true })
     if (kind === '档案') await dialog.getByLabel('姓名', { exact: true }).fill(`${a.name}改`)
     if (kind === '账号') {
       await dialog.getByLabel('账号', { exact: true }).fill(`guard-${suffix}`)
@@ -87,6 +88,7 @@ for (const kind of ['档案', '角色', '账号']) {
     await dialog.getByRole('button', { name: 'Close', exact: true }).click()
     await expect(dialog).toHaveCount(0)
     await page.getByRole('row').filter({ has: page.getByRole('cell', { name: b.name, exact: true }) }).getByRole('button', { name: kind, exact: true }).click()
+    dialog = page.getByRole('dialog', { name: title(b.name), exact: true })
     if (kind === '档案') await expect(dialog.getByLabel('姓名', { exact: true })).toHaveValue(b.name)
     else await expect(dialog).toContainText(b.name)
     release()
