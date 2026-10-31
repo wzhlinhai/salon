@@ -21,6 +21,7 @@ import (
 
 // Register 声明提成方案的保存、版本列表和查询操作。
 func Register(r *ops.Registry) {
+	registerCommissions(r)
 	ops.Register(r, ops.Operation[SaveCommissionSchemeInput, CommissionSchemeVersionView]{Name: "save_commission_scheme", Summary: "保存提成方案的新版本", Kind: ops.Write, Permission: perm.SettingsManage, AI: ops.AIDraft, Handle: save})
 	ops.Register(r, ops.Operation[ListCommissionSchemeVersionsInput, CommissionSchemeVersionList]{Name: "list_commission_scheme_versions", Summary: "列出提成方案版本", Kind: ops.Read, Permission: perm.SettingsManage, AI: ops.AIDirect, Handle: list})
 	ops.Register(r, ops.Operation[GetCommissionSchemeInput, CommissionSchemeVersionView]{Name: "get_commission_scheme", Summary: "按版本号或营业日查看提成方案", Kind: ops.Read, Permission: perm.SettingsManage, AI: ops.AIDirect, Handle: get})
@@ -28,11 +29,11 @@ func Register(r *ops.Registry) {
 
 // VersionInForce 选择营业日执行且可选不晚于指定保存时刻的方案版本，供业绩解释复用。
 func VersionInForce(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, day time.Time, savedNoLaterThan *time.Time) (dbgen.CommissionSchemeVersion, error) {
-	cutoff := pgtype.Timestamptz{}
-	if savedNoLaterThan != nil {
-		cutoff = pgtype.Timestamptz{Time: *savedNoLaterThan, Valid: true}
+	rows, err := q.AllCommissionSchemeVersions(ctx, storeID)
+	if err != nil {
+		return dbgen.CommissionSchemeVersion{}, err
 	}
-	return q.EffectiveCommissionScheme(ctx, dbgen.EffectiveCommissionSchemeParams{StoreID: storeID, BusinessDate: pgtype.Date{Time: day, Valid: true}, SavedNoLaterThan: cutoff})
+	return selectVersion(rows, day, savedNoLaterThan)
 }
 
 func save(ctx context.Context, env ops.Env, in *SaveCommissionSchemeInput) (*CommissionSchemeVersionView, error) {

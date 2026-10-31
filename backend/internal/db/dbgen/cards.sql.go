@@ -1574,6 +1574,46 @@ func (q *Queries) LockMergedCustomerCards(ctx context.Context, customerID uuid.U
 	return items, nil
 }
 
+const memberCardCandidates = `-- name: MemberCardCandidates :many
+SELECT id, tenant_id, store_id, customer_id, card_type_id, opened_at, expires_on, family_group_id, created_by, status FROM cards WHERE store_id = $1 AND customer_id = $2 AND status = 'active'
+`
+
+type MemberCardCandidatesParams struct {
+	StoreID    uuid.UUID
+	CustomerID uuid.UUID
+}
+
+func (q *Queries) MemberCardCandidates(ctx context.Context, arg MemberCardCandidatesParams) ([]Card, error) {
+	rows, err := q.db.Query(ctx, memberCardCandidates, arg.StoreID, arg.CustomerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Card
+	for rows.Next() {
+		var i Card
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.StoreID,
+			&i.CustomerID,
+			&i.CardTypeID,
+			&i.OpenedAt,
+			&i.ExpiresOn,
+			&i.FamilyGroupID,
+			&i.CreatedBy,
+			&i.Status,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const mergeCustomerCards = `-- name: MergeCustomerCards :exec
 UPDATE cards SET customer_id=$1 WHERE customer_id=$2
 `

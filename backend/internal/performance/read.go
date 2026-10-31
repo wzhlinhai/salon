@@ -27,6 +27,7 @@ type ListPerformanceInput struct {
 
 // PerformanceEntry 是可追溯到结账单与规则快照或销售来源的业绩，冲回记录以 reversal 标明负向。
 type PerformanceEntry struct {
+	Member             *bool        `json:"member" nullable:"true"`
 	ID                 uuid.UUID    `json:"id"`
 	Kind               string       `json:"kind" enum:"item,consume,labor,sale"`
 	BusinessDate       string       `json:"business_date" format:"date"`
@@ -115,7 +116,7 @@ func listPerformance(ctx context.Context, env ops.Env, in *ListPerformanceInput)
 		if e.StaffID != nil {
 			ref = &staff.Ref{ID: *e.StaffID, Name: *e.StaffName}
 		}
-		out.Entries = append(out.Entries, PerformanceEntry{ID: e.ID, Kind: e.Kind, BusinessDate: e.BusinessDate.Time.Format(settings.DateLayout), OrderID: e.OrderID, OrderItemID: e.OrderItemID, ItemName: e.ItemName, Slot: e.Slot, PositionID: e.PositionID, Staff: ref, Method: e.Method, PaidAmount: e.PaidAmount, Ratio: e.Ratio, Amount: e.Amount, SettingsSnapshotID: e.SettingsSnapshotID, CheckoutID: e.CheckoutID, CardLedgerID: e.CardLedgerID, RedPacketID: e.RedPacketID, Purchase: e.Purchase, Reversal: e.ReversesID != nil, ReversesID: e.ReversesID})
+		out.Entries = append(out.Entries, PerformanceEntry{Member: e.Member, ID: e.ID, Kind: e.Kind, BusinessDate: e.BusinessDate.Time.Format(settings.DateLayout), OrderID: e.OrderID, OrderItemID: e.OrderItemID, ItemName: e.ItemName, Slot: e.Slot, PositionID: e.PositionID, Staff: ref, Method: e.Method, PaidAmount: e.PaidAmount, Ratio: e.Ratio, Amount: e.Amount, SettingsSnapshotID: e.SettingsSnapshotID, CheckoutID: e.CheckoutID, CardLedgerID: e.CardLedgerID, RedPacketID: e.RedPacketID, Purchase: e.Purchase, Reversal: e.ReversesID != nil, ReversesID: e.ReversesID})
 	}
 	return out, nil
 }

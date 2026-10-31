@@ -1,10 +1,10 @@
 -- name: AddPerformanceEntry :exec
-INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,ratio,amount)
-VALUES ($1,$2,sqlc.arg(kind),$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14);
+INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,ratio,amount,member)
+VALUES ($1,$2,sqlc.arg(kind),$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,sqlc.arg(member));
 
 -- name: ReversePerformanceOrder :exec
-INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,ratio,amount,void_id,reverses_id)
-SELECT e.tenant_id,e.store_id,e.kind,sqlc.arg(day),e.order_id,e.order_item_id,e.checkout_id,e.settings_snapshot_id,e.slot,e.position_id,e.staff_id,e.method,e.paid_amount,e.ratio,e.amount,sqlc.arg(void_id),e.id
+INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,ratio,amount,void_id,reverses_id,member)
+SELECT e.tenant_id,e.store_id,e.kind,sqlc.arg(day),e.order_id,e.order_item_id,e.checkout_id,e.settings_snapshot_id,e.slot,e.position_id,e.staff_id,e.method,e.paid_amount,e.ratio,e.amount,sqlc.arg(void_id),e.id,e.member
 FROM performance_entries e
 WHERE e.store_id=sqlc.arg(store_id) AND e.order_id=sqlc.arg(order_id) AND e.reverses_id IS NULL
 AND NOT EXISTS (SELECT 1 FROM performance_entries r WHERE r.reverses_id=e.id);

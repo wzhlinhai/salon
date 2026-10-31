@@ -112,3 +112,17 @@ func TestCommissionSchemaEnums(t *testing.T) {
 	}
 	dbtest.Rollback(t, tx)
 }
+
+func TestCommissionPercentFormat(t *testing.T) {
+	s := optest.OpenShop(t)
+	day := today(t, s).Format(time.DateOnly)
+	// 上限保护的变异仍须保留规范十进制格式，不能顺带允许前导零或更多小数。
+	for _, value := range []string{"01", "1.001", "+1", " 1", "1 "} {
+		t.Run(value, func(t *testing.T) {
+			scheme, r := emptyScheme(), rule("item")
+			r["cells"] = []any{map[string]any{"percent": value}}
+			scheme["rules"] = []any{r}
+			reject(t, s.HTTPWithToken(t, s.Owner, "save_commission_scheme", map[string]any{"effective_from": day, "scheme": scheme}), 422, "validation failed")
+		})
+	}
+}

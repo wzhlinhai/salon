@@ -465,6 +465,7 @@ type PerformanceEntry struct {
 	CardLedgerID       *uuid.UUID
 	RedPacketID        *uuid.UUID
 	Purchase           *string
+	Member             *bool
 }
 
 type Position struct {

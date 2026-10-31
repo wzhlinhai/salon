@@ -91,8 +91,8 @@ func TestPerformanceStoreTenantScope(t *testing.T) {
 	otherStore := s.otherStore()
 	// Valid same-tenant references deliberately seed an otherwise invisible store row.
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	dbtest.Exec(t, tx, `INSERT INTO performance_entries(tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,method,paid_amount,ratio,amount)
- SELECT tenant_id,$1,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,method,paid_amount,ratio,amount FROM performance_entries LIMIT 1`, otherStore)
+	dbtest.Exec(t, tx, `INSERT INTO performance_entries(tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,method,paid_amount,ratio,amount,member)
+ SELECT tenant_id,$1,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,method,paid_amount,ratio,amount,member FROM performance_entries LIMIT 1`, otherStore)
 	dbtest.Commit(t, tx)
 	foreign := optest.OpenShop(t)
 	foreignCaller := foreign.MustCaller(foreign.Owner)

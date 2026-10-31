@@ -1,4 +1,4 @@
-// Package commission 管理门店提成方案的不可变版本，不计算提成。
+// Package commission 管理门店提成方案的不可变版本并从业绩计算提成。
 package commission
 
 import (
