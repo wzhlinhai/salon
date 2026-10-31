@@ -37,7 +37,7 @@ func RecordCheckout(ctx context.Context, env ops.Env, in CheckoutInput) error {
 		err := env.Q.AddPerformanceEntry(ctx, dbgen.AddPerformanceEntryParams{
 			TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID,
 			BusinessDate: pgtype.Date{Time: in.BusinessDate, Valid: true},
-			OrderID:      in.OrderID, OrderItemID: e.orderItemID, CheckoutID: in.CheckoutID, SettingsSnapshotID: in.SettingsSnapshotID,
+			OrderID:      &in.OrderID, OrderItemID: &e.orderItemID, CheckoutID: &in.CheckoutID, SettingsSnapshotID: &in.SettingsSnapshotID,
 			Slot: e.slot, PositionID: e.positionID, StaffID: e.staffID,
 			Kind: e.kind, Method: e.method, PaidAmount: e.paidAmount, Ratio: e.ratio, Amount: e.amount,
 		})
@@ -50,5 +50,5 @@ func RecordCheckout(ctx context.Context, env ops.Env, in CheckoutInput) error {
 
 // ReverseOrder 在撤单已持有单锁的事务内追加尚未冲回的原业绩的反向记录。
 func ReverseOrder(ctx context.Context, env ops.Env, orderID, voidID uuid.UUID, day time.Time) error {
-	return env.Q.ReversePerformanceOrder(ctx, dbgen.ReversePerformanceOrderParams{StoreID: env.Caller.StoreID, OrderID: orderID, VoidID: &voidID, Day: pgtype.Date{Time: day, Valid: true}})
+	return env.Q.ReversePerformanceOrder(ctx, dbgen.ReversePerformanceOrderParams{StoreID: env.Caller.StoreID, OrderID: &orderID, VoidID: &voidID, Day: pgtype.Date{Time: day, Valid: true}})
 }

@@ -1,4 +1,4 @@
-// Package performance 计算并留存按支付方式折算的项目业绩。
+// Package performance 计算并留存项目业绩、耗卡业绩、手工费和销售业绩。
 package performance
 
 import (

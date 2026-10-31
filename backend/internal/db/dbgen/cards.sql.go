@@ -471,6 +471,24 @@ func (q *Queries) AdjustmentCounts(ctx context.Context, adjustmentIds []uuid.UUI
 	return items, nil
 }
 
+const cardOpeningSale = `-- name: CardOpeningSale :one
+SELECT COALESCE((SELECT sum(unit_price * paid_count_opened) FROM card_items WHERE card_id=c.id),0)::text AS counts_value,
+EXISTS (SELECT 1 FROM cards earlier WHERE earlier.store_id=c.store_id AND earlier.customer_id=c.customer_id AND earlier.id<>c.id) AS has_earlier
+FROM cards c WHERE c.id=$1
+`
+
+type CardOpeningSaleRow struct {
+	CountsValue string
+	HasEarlier  bool
+}
+
+func (q *Queries) CardOpeningSale(ctx context.Context, id uuid.UUID) (CardOpeningSaleRow, error) {
+	row := q.db.QueryRow(ctx, cardOpeningSale, id)
+	var i CardOpeningSaleRow
+	err := row.Scan(&i.CountsValue, &i.HasEarlier)
+	return i, err
+}
+
 const cardPoints = `-- name: CardPoints :many
 SELECT DISTINCT ON (card_id) card_id,after FROM card_points_ledger
 WHERE card_id=ANY($1::uuid[]) ORDER BY card_id,at DESC,id DESC

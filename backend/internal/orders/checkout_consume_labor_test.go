@@ -50,7 +50,7 @@ func TestCheckoutConsumeLabor(t *testing.T) {
 					t.Fatal(after)
 				}
 				list := s.performanceList()
-				entries := list["entries"].([]any)
+				entries := withoutSale(list["entries"].([]any))
 				if len(entries) != 9 {
 					t.Fatal(list)
 				}
@@ -167,7 +167,7 @@ func TestCountRatioSnapshot(t *testing.T) {
 	for _, o := range []map[string]any{a, b} {
 		s.paid(o, countPayment(c, firstLine(o), "100"))
 	}
-	for _, v := range s.performanceList()["entries"].([]any) {
+	for _, v := range withoutSale(s.performanceList()["entries"].([]any)) {
 		e := v.(map[string]any)
 		ratio := float64(23)
 		want := []string{"16.10", "6.90"}
@@ -202,10 +202,10 @@ func TestConsumeLaborRead(t *testing.T) {
 					t.Fatal(r)
 				}
 				totals := r.Body["totals"].([]any)
-				if len(totals) != 3 {
+				if len(totals) != 4 {
 					t.Fatal(r)
 				}
-				for i, k := range []string{"item", "consume", "labor"} {
+				for i, k := range []string{"item", "consume", "labor", "sale"} {
 					total := totals[i].(map[string]any)
 					if total["kind"] != k || (k != kind || k == "item") && (total["amount"] != "0" || total["paid_amount"] != "0") {
 						t.Fatal(r)
@@ -223,7 +223,7 @@ func TestConsumeLaborRead(t *testing.T) {
 				if len(r.Body["entries"].([]any)) != n {
 					t.Fatal(r)
 				}
-				for i, k := range []string{"item", "consume", "labor"} {
+				for i, k := range []string{"item", "consume", "labor", "sale"} {
 					if k == kind && totals[i].(map[string]any)["paid_amount"] != paid {
 						t.Fatal(r)
 					}
@@ -300,7 +300,7 @@ func TestConsumeUnitPriceJoin(t *testing.T) {
 		t.Fatal(after)
 	}
 	list := s.performanceList()
-	entries := list["entries"].([]any)
+	entries := withoutSale(list["entries"].([]any))
 	if len(entries) != 1 {
 		t.Fatal(list)
 	}

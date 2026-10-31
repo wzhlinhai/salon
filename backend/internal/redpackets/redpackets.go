@@ -15,6 +15,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/performance"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
@@ -80,6 +81,11 @@ func issueRedPacketAt(ctx context.Context, env ops.Env, in *IssueRedPacketInput,
 	}
 	for _, id := range in.SalesStaffIDs {
 		if err := env.Q.AddRedPacketSales(ctx, dbgen.AddRedPacketSalesParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, RedPacketID: row.ID, StaffID: id}); err != nil {
+			return nil, err
+		}
+	}
+	if row.Kind == "sold" {
+		if err := performance.RecordSale(ctx, env, performance.Sale{Method: "red_packet_sold", Value: (money.Total{}).AddProduct(*row.Price, 1), StaffIDs: in.SalesStaffIDs, BusinessDate: row.BusinessDate.Time, RedPacketID: &row.ID, Purchase: "repeat"}); err != nil {
 			return nil, err
 		}
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/performance"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
@@ -74,7 +75,7 @@ func openCardAt(ctx context.Context, env ops.Env, in *OpenCardInput, now time.Ti
 	if err := staff.LockSalesStaff(ctx, env, in.SalesStaffIDs); err != nil {
 		return nil, err
 	}
-	_, err := customers.LockReference(ctx, env, in.CustomerID)
+	_, err := customers.LockCardOpening(ctx, env, in.CustomerID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ops.Rule("没有本店顾客")
 	}
@@ -156,6 +157,24 @@ func appendLedger(ctx context.Context, env ops.Env, id uuid.UUID, kind string, p
 		}
 	}
 	if err := earnPoints(ctx, env, row, in.Principal); err != nil {
+		return dbgen.CardLedger{}, err
+	}
+	value, purchase := (money.Total{}).AddProduct(in.Principal, 1), "repeat"
+	if kind == "open" {
+		source, err := env.Q.CardOpeningSale(ctx, id)
+		if err != nil {
+			return dbgen.CardLedger{}, err
+		}
+		var counts money.Total
+		if err := counts.Scan(source.CountsValue); err != nil {
+			return dbgen.CardLedger{}, err
+		}
+		value = value.AddTotal(counts)
+		if !source.HasEarlier {
+			purchase = "first"
+		}
+	}
+	if err := performance.RecordSale(ctx, env, performance.Sale{Method: "card_" + kind, Value: value, StaffIDs: in.SalesStaffIDs, BusinessDate: row.BusinessDate.Time, CardLedgerID: &row.ID, Purchase: purchase}); err != nil {
 		return dbgen.CardLedger{}, err
 	}
 	return row, nil

@@ -761,7 +761,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 按营业日查询项目业绩及冲回记录 */
+        /** 按营业日查询业绩及冲回记录 */
         post: operations["list_performance"];
         delete?: never;
         options?: never;
@@ -2124,7 +2124,7 @@ export interface components {
             /** Format: date */
             date_to: string;
             /** @enum {string} */
-            kind?: "item" | "consume" | "labor";
+            kind?: "item" | "consume" | "labor" | "sale";
             /** Format: int32 */
             limit?: number;
             staff_id?: string;
@@ -2307,23 +2307,37 @@ export interface components {
             amount: string;
             /** Format: date */
             business_date: string;
-            checkout_id: string;
+            /** @description 开卡、充值或补差价流水 */
+            card_ledger_id: string | null;
+            /** @description 结账来源，销售业绩为空 */
+            checkout_id: string | null;
             id: string;
-            item_name: string;
+            /** @description 项目名称，销售业绩为空 */
+            item_name: string | null;
             /** @enum {string} */
-            kind: "item" | "consume" | "labor";
+            kind: "item" | "consume" | "labor" | "sale";
             /** @enum {string} */
-            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "red_packet" | "card_principal" | "card_bonus" | "count_paid" | "count_gift" | "labor";
-            order_id: string;
-            order_item_id: string;
+            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "red_packet" | "card_principal" | "card_bonus" | "count_paid" | "count_gift" | "labor" | "card_open" | "card_recharge" | "card_upgrade" | "red_packet_sold";
+            /** @description 结账来源，销售业绩为空 */
+            order_id: string | null;
+            /** @description 结账来源，销售业绩为空 */
+            order_item_id: string | null;
             /** @description 非负实收份额，reversal 为 true 时计负数 */
             paid_amount: string;
             position_id: string | null;
+            /**
+             * @description 销售首购或复购
+             * @enum {string|null}
+             */
+            purchase: "first" | "repeat" | null;
             /** Format: int32 */
             ratio: number;
+            /** @description 卖红包的来源红包 */
+            red_packet_id: string | null;
             reversal: boolean;
             reverses_id: string | null;
-            settings_snapshot_id: string;
+            /** @description 结账来源，销售业绩为空 */
+            settings_snapshot_id: string | null;
             /** Format: int32 */
             slot: number | null;
             staff: components["schemas"]["Ref"] | null;
@@ -2336,7 +2350,7 @@ export interface components {
             /** @description 业绩净额，可为负数 */
             amount: string;
             /** @enum {string} */
-            kind: "item" | "consume" | "labor";
+            kind: "item" | "consume" | "labor" | "sale";
             /** @description 实收份额净额，可为负数 */
             paid_amount: string;
         };

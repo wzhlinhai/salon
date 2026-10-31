@@ -22,10 +22,10 @@ type AddPerformanceEntryParams struct {
 	TenantID           uuid.UUID
 	StoreID            uuid.UUID
 	BusinessDate       pgtype.Date
-	OrderID            uuid.UUID
-	OrderItemID        uuid.UUID
-	CheckoutID         uuid.UUID
-	SettingsSnapshotID uuid.UUID
+	OrderID            *uuid.UUID
+	OrderItemID        *uuid.UUID
+	CheckoutID         *uuid.UUID
+	SettingsSnapshotID *uuid.UUID
 	Slot               *int16
 	PositionID         *uuid.UUID
 	StaffID            *uuid.UUID
@@ -57,10 +57,42 @@ func (q *Queries) AddPerformanceEntry(ctx context.Context, arg AddPerformanceEnt
 	return err
 }
 
+const addSalePerformance = `-- name: AddSalePerformance :exec
+INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,staff_id,method,paid_amount,ratio,amount,card_ledger_id,red_packet_id,purchase)
+VALUES ($1,$2,'sale',$3,$4,$5,$6,100,$6,$7,$8,$9)
+`
+
+type AddSalePerformanceParams struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	BusinessDate pgtype.Date
+	StaffID      *uuid.UUID
+	Method       string
+	PaidAmount   money.Amount
+	CardLedgerID *uuid.UUID
+	RedPacketID  *uuid.UUID
+	Purchase     *string
+}
+
+func (q *Queries) AddSalePerformance(ctx context.Context, arg AddSalePerformanceParams) error {
+	_, err := q.db.Exec(ctx, addSalePerformance,
+		arg.TenantID,
+		arg.StoreID,
+		arg.BusinessDate,
+		arg.StaffID,
+		arg.Method,
+		arg.PaidAmount,
+		arg.CardLedgerID,
+		arg.RedPacketID,
+		arg.Purchase,
+	)
+	return err
+}
+
 const listPerformance = `-- name: ListPerformance :many
-SELECT e.tenant_id, e.store_id, e.id, e.kind, e.business_date, e.order_id, e.order_item_id, e.checkout_id, e.settings_snapshot_id, e.slot, e.position_id, e.staff_id, e.method, e.paid_amount, e.ratio, e.amount, e.void_id, e.reverses_id, e.created_at, i.item_name, s.name AS staff_name
+SELECT e.tenant_id, e.store_id, e.id, e.kind, e.business_date, e.order_id, e.order_item_id, e.checkout_id, e.settings_snapshot_id, e.slot, e.position_id, e.staff_id, e.method, e.paid_amount, e.ratio, e.amount, e.void_id, e.reverses_id, e.created_at, e.card_ledger_id, e.red_packet_id, e.purchase, i.item_name, s.name AS staff_name
 FROM performance_entries e
-JOIN order_items i ON i.id=e.order_item_id
+LEFT JOIN order_items i ON i.id=e.order_item_id
 LEFT JOIN staff s ON s.id=e.staff_id
 WHERE e.store_id=$1
 AND e.business_date BETWEEN $2::date AND $3::date
@@ -88,10 +120,10 @@ type ListPerformanceRow struct {
 	ID                 uuid.UUID
 	Kind               string
 	BusinessDate       pgtype.Date
-	OrderID            uuid.UUID
-	OrderItemID        uuid.UUID
-	CheckoutID         uuid.UUID
-	SettingsSnapshotID uuid.UUID
+	OrderID            *uuid.UUID
+	OrderItemID        *uuid.UUID
+	CheckoutID         *uuid.UUID
+	SettingsSnapshotID *uuid.UUID
 	Slot               *int16
 	PositionID         *uuid.UUID
 	StaffID            *uuid.UUID
@@ -102,7 +134,10 @@ type ListPerformanceRow struct {
 	VoidID             *uuid.UUID
 	ReversesID         *uuid.UUID
 	CreatedAt          pgtype.Timestamptz
-	ItemName           string
+	CardLedgerID       *uuid.UUID
+	RedPacketID        *uuid.UUID
+	Purchase           *string
+	ItemName           *string
 	StaffName          *string
 }
 
@@ -144,6 +179,9 @@ func (q *Queries) ListPerformance(ctx context.Context, arg ListPerformanceParams
 			&i.VoidID,
 			&i.ReversesID,
 			&i.CreatedAt,
+			&i.CardLedgerID,
+			&i.RedPacketID,
+			&i.Purchase,
 			&i.ItemName,
 			&i.StaffName,
 		); err != nil {
@@ -223,7 +261,7 @@ type ReversePerformanceOrderParams struct {
 	Day     pgtype.Date
 	VoidID  *uuid.UUID
 	StoreID uuid.UUID
-	OrderID uuid.UUID
+	OrderID *uuid.UUID
 }
 
 func (q *Queries) ReversePerformanceOrder(ctx context.Context, arg ReversePerformanceOrderParams) error {

@@ -18,6 +18,15 @@ func LockReference(ctx context.Context, env ops.Env, id uuid.UUID) (dbgen.Custom
 	return row, checkReference(env, row)
 }
 
+// LockCardOpening 串行锁住本店顾客，检查查看范围和未合并，供开卡判定首购。
+func LockCardOpening(ctx context.Context, env ops.Env, id uuid.UUID) (dbgen.Customer, error) {
+	row, err := env.Q.LockCardOpeningCustomer(ctx, dbgen.LockCardOpeningCustomerParams{StoreID: env.Caller.StoreID, ID: id})
+	if err != nil {
+		return row, err
+	}
+	return row, checkReference(env, row)
+}
+
 func checkReference(env ops.Env, row dbgen.Customer) error {
 	if !canView(env.Caller, row) {
 		return ops.ErrNotFound
