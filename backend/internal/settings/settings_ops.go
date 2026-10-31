@@ -131,6 +131,7 @@ func dayOrToday(ctx context.Context, env ops.Env, s string) (time.Time, error) {
 	}
 	d, err := time.Parse(DateLayout, s)
 	if err != nil {
+		// rule-untested: GetSettingsInput.Date 的 schema format=date 在调用前校验；空值走 BusinessDate
 		return time.Time{}, ops.Rule("日期的格式是 YYYY-MM-DD")
 	}
 	return d, nil
@@ -176,6 +177,7 @@ func changeSetting(ctx context.Context, env ops.Env, in *ChangeSettingInput) (*S
 	}
 	from, err := time.Parse(DateLayout, in.EffectiveFrom)
 	if err != nil {
+		// rule-untested: ChangeSettingInput.EffectiveFrom 的 schema format=date 在调用前用 time.DateOnly 校验
 		return nil, ops.Rule("生效日期的格式是 YYYY-MM-DD")
 	}
 	today, err := BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())

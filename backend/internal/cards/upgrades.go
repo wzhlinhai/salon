@@ -130,6 +130,7 @@ func validateUpgradeRule(ctx context.Context, env ops.Env, in CreateCardUpgradeR
 		return "", "", ops.Rule("升级类型须不同，门槛须大于零")
 	}
 	if in.ConditionKind != "single_recharge" && in.ConditionKind != "total_recharge" {
+		// rule-untested: CreateCardUpgradeRuleInput.ConditionKind 的 schema enum 在调用前拒绝其他条件
 		return "", "", ops.Rule("升级条件无效")
 	}
 	ids := []uuid.UUID{in.FromTypeID, in.ToTypeID}

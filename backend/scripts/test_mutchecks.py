@@ -1,6 +1,7 @@
 """Tooling tests: no Go toolchain, Docker, or network required."""
 import importlib.util
 import io
+import json
 import os
 import shutil
 import signal
@@ -10,7 +11,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 SPEC = importlib.util.spec_from_file_location('mutchecks', Path(__file__).with_name('mutchecks.py'))
 mutchecks = importlib.util.module_from_spec(SPEC)
@@ -105,7 +106,7 @@ class AllManifestTests(unittest.TestCase):
                 code, output, error = self.invoke(root, '--since', 'main', '--jobs', '8')
             self.assertEqual(code, 1)
             self.assertEqual(seen, sorted(manifests[:2]))
-            self.assertEqual(output.splitlines()[-1], 'total selected=2 passed=1 failed=1')
+            self.assertEqual(output.splitlines()[-1], 'total selected=2 passed=1 failed=1 environment=0')
             self.assertIn('.dev/codex/empty/manifest.py selected=0 passed=0 failed=0', output)
             self.assertEqual(error.count('logs='), 2)
             self.assertNotIn('1/unselected', error)
@@ -371,10 +372,6 @@ class WorkerTests(unittest.TestCase):
                     process.communicate()
 
 
-if __name__ == '__main__':
-    unittest.main()
-
-
 class SymlinkQueryTests(unittest.TestCase):
     def test_shell_recognises_query_through_symlink(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -402,3 +399,186 @@ class SymlinkQueryTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual(calls.read_text().splitlines().count('tool sqlc generate'), 2)
             self.assertEqual(query.read_text(), 'SELECT 1;')
+
+
+class EnvironmentTests(unittest.TestCase):
+    def test_baseline_retries_only_environment_package_once(self):
+        for persistent in (False, True):
+            with self.subTest(persistent=persistent), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                (root / 'backend').mkdir()
+                (root / 'bin').mkdir()
+                logs = root / 'logs'
+                logs.mkdir()
+                go = root / 'bin/go'
+                go.write_text('#!' + sys.executable + '\n' +
+                              "import pathlib, sys\n"
+                              "root = pathlib.Path(__file__).resolve().parent.parent\n"
+                              "marker = root / ('attempts-' + sys.argv[-1])\n"
+                              "n = int(marker.read_text()) if marker.exists() else 0\n"
+                              "marker.write_text(str(n + 1))\n" +
+                              f"if sys.argv[-1] == 'a' and (n == 0 or {persistent!r}):\n" +
+                              f"    print({mutchecks.ENVIRONMENT_SIGNATURE!r})\n"
+                              "    print('--- FAIL: TestGuard (0.00s)')\n"
+                              "    sys.exit(1)\n")
+                go.chmod(0o755)
+                entries = [dict(kind='go', packages=[name], guards=['TestGuard']) for name in ('a', 'b')]
+                with patch.object(mutchecks, 'ROOT', root), patch.dict(os.environ, PATH=str(root / 'bin') + os.pathsep + os.environ['PATH']), patch('sys.stderr', new=io.StringIO()):
+                    results = io.StringIO()
+                    self.assertEqual(mutchecks.baseline(entries, logs, results), not persistent)
+                self.assertEqual((root / 'attempts-a').read_text(), '2')
+                self.assertIn('baseline a environment failure; retrying once', results.getvalue())
+                self.assertIn('baseline a exit=4 not run (environment)' if persistent else 'baseline a exit=0 PASS', results.getvalue())
+                self.assertIn(mutchecks.ENVIRONMENT_SIGNATURE, (logs / 'baseline-0.log').read_text())
+                if not persistent:
+                    self.assertEqual((root / 'attempts-b').read_text(), '1')
+
+    def test_baseline_retry_launch_error_is_terminal_and_summarized(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            manifest = root / '.dev/codex/a/manifest.py'
+            manifest.parent.mkdir(parents=True)
+            entry = dict(kind='go', step='1', name='guard', guards=['TestGuard'], packages=['a'])
+            manifest.write_text('ENTRIES = ' + repr([entry]))
+            process = Mock()
+            process.poll.return_value = 1
+            handles = []
+
+            def start(command, **kwargs):
+                handles.append(kwargs['stdout'])
+                if len(handles) == 2:
+                    raise OSError('retry launch failed')
+                kwargs['stdout'].write(mutchecks.ENVIRONMENT_SIGNATURE + '\n')
+                kwargs['stdout'].flush()
+                return process
+
+            with patch.object(mutchecks, 'affected_entries', return_value=[entry]), patch.object(mutchecks.subprocess, 'Popen', side_effect=start), patch.object(mutchecks, 'stop_processes') as stop, patch.object(mutchecks, 'run_go') as mutate:
+                code, output, error = AllManifestTests().invoke(root, '--since', 'main')
+            mutate.assert_not_called()
+            stop.assert_called_once_with([process])
+            self.assertTrue(all(handle.closed for handle in handles))
+            self.assertEqual(code, 1)
+            self.assertIn('baseline a exit=2 FAIL', output)
+            self.assertIn('retry launch failed', error)
+            self.assertIn('manifest selected=1 passed=0 failed=1 environment=0', output)
+            self.assertIn('total selected=1 passed=0 failed=1 environment=0', output)
+            logs = next(manifest.parent.glob('mutchecks-*'))
+            self.assertIn(mutchecks.ENVIRONMENT_SIGNATURE, (logs / 'baseline-0.log').read_text())
+            self.assertEqual((logs / 'baseline-0-retry.log').read_text(), 'retry launch failed\n')
+            self.assertEqual(json.loads((logs / 'baseline-outcomes.json').read_text()), {'a': {'code': 2, 'environment': False}})
+
+    def test_mixed_baseline_outcomes_count_ordinary_failure_per_entry(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            manifest = root / '.dev/codex/a/manifest.py'
+            manifest.parent.mkdir(parents=True)
+            entries = [dict(kind='go', step='1', name=name, guards=['TestGuard'], packages=packages)
+                       for name, packages in [('environment', ['a']), ('ordinary', ['b']), ('both', ['a', 'b'])]]
+            manifest.write_text('ENTRIES = ' + repr(entries))
+            processes = []
+
+            def start(command, **kwargs):
+                process = Mock()
+                if command[-1] == 'a':
+                    kwargs['stdout'].write(mutchecks.ENVIRONMENT_SIGNATURE + '\n')
+                    process.poll.return_value = 1
+                else:
+                    kwargs['stdout'].write('ordinary failure\n')
+                    process.poll.side_effect = [None, 1]
+                kwargs['stdout'].flush()
+                processes.append(process)
+                return process
+
+            with patch.object(mutchecks, 'affected_entries', return_value=entries), patch.object(mutchecks.subprocess, 'Popen', side_effect=start), patch.object(mutchecks, 'stop_processes'), patch.object(mutchecks, 'run_go') as mutate:
+                code, output, _ = AllManifestTests().invoke(root, '--since', 'main', '--jobs', '2')
+            mutate.assert_not_called()
+            self.assertEqual(len(processes), 3)
+            self.assertEqual(code, 1)
+            self.assertIn('baseline a exit=4 not run (environment)', output)
+            self.assertIn('baseline b exit=1 FAIL', output)
+            self.assertIn('manifest selected=3 passed=0 failed=2 environment=1', output)
+            self.assertIn('.dev/codex/a/manifest.py selected=3 passed=0 failed=2 environment=1', output)
+            self.assertIn('total selected=3 passed=0 failed=2 environment=1', output)
+
+    def test_entry_environment_never_parses_caught_and_has_separate_counts(self):
+        for code, signature in ((0, True), (4, True), (4, False)):
+            with self.subTest(code=code, signature=signature), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                manifest = root / '.dev/codex/a/manifest.py'
+                manifest.parent.mkdir(parents=True)
+                (root / 'guard').write_text('original')
+                entry = dict(kind='go', step='1', name='guard', file='guard', guards=['TestGuard'], packages=['a'], original='original', replacement='mutated')
+                manifest.write_text('ENTRIES = ' + repr([entry]))
+
+                def run(command, **kwargs):
+                    kwargs['stdout'].write((mutchecks.ENVIRONMENT_SIGNATURE + '\n' if signature else '') + 'caught by:\n--- FAIL: TestGuard (0.00s)\n')
+                    return subprocess.CompletedProcess(command, code)
+
+                with patch.object(mutchecks, 'affected_entries', return_value=[entry]), patch.object(mutchecks, 'baseline', return_value=True), patch.object(mutchecks.subprocess, 'run', side_effect=run):
+                    status, output, _ = AllManifestTests().invoke(root, '--since', 'main')
+                self.assertEqual(status, 1)
+                self.assertIn('exit=4 caught=- restored=True not run (environment)', output)
+                self.assertIn('.dev/codex/a/manifest.py selected=1 passed=0 failed=0 environment=1', output)
+                self.assertIn('total selected=1 passed=0 failed=0 environment=1', output)
+
+    def test_baseline_environment_counts_whole_unrun_manifest(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            manifest = root / '.dev/codex/a/manifest.py'
+            manifest.parent.mkdir(parents=True)
+            entries = [dict(kind='go', step='1', name=name, guards=['TestGuard'], packages=['a']) for name in ('one', 'two')]
+            manifest.write_text('ENTRIES = ' + repr(entries))
+
+            def baseline(entries, logs, results):
+                mutchecks.result_line('baseline a exit=4 not run (environment)', results)
+                (logs / 'baseline-outcomes.json').write_text(json.dumps({'a': {'code': 4, 'environment': True}}))
+                return False
+
+            with patch.object(mutchecks, 'affected_entries', return_value=entries), patch.object(mutchecks, 'baseline', side_effect=baseline), patch.object(mutchecks, 'run_go') as mutate:
+                code, output, _ = AllManifestTests().invoke(root, '--since', 'main')
+            mutate.assert_not_called()
+            self.assertEqual(code, 1)
+            self.assertIn('total selected=2 passed=0 failed=0 environment=2', output)
+
+    def test_shell_retries_and_restores_without_counting_environment_as_caught(self):
+        for outcome, expected in (('environment', 4), ('caught', 0), ('passed', 1)):
+            with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                scripts = root / 'backend/scripts'
+                scripts.mkdir(parents=True)
+                shutil.copy(Path(__file__).with_name('mutcheck.sh'), scripts / 'mutcheck.sh')
+                target = root / 'guard.go'
+                target.write_text('original')
+                (root / 'bin').mkdir()
+                go = root / 'bin/go'
+                go.write_text('#!' + sys.executable + '\n' +
+                              "import pathlib, sys\n"
+                              "if '^$' in sys.argv: sys.exit(0)\n"
+                              "marker = pathlib.Path(__file__).resolve().parent.parent / 'attempts'\n"
+                              "n = int(marker.read_text()) if marker.exists() else 0\n"
+                              "marker.write_text(str(n + 1))\n" +
+                              f"if n == 0 or {outcome == 'environment'!r}:\n" +
+                              f"    print({mutchecks.ENVIRONMENT_SIGNATURE!r})\n"
+                              "    print('--- FAIL: TestGuard (0.00s)')\n"
+                              "    sys.exit(1)\n" +
+                              f"if {outcome == 'caught'!r}:\n"
+                              "    print('--- FAIL: TestGuard (0.00s)')\n"
+                              "    sys.exit(1)\n")
+                go.chmod(0o755)
+                result = subprocess.run(['bash', str(scripts / 'mutcheck.sh'), str(target), 'original', 'mutated', './internal/example'],
+                                        env={**os.environ, 'PATH': str(root / 'bin') + os.pathsep + os.environ['PATH']}, text=True, capture_output=True)
+                content = result.stdout + result.stderr
+                self.assertEqual(result.returncode, expected, content)
+                self.assertEqual((root / 'attempts').read_text(), '2')
+                self.assertEqual(target.read_text(), 'original')
+                self.assertFalse((root / '.dev/mutcheck-backup').exists())
+                self.assertEqual('caught by:' in content, outcome == 'caught')
+                self.assertIn('retrying test run once', content)
+                if outcome == 'environment':
+                    self.assertIn('not run (environment)', content)
+                else:
+                    self.assertNotIn(mutchecks.ENVIRONMENT_SIGNATURE, content)
+
+
+if __name__ == '__main__':
+    unittest.main()

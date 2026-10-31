@@ -38,6 +38,7 @@ func change(ctx context.Context, env ops.Env, action, requiredStatus string, ids
 			if requiredStatus == "paid" {
 				return nil, ops.Rule("只能撤已结账的单")
 			}
+			// rule-untested: orders.status CHECK 仅有 open、paid、merged、voided；requiredStatus 仅为 open 或 paid，其他状态已在上方拒绝
 			return nil, ops.Rule("单当前状态不允许操作")
 		}
 		locked[id] = row

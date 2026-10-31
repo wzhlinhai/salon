@@ -53,6 +53,7 @@ func issueRedPacketAt(ctx context.Context, env ops.Env, in *IssueRedPacketInput,
 			return nil, ops.Rule("送红包不能填写售价或业绩归属人")
 		}
 	default:
+		// rule-untested: IssueRedPacketInput.Kind 的 schema enum 在调用前拒绝 sold、gift 以外的值
 		return nil, ops.Rule("红包种类无效")
 	}
 	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, now)
@@ -61,6 +62,7 @@ func issueRedPacketAt(ctx context.Context, env ops.Env, in *IssueRedPacketInput,
 	}
 	expires, err := time.Parse(time.DateOnly, in.ExpiresOn)
 	if err != nil {
+		// rule-untested: IssueRedPacketInput.ExpiresOn 的 schema format=date 在调用前用 time.DateOnly 校验
 		return nil, ops.Rule("有效期无效")
 	}
 	if expires.Format(time.DateOnly) < day.Format(time.DateOnly) {

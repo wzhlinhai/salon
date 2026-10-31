@@ -28,6 +28,8 @@ node ~/.claude/skills/codex-delegate/scripts/relay.mjs --brief .dev/codex/<task>
 - `<task>` quotes the ticket step's text and the owner's decisions verbatim. Before dispatching, map every sentence of that text to a `<change>` item or to the out-of-scope list; mark each rule Claude added that the text does not state, and tell the user about it. Reviews check the diff against the same text.
 - When the brief deletes a variable, check, or `finally` block, name what it protected and what protects it afterwards. A deleted request counter or cleanup is a silent regression otherwise.
 - Before writing "existing tests pass unchanged", grep the tests for assertions and fixtures that pin the behaviour this task changes. List the ones the brief allows Codex to change; otherwise Codex stops mid-task to ask.
+- When a change adds writes to a table on a path test fixtures use (e.g. opening a card), grep tests that count or list that table and name them in the brief as allowed to change.
+- Before requiring a test scenario, grep the rule messages on that path to check no existing rule rejects it; replace a scenario the code cannot reach instead of demanding it.
 
 ## Gates
 
@@ -43,7 +45,7 @@ Codex runs every applicable gate through `scripts/gate.py .dev/codex/<task> <lab
 
   The command exits with the reset or e2e status, not `down`'s. Drop `<specs>` to run the full suite.
 
-- Run mutchecks with `--jobs 8` for Go entries; e2e runs serially after Go, and `--jobs` does not change what counts as caught. A mutcheck counts as caught only when the failing test names are the tests guarding that protection. A failure caused by the environment (Docker, browser, port) is not a catch: report it as not run.
+- Run mutation checks only after `go test ./...` has finished, never at the same time: both start PostgreSQL containers and compete for Docker; concurrent runs pushed orders past the 10-minute test timeout. Run mutchecks with `--jobs 8` for Go entries; e2e runs serially after Go, and `--jobs` does not change what counts as caught. A mutcheck counts as caught only when the failing test names are the tests guarding that protection. A failure caused by the environment (Docker, browser, port) is not a catch: report it as "not run" and rerun.
 - A mutation removes only the protection itself (a lock clause, one condition, one audit call) and leaves the statement around it: a mutation that also deletes the read or the call makes the guard fail for another reason and proves nothing.
 - A mutation that moves code (not just deletes it) is easy to get wrong on the command line: build the original and replacement text with a script from the file, and check the log says "caught by". "does not build" or "NOT caught" is not a pass. Run every mutcheck on the final code: one recorded before a later edit (for example, before deleting a query it calls) may no longer build.
 - A protection in the admin UI (no `mutcheck.sh` there): temporarily remove it, run the guarding e2e in the same one-command form, restore it, report both results.

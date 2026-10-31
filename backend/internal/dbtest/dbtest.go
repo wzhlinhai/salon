@@ -36,6 +36,7 @@ var (
 func start() {
 	ctx := context.Background()
 	c, err := postgres.Run(ctx, Image,
+		testcontainers.WithTmpfs(map[string]string{"/var/lib/postgresql": ""}),
 		postgres.WithDatabase("salon"),
 		postgres.WithUsername("salon"),
 		postgres.WithPassword("salon"),
@@ -47,7 +48,10 @@ func start() {
 		startErr = fmt.Errorf("启动 PostgreSQL 测试容器失败：确认 Docker 已运行（WSL 下打开 Docker Desktop 并启用 WSL 集成）：%w", err)
 		return
 	}
-	adminDSN, startErr = c.ConnectionString(ctx, "sslmode=disable")
+	adminDSN, err = c.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		startErr = fmt.Errorf("启动 PostgreSQL 测试容器失败：读取连接地址：%w", err)
+	}
 }
 
 // NewEmptyPool 新建一个空数据库（未执行迁移）并返回连接池。测试结束时关闭连接池并删除数据库。

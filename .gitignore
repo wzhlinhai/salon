@@ -1,3 +1,4 @@
 .dev/
 .claude/worktrees/
 graphify-out/
+__pycache__/
