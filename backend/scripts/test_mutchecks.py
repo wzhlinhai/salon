@@ -94,15 +94,16 @@ class AllManifestTests(unittest.TestCase):
                 self.assertEqual(ref, 'main')
                 return [] if entries[0]['name'] == 'empty' else entries[:1]
 
-            def run(entries, manifest, jobs, logs, results):
+            def run(groups, jobs):
                 self.assertEqual(jobs, 8)
-                self.assertEqual(logs.parent, manifest.parent)
-                seen.append(manifest)
-                passed = manifest.parent.name == 'b'
-                mutchecks.result_line(f"1 {entries[0]['name']} exit=0 {'PASS' if passed else 'FAIL'}", results)
-                return 0 if passed else 1
+                for entries, manifest, logs, results in groups:
+                    self.assertEqual(logs.parent, manifest.parent)
+                    seen.append(manifest)
+                    status = 'PASS' if manifest.parent.name == 'b' else 'FAIL'
+                    mutchecks.result_line(f"1 {entries[0]['name']} exit=0 {status}", results)
+                return 1
 
-            with patch.object(mutchecks, 'affected_entries', side_effect=select), patch.object(mutchecks, 'run_parallel', side_effect=run):
+            with patch.object(mutchecks, 'affected_entries', side_effect=select), patch.object(mutchecks, 'run_queue', side_effect=run):
                 code, output, error = self.invoke(root, '--since', 'main', '--jobs', '8')
             self.assertEqual(code, 1)
             self.assertEqual(seen, sorted(manifests[:2]))
@@ -111,27 +112,54 @@ class AllManifestTests(unittest.TestCase):
             self.assertEqual(error.count('logs='), 2)
             self.assertNotIn('1/unselected', error)
 
-    def test_serial_baseline_and_real_run_share_existing_path(self):
+    def single_manifest_fixture(self, worker_exit):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
+            init_repo(root)
+            (root / 'guard').write_text('original')
+            script = root / 'backend/scripts/mutchecks.py'
+            script.parent.mkdir(parents=True)
+            script.write_text(
+                "import pathlib, sys\n"
+                "logs = pathlib.Path(sys.argv[sys.argv.index('--worker-logs') + 1])\n"
+                "(logs / 'results.log').write_text('1 guard exit=0 caught=TestGuard restored=True PASS\\n')\n"
+                f"pathlib.Path({str(root / 'go-finished')!r}).touch()\n"
+                f"sys.exit({worker_exit})\n")
+            stage_fixture(root)
             manifest = root / '.dev/codex/a/manifest.py'
             manifest.parent.mkdir(parents=True)
-            entry = dict(kind='go', step='1', name='guard', file='guard', guards=['TestGuard'], packages=['a'], original='original', replacement='mutated')
-            manifest.write_text('ENTRIES = ' + repr([entry]))
-            with patch.object(mutchecks, 'affected_entries', return_value=[entry]), patch.object(mutchecks, 'baseline', return_value=True) as baseline:
-                (root / 'guard').write_text('original')
-                with patch.object(mutchecks.subprocess, 'run') as run:
-                    # run_go reads the actual mutation output from this stub.
-                    def mutate(command, **kwargs):
-                        kwargs['stdout'].write('caught by:\n--- FAIL: TestGuard (0.00s)\n')
-                        return subprocess.CompletedProcess(command, 0)
-                    run.side_effect = mutate
-                    code, output, _ = self.invoke(root, '--since', 'main')
-            baseline.assert_called_once()
-            self.assertEqual(code, 0)
-            self.assertIn('total selected=1 passed=1 failed=0', output)
+            entries = [dict(kind='e2e', step='1', name='browser', file='guard'),
+                       dict(kind='go', step='1', name='guard', file='guard',
+                            guards=['TestGuard'], packages=['a'])]
+            manifest.write_text('ENTRIES = ' + repr(entries))
 
-    def test_baseline_failures_count_unrun_entries_and_continue(self):
+            def e2e(entry, logs, results):
+                self.assertTrue((root / 'go-finished').exists(), 'e2e ran before Go')
+                mutchecks.result_line('1 browser exit=1/0 caught=Guard restored=True PASS', results)
+                return True, True
+
+            with patch.object(mutchecks, 'affected_entries', side_effect=lambda entries, ref: entries), patch.object(mutchecks, 'baseline', return_value=True) as baseline, patch.object(mutchecks, 'run_e2e', side_effect=e2e):
+                code, output, error = self.invoke(root, '--since', 'main', '--jobs', '1')
+            baseline.assert_called_once()
+            logs = next(manifest.parent.glob('mutchecks-*'))
+            return code, output, error, (logs / 'results.log').read_text()
+
+    def test_single_manifest_jobs_one_runs_go_before_earlier_e2e(self):
+        code, output, _, _ = self.single_manifest_fixture(0)
+        self.assertEqual(code, 0, output)
+        self.assertIn('total selected=2 passed=2 failed=0 environment=0', output)
+
+    def test_worker_pass_then_nonzero_exit_is_counted_as_failed(self):
+        code, output, error, results = self.single_manifest_fixture(1)
+        self.assertEqual(code, 1, output)
+        self.assertIn('.dev/codex/a/manifest.py selected=2 passed=1 failed=1 environment=0', output)
+        self.assertIn('total selected=2 passed=1 failed=1 environment=0', output)
+        self.assertIn('worker exited 1 after reporting PASS', error)
+        self.assertIn('1 guard exit=worker-1', results)
+        self.assertIn('worker.log FAIL', results)
+        self.assertNotIn('1 guard exit=0', results)
+
+    def test_union_baseline_failure_blocks_all_manifests(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             entries = [dict(kind='go', step='1', name='guard', guards=['TestGuard'], packages=['a'])]
@@ -141,7 +169,7 @@ class AllManifestTests(unittest.TestCase):
                 manifest.write_text('ENTRIES = ' + repr(entries))
             with patch.object(mutchecks, 'affected_entries', return_value=entries), patch.object(mutchecks, 'baseline', return_value=False) as baseline, patch.object(mutchecks, 'run_go') as mutate:
                 code, output, _ = self.invoke(root, '--since', 'main')
-            self.assertEqual(baseline.call_count, 2)
+            self.assertEqual(baseline.call_count, 1)
             mutate.assert_not_called()
             self.assertEqual(code, 1)
             self.assertIn('total selected=2 passed=0 failed=2', output)
@@ -168,17 +196,10 @@ class PartitionTests(unittest.TestCase):
         entries.insert(1, dict(kind='e2e', name='first'))
         entries.append(dict(kind='e2e', name='last'))
         entries.append(dict(kind='go', packages=['c', 'b'], name='bridge'))
-        for jobs in (1, 2, 4, 20):
-            with self.subTest(jobs=jobs):
-                workers, serial = mutchecks.partition_entries(entries, jobs)
-                self.assertEqual([e['name'] for e in serial], ['first', 'last'])
-                flattened = [e for worker in workers for e in worker] + serial
-                self.assertCountEqual([id(e) for e in flattened], [id(e) for e in entries])
-                sizes = [len(worker) for worker in workers] + [0] * (jobs - len(workers))
-                self.assertLessEqual(max(sizes) - min(sizes), 1)
-                go = [entry for entry in entries if entry['kind'] == 'go']
-                for index, worker in enumerate(workers):
-                    self.assertEqual(worker, go[index::jobs])
+        go, serial = mutchecks.partition_entries(entries)
+        self.assertEqual([e['name'] for e in serial], ['first', 'last'])
+        self.assertCountEqual([id(e) for e in go + serial], [id(e) for e in entries])
+        self.assertEqual(go, sorted([e for e in entries if e['kind'] == 'go'], key=lambda e: tuple(e['packages'])))
 
     def test_merge_uses_manifest_order_including_e2e(self):
         entries = [dict(step='127 preview batch', name=n) for n in ('e2e', 'a', 'b')]
@@ -330,6 +351,53 @@ class WorkerTests(unittest.TestCase):
             self.assertFalse((root / '.dev/mutcheck-worktrees').exists())
             self.assertEqual((root / 'guard').read_text(), 'modified')
 
+    def test_cross_manifest_queue_reuses_free_worker_and_counts_results(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            init_repo(root)
+            script = root / 'backend/scripts/mutchecks.py'
+            script.parent.mkdir(parents=True)
+            script.write_text(Path(mutchecks.__file__).read_text())
+            (root / 'guard').write_text('original')
+            stage_fixture(root)
+            (root / 'backend/scripts/mutcheck.sh').write_text(
+                '#!' + sys.executable + '\n' +
+                "import pathlib, sys, time\n"
+                "root = pathlib.Path(sys.argv[-1])\n"
+                "name = sys.argv[5]\n"
+                "if name == 'long':\n"
+                "    deadline = time.monotonic() + 5\n"
+                "    while not (root / 'next-finished').exists():\n"
+                "        assert time.monotonic() < deadline, 'queue stalled'\n"
+                "        time.sleep(0.01)\n"
+                "with (root / 'finished').open('a') as out: out.write(name + '\\n')\n"
+                "if name == 'next': (root / 'next-finished').touch()\n"
+                "if name == 'short': sys.exit(4)\n"
+                "if name == 'next': sys.exit(1)\n"
+                "print('caught by:\\n--- FAIL: TestGuard (0.00s)')\n")
+            (root / 'backend/scripts/mutcheck.sh').chmod(0o755)
+            # Both manifests deliberately use identical step/name pairs.
+            for manifest_name, replacements in [('a', ['long']), ('b', ['short', 'next'])]:
+                manifest = root / '.dev/codex' / manifest_name / 'manifest.py'
+                manifest.parent.mkdir(parents=True)
+                entries = [dict(kind='go', step='1', name=str(i), file='guard',
+                                original='original', replacement=value, packages=[str(root)], guards=['TestGuard'])
+                           for i, value in enumerate(replacements)]
+                manifest.write_text('ENTRIES = ' + repr(entries))
+            with patch.object(mutchecks, 'affected_entries', side_effect=lambda entries, ref: entries), patch.object(mutchecks, 'baseline', return_value=True) as baseline:
+                code, output, _ = AllManifestTests().invoke(root, '--since', 'main', '--jobs', '2')
+            self.assertEqual(code, 1, output)
+            baseline.assert_called_once()
+            self.assertEqual(len(baseline.call_args.args[0]), 3)
+            self.assertEqual((root / 'finished').read_text().splitlines(), ['short', 'next', 'long'])
+            self.assertIn('.dev/codex/a/manifest.py selected=1 passed=1 failed=0 environment=0', output)
+            self.assertIn('.dev/codex/b/manifest.py selected=2 passed=0 failed=1 environment=1', output)
+            self.assertIn('total selected=3 passed=1 failed=1 environment=1', output)
+            for manifest_name in ('a', 'b'):
+                logs = next((root / '.dev/codex' / manifest_name).glob('mutchecks-*'))
+                self.assertTrue((logs / '1-0.log').exists())
+            self.assertFalse((root / '.dev/mutcheck-worktrees').exists())
+
     def test_signals_remove_worker_copies_and_leave_main_file_untouched(self):
         for sig in (signal.SIGINT, signal.SIGTERM):
             with self.subTest(signal=sig), tempfile.TemporaryDirectory() as folder:
@@ -337,7 +405,7 @@ class WorkerTests(unittest.TestCase):
                 init_repo(root)
                 script = root / 'backend/scripts/mutchecks.py'
                 script.parent.mkdir(parents=True)
-                shutil.copy2(Path(mutchecks.__file__), script)
+                script.write_text(Path(mutchecks.__file__).read_text().replace('selected = affected_entries(selected, args.since)', 'selected = selected'))
                 (root / 'backend/scripts/mutcheck.sh').write_text(
                     '#!/bin/bash\nprintf mutated > "$3"\nmkdir -p .dev\ntouch .dev/ready\nsleep 30\n')
                 (root / 'backend/scripts/mutcheck.sh').chmod(0o755)
@@ -348,10 +416,14 @@ class WorkerTests(unittest.TestCase):
                 (root / 'bin/go').chmod(0o755)
                 entry = dict(kind='go', step='1', name='guard', file='guard',
                              original='original', replacement='mutated', packages=['a'], guards=['TestGuard'])
-                manifest = root / 'manifest.py'
+                manifest = root / '.dev/codex/a/manifest.py'
+                manifest.parent.mkdir(parents=True)
                 manifest.write_text('ENTRIES = ' + repr([entry]))
+                second = root / '.dev/codex/b/manifest.py'
+                second.parent.mkdir(parents=True)
+                second.write_text('ENTRIES = ' + repr([entry]))
                 env = dict(os.environ, PATH=str(root / 'bin') + os.pathsep + os.environ['PATH'])
-                process = subprocess.Popen([sys.executable, str(script), str(manifest), '--jobs', '4'],
+                process = subprocess.Popen([sys.executable, str(script), '--since', 'HEAD', '--jobs', '4'],
                                            cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                            start_new_session=True)
                 try:
@@ -455,12 +527,11 @@ class EnvironmentTests(unittest.TestCase):
             with patch.object(mutchecks, 'affected_entries', return_value=[entry]), patch.object(mutchecks.subprocess, 'Popen', side_effect=start), patch.object(mutchecks, 'stop_processes') as stop, patch.object(mutchecks, 'run_go') as mutate:
                 code, output, error = AllManifestTests().invoke(root, '--since', 'main')
             mutate.assert_not_called()
-            stop.assert_called_once_with([process])
+            self.assertEqual([call.args[0] for call in stop.call_args_list], [[process], []])
             self.assertTrue(all(handle.closed for handle in handles))
             self.assertEqual(code, 1)
             self.assertIn('baseline a exit=2 FAIL', output)
             self.assertIn('retry launch failed', error)
-            self.assertIn('manifest selected=1 passed=0 failed=1 environment=0', output)
             self.assertIn('total selected=1 passed=0 failed=1 environment=0', output)
             logs = next(manifest.parent.glob('mutchecks-*'))
             self.assertIn(mutchecks.ENVIRONMENT_SIGNATURE, (logs / 'baseline-0.log').read_text())
@@ -496,7 +567,6 @@ class EnvironmentTests(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn('baseline a exit=4 not run (environment)', output)
             self.assertIn('baseline b exit=1 FAIL', output)
-            self.assertIn('manifest selected=3 passed=0 failed=2 environment=1', output)
             self.assertIn('.dev/codex/a/manifest.py selected=3 passed=0 failed=2 environment=1', output)
             self.assertIn('total selected=3 passed=0 failed=2 environment=1', output)
 
@@ -504,17 +574,25 @@ class EnvironmentTests(unittest.TestCase):
         for code, signature in ((0, True), (4, True), (4, False)):
             with self.subTest(code=code, signature=signature), tempfile.TemporaryDirectory() as folder:
                 root = Path(folder)
+                init_repo(root)
+                scripts = root / 'backend/scripts'
+                scripts.mkdir(parents=True)
+                (scripts / 'mutchecks.py').write_text(Path(mutchecks.__file__).read_text())
+                worker = scripts / 'mutcheck.sh'
+                worker.write_text(
+                    '#!' + sys.executable + '\nimport sys\n' +
+                    f'print({mutchecks.ENVIRONMENT_SIGNATURE!r})\n' * signature +
+                    "print('caught by:\\n--- FAIL: TestGuard (0.00s)')\n" +
+                    f'sys.exit({code})\n')
+                worker.chmod(0o755)
+                (root / 'guard').write_text('original')
+                stage_fixture(root)
                 manifest = root / '.dev/codex/a/manifest.py'
                 manifest.parent.mkdir(parents=True)
-                (root / 'guard').write_text('original')
                 entry = dict(kind='go', step='1', name='guard', file='guard', guards=['TestGuard'], packages=['a'], original='original', replacement='mutated')
                 manifest.write_text('ENTRIES = ' + repr([entry]))
 
-                def run(command, **kwargs):
-                    kwargs['stdout'].write((mutchecks.ENVIRONMENT_SIGNATURE + '\n' if signature else '') + 'caught by:\n--- FAIL: TestGuard (0.00s)\n')
-                    return subprocess.CompletedProcess(command, code)
-
-                with patch.object(mutchecks, 'affected_entries', return_value=[entry]), patch.object(mutchecks, 'baseline', return_value=True), patch.object(mutchecks.subprocess, 'run', side_effect=run):
+                with patch.object(mutchecks, 'affected_entries', return_value=[entry]), patch.object(mutchecks, 'baseline', return_value=True):
                     status, output, _ = AllManifestTests().invoke(root, '--since', 'main')
                 self.assertEqual(status, 1)
                 self.assertIn('exit=4 caught=- restored=True not run (environment)', output)
