@@ -701,6 +701,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_guest_visits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按营业日查询客数及冲回记录 */
+        post: operations["list_guest_visits"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_items": {
         parameters: {
             query?: never;
@@ -1990,6 +2007,33 @@ export interface components {
              */
             window_days?: number;
         };
+        GuestVisit: {
+            /** Format: date */
+            business_date: string;
+            checkout_id: string;
+            designated: boolean;
+            /** @enum {string} */
+            gender: "male" | "female";
+            id: string;
+            order_id: string;
+            reversal: boolean;
+            reverses_id: string | null;
+            settings_snapshot_id: string;
+            /** @description 四位小数的正份额，reversal 时计负 */
+            share: string;
+            staff: components["schemas"]["Ref"] | null;
+        };
+        GuestVisitList: {
+            entries: components["schemas"]["GuestVisit"][];
+            totals: components["schemas"]["GuestVisitTotals"];
+        };
+        GuestVisitTotals: {
+            designated: string;
+            female: string;
+            male: string;
+            not_designated: string;
+            total: string;
+        };
         HandOverCustomersInput: {
             from_staff_id: string;
             to_staff_id: string;
@@ -2114,6 +2158,16 @@ export interface components {
             customer_id: string;
         };
         ListCustomerSourcesInput: Record<string, never>;
+        ListGuestVisitsInput: {
+            before_id?: string;
+            /** Format: date */
+            date_from: string;
+            /** Format: date */
+            date_to: string;
+            /** Format: int32 */
+            limit?: number;
+            staff_id?: string;
+        };
         ListInput: Record<string, never>;
         ListItemsInput: Record<string, never>;
         ListOpenOrdersInput: Record<string, never>;
@@ -4166,6 +4220,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CustomerSourceList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_guest_visits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListGuestVisitsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestVisitList"];
                 };
             };
             /** @description Error */

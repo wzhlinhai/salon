@@ -10,6 +10,10 @@ sql:
         sql_package: pgx/v5
         emit_pointers_for_null_types: true
         overrides:
+          - column: guest_visits.share
+            go_type:
+              import: github.com/jackc/pgx/v5/pgtype
+              type: Numeric
           # 消费流水的负增量转为非负支付金额；LEFT JOIN 的空值保留为 nil。
           - db_type: pg_catalog.numeric
             go_type:

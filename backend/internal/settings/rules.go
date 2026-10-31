@@ -211,6 +211,13 @@ func (r Rules) PerformanceSplit() string {
 	return v
 }
 
+// GuestCountSplit 返回每张结账单客次的归属做法。
+func (r Rules) GuestCountSplit() string {
+	var v string
+	r.decode(KeyGuestCountSplit, &v)
+	return v
+}
+
 // PerformanceRatio 返回支付方式的业绩比例。
 func (r Rules) PerformanceRatio(category string) int {
 	var key string
