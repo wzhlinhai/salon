@@ -346,3 +346,249 @@ func TestCommissionUnitOrderAndTargets(t *testing.T) {
 		}
 	}
 }
+
+func tierFixture(mode string, amounts ...string) ([]dbgen.PerformanceEntry, CommissionScheme, []dbgen.CommissionSchemeVersion) {
+	staff := uuid.New()
+	entries := []dbgen.PerformanceEntry{}
+	for i, a := range amounts {
+		entries = append(entries, dbgen.PerformanceEntry{ID: uuid.New(), Kind: "sale", StaffID: &staff, BusinessDate: date("2026-10-15"), Amount: amt(a), PaidAmount: amt(a), CreatedAt: pgtype.Timestamptz{Time: date("2026-10-15").Time.Add(time.Duration(i) * time.Hour), Valid: true}})
+	}
+	s := CommissionScheme{Rules: []Rule{{Source: "sale", Base: "performance", Cells: []Cell{{Tiers: &Tiers{Mode: mode, Levels: []TierLevel{{From: amt("0"), Percent: *pct("10")}, {From: amt("10000"), Percent: *pct("15")}}}}}}}}
+	return entries, s, []dbgen.CommissionSchemeVersion{version(1, "2026-09-01", date("2026-09-01").Time, s)}
+}
+func tierCalculate(t *testing.T, entries, originals []dbgen.PerformanceEntry, facts map[lineKey]lineFact, versions []dbgen.CommissionSchemeVersion) map[uuid.UUID]Commission {
+	t.Helper()
+	out, err := calculate(entries, originals, facts, versions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := map[uuid.UUID]Commission{}
+	for _, c := range out {
+		result[c.ID] = c
+		if tier := c.Explanation.Tier; tier != nil {
+			var sum int64
+			for _, p := range tier.Parts {
+				sum += p.Amount.Fen()
+			}
+			if sum != c.Amount.Fen() {
+				t.Fatal(c)
+			}
+		}
+	}
+	return result
+}
+func TestCommissionTiersWhole(t *testing.T) {
+	e, _, v := tierFixture("whole", "6000", "5000")
+	out := tierCalculate(t, e, nil, nil, v)
+	if out[e[0].ID].Amount.String() != "900.00" || out[e[1].ID].Amount.String() != "750.00" {
+		t.Fatal(out)
+	}
+	tier := out[e[0].ID].Explanation.Tier
+	if tier.Mode != "whole" || tier.Month != "2026-10" || tier.BaseKind != "performance" || tier.Cumulative.String() != "11000.00" || tier.Before != nil || tier.After != nil || tier.Level.Index != 1 || tier.Level.From.String() != "10000.00" || tier.Level.Percent.String() != "15.00" || len(tier.Parts) != 1 || tier.Parts[0].Base.String() != "6000.00" || tier.Parts[0].Amount.String() != "900.00" {
+		t.Fatal(tier)
+	}
+	out = tierCalculate(t, e[:1], nil, nil, v)
+	if out[e[0].ID].Amount.String() != "600.00" {
+		t.Fatal(out)
+	}
+	e[1].Amount = amt("4000")
+	out = tierCalculate(t, e, nil, nil, v)
+	if out[e[0].ID].Amount.String() != "900.00" || out[e[0].ID].Explanation.Tier.Cumulative.String() != "10000.00" {
+		t.Fatal(out)
+	}
+}
+func TestCommissionTiersProgressive(t *testing.T) {
+	e, _, v := tierFixture("progressive", "6000", "6000")
+	out := tierCalculate(t, e, nil, nil, v)
+	if out[e[0].ID].Amount.String() != "600.00" || out[e[1].ID].Amount.String() != "700.00" {
+		t.Fatal(out)
+	}
+	tier := out[e[1].ID].Explanation.Tier
+	if tier.Mode != "progressive" || tier.Month != "2026-10" || tier.BaseKind != "performance" || tier.Cumulative != nil || tier.Before.String() != "6000.00" || tier.After.String() != "12000.00" || tier.Level.Index != 1 || tier.Level.From.String() != "10000.00" || tier.Level.Percent.String() != "15.00" || len(tier.Parts) != 2 || tier.Parts[0].Base.String() != "4000.00" || tier.Parts[0].Amount.String() != "400.00" || tier.Parts[1].Base.String() != "2000.00" || tier.Parts[1].Amount.String() != "300.00" {
+		t.Fatal(tier)
+	}
+	e[0].Amount = amt("10000")
+	out = tierCalculate(t, e, nil, nil, v)
+	tier = out[e[1].ID].Explanation.Tier
+	if len(tier.Parts) != 1 || tier.Parts[0].From.String() != "10000.00" || out[e[1].ID].Amount.String() != "900.00" {
+		t.Fatal(out)
+	}
+}
+func TestCommissionTiersGrouping(t *testing.T) {
+	for _, mode := range []string{"whole", "progressive"} {
+		for _, group := range []string{"month", "staff", "source"} {
+			t.Run(mode+group, func(t *testing.T) {
+				e, _, v := tierFixture(mode, "10000", "6000")
+				switch group {
+				case "month":
+					e[0].BusinessDate = date("2026-09-30")
+				case "staff":
+					e[0].StaffID = new(uuid.New())
+				case "source":
+					e[0].Kind = "labor"
+				}
+				out := tierCalculate(t, e, nil, nil, v)
+				if out[e[1].ID].Amount.String() != "600.00" {
+					t.Fatal(out)
+				}
+			})
+		}
+	}
+}
+func TestCommissionTiersAllPerformance(t *testing.T) {
+	for _, mode := range []string{"whole", "progressive"} {
+		for _, match := range []string{"percent", "override", "unmatched", "excluded", "no-version"} {
+			t.Run(mode+match, func(t *testing.T) {
+				e, s, _ := tierFixture(mode, "10000", "6000")
+				old := s
+				switch match {
+				case "percent":
+					old.Rules = []Rule{{Source: "sale", Base: "performance", Cells: []Cell{{Percent: pct("1")}}}}
+				case "override":
+					old.Overrides = []Override{{Source: "sale", StaffID: e[0].StaffID, Percent: pct("1")}}
+				case "unmatched":
+					old.Rules = nil
+				case "excluded":
+					old.ExcludedStaff = []uuid.UUID{*e[0].StaffID}
+				}
+				v := []dbgen.CommissionSchemeVersion{version(1, "2026-09-01", date("2026-09-01").Time, old), version(2, "2026-09-01", e[0].CreatedAt.Time.Add(time.Minute), s)}
+				if match == "no-version" {
+					v = v[1:]
+				}
+				out := tierCalculate(t, e, nil, nil, v)
+				if out[e[1].ID].Amount.String() != "900.00" {
+					t.Fatal(out)
+				}
+			})
+		}
+	}
+}
+func TestCommissionTiersPaidBase(t *testing.T) {
+	e, s, _ := tierFixture("whole", "1", "1")
+	facts := map[lineKey]lineFact{}
+	for i := range e {
+		e[i].Kind = "item"
+		e[i].OrderItemID = new(uuid.New())
+		e[i].CheckoutID = new(uuid.New())
+		e[i].PaidAmount = amt("6000")
+		facts[lineKey{*e[i].OrderItemID, *e[i].CheckoutID}] = lineFact{}
+	}
+	s.Rules[0].Source = "item"
+	s.Rules[0].Base = "paid"
+	v := []dbgen.CommissionSchemeVersion{version(1, "2026-09-01", date("2026-09-01").Time, s)}
+	out := tierCalculate(t, e, nil, facts, v)
+	if out[e[0].ID].Amount.String() != "900.00" || out[e[0].ID].Explanation.Tier.Cumulative.String() != "12000.00" || out[e[0].ID].Explanation.Tier.BaseKind != "paid" {
+		t.Fatal(out)
+	}
+}
+func TestCommissionTiersReversal(t *testing.T) {
+	for _, mode := range []string{"whole", "progressive"} {
+		t.Run(mode, func(t *testing.T) {
+			e, s, v := tierFixture(mode, "6000", "6000")
+			reversal := e[0]
+			reversal.ID = uuid.New()
+			reversal.ReversesID = &e[0].ID
+			reversal.VoidID = new(uuid.New())
+			reversal.CreatedAt.Time = e[1].CreatedAt.Time.Add(time.Hour)
+			all := append(slices.Clone(e), reversal)
+			out := tierCalculate(t, all, e[:1], nil, v)
+			want := "-700.00"
+			before, after := "12000.00", "6000.00"
+			if mode == "whole" {
+				want = "-600.00"
+			}
+			c := out[reversal.ID]
+			if c.Amount.String() != want || !c.Reversal || *c.Explanation.Reverses != e[0].ID || c.Explanation.Version.Version != 1 || out[e[0].ID].Amount.Fen()+out[e[1].ID].Amount.Fen()+c.Amount.Fen() != 60000 {
+				t.Fatal(out)
+			}
+			if mode == "progressive" && (c.Explanation.Tier.Before.String() != before || c.Explanation.Tier.After.String() != after || len(c.Explanation.Tier.Parts) != 2 || c.Explanation.Tier.Parts[0].Base.String() != "-4000.00" || c.Explanation.Tier.Parts[1].Amount.String() != "-300.00") {
+				t.Fatal(c)
+			}
+			// 下月冲回仍用原版本的档位，而非下月新方案；累计允许负数。
+			reversal.BusinessDate = date("2026-11-01")
+			reversal.CreatedAt.Time = reversal.BusinessDate.Time
+			s.Rules[0].Cells[0].Tiers = &Tiers{Mode: mode, Levels: []TierLevel{{From: amt("0"), Percent: *pct("90")}, {From: amt("10000"), Percent: *pct("100")}}}
+			v = append(v, version(2, "2026-11-01", date("2026-10-31").Time, s))
+			out = tierCalculate(t, []dbgen.PerformanceEntry{reversal}, e[:1], nil, v)
+			c = out[reversal.ID]
+			if c.Amount.String() != "-600.00" || c.Explanation.Version.Version != 1 || c.Explanation.Tier.Month != "2026-11" || c.Explanation.Tier.Level.Index != 0 {
+				t.Fatal(out)
+			}
+			if mode == "whole" && c.Explanation.Tier.Cumulative.String() != "-6000.00" {
+				t.Fatal(c)
+			}
+			if mode == "progressive" && (c.Explanation.Tier.Before.String() != "0.00" || c.Explanation.Tier.After.String() != "-6000.00") {
+				t.Fatal(c)
+			}
+			// 整笔原笔与冲回在同月单独出现时净额为零。
+			reversal.BusinessDate = e[0].BusinessDate
+			out = tierCalculate(t, []dbgen.PerformanceEntry{e[0], reversal}, nil, nil, v)
+			if out[e[0].ID].Amount.Fen()+out[reversal.ID].Amount.Fen() != 0 {
+				t.Fatal(out)
+			}
+		})
+	}
+}
+func TestCommissionTiersRoundingAndOrder(t *testing.T) {
+	e, s, _ := tierFixture("progressive", "0.01", "0.02")
+	s.Rules[0].Cells[0].Tiers.Levels = []TierLevel{{From: amt("0"), Percent: *pct("50")}, {From: amt("0.02"), Percent: *pct("60")}}
+	v := []dbgen.CommissionSchemeVersion{version(1, "2026-09-01", date("2026-09-01").Time, s)}
+	// 输入倒序不影响累计；同日以写入时间排序，ID 刻意与写入时间相反。
+	e[0].ID = uuid.MustParse("00000000-0000-0000-0000-000000000002")
+	e[1].ID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	out := tierCalculate(t, []dbgen.PerformanceEntry{e[1], e[0]}, nil, nil, v)
+	c := out[e[1].ID]
+	if c.Amount.String() != "0.02" || len(c.Explanation.Tier.Parts) != 2 || c.Explanation.Tier.Parts[0].Amount.String() != "0.01" || c.Explanation.Tier.Parts[1].Amount.String() != "0.01" {
+		t.Fatal(c)
+	}
+	e[0].CreatedAt = e[1].CreatedAt
+	e[0].ID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	e[1].ID = uuid.MustParse("00000000-0000-0000-0000-000000000002")
+	out = tierCalculate(t, []dbgen.PerformanceEntry{e[1], e[0]}, nil, nil, v)
+	if out[e[1].ID].Explanation.Tier.Before.String() != "0.01" {
+		t.Fatal(out)
+	}
+	e[0].BusinessDate = date("2026-10-14")
+	e[0].CreatedAt.Time = e[1].CreatedAt.Time.Add(time.Hour)
+	out = tierCalculate(t, e, nil, nil, v)
+	if out[e[1].ID].Explanation.Tier.Before.String() != "0.01" {
+		t.Fatal(out)
+	}
+}
+
+func TestCommissionTiersBaseKindCacheIsolation(t *testing.T) {
+	e, s, _ := tierFixture("whole", "1000", "2000")
+	for i := range e {
+		e[i].Kind = "item"
+		e[i].OrderItemID = new(uuid.New())
+		e[i].CheckoutID = new(uuid.New())
+		e[i].PaidAmount = amt("6000")
+	}
+	s.Rules[0].Source = "item"
+	s.Rules[0].Base = "paid"
+	v := []dbgen.CommissionSchemeVersion{version(1, "2026-09-01", date("2026-09-01").Time, s)}
+	s.Rules[0].Base = "performance"
+	v = append(v, version(2, "2026-09-01", e[0].CreatedAt.Time.Add(time.Minute), s))
+	// 同一次计算、同一员工来源营业月，两个版本分别累计 paid=12000 和 performance=3000。
+	out := tierCalculate(t, e, nil, nil, v)
+	if len(out) != 2 {
+		t.Fatal(out)
+	}
+	for i, want := range []struct {
+		kind, cumulative, amount string
+		level                    int
+		version                  int32
+	}{
+		{"paid", "12000.00", "900.00", 1, 1},
+		{"performance", "3000.00", "200.00", 0, 2},
+	} {
+		c := out[e[i].ID]
+		tier := c.Explanation.Tier
+		if tier == nil || tier.Cumulative == nil {
+			t.Fatalf("unit %d: missing tier cumulative: %+v", i, c)
+		}
+		if tier.BaseKind != want.kind || tier.Cumulative.String() != want.cumulative || c.Amount.String() != want.amount || tier.Level.Index != want.level || c.Explanation.Version.Version != want.version {
+			t.Fatalf("unit %d: tier=%+v amount=%s version=%d, want %+v", i, tier, c.Amount.String(), c.Explanation.Version.Version, want)
+		}
+	}
+}

@@ -77,7 +77,8 @@ func units(entries []dbgen.PerformanceEntry) []unit {
 func calculate(entries, originals []dbgen.PerformanceEntry, facts map[lineKey]lineFact, versions []dbgen.CommissionSchemeVersion) ([]Commission, error) {
 	originalUnits := units(append(slices.Clone(originals), entries...))
 	byEntry := map[uuid.UUID]Commission{}
-	// 原笔先计算；冲回仅复制原笔结果，因此不会使用撤单日的新版本或新规则。
+	// 原笔先选版本与命中项；阶梯冲回沿用原格子，在冲回月重新计算。
+	cumulative := newCumulative(originalUnits, facts)
 	for _, u := range originalUnits {
 		if u.first.ReversesID != nil {
 			continue
@@ -111,6 +112,13 @@ func calculate(entries, originals []dbgen.PerformanceEntry, facts map[lineKey]li
 			c.Reversal = true
 			c.Explanation.Origin.VoidID = e.VoidID
 			c.Explanation.Entries = entryViews(u.entries)
+		}
+		if cell := c.Explanation.Match.Cell; cell != nil && cell.Tiers != nil {
+			position, err := cumulative.position(u, c.Explanation.Base.Kind)
+			if err != nil {
+				return nil, err
+			}
+			c.Explanation.Tier, c.Amount = calculateTier(*cell.Tiers, e.BusinessDate.Time.Format("2006-01"), c.Explanation.Base.Kind, position)
 		}
 		c.ID, c.BusinessDate, c.createdAt = e.ID, e.BusinessDate.Time.Format(time.DateOnly), u.createdAt
 		out = append(out, c)
@@ -156,7 +164,7 @@ func calculateOriginal(u unit, facts map[lineKey]lineFact, versions []dbgen.Comm
 		amount := money.Amount{}
 		if value.FixedAmount != nil {
 			amount = *value.FixedAmount
-		} else {
+		} else if value.Percent != nil {
 			amount = base.Amount.Share(*value.Percent)
 		}
 		origin := CommissionOrigin{OrderID: e.OrderID, OrderItemID: e.OrderItemID, Slot: e.Slot, CardLedgerID: e.CardLedgerID, RedPacketID: e.RedPacketID, CheckoutID: e.CheckoutID}

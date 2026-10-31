@@ -1830,6 +1830,7 @@ export interface components {
             member?: boolean;
             percent?: string;
             position_id?: string;
+            tiers?: components["schemas"]["Tiers"];
         };
         ChangeMyPasswordInput: {
             new_password: string;
@@ -1883,6 +1884,7 @@ export interface components {
             percent?: string;
             position?: components["schemas"]["Ref"];
             position_id?: string;
+            tiers?: components["schemas"]["Tiers"];
         };
         CommissionExcludedStaffView: {
             staff: components["schemas"]["Ref"];
@@ -1896,6 +1898,7 @@ export interface components {
             member: boolean | null;
             origin: components["schemas"]["CommissionOrigin"];
             reverses?: string;
+            tier?: components["schemas"]["CommissionTier"];
             version: components["schemas"]["CommissionVersion"];
         };
         CommissionList: {
@@ -1987,6 +1990,30 @@ export interface components {
             amount: string;
             /** @enum {string} */
             source: "item" | "consume" | "labor" | "sale";
+        };
+        CommissionTier: {
+            after?: string;
+            /** @enum {string} */
+            base_kind: "line_price" | "paid" | "performance" | "cash_performance" | "card_performance";
+            before?: string;
+            cumulative?: string;
+            level: components["schemas"]["CommissionTierLevel"];
+            /** @enum {string} */
+            mode: "whole" | "progressive";
+            month: string;
+            parts: components["schemas"]["CommissionTierPart"][];
+        };
+        CommissionTierLevel: {
+            from: string;
+            /** Format: int64 */
+            index: number;
+            percent: string;
+        };
+        CommissionTierPart: {
+            amount: string;
+            base: string;
+            from: string;
+            percent: string;
         };
         CommissionVersion: {
             /** Format: date */
@@ -3023,6 +3050,15 @@ export interface components {
             /** Format: int64 */
             outstanding_count: number;
             repaid: string;
+        };
+        TierLevel: {
+            from: string;
+            percent: string;
+        };
+        Tiers: {
+            levels: components["schemas"]["TierLevel"][];
+            /** @enum {string} */
+            mode: "whole" | "progressive";
         };
         Totals: {
             amount: string;

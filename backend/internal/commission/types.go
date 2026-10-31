@@ -29,6 +29,7 @@ type Rule struct {
 
 // Cell 是提成规则表的一格，未列出的格子不计提成。
 type Cell struct {
+	Tiers       *Tiers         `json:"tiers,omitempty"`
 	PositionID  *uuid.UUID     `json:"position_id,omitempty"`
 	Designated  *bool          `json:"designated,omitempty"`
 	Member      *bool          `json:"member,omitempty"`
@@ -117,4 +118,16 @@ type CommissionSchemeVersionList struct {
 type GetCommissionSchemeInput struct {
 	Version *int32  `json:"version,omitempty"`
 	Date    *string `json:"date,omitempty" format:"date"`
+}
+
+// Tiers 是格子按当月累计计提的阶梯表。
+type Tiers struct {
+	Mode   string      `json:"mode" enum:"whole,progressive"`
+	Levels []TierLevel `json:"levels"`
+}
+
+// TierLevel 是从指定累计金额起适用的比例档。
+type TierLevel struct {
+	From    money.Amount  `json:"from"`
+	Percent money.Percent `json:"percent"`
 }

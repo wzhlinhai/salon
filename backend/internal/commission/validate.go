@@ -37,8 +37,27 @@ func validate(s *CommissionScheme) error {
 				return ops.Rule("提成规则有重复格子：" + sourceName(r.Source))
 			}
 			keys[string(key)] = true
-			if (c.Percent == nil) == (c.FixedAmount == nil) {
-				return ops.Rule("提成规则格子必须且只能填写比例或固定金额之一：" + sourceName(r.Source))
+			values := 0
+			for _, present := range []bool{c.Percent != nil, c.FixedAmount != nil, c.Tiers != nil} {
+				if present {
+					values++
+				}
+			}
+			if values != 1 {
+				return ops.Rule("提成规则格子必须且只能填写比例、固定金额或阶梯之一：" + sourceName(r.Source))
+			}
+			if c.Tiers != nil {
+				if len(c.Tiers.Levels) < 2 {
+					return ops.Rule("提成规则阶梯至少有两档：" + sourceName(r.Source))
+				}
+				if c.Tiers.Levels[0].From.Fen() != 0 {
+					return ops.Rule("提成规则阶梯首档必须从 0 开始：" + sourceName(r.Source))
+				}
+				for i := 1; i < len(c.Tiers.Levels); i++ {
+					if c.Tiers.Levels[i].From.Fen() <= c.Tiers.Levels[i-1].From.Fen() {
+						return ops.Rule("提成规则阶梯起点必须严格递增：" + sourceName(r.Source))
+					}
+				}
 			}
 		}
 	}

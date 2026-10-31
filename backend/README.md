@@ -138,7 +138,7 @@ performance_entries.member 在非 sale 时必填，既有非销售行迁移为 f
 
 ## 提成
 
-`internal/commission` 保存提成方案与版本，并从业绩记录计算提成，不含阶梯。整体方案含 rules、overrides、excluded_staff。每种来源 item、consume、labor、sale 至多一条规则；项目业绩可选 line_price（原价）、paid（折后价）、performance、cash_performance、card_performance，其他来源只允许 performance。规则按岗位、指定或非指定、会员或散客的开关决定格子键，每个键恰在相应开关开启时出现，格子键不重复；销售业绩不允许这些区分。格子可为空表，未填格子不计提成；每格恰有比例（0–100）或非负固定金额之一，使用 money 的精确字符串类型。
+`internal/commission` 保存提成方案与版本，并从业绩记录计算提成，支持整笔跳档和超额累进。整体方案含 rules、overrides、excluded_staff。每种来源 item、consume、labor、sale 至多一条规则；项目业绩可选 line_price（原价）、paid（折后价）、performance、cash_performance、card_performance，其他来源只允许 performance。规则按岗位、指定或非指定、会员或散客的开关决定格子键，每个键恰在相应开关开启时出现，格子键不重复；销售业绩不允许这些区分。格子可为空表，未填格子不计提成；每格恰有比例（0–100）、非负固定金额或阶梯之一，使用 money 的精确字符串类型。
 
 覆盖比例至少指定员工或项目，允许员工 × 项目、项目、员工三种覆盖，计算按此顺序优先于规则默认。每个来源、员工、项目组合不能重复，来源必须在同一方案内有规则；销售业绩不能有项目覆盖。覆盖值也是比例或固定金额之一。不计提成员工不能重复。所有岗位、项目、员工引用由所属包一类一次批量查询校验本店归属，允许离职或停用，不加行锁：这些表无 DELETE 权限，状态也不影响合法性。会员含义为结账时顾客名下有有效卡，结账时留存会员判断，不在查询时重新判断。
 
@@ -154,10 +154,20 @@ performance_entries.member 在非 sale 时必填，既有非销售行迁移为 f
 
 item 基数按单位汇总：paid 为 paid_amount 之和；performance 为 amount 之和；cash_performance 只含现金、银联、微信、支付宝、挂账；card_performance 只含本金、赠送金。红包仅在 performance 中。line_price 为结账时 order_items.price（折扣前，含级别价、会员价与改价）乘单位实收 / 本次结账该项目行全部 item 记录的实收，分母包括门店未分配记录。consume、labor、sale 基数均为单位 amount 之和。分到员工及乘比例都通过 money 四舍五入到分，固定金额每笔一次，基数为零仍计固定金额。
 
-冲回按（void_id、kind、order_item_id、slot）组成新笔，逐个 reverses_id 批量取得原记录，使用原单位的版本、命中项、基数与金额，金额取负，解释带原单位 ID；营业日为冲回日，因此归入冲回所在月。
+冲回按（void_id、kind、order_item_id、slot）组成新笔，逐个 reverses_id 批量取得原记录，使用原单位的版本、命中项和基数，解释带原单位 ID；营业日为冲回日，因此归入冲回所在月。非阶梯格子与覆盖比例沿用原金额取负；阶梯使用冲回月及冲回位置的累计重新计算，不能直接取负原提成。
 
 结账在支付写入后、业绩写入前，以 cards.HasValidCard 为每张单读取一次会员判断：本店、该单顾客、active，复用卡支付 checkExpiry 的到期日规则，到期当天有效；不限卡种和余额。这是一个当时已提交状态的快照，不依赖该结果扣余额、次数或改变卡，卡随后开通、调整或退卡不应重算历史会员事实，所以无需新增行锁。该读取位于已有的单 → 卡 → 红包 → 卡类型 → 项目锁之后，不回锁顾客或其他卡，不逆转结账锁顺序。
 
 list_commissions 是 Read / AIDirect，要求 performance.view。本人与全店范围沿用 list_performance；本人范围叠加他人的 staff_id 时为空，不能扩大范围。按营业日范围（相隔最多 92 天）、staff_id、source 筛选。以营业日降序、单位最早 created_at 降序、稳定单位 ID 降序排列；单位 ID 为该笔最小业绩记录 ID，limit / before_id 翻页。total 与按 item、consume、labor、sale 的 totals 使用完整筛选范围，原笔减冲回，不受分页影响。entries、explanation、totals 都在同一权限范围内，不含任何顾客字段。
 
-加载始终为七条批查询：范围业绩、冲回原记录、项目行事实、全部方案版本、员工名称、岗位名称、项目名称。项目行事实只读取 order_items.price / item_id、orders.designated 与业绩实收之和，不回读单据重算价格、支付或业绩。查询数不随单位数增长，由 TestCommissionReadQueryCount 通过 HTTP 与 AI 验证。
+加载将请求范围扩至 date_from 所在月首日到 date_to 所在月末日，员工过滤仍在业绩查询中应用；计算后只返回原请求营业日范围，解释和 totals 也仅针对这些输出。始终为七条批查询：完整月份业绩、冲回原记录、项目行事实、全部方案版本、员工名称、岗位名称、项目名称。项目行事实只读取 order_items.price / item_id、orders.designated 与业绩实收之和，不回读单据重算价格、支付或业绩。查询数不随单位数增长，由 TestCommissionReadQueryCount 通过 HTTP 与 AI 验证。
+
+阶梯格子 tiers = {mode: whole | progressive, levels: [{from: money.Amount, percent: money.Percent}]}，档内只允许比例，至少两档，首档从 0.00 开始，from 严格递增，达到起点（含等号）适用。覆盖比例仅允许比例或固定金额。
+
+累计分组是（员工、来源、business_date 的日历月）；所有业绩单位均参与，无论匹配另一格、非阶梯格、覆盖比例、无匹配、无版本或不计提成员工。按当前阶梯规则的 base 用 unitBase 计算贡献，item 的各基数种类按需分别累计。冲回贡献为所冲原单位同种类基数的负数。顺序为营业日、单位最早 created_at、单位 ID 升序，恰为列表倒序。
+
+whole（整笔跳档）使用截至查询时完整月份的总累计 T，包括本笔之后和请求日期范围之外的单位。按 from ≤ T 的最高档对本笔完整基数乘比例，四舍五入到分；T < 0 用首档。后来结账可提升月初单位提成，冲回可降低 T；方案仍使用单位写入时的版本，修改规则不改变历史命中项。
+
+progressive（超额累进）从本笔前累计 c 开始，把 [c, c + base] 在档位起点处分段，各段乘比例并分别四舍五入到分后相加。零以下用首档；冲回覆盖 [c + base, c]，分段基数与提成均为负。同月原笔与冲回使当月净累计恢复；跨月冲回只减少冲回月累计。月中结果截至查询时，月底由 #39 锁定。
+
+命中阶梯格子时 explanation 才含 tier：mode、month（YYYY-MM）、base_kind、whole 的有符号 cumulative 或 progressive 的 before/after、累计后达到的 level（index 从 0 起，含 from/percent），以及各段 parts（from、percent、有符号 base/amount）。whole 恰有一段；Commission.Amount 等于所有分段金额之和。原有 base、match（含完整 tiers）、version 保持原含义。

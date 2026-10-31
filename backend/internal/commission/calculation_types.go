@@ -22,6 +22,7 @@ type Commission struct {
 
 // CommissionExplanation 留存计算使用的来源事实、基数、命中项和方案版本。
 type CommissionExplanation struct {
+	Tier       *CommissionTier              `json:"tier,omitempty"`
 	Origin     CommissionOrigin             `json:"origin"`
 	Entries    []CommissionPerformanceEntry `json:"entries"`
 	Designated *bool                        `json:"designated" nullable:"true"`
@@ -75,4 +76,29 @@ type CommissionVersion struct {
 	ID            uuid.UUID `json:"id"`
 	Version       int32     `json:"version"`
 	EffectiveFrom string    `json:"effective_from" format:"date"`
+}
+
+// CommissionTier 解释本笔阶梯使用的营业月、累计、落档和分段。
+type CommissionTier struct {
+	Mode       string               `json:"mode" enum:"whole,progressive"`
+	Month      string               `json:"month"`
+	BaseKind   string               `json:"base_kind" enum:"line_price,paid,performance,cash_performance,card_performance"`
+	Cumulative *money.Change        `json:"cumulative,omitempty"`
+	Before     *money.Change        `json:"before,omitempty"`
+	After      *money.Change        `json:"after,omitempty"`
+	Level      CommissionTierLevel  `json:"level"`
+	Parts      []CommissionTierPart `json:"parts"`
+}
+
+// CommissionTierLevel 是累计达到的档及其零起始索引。
+type CommissionTierLevel struct {
+	Index int `json:"index"`
+	TierLevel
+}
+
+// CommissionTierPart 是一个档内的有符号基数和提成金额。
+type CommissionTierPart struct {
+	TierLevel
+	Base   money.Change `json:"base"`
+	Amount money.Change `json:"amount"`
 }
