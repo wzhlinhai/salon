@@ -35,8 +35,8 @@ func TestCommissionValidation(t *testing.T) {
 		{"missing member", "提成规则格子的岗位、指定、会员必须与区分开关一致：项目业绩", func(sc, r map[string]any) { r["by_member"] = true }},
 		{"extra member", "提成规则格子的岗位、指定、会员必须与区分开关一致：项目业绩", func(sc, r map[string]any) { c := cell(); c["member"] = false; r["cells"] = []any{c} }},
 		{"duplicate cell", "提成规则有重复格子：项目业绩", func(sc, r map[string]any) { r["cells"] = []any{cell(), cell()} }},
-		{"cell both", "提成规则格子必须且只能填写比例或固定金额之一：项目业绩", func(sc, r map[string]any) { c := cell(); c["fixed_amount"] = "2"; r["cells"] = []any{c} }},
-		{"cell neither", "提成规则格子必须且只能填写比例或固定金额之一：项目业绩", func(sc, r map[string]any) { r["cells"] = []any{map[string]any{}} }},
+		{"cell both", "提成规则格子必须且只能填写比例、固定金额或阶梯之一：项目业绩", func(sc, r map[string]any) { c := cell(); c["fixed_amount"] = "2"; r["cells"] = []any{c} }},
+		{"cell neither", "提成规则格子必须且只能填写比例、固定金额或阶梯之一：项目业绩", func(sc, r map[string]any) { r["cells"] = []any{map[string]any{}} }},
 		{"no override target", "覆盖比例至少指定员工或项目：项目业绩", func(sc, r map[string]any) { o := override(); delete(o, "staff_id"); sc["overrides"] = []any{o} }},
 		{"sale item override", "销售业绩不能设置项目覆盖比例", func(sc, r map[string]any) {
 			r["source"] = "sale"

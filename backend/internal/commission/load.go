@@ -2,6 +2,7 @@ package commission
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,7 +14,9 @@ import (
 
 // Commissions 按门店、营业日范围及可选员工批量读取业绩并计算可解释的历史提成。
 func Commissions(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, from, to time.Time, staffID *uuid.UUID) ([]Commission, error) {
-	entries, err := q.CommissionPerformance(ctx, dbgen.CommissionPerformanceParams{StoreID: storeID, DateFrom: pgtype.Date{Time: from, Valid: true}, DateTo: pgtype.Date{Time: to, Valid: true}, StaffID: staffID})
+	monthFrom := time.Date(from.Year(), from.Month(), 1, 0, 0, 0, 0, from.Location())
+	monthTo := time.Date(to.Year(), to.Month()+1, 0, 0, 0, 0, 0, to.Location())
+	entries, err := q.CommissionPerformance(ctx, dbgen.CommissionPerformanceParams{StoreID: storeID, DateFrom: pgtype.Date{Time: monthFrom, Valid: true}, DateTo: pgtype.Date{Time: monthTo, Valid: true}, StaffID: staffID})
 	if err != nil {
 		return nil, err
 	}
@@ -29,6 +32,11 @@ func Commissions(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, from,
 	originals, err := q.CommissionOriginalEntries(ctx, dbgen.CommissionOriginalEntriesParams{StoreID: storeID, Ids: ids})
 	if err != nil {
 		return nil, err
+	}
+	for _, e := range originals {
+		if e.OrderItemID != nil {
+			lines = append(lines, *e.OrderItemID)
+		}
 	}
 	rows, err := q.CommissionLineFacts(ctx, dbgen.CommissionLineFactsParams{StoreID: storeID, Ids: lines})
 	if err != nil {
@@ -46,6 +54,9 @@ func Commissions(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, from,
 	if err != nil {
 		return nil, err
 	}
+	out = slices.DeleteFunc(out, func(c Commission) bool {
+		return c.BusinessDate < from.Format(time.DateOnly) || c.BusinessDate > to.Format(time.DateOnly)
+	})
 	staffIDs, positions, items := []uuid.UUID{}, []uuid.UUID{}, []uuid.UUID{}
 	for _, c := range out {
 		staffIDs = append(staffIDs, c.Staff.ID)
