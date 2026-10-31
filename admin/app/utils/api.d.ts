@@ -378,6 +378,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/get_commission_scheme": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按版本号或营业日查看提成方案 */
+        post: operations["get_commission_scheme"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/get_customer": {
         parameters: {
             query?: never;
@@ -627,6 +644,23 @@ export interface paths {
         put?: never;
         /** 查看升级记录 */
         post: operations["list_card_upgrades"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_commission_scheme_versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 列出提成方案版本 */
+        post: operations["list_commission_scheme_versions"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1211,6 +1245,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/save_commission_scheme": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 保存提成方案的新版本 */
+        post: operations["save_commission_scheme"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/search_customers": {
         parameters: {
             query?: never;
@@ -1756,6 +1807,13 @@ export interface components {
             id: string;
             name: string;
         };
+        Cell: {
+            designated?: boolean;
+            fixed_amount?: string;
+            member?: boolean;
+            percent?: string;
+            position_id?: string;
+        };
         ChangeMyPasswordInput: {
             new_password: string;
             old_password: string;
@@ -1781,6 +1839,72 @@ export interface components {
         ChoiceOption: {
             label: string;
             value: string;
+        };
+        CommissionCellView: {
+            designated?: boolean;
+            fixed_amount?: string;
+            member?: boolean;
+            percent?: string;
+            position?: components["schemas"]["Ref"];
+            position_id?: string;
+        };
+        CommissionExcludedStaffView: {
+            staff: components["schemas"]["Ref"];
+            staff_id: string;
+        };
+        CommissionOverrideView: {
+            fixed_amount?: string;
+            item?: components["schemas"]["Ref"];
+            item_id?: string;
+            percent?: string;
+            /** @enum {string} */
+            source: "item" | "consume" | "labor" | "sale";
+            staff?: components["schemas"]["Ref"];
+            staff_id?: string;
+        };
+        CommissionRuleView: {
+            /** @enum {string} */
+            base: "line_price" | "paid" | "performance" | "cash_performance" | "card_performance";
+            by_designated: boolean;
+            by_member: boolean;
+            by_position: boolean;
+            cells: components["schemas"]["CommissionCellView"][];
+            /** @enum {string} */
+            source: "item" | "consume" | "labor" | "sale";
+        };
+        CommissionScheme: {
+            excluded_staff: string[];
+            overrides: components["schemas"]["Override"][];
+            rules: components["schemas"]["Rule"][];
+        };
+        CommissionSchemeVersionList: {
+            versions: components["schemas"]["CommissionSchemeVersionSummary"][];
+        };
+        CommissionSchemeVersionSummary: {
+            /** Format: date */
+            effective_from: string;
+            id: string;
+            /** Format: date-time */
+            saved_at: string;
+            saved_by: components["schemas"]["Ref"];
+            /** Format: int32 */
+            version: number;
+        };
+        CommissionSchemeVersionView: {
+            /** Format: date */
+            effective_from: string;
+            id: string;
+            /** Format: date-time */
+            saved_at: string;
+            saved_by: components["schemas"]["Ref"];
+            scheme: components["schemas"]["CommissionSchemeView"];
+            /** Format: int32 */
+            version: number;
+        };
+        CommissionSchemeView: {
+            excluded_staff: components["schemas"]["CommissionExcludedStaffView"][];
+            overrides: components["schemas"]["CommissionOverrideView"][];
+            rules: components["schemas"]["CommissionRuleView"][];
         };
         CreateCardTypeInput: {
             discount_percent?: string | null;
@@ -1981,6 +2105,12 @@ export interface components {
              */
             type: string;
         };
+        GetCommissionSchemeInput: {
+            /** Format: date */
+            date?: string;
+            /** Format: int32 */
+            version?: number;
+        };
         GetMeInput: Record<string, never>;
         GetOrderInput: {
             id: string;
@@ -2144,6 +2274,12 @@ export interface components {
         ListCardUpgradesInput: {
             before_id?: string;
             card_id: string;
+            /** Format: int32 */
+            limit?: number;
+        };
+        ListCommissionSchemeVersionsInput: {
+            /** Format: int32 */
+            before_version?: number;
             /** Format: int32 */
             limit?: number;
         };
@@ -2347,6 +2483,14 @@ export interface components {
             id: string;
             reason: string;
             voided_by: string;
+        };
+        Override: {
+            fixed_amount?: string;
+            item_id?: string;
+            percent?: string;
+            /** @enum {string} */
+            source: "item" | "consume" | "labor" | "sale";
+            staff_id?: string;
         };
         PaymentInput: {
             amount: string;
@@ -2614,6 +2758,16 @@ export interface components {
         RoleOptionList: {
             roles: components["schemas"]["RoleOption"][];
         };
+        Rule: {
+            /** @enum {string} */
+            base: "line_price" | "paid" | "performance" | "cash_performance" | "card_performance";
+            by_designated: boolean;
+            by_member: boolean;
+            by_position: boolean;
+            cells: components["schemas"]["Cell"][];
+            /** @enum {string} */
+            source: "item" | "consume" | "labor" | "sale";
+        };
         SafetyLabel: {
             /** Format: date-time */
             created_at: string;
@@ -2627,6 +2781,11 @@ export interface components {
         SalesStaff: {
             id: string;
             name: string;
+        };
+        SaveCommissionSchemeInput: {
+            /** Format: date */
+            effective_from: string;
+            scheme: components["schemas"]["CommissionScheme"];
         };
         ScheduledValue: {
             /** Format: date */
@@ -3606,6 +3765,39 @@ export interface operations {
             };
         };
     };
+    get_commission_scheme: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GetCommissionSchemeInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommissionSchemeVersionView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     get_customer: {
         parameters: {
             query?: never;
@@ -4088,6 +4280,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardUpgradeList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_commission_scheme_versions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListCommissionSchemeVersionsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommissionSchemeVersionList"];
                 };
             };
             /** @description Error */
@@ -5210,6 +5435,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Customer"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    save_commission_scheme: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveCommissionSchemeInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommissionSchemeVersionView"];
                 };
             };
             /** @description Error */

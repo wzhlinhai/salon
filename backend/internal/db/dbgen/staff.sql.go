@@ -302,6 +302,40 @@ func (q *Queries) ShareStaff(ctx context.Context, id uuid.UUID) (Staff, error) {
 	return i, err
 }
 
+const staffNames = `-- name: StaffNames :many
+SELECT id, name FROM staff WHERE store_id = $1 AND id = ANY($2::uuid[])
+`
+
+type StaffNamesParams struct {
+	StoreID uuid.UUID
+	Ids     []uuid.UUID
+}
+
+type StaffNamesRow struct {
+	ID   uuid.UUID
+	Name string
+}
+
+func (q *Queries) StaffNames(ctx context.Context, arg StaffNamesParams) ([]StaffNamesRow, error) {
+	rows, err := q.db.Query(ctx, staffNames, arg.StoreID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StaffNamesRow
+	for rows.Next() {
+		var i StaffNamesRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateStaffProfile = `-- name: UpdateStaffProfile :one
 UPDATE staff SET name = $2, number = $3, level_id = $4, position_id = $5
 WHERE id = $1

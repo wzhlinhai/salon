@@ -7,6 +7,7 @@ SELECT sqlc.embed(a), s.name AS actor_name
 FROM audit_log a JOIN staff s ON s.id = a.actor_id
 LEFT JOIN customers c ON c.id = a.customer_id
 WHERE a.store_id = @store_id AND (sqlc.narg(target_id)::uuid IS NULL OR a.target_id = sqlc.narg(target_id))
+    AND (a.target_kind <> 'commission_scheme' OR sqlc.arg(settings_manage)::boolean)
     AND (a.customer_id IS NULL OR (sqlc.arg(customer_view)::boolean AND (sqlc.narg(customer_self_id)::uuid IS NULL OR c.responsible_staff_id = sqlc.narg(customer_self_id))))
     AND (sqlc.narg(before_id)::uuid IS NULL OR (a.at, a.id) < (SELECT b.at, b.id FROM audit_log b WHERE b.id = sqlc.narg(before_id) AND b.store_id = @store_id))
 ORDER BY a.at DESC, a.id DESC

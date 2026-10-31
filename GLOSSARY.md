@@ -385,3 +385,30 @@ _Avoid_: 营业额, 流水
 **岗位比例**:
 项目每个岗位分多人业绩的比例，都不填为均分，加项目时随项目行留存。
 _Avoid_: 提成比例
+
+## 提成
+
+**提成方案**:
+门店各业绩来源的提成规则、覆盖比例和不计提成员工的整体设置，每次保存追加一个方案版本。
+_English_: commission scheme
+
+**方案版本**:
+一次保存的完整提成方案，带版本号、生效日期、修改人和保存时间；旧版本不改不删。
+_English_: scheme version
+
+**提成规则**:
+一个业绩来源的一张表，可按岗位、指定或非指定、会员或散客区分，格子填比例或固定金额；未填格子不计提成。来源 item、consume、labor、sale 分别为项目业绩、耗卡业绩、手工费、销售业绩，与业绩记录一致。
+_English_: commission rule
+
+**计提基数**:
+提成比例作用的金额：项目业绩可选项目行价格（line_price，原价）、实收（paid，折后价）、业绩（performance）、现金业绩（cash_performance）或卡金业绩（card_performance）；其他来源只用该条业绩的金额（performance）。
+_English_: commission base
+
+**覆盖比例**:
+替代规则格子值的比例或固定金额，优先级为员工与项目组合、项目、员工、规则默认；项目覆盖不用于销售业绩。
+_English_: commission override
+_Avoid_: 特定比例
+
+**不计提成的员工**:
+提成方案内明确排除计提成的员工名单，随方案版本留存。
+_English_: excluded staff

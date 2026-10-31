@@ -226,6 +226,17 @@ type Checkout struct {
 	At           pgtype.Timestamptz
 }
 
+type CommissionSchemeVersion struct {
+	TenantID      uuid.UUID
+	StoreID       uuid.UUID
+	ID            uuid.UUID
+	Version       int32
+	EffectiveFrom pgtype.Date
+	Scheme        []byte
+	SavedBy       uuid.UUID
+	SavedAt       pgtype.Timestamptz
+}
+
 type Customer struct {
 	ID                 uuid.UUID
 	TenantID           uuid.UUID
