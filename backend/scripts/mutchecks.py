@@ -22,7 +22,9 @@ e2e 项另有 spec，即相对 admin/ 的测试文件，
 省略清单时按路径排序处理 .dev/codex/*/manifest.py：
 mutchecks.py --locate [--since <git-ref>] 只定位；
 mutchecks.py --since <git-ref> [--jobs N] 正式运行选中项（必须带 --since，不接受名称）。
-逐份输出选中、通过、失败数量和最终总计；任一清单失败就非零退出。
+逐份输出选中、通过、失败、not run (environment) 数量和最终总计；失败或未运行均非零退出。
+PostgreSQL 容器启动签名出现时，基线按包重试一次；变异由 mutcheck.sh 重试一次，
+退出码 4 或同一签名只记 not run (environment)，绝不解析为 caught。
 正式运行先按包合并选中 go 项的 guards，以 go test -count=1 -run '^(GuardA|GuardB|...)$'
 运行这些顶层守护测试（含子测试）；--jobs 1 串行，N > 1 时主工作树至多 N 个包并发，全部通过后
 才允许任何变异；基线失败时打印测试输出并退出，避免把已有故障算成保护生效。
@@ -49,6 +51,8 @@ import time
 ROOT = Path(__file__).resolve().parents[2]
 GENERATED = ROOT / 'backend/internal/db/dbgen'
 SLOT = ROOT / '.dev/mutcheck-backup'
+ENVIRONMENT_SIGNATURE = '启动 PostgreSQL 测试容器失败'
+ENVIRONMENT_EXIT = 4
 
 def load_manifest(path):
     """Interpret literal data without executing manifest code."""
@@ -317,6 +321,8 @@ def baseline(entries, logs, results, jobs=1):
     env.pop('GOFLAGS', None)
     processes, handles, running, codes = [], [], {}, {}
     next_index = 0
+    retried = set()
+    environment = set()
     failed = False
     try:
         while next_index < len(commands) or running:
@@ -342,6 +348,26 @@ def baseline(entries, logs, results, jobs=1):
             for index, process in list(running.items()):
                 code = process.poll()
                 if code is not None:
+                    log = logs / f'baseline-{index}{"-retry" if index in retried else ""}.log'
+                    if ENVIRONMENT_SIGNATURE in log.read_text(errors='replace'):
+                        if index not in retried:
+                            result_line(f'baseline {commands[index][-1]} environment failure; retrying once', results)
+                            retried.add(index)
+                            output = (logs / f'baseline-{index}-retry.log').open('w')
+                            handles.append(output)
+                            try:
+                                retry = subprocess.Popen(commands[index], cwd=ROOT / 'backend', env=env,
+                                                         stdout=output, stderr=subprocess.STDOUT,
+                                                         start_new_session=True)
+                                processes.append(retry)
+                                running[index] = retry
+                                continue
+                            except OSError as exc:
+                                output.write(str(exc) + '\n')
+                                code = 2
+                        else:
+                            environment.add(index)
+                            code = ENVIRONMENT_EXIT
                     codes[index] = code
                     del running[index]
                     failed |= code != 0
@@ -355,12 +381,17 @@ def baseline(entries, logs, results, jobs=1):
         stop_processes(processes)
         for handle in handles:
             handle.close()
+    outcomes = {package: {"code": codes[index],
+                          "environment": index in environment}
+                for index, package in enumerate(packages) if index in codes}
+    (logs / 'baseline-outcomes.json').write_text(json.dumps(outcomes, indent=2) + '\n')
     for index, package in enumerate(packages):
         if index in codes:
             code = codes[index]
-            result_line(f"baseline {package} exit={code} {'PASS' if code == 0 else 'FAIL'}", results)
+            status = "not run (environment)" if index in environment else ("PASS" if code == 0 else "FAIL")
+            result_line(f"baseline {package} exit={code} {status}", results)
             if code:
-                print((logs / f'baseline-{index}.log').read_text(errors='replace'), file=sys.stderr, end='')
+                print((logs / f'baseline-{index}{"-retry" if index in retried else ""}.log').read_text(errors='replace'), file=sys.stderr, end='')
     return not failed
 
 
@@ -381,7 +412,9 @@ def run_go(entry, logs, results):
         with log.open('w') as output:
             code = subprocess.run(command, cwd=ROOT, env=env, stdout=output, stderr=subprocess.STDOUT).returncode
         content = log.read_text(errors='replace')
-        if 'caught by:\n' in content:
+        if ENVIRONMENT_SIGNATURE in content:
+            code = ENVIRONMENT_EXIT
+        if code != ENVIRONMENT_EXIT and 'caught by:\n' in content:
             caught = re.findall(r'^--- FAIL: ([^\s(]+)', content.split('caught by:\n', 1)[1], re.M)
     except (OSError, ValueError) as exc:
         error = str(exc)
@@ -391,7 +424,8 @@ def run_go(entry, logs, results):
             if not restored:
                 restore(before, entry)
     passed = code == 0 and set(entry['guards']).issubset(caught) and restored and error is None
-    result_line(f"{entry['step']} {entry['name']} exit={code} caught={','.join(caught) or '-'} restored={restored} {'PASS' if passed else 'FAIL'}", results)
+    status = "not run (environment)" if code == ENVIRONMENT_EXIT and restored and error is None else ("PASS" if passed else "FAIL")
+    result_line(f"{entry['step']} {entry['name']} exit={code} caught={','.join(caught) or '-'} restored={restored} {status}", results)
     if error:
         print(error, file=sys.stderr)
     return passed, restored
@@ -537,7 +571,7 @@ def main():
         if not args.locate and args.since is None:
             parser.error('--since is required without a manifest or --locate')
         failed = False
-        total_selected = total_passed = total_failed = 0
+        total_selected = total_passed = total_failed = total_environment = 0
         for manifest in sorted((ROOT / '.dev/codex').glob('*/manifest.py')):
             try:
                 entries = load_manifest(manifest)['ENTRIES']
@@ -548,9 +582,10 @@ def main():
                 print(f'{manifest.relative_to(ROOT)}: {exc}', file=sys.stderr)
                 failed = True
                 total_failed += 1
-                print(f'{manifest.relative_to(ROOT)} selected=0 passed=0 failed=1', flush=True)
+                print(f'{manifest.relative_to(ROOT)} selected=0 passed=0 failed=1 environment=0', flush=True)
                 continue
             errors = 0
+            environment = 0
             if args.locate:
                 for entry in selected:
                     try:
@@ -559,17 +594,18 @@ def main():
                         print(f"{manifest.relative_to(ROOT)} {entry['step']}/{entry['name']}: {exc}", file=sys.stderr)
                         errors += 1
             else:
-                code, passed = run_manifest(selected, manifest, args)
+                code, passed, environment = run_manifest(selected, manifest, args)
                 if code == 130:
                     return code
-                errors = len(selected) - passed
+                errors = len(selected) - passed - environment
                 failed |= code != 0
-            print(f'{manifest.relative_to(ROOT)} selected={len(selected)} passed={len(selected) - errors} failed={errors}', flush=True)
+            print(f'{manifest.relative_to(ROOT)} selected={len(selected)} passed={len(selected) - errors - environment} failed={errors} environment={environment}', flush=True)
             failed |= errors > 0
             total_selected += len(selected)
-            total_passed += len(selected) - errors
+            total_passed += len(selected) - errors - environment
+            total_environment += environment
             total_failed += errors
-        print(f'total selected={total_selected} passed={total_passed} failed={total_failed}', flush=True)
+        print(f'total selected={total_selected} passed={total_passed} failed={total_failed} environment={total_environment}', flush=True)
         return int(failed)
     manifest = args.manifest.resolve()
     try:
@@ -592,13 +628,26 @@ def run_manifest(selected, manifest, args):
         cleanup_workers(ROOT / '.dev/mutcheck-worktrees')
     if not selected:
         print('no affected entries', file=sys.stderr)
-        return 0, 0
+        return 0, 0, 0
     logs = args.worker_logs or Path(tempfile.mkdtemp(prefix='mutchecks-', dir=manifest.parent))
     print(f'logs={logs}', file=sys.stderr)
     code = run_selected(selected, manifest, args, logs)
     lines = (logs / 'results.log').read_text().splitlines()
     passed = sum(line.endswith(' PASS') for line in merge_results(selected, lines))
-    return code, passed
+    environment = sum(line.endswith(' not run (environment)') for line in merge_results(selected, lines))
+    outcomes_path = logs / 'baseline-outcomes.json'
+    outcomes = json.loads(outcomes_path.read_text()) if outcomes_path.exists() else {}
+    if any(outcome['code'] for outcome in outcomes.values()):
+        # Baselines gate the whole manifest. An ordinary package failure takes
+        # precedence for its entries; other entries blocked by environment are
+        # counted separately, including entries whose own baseline passed.
+        ordinary = {package for package, outcome in outcomes.items()
+                    if outcome['code'] and not outcome['environment']}
+        if any(outcome['environment'] for outcome in outcomes.values()):
+            environment = sum(not ordinary.intersection(entry.get('packages', []))
+                              for entry in selected)
+    print(f'manifest selected={len(selected)} passed={passed} failed={len(selected) - passed - environment} environment={environment}', flush=True)
+    return code, passed, environment
 
 
 def run_selected(selected, manifest, args, logs):

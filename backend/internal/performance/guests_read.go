@@ -60,10 +60,12 @@ func registerGuestVisits(r *ops.Registry) {
 func listGuestVisits(ctx context.Context, env ops.Env, in *ListGuestVisitsInput) (*GuestVisitList, error) {
 	from, err := time.Parse(settings.DateLayout, in.DateFrom)
 	if err != nil {
+		// rule-untested: ListGuestVisitsInput.DateFrom、DateTo 的 schema format=date 在调用前用 time.DateOnly 校验
 		return nil, ops.Rule("请填写有效的营业日")
 	}
 	to, err := time.Parse(settings.DateLayout, in.DateTo)
 	if err != nil {
+		// rule-untested: ListGuestVisitsInput.DateFrom、DateTo 的 schema format=date 在调用前用 time.DateOnly 校验
 		return nil, ops.Rule("请填写有效的营业日")
 	}
 	if from.After(to) {

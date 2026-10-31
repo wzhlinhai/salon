@@ -47,6 +47,7 @@ func validateType(in *CreateCardTypeInput) (pgtype.Date, error) {
 		}
 	}
 	if in.Kind != StoredValue && in.Kind != CountCard && in.Kind != Package {
+		// rule-untested: CreateCardTypeInput.Kind 的 schema enum 在调用前拒绝其他种类
 		return date, ops.Rule("卡种类无效")
 	}
 	if len(in.Items) > 20 || (in.Kind == StoredValue && len(in.Items) != 0) || (in.Kind != StoredValue && len(in.Items) == 0) {
@@ -85,6 +86,7 @@ func validateType(in *CreateCardTypeInput) (pgtype.Date, error) {
 			return date, ops.Rule("开卡后天数必须大于零，不能填写固定日期")
 		}
 	default:
+		// rule-untested: CreateCardTypeInput.ValidityKind 的 schema enum 在调用前拒绝其他规则
 		return date, ops.Rule("有效期规则无效")
 	}
 	return date, nil

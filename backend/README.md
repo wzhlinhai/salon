@@ -4,7 +4,7 @@ Go 服务，技术栈见 [ADR-0007](../docs/adr/0007-p0-technology-stack.md)。
 
 ## 命令
 
-需要 Go 1.27 和 Docker（测试用 testcontainers 启动 PostgreSQL）。本地起整套环境（PostgreSQL、后端、管理后台，并开店建好老板账号）用仓库根目录的 `scripts/dev.sh up|down|reset|status`。
+需要 Go 1.27 和 Docker（测试用 testcontainers 启动 PostgreSQL，数据目录 `/var/lib/postgresql` 挂载 tmpfs，不留下匿名卷）。本地起整套环境（PostgreSQL、后端、管理后台，并开店建好老板账号）用仓库根目录的 `scripts/dev.sh up|down|reset|status`。
 
 ```bash
 go test ./...                                  # 每个测试包启动一个全新的 PostgreSQL 容器

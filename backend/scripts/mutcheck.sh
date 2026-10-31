@@ -11,7 +11,8 @@
 # 改的是 internal/db/queries 下的查询时，改坏后重新运行 sqlc 生成代码，结束时连生成的代码一起还原。
 # 结束时无论成功失败都还原文件。
 # 退出码：0 有测试失败（被发现）；1 测试全部通过（没被发现）；
-#         2 用法、匹配或构建错误；3 测试失败但没有 --- FAIL 行（超时、panic 等，需人工查看）。
+#         2 用法、匹配或构建错误；3 测试失败但没有 --- FAIL 行（超时、panic 等，需人工查看）；
+#         4 PostgreSQL 容器环境失败（重试一次后仍失败，不计为捕获）。
 set -euo pipefail
 
 backend=$(cd "$(dirname "$0")/.." && pwd -P)
@@ -100,10 +101,25 @@ if ! build=$(go test -count=1 -run '^$' "$@" 2>&1); then
   exit 2
 fi
 
-if out=$(go test -count=1 "${test_selection[@]}" "$@" 2>&1); then
-  echo "NOT caught: all tests passed with the mutation"
-  exit 1
-fi
+for attempt in 1 2; do
+  status=0
+  out=$(go test -count=1 "${test_selection[@]}" "$@" 2>&1) || status=$?
+  if [[ "$out" == *"启动 PostgreSQL 测试容器失败"* ]]; then
+    echo "mutcheck: environment failure (attempt $attempt/2):" >&2
+    if [ "$attempt" -eq 1 ]; then
+      echo "mutcheck: retrying test run once" >&2
+      continue
+    fi
+    echo "$out" >&2
+    echo "not run (environment): PostgreSQL test container failed after retry" >&2
+    exit 4
+  fi
+  if [ "$status" -eq 0 ]; then
+    echo "NOT caught: all tests passed with the mutation"
+    exit 1
+  fi
+  break
+done
 fails=$(grep -E '^--- FAIL' <<<"$out" | sed 's/ (.*//' || true)
 if [ -n "$fails" ]; then
   echo "caught by:"

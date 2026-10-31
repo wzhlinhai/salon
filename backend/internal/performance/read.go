@@ -73,10 +73,12 @@ func Register(r *ops.Registry) {
 func listPerformance(ctx context.Context, env ops.Env, in *ListPerformanceInput) (*PerformanceList, error) {
 	from, err := time.Parse(settings.DateLayout, in.DateFrom)
 	if err != nil {
+		// rule-untested: ListPerformanceInput.DateFrom、DateTo 的 schema format=date 在调用前用 time.DateOnly 校验
 		return nil, ops.Rule("请填写有效的营业日")
 	}
 	to, err := time.Parse(settings.DateLayout, in.DateTo)
 	if err != nil {
+		// rule-untested: ListPerformanceInput.DateFrom、DateTo 的 schema format=date 在调用前用 time.DateOnly 校验
 		return nil, ops.Rule("请填写有效的营业日")
 	}
 	if from.After(to) {

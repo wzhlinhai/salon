@@ -49,6 +49,7 @@ func registerHistoricalDebtAt(ctx context.Context, env ops.Env, in *RegisterHist
 	}
 	incurred, err := time.Parse(time.DateOnly, in.IncurredOn)
 	if err != nil {
+		// rule-untested: RegisterHistoricalDebtInput.IncurredOn 的 schema format=date 在调用前用 time.DateOnly 校验
 		return nil, ops.Rule("欠款日期无效")
 	}
 	if incurred.Format(time.DateOnly) > day.Format(time.DateOnly) {

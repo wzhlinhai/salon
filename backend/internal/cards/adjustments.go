@@ -23,6 +23,7 @@ func adjustCard(ctx context.Context, env ops.Env, in *AdjustCardInput) (*Card, e
 		card, before := c.row, c.before
 		pointsChanged := in.Points != nil && *in.Points != before.Points
 		if in.Points != nil && (*in.Points < 0 || *in.Points > 99999999) {
+			// rule-untested: AdjustCardInput.Points 的 schema minimum=0、maximum=99999999 在调用前拒绝越界积分
 			return ops.Rule("积分须为 0 到 99999999")
 		}
 		principal, bonus := before.Principal, before.Bonus
