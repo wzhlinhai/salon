@@ -7,6 +7,7 @@ package dbtest
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -35,15 +36,17 @@ var (
 
 func start() {
 	ctx := context.Background()
-	c, err := postgres.Run(ctx, Image,
-		testcontainers.WithTmpfs(map[string]string{"/var/lib/postgresql": ""}),
-		postgres.WithDatabase("salon"),
-		postgres.WithUsername("salon"),
-		postgres.WithPassword("salon"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).WithStartupTimeout(60*time.Second)),
-	)
+	c, err := runPostgres(func() (*postgres.PostgresContainer, error) {
+		return postgres.Run(ctx, Image,
+			testcontainers.WithTmpfs(map[string]string{"/var/lib/postgresql": ""}),
+			postgres.WithDatabase("salon"),
+			postgres.WithUsername("salon"),
+			postgres.WithPassword("salon"),
+			testcontainers.WithWaitStrategy(
+				wait.ForLog("database system is ready to accept connections").
+					WithOccurrence(2).WithStartupTimeout(60*time.Second)),
+		)
+	})
 	if err != nil {
 		startErr = fmt.Errorf("启动 PostgreSQL 测试容器失败：确认 Docker 已运行（WSL 下打开 Docker Desktop 并启用 WSL 集成）：%w", err)
 		return
@@ -52,6 +55,16 @@ func start() {
 	if err != nil {
 		startErr = fmt.Errorf("启动 PostgreSQL 测试容器失败：读取连接地址：%w", err)
 	}
+}
+
+// runPostgres 只对 Ryuk 启动竞争重试一次，保留其他启动错误。
+func runPostgres(run func() (*postgres.PostgresContainer, error)) (*postgres.PostgresContainer, error) {
+	c, err := run()
+	if err != nil && strings.Contains(err.Error(), "reaper") {
+		time.Sleep(500 * time.Millisecond)
+		return run()
+	}
+	return c, err
 }
 
 // NewEmptyPool 新建一个空数据库（未执行迁移）并返回连接池。测试结束时关闭连接池并删除数据库。

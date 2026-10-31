@@ -30,6 +30,7 @@ node ~/.claude/skills/codex-delegate/scripts/relay.mjs --brief .dev/codex/<task>
 - Before writing "existing tests pass unchanged", grep the tests for assertions and fixtures that pin the behaviour this task changes. List the ones the brief allows Codex to change; otherwise Codex stops mid-task to ask.
 - When a change adds writes to a table on a path test fixtures use (e.g. opening a card), grep tests that count or list that table and name them in the brief as allowed to change.
 - Before requiring a test scenario, grep the rule messages on that path to check no existing rule rejects it; replace a scenario the code cannot reach instead of demanding it.
+- Rejection status in briefs and tests: an `ops.Rule` rejection is 409; a request-format or schema rejection (enum, format, length) is 422.
 
 ## Gates
 
@@ -55,3 +56,5 @@ Codex runs every applicable gate through `scripts/gate.py .dev/codex/<task> <lab
 ## Report
 
 `.dev/codex/<task>/report.md`, never `/tmp`: files changed; how each change was made and which test guards it; every gate and mutcheck with its real command and result, failures pasted verbatim; any decision that departs from the brief, with the reason.
+
+The report also carries a **protection inventory**: one row per guard the diff adds (a condition, filter, sort or group key, permission, stale-response check, UI restriction such as a disabled input or a cleared dependent field), each naming its manifest entry or the reason it has none. Every guard in the diff has a row; reviews check the diff against this table.
