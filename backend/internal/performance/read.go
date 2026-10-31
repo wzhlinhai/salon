@@ -64,6 +64,7 @@ type PerformanceList struct {
 
 // Register 声明按营业日及本人或全店范围查询业绩的读操作。
 func Register(r *ops.Registry) {
+	registerGuestVisits(r)
 	ops.Register(r, ops.Operation[ListPerformanceInput, PerformanceList]{
 		Name: "list_performance", Summary: "按营业日查询业绩及冲回记录", Kind: ops.Read, Permission: perm.PerformanceView, AI: ops.AIDirect, Handle: listPerformance,
 	})

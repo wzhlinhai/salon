@@ -20,6 +20,8 @@ type CheckoutInput struct {
 	Rules              settings.Rules
 	Lines              []Line
 	Payments           []Category
+	Designated         bool
+	Gender             string
 }
 
 // RecordCheckout 在结账已持有单锁的事务内追加项目业绩、耗卡业绩和手工费。
@@ -45,10 +47,13 @@ func RecordCheckout(ctx context.Context, env ops.Env, in CheckoutInput) error {
 			return err
 		}
 	}
-	return nil
+	return recordGuestVisits(ctx, env, in)
 }
 
 // ReverseOrder 在撤单已持有单锁的事务内追加尚未冲回的原业绩的反向记录。
 func ReverseOrder(ctx context.Context, env ops.Env, orderID, voidID uuid.UUID, day time.Time) error {
-	return env.Q.ReversePerformanceOrder(ctx, dbgen.ReversePerformanceOrderParams{StoreID: env.Caller.StoreID, OrderID: &orderID, VoidID: &voidID, Day: pgtype.Date{Time: day, Valid: true}})
+	if err := env.Q.ReversePerformanceOrder(ctx, dbgen.ReversePerformanceOrderParams{StoreID: env.Caller.StoreID, OrderID: &orderID, VoidID: &voidID, Day: pgtype.Date{Time: day, Valid: true}}); err != nil {
+		return err
+	}
+	return env.Q.ReverseGuestVisits(ctx, dbgen.ReverseGuestVisitsParams{StoreID: env.Caller.StoreID, OrderID: orderID, VoidID: &voidID, Day: pgtype.Date{Time: day, Valid: true}})
 }

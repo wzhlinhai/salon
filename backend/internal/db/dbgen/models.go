@@ -290,6 +290,23 @@ type DebtRepayment struct {
 	At           pgtype.Timestamptz
 }
 
+type GuestVisit struct {
+	TenantID           uuid.UUID
+	StoreID            uuid.UUID
+	ID                 uuid.UUID
+	BusinessDate       pgtype.Date
+	OrderID            uuid.UUID
+	CheckoutID         uuid.UUID
+	SettingsSnapshotID uuid.UUID
+	StaffID            *uuid.UUID
+	Share              pgtype.Numeric
+	Designated         bool
+	Gender             string
+	VoidID             *uuid.UUID
+	ReversesID         *uuid.UUID
+	CreatedAt          pgtype.Timestamptz
+}
+
 type Item struct {
 	ID              uuid.UUID
 	TenantID        uuid.UUID
