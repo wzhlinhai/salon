@@ -121,6 +121,40 @@ func (q *Queries) ListPositions(ctx context.Context, storeID uuid.UUID) ([]Posit
 	return items, nil
 }
 
+const positionNames = `-- name: PositionNames :many
+SELECT id, name FROM positions WHERE store_id = $1 AND id = ANY($2::uuid[])
+`
+
+type PositionNamesParams struct {
+	StoreID uuid.UUID
+	Ids     []uuid.UUID
+}
+
+type PositionNamesRow struct {
+	ID   uuid.UUID
+	Name string
+}
+
+func (q *Queries) PositionNames(ctx context.Context, arg PositionNamesParams) ([]PositionNamesRow, error) {
+	rows, err := q.db.Query(ctx, positionNames, arg.StoreID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PositionNamesRow
+	for rows.Next() {
+		var i PositionNamesRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const shareLevel = `-- name: ShareLevel :one
 SELECT id, tenant_id, store_id, name, active, created_at FROM levels WHERE id = $1 AND store_id = $2 FOR SHARE
 `

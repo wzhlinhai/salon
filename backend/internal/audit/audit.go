@@ -186,7 +186,7 @@ func Register(r *ops.Registry) {
 			}
 			rows, err := env.Q.ListAuditLog(ctx, dbgen.ListAuditLogParams{
 				StoreID: env.Caller.StoreID, TargetID: in.TargetID, BeforeID: in.BeforeID, RowLimit: limit,
-				CustomerView: customerView, CustomerSelfID: self,
+				CustomerView: customerView, CustomerSelfID: self, SettingsManage: env.Caller.Has(perm.SettingsManage),
 			})
 			if err != nil {
 				return nil, err
@@ -269,3 +269,6 @@ func RedPacketTarget(id, customerID uuid.UUID) Target {
 func DebtTarget(id, customerID uuid.UUID) Target {
 	return Target{kind: "debt", id: id, customerID: &customerID}
 }
+
+// CommissionSchemeTarget 创建不关联顾客的提成方案日志目标。
+func CommissionSchemeTarget(id uuid.UUID) Target { return Target{kind: "commission_scheme", id: id} }

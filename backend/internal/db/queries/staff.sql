@@ -44,3 +44,6 @@ UPDATE staff SET failed_logins = 0 WHERE id = $1;
 
 -- name: ShareStaff :one
 SELECT * FROM staff WHERE id=$1 FOR SHARE;
+
+-- name: StaffNames :many
+SELECT id, name FROM staff WHERE store_id = @store_id AND id = ANY(@ids::uuid[]);
