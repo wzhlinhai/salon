@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Usage: scripts/ci-wait.sh <pr-number>
 # Exit 0: all checks pass or skip; 1: a check failed or was cancelled;
-# 2: usage/API error (five consecutive failed gh invocations), or no workflow
+# 2: usage/API error (ten minutes of consecutive gh failures), or no workflow
 # run within ten minutes of the head commit. Retry transient gh failures every
-# ten seconds; any successful invocation resets the failure count.
+# ten seconds; any successful invocation resets the failure window.
+# CI_WAIT_RETRY_SECONDS overrides the 600-second failure window.
 # Accepted non-zero checks codes require non-empty stdout; otherwise retry.
 # Wait for workflow runs, not gh pr checks --watch: jobs with needs: (such as
 # e2e) appear only after their dependencies finish, so checks can look done early.
@@ -15,7 +16,7 @@ if [[ $# != 1 || ! $1 =~ ^[1-9][0-9]*$ ]]; then
 fi
 # Accepted check exit codes count as success only when they carry data.
 retry_gh() {
-  local accepted=$1 code output failures=0
+  local accepted=$1 code output started=-1 now
   shift
   while true; do
     if output=$(command gh "$@"); then code=0; else code=$?; fi
@@ -23,10 +24,30 @@ retry_gh() {
       printf '%s\n' "$output"
       return "$code"
     fi
-    failures=$((failures + 1))
-    if (( failures >= 5 )); then return 2; fi
+    now=$(date +%s)
+    if (( started < 0 )); then started=$now; fi
+    if (( now - started >= ${CI_WAIT_RETRY_SECONDS:-600} )); then return 2; fi
     sleep 10
   done
+}
+
+# Diagnostics are best effort: a failed check must keep exit 1 even offline.
+print_annotations() {
+  local jobs id name messages
+  if ! jobs=$(command gh api "repos/{owner}/{repo}/commits/$sha/check-runs" --paginate \
+      --jq '.check_runs[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "action_required" or .conclusion == "startup_failure" or .conclusion == "stale") | [.id, .name] | @tsv'); then
+    echo 'could not fetch failed check runs for annotations' >&2
+    return 0
+  fi
+  while IFS=$'\t' read -r id name; do
+    [[ -n $id ]] || continue
+    echo "annotations: $name (check-run $id)"
+    if messages=$(command gh api "repos/{owner}/{repo}/check-runs/$id/annotations" --paginate --jq '.[].message'); then
+      if [[ -n $messages ]]; then printf '%s\n' "$messages"; fi
+    else
+      echo "could not fetch annotations for $name (check-run $id)" >&2
+    fi
+  done <<< "$jobs"
 }
 
 pr=$1
@@ -67,7 +88,10 @@ while true; do
           code=$?
           if [[ $code != 1 ]]; then exit 2; fi
         }
-        if $failed; then exit 1; fi
+        if $failed; then
+          print_annotations
+          exit 1
+        fi
         exit 0
       fi
     fi
