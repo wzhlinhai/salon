@@ -26,9 +26,9 @@ func Register(r *ops.Registry) {
 	ops.Register(r, ops.Operation[DeletePayrollAdjustmentInput, staff.OK]{Name: "delete_payroll_adjustment", Summary: "删除员工加减项", Kind: ops.Write, Permission: perm.PayrollManage, AI: ops.AIDraft, Handle: deletePayrollAdjustment})
 	ops.Register(r, ops.Operation[ListPayrollAdjustmentsInput, PayrollAdjustmentList]{Name: "list_payroll_adjustments", Summary: "列出结算月加减项", Kind: ops.Read, Permission: perm.PayrollManage, AI: ops.AIDirect, Handle: listPayrollAdjustments})
 	ops.Register(r, ops.Operation[ListPayrollMonthsInput, PayrollMonthList]{Name: "list_payroll_months", Summary: "列出各月工资结算状态", Kind: ops.Read, Permission: perm.PayrollManage, AI: ops.AIDirect, Handle: listPayrollMonths})
+	ops.Register(r, ops.Operation[ListPayrollCommissionsInput, commission.CommissionList]{Name: "list_payroll_commissions", Summary: "查看员工当月提成明细", Kind: ops.Read, Permission: perm.PayrollManage, AI: ops.AIDirect, Handle: listPayrollCommissions})
 	ops.Register(r, ops.Operation[MonthInput, Payroll]{Name: "get_payroll", Summary: "查看月度工资表", Kind: ops.Read, Permission: perm.PayrollManage, AI: ops.AIDirect, Handle: getPayroll})
 	ops.Register(r, ops.Operation[MonthInput, Payroll]{Name: "lock_payroll_month", Summary: "锁定月度工资与提成", Kind: ops.Write, Permission: perm.PayrollManage, AI: ops.AIDraft, Handle: lockPayrollMonth})
-
 }
 
 func setBaseSalary(ctx context.Context, env ops.Env, in *SetBaseSalaryInput) (*BaseSalary, error) {

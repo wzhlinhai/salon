@@ -174,6 +174,8 @@ progressive（超额累进）从本笔前累计 c 开始，把 [c, c + base] 在
 
 ## 工资
 
+`list_payroll_commissions` 使用 `payroll.manage` 查看员工当月的提成明细，与工资表采用相同数据，不受业绩本人范围限制。全新开发环境的门店从上个月开店，便于验证锁月。
+
 `internal/payroll` 保存底薪、加减项和工资表，`internal/commission` 保存提成结算。结算月使用 YYYY-MM，按营业日所在的自然月算；统一用 CheckMonth 解析，并以 settings.BusinessDate(stores.created_at) 的月份为开店月下限，允许未来月份。
 
 `staff_base_salaries` 按员工追加计薪方式（base 底薪 + 提成，guarantee 保底）、非负金额、生效月、保存人和保存时刻。旧记录不改不删。BaseSalariesInForce 一次查询选出本店所有员工 effective_month ≤ 结算月的最大生效月，同月取 saved_at 最新的一条；时刻也相同时按 ID 倒序确定。未设置返回 null，客户端按 base、0 显示。所有员工包括离职员工按编号返回。

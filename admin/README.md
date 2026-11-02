@@ -18,3 +18,5 @@ npm run typecheck
 - 弹窗表单用 `useModalForm`：`begin` 复位并开启一次有效期，`load` 和 `save` 管理加载、保存及 finally 复位；回调写页面状态前检查传入的 `current()`。关闭、重开或卸载使旧请求失效。
 - `USelect` / `SelectItem` 的值不能是空字符串（Nuxt UI 会在运行时报错）；可选项用占位值（如 `__all__`），保存时映射为不发送该字段。
 - 顾客详情的卡列表、开卡充值、调整、升级转余额和流水在 `CustomerCards` 中，切换顾客时详情先清空 `customer` 使卡面板卸载并重新挂载，卸载失效会丢弃旧响应，因此面板不逐响应比较 ID，保存后的列表和已展开明细统一由 `refreshCards` 刷新。
+
+全套端到端测试须先运行 `scripts/dev.sh reset` 使用全新数据库，因为 `payroll-store` 项目会永久锁定上个月。
