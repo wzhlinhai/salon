@@ -472,7 +472,11 @@ func Quote(ctx context.Context, q *dbgen.Queries, storeID, itemID uuid.UUID, sta
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
 		}
-		if err == nil && item.Discountable && (rules.MemberPriceRule() == "member_first" || member.Price.Cmp(out.Price) <= 0) {
+		var memberPrice *money.Amount
+		if err == nil {
+			memberPrice = &member.Price
+		}
+		if UseMemberPrice(item.Discountable, memberPrice, out.Price, rules.MemberPriceRule()) {
 			out.Price = member.Price
 			out.Source = "member"
 			out.CardTypeID = cardTypeID
@@ -481,4 +485,9 @@ func Quote(ctx context.Context, q *dbgen.Queries, storeID, itemID uuid.UUID, sta
 	}
 
 	return out, nil
+}
+
+// UseMemberPrice 判断项目是否按会员价规则取会员价。
+func UseMemberPrice(discountable bool, member *money.Amount, current money.Amount, rule string) bool {
+	return discountable && member != nil && (rule == "member_first" || member.Cmp(current) <= 0)
 }

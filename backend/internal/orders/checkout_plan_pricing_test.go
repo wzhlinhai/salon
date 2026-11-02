@@ -1,11 +1,13 @@
 package orders
 
 import (
-	"github.com/google/uuid"
-	"github.com/wzhlinhai/salon/backend/internal/money"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/wzhlinhai/salon/backend/internal/cards"
+	"github.com/wzhlinhai/salon/backend/internal/money"
 )
 
 func pricingAmount(s string) money.Amount {
@@ -52,15 +54,18 @@ func TestPriceCheckout(t *testing.T) {
 				line.RemovedAt = new(time.Now())
 			}
 			input := Order{Items: []OrderItem{line}}
-			pricing := linePricing{discountable: tc.discountable}
-			if tc.member != "" {
-				pricing.member = new(pricingAmount(tc.member))
-			}
 			var card *uuid.UUID
 			if tc.card {
 				card = &typeID
 			}
-			got := priceCheckout(input, map[uuid.UUID]linePricing{item: pricing}, card, &p, tc.rule)
+			state := checkoutState{cards: map[uuid.UUID]cards.CardSnapshot{typeID: {ID: typeID, CardTypeID: typeID}}, discounts: map[uuid.UUID]*money.Percent{typeID: &p}, lines: map[uuid.UUID]linePricing{item: {discountable: tc.discountable}}, members: map[uuid.UUID]map[uuid.UUID]money.Amount{}}
+			if tc.member != "" {
+				state.members[typeID] = map[uuid.UUID]money.Amount{item: pricingAmount(tc.member)}
+			}
+			got, _, err := quoteOrder(state, checkoutOrder{order: input, rules: checkoutRules{memberPriceRule: tc.rule}}, card, false)
+			if err != nil {
+				t.Fatal(err)
+			}
 			result := got.Items[0]
 			if result.Price.String() != tc.wantPrice || result.PriceSource != tc.wantSource || result.Discount.String() != tc.wantDiscount || got.Net != tc.wantNet {
 				t.Fatal(got)
