@@ -1,11 +1,55 @@
 package dbtest
 
 import (
+	"context"
 	"errors"
 	"testing"
 
+	"github.com/pressly/goose/v3"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
+
+	"github.com/wzhlinhai/salon/backend/internal/db"
 )
+
+func TestNewPoolsAreIndependent(t *testing.T) {
+	first, second := NewPool(t), NewPool(t)
+	NewTenant(t, first, "独立数据库")
+	var count int
+	if err := second.QueryRow(context.Background(), "SELECT count(*) FROM tenants").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("second database has %d tenants, want 0", count)
+	}
+}
+
+func TestNewPoolIsFullyMigrated(t *testing.T) {
+	pool := NewPool(t)
+	migrations, err := goose.CollectMigrations("../db/migrations", 0, goose.MaxVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	version, err := db.MigrationVersion(context.Background(), pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if latest := migrations[len(migrations)-1].Version; version != latest {
+		t.Fatalf("migration version = %d, want %d", version, latest)
+	}
+}
+
+func TestNewPoolDoesNotChangeTemplate(t *testing.T) {
+	first := NewPool(t)
+	NewTenant(t, first, "不写入模板")
+	second := NewPool(t)
+	var count int
+	if err := second.QueryRow(context.Background(), "SELECT count(*) FROM tenants").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("fresh clone has %d tenants, want 0", count)
+	}
+}
 
 func TestRunPostgres(t *testing.T) {
 	reaperErr := errors.New("create container: reaper: new reaper: No such container")

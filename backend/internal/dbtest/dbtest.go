@@ -1,6 +1,6 @@
 // Package dbtest 为测试提供真实的 PostgreSQL。
 //
-// 每个测试进程启动一个全新的 PostgreSQL 容器；每次调用 NewPool 在其中新建一个空数据库，
+// 每个测试进程启动一个全新的 PostgreSQL 容器，并按需迁移一次模板数据库；NewPool 从模板克隆数据库，
 // 测试之间互不影响。行级安全的测试必须跑在真实 PostgreSQL 上（ADR-0007）。
 package dbtest
 
@@ -28,11 +28,15 @@ import (
 const Image = "postgres:18-alpine"
 
 var (
-	once     sync.Once
-	adminDSN string
-	startErr error
-	dbSeq    atomic.Int64
+	once         sync.Once
+	adminDSN     string
+	startErr     error
+	dbSeq        atomic.Int64
+	templateOnce sync.Once
+	templateErr  error
 )
+
+const templateName = "template_salon"
 
 func start() {
 	ctx := context.Background()
@@ -70,6 +74,11 @@ func runPostgres(run func() (*postgres.PostgresContainer, error)) (*postgres.Pos
 // NewEmptyPool 新建一个空数据库（未执行迁移）并返回连接池。测试结束时关闭连接池并删除数据库。
 func NewEmptyPool(t testing.TB) *pgxpool.Pool {
 	t.Helper()
+	return newPool(t, "")
+}
+
+func newPool(t testing.TB, template string) *pgxpool.Pool {
+	t.Helper()
 	once.Do(start)
 	if startErr != nil {
 		t.Fatal(startErr)
@@ -82,7 +91,11 @@ func NewEmptyPool(t testing.TB) *pgxpool.Pool {
 	}
 	defer func() { _ = admin.Close(ctx) }()
 	name := fmt.Sprintf("test_%d", dbSeq.Add(1))
-	if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
+	create := "CREATE DATABASE " + name
+	if template != "" {
+		create += " TEMPLATE " + template
+	}
+	if _, err := admin.Exec(ctx, create); err != nil {
 		t.Fatal(err)
 	}
 
@@ -113,14 +126,42 @@ func NewEmptyPool(t testing.TB) *pgxpool.Pool {
 	return pool
 }
 
-// NewPool 新建一个已执行全部迁移的数据库并返回连接池。
+// NewPool 从进程内只迁移一次的模板克隆独立数据库并返回连接池。
 func NewPool(t testing.TB) *pgxpool.Pool {
 	t.Helper()
-	pool := NewEmptyPool(t)
-	if err := db.MigrateUp(context.Background(), pool); err != nil {
-		t.Fatal(err)
+	once.Do(start)
+	if startErr != nil {
+		t.Fatal(startErr)
 	}
-	return pool
+	templateOnce.Do(func() { templateErr = createTemplate() })
+	if templateErr != nil {
+		t.Fatal(templateErr)
+	}
+	return newPool(t, templateName)
+}
+
+func createTemplate() error {
+	ctx := context.Background()
+	admin, err := pgx.Connect(ctx, adminDSN)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = admin.Close(ctx) }()
+	if _, err := admin.Exec(ctx, "CREATE DATABASE "+templateName); err != nil {
+		return err
+	}
+	cfg, err := pgxpool.ParseConfig(adminDSN)
+	if err != nil {
+		return err
+	}
+	cfg.ConnConfig.Database = templateName
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	// MigrateUp 关闭 goose 的连接包装，随后关闭连接池，确保克隆前模板没有会话。
+	defer pool.Close()
+	return db.MigrateUp(ctx, pool)
 }
 
 // NewTenant 在 pool 中建一个租户和它的一家门店，返回二者的 ID。
