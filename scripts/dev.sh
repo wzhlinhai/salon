@@ -173,6 +173,8 @@ up() {
   if [ "$tenants" = "0" ]; then
     BOOTSTRAP_PASSWORD=$OWNER_PASSWORD "$STATE/salon" bootstrap -tenant 本店 -store 本店 \
       -owner-name 王老板 -owner-number 001 -owner-account "$OWNER_ACCOUNT" >/dev/null
+    # 新开发环境从上月开店，让开发和端到端测试可以锁定已结束的月份。
+    docker exec "$DB_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 -c "UPDATE stores SET created_at = (date_trunc('month', now() AT TIME ZONE 'Asia/Shanghai') - interval '1 month' + interval '14 days 12 hours') AT TIME ZONE 'Asia/Shanghai'"
   fi
   JWT_SECRET=dev-secret-dev-secret-dev-secret-0123 HTTP_ADDR=$BACKEND_ADDR \
     start_proc backend "$ROOT/backend" "${BACKEND_ADDR##*:}" "$STATE/salon" serve

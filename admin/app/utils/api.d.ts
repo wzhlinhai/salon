@@ -905,6 +905,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_payroll_commissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看员工当月提成明细 */
+        post: operations["list_payroll_commissions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_payroll_months": {
         parameters: {
             query?: never;
@@ -2600,6 +2617,15 @@ export interface components {
             limit?: number;
             month: string;
             staff_id?: string;
+        };
+        ListPayrollCommissionsInput: {
+            before_id?: string;
+            /** Format: int32 */
+            limit?: number;
+            month: string;
+            /** @enum {string} */
+            source?: "item" | "consume" | "labor" | "sale";
+            staff_id: string;
         };
         ListPayrollMonthsInput: Record<string, never>;
         ListPerformanceInput: {
@@ -5157,6 +5183,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PayrollAdjustmentList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_payroll_commissions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListPayrollCommissionsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommissionList"];
                 };
             };
             /** @description Error */

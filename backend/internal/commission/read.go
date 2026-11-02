@@ -68,11 +68,16 @@ func listCommissions(ctx context.Context, env ops.Env, in *ListCommissionsInput)
 	if self != nil && in.StaffID != nil && *self != *in.StaffID {
 		rows = []Commission{}
 	}
+	return Page(rows, in.Source, in.Limit, in.BeforeID), nil
+}
+
+// Page 对提成按来源筛选、汇总，并按游标分页。
+func Page(rows []Commission, source *string, limit int32, beforeID *uuid.UUID) *CommissionList {
 	filtered := make([]Commission, 0, len(rows))
 	total := money.SignedTotal{}
 	sums := map[string]money.SignedTotal{}
 	for _, c := range rows {
-		if in.Source != nil && c.Source != *in.Source {
+		if source != nil && c.Source != *source {
 			continue
 		}
 		filtered = append(filtered, c)
@@ -84,15 +89,14 @@ func listCommissions(ctx context.Context, env ops.Env, in *ListCommissionsInput)
 	for _, source := range sources {
 		out.Totals = append(out.Totals, CommissionSourceTotal{Source: source, Amount: sums[source].Format()})
 	}
-	limit := in.Limit
 	if limit == 0 {
 		limit = 50
 	}
 	start := 0
-	if in.BeforeID != nil {
+	if beforeID != nil {
 		start = len(filtered)
 		for i, c := range filtered {
-			if c.ID == *in.BeforeID {
+			if c.ID == *beforeID {
 				start = i + 1
 				break
 			}
@@ -104,5 +108,5 @@ func listCommissions(ctx context.Context, env ops.Env, in *ListCommissionsInput)
 		}
 		out.Entries = append(out.Entries, c)
 	}
-	return out, nil
+	return out
 }
