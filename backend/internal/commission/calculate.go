@@ -123,15 +123,7 @@ func calculate(entries, originals []dbgen.PerformanceEntry, facts map[lineKey]li
 		c.ID, c.BusinessDate, c.createdAt = e.ID, e.BusinessDate.Time.Format(time.DateOnly), u.createdAt
 		out = append(out, c)
 	}
-	slices.SortFunc(out, func(a, b Commission) int {
-		if n := cmp.Compare(b.BusinessDate, a.BusinessDate); n != 0 {
-			return n
-		}
-		if n := b.createdAt.Compare(a.createdAt); n != 0 {
-			return n
-		}
-		return cmp.Compare(b.ID.String(), a.ID.String())
-	})
+	sortCommissions(out)
 	return out, nil
 }
 
@@ -269,4 +261,16 @@ func unitBase(u unit, kind string, f lineFact) (CommissionBase, error) {
 		return base, fmt.Errorf("commission base: %w", err)
 	}
 	return base, nil
+}
+
+func sortCommissions(out []Commission) {
+	slices.SortFunc(out, func(a, b Commission) int {
+		if n := cmp.Compare(b.BusinessDate, a.BusinessDate); n != 0 {
+			return n
+		}
+		if n := b.createdAt.Compare(a.createdAt); n != 0 {
+			return n
+		}
+		return cmp.Compare(b.ID.String(), a.ID.String())
+	})
 }

@@ -11,19 +11,24 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/wzhlinhai/salon/backend/internal/audit"
+	"github.com/wzhlinhai/salon/backend/internal/commission"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 
-// Register 声明底薪和加减项的五个工资管理操作。
+// Register 声明底薪、加减项与工资锁月的管理操作。
 func Register(r *ops.Registry) {
 	ops.Register(r, ops.Operation[SetBaseSalaryInput, BaseSalary]{Name: "set_base_salary", Summary: "追加员工底薪设置", Kind: ops.Write, Permission: perm.PayrollManage, AI: ops.AIDraft, Handle: setBaseSalary})
 	ops.Register(r, ops.Operation[MonthInput, BaseSalaryList]{Name: "list_base_salaries", Summary: "查看结算月每位员工执行的底薪", Kind: ops.Read, Permission: perm.PayrollManage, AI: ops.AIDirect, Handle: listBaseSalaries})
 	ops.Register(r, ops.Operation[AddPayrollAdjustmentInput, PayrollAdjustment]{Name: "add_payroll_adjustment", Summary: "添加员工月度加减项", Kind: ops.Write, Permission: perm.PayrollManage, AI: ops.AIDraft, Handle: addPayrollAdjustment})
 	ops.Register(r, ops.Operation[DeletePayrollAdjustmentInput, staff.OK]{Name: "delete_payroll_adjustment", Summary: "删除员工加减项", Kind: ops.Write, Permission: perm.PayrollManage, AI: ops.AIDraft, Handle: deletePayrollAdjustment})
 	ops.Register(r, ops.Operation[ListPayrollAdjustmentsInput, PayrollAdjustmentList]{Name: "list_payroll_adjustments", Summary: "列出结算月加减项", Kind: ops.Read, Permission: perm.PayrollManage, AI: ops.AIDirect, Handle: listPayrollAdjustments})
+	ops.Register(r, ops.Operation[ListPayrollMonthsInput, PayrollMonthList]{Name: "list_payroll_months", Summary: "列出各月工资结算状态", Kind: ops.Read, Permission: perm.PayrollManage, AI: ops.AIDirect, Handle: listPayrollMonths})
+	ops.Register(r, ops.Operation[MonthInput, Payroll]{Name: "get_payroll", Summary: "查看月度工资表", Kind: ops.Read, Permission: perm.PayrollManage, AI: ops.AIDirect, Handle: getPayroll})
+	ops.Register(r, ops.Operation[MonthInput, Payroll]{Name: "lock_payroll_month", Summary: "锁定月度工资与提成", Kind: ops.Write, Permission: perm.PayrollManage, AI: ops.AIDraft, Handle: lockPayrollMonth})
+
 }
 
 func setBaseSalary(ctx context.Context, env ops.Env, in *SetBaseSalaryInput) (*BaseSalary, error) {
@@ -33,6 +38,11 @@ func setBaseSalary(ctx context.Context, env ops.Env, in *SetBaseSalaryInput) (*B
 	month, err := CheckMonth(ctx, env.Q, env.Caller.StoreID, in.Month)
 	if err != nil {
 		return nil, err
+	}
+	if locked, err := commission.Settlement(ctx, env.Q, env.Caller.StoreID, month); err != nil {
+		return nil, err
+	} else if locked != nil {
+		return nil, ops.Rule(in.Month + " 已经锁定，不能再设置底薪")
 	}
 	if _, err := staff.LockReferences(ctx, env.Q, env.Caller.StoreID, in.StaffID); err != nil {
 		return nil, err
@@ -67,6 +77,11 @@ func addPayrollAdjustment(ctx context.Context, env ops.Env, in *AddPayrollAdjust
 	month, err := CheckMonth(ctx, env.Q, env.Caller.StoreID, in.Month)
 	if err != nil {
 		return nil, err
+	}
+	if locked, err := commission.Settlement(ctx, env.Q, env.Caller.StoreID, month); err != nil {
+		return nil, err
+	} else if locked != nil {
+		return nil, ops.Rule(in.Month + " 已经锁定，不能再添加加减项")
 	}
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
@@ -103,6 +118,11 @@ func deletePayrollAdjustment(ctx context.Context, env ops.Env, in *DeletePayroll
 	}
 	if err != nil {
 		return nil, err
+	}
+	if locked, err := commission.Settlement(ctx, env.Q, env.Caller.StoreID, row.Month.Time); err != nil {
+		return nil, err
+	} else if locked != nil {
+		return nil, ops.Rule(row.Month.Time.Format(monthLayout) + " 已经锁定，不能再删除加减项")
 	}
 	views, err := adjustmentViews(ctx, env, []dbgen.PayrollAdjustment{row})
 	if err != nil {

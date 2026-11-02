@@ -170,3 +170,47 @@ sql:
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money
               type: Change
+          - column: settled_commissions.amount
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Change
+          - column: payroll_lines.applied_amount
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: payroll_lines.base_pay
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Change
+          - column: payroll_lines.item_commission
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Change
+          - column: payroll_lines.consume_commission
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Change
+          - column: payroll_lines.labor_commission
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Change
+          - column: payroll_lines.sale_commission
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Change
+          - column: payroll_lines.commission_total
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Change
+          - column: payroll_lines.guarantee_top_up
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: payroll_lines.adjustments_total
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Change
+          - column: payroll_lines.total
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Change

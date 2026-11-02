@@ -59,6 +59,38 @@ func (q *Queries) AddSettingChange(ctx context.Context, arg AddSettingChangePara
 	return i, err
 }
 
+const businessDayEndHistory = `-- name: BusinessDayEndHistory :many
+SELECT DISTINCT ON (effective_from) effective_from, value, is_default
+FROM setting_changes WHERE store_id = $1 AND key = 'business_day_end'
+ORDER BY effective_from DESC, changed_at DESC, id DESC
+`
+
+type BusinessDayEndHistoryRow struct {
+	EffectiveFrom pgtype.Date
+	Value         []byte
+	IsDefault     bool
+}
+
+func (q *Queries) BusinessDayEndHistory(ctx context.Context, storeID uuid.UUID) ([]BusinessDayEndHistoryRow, error) {
+	rows, err := q.db.Query(ctx, businessDayEndHistory, storeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BusinessDayEndHistoryRow
+	for rows.Next() {
+		var i BusinessDayEndHistoryRow
+		if err := rows.Scan(&i.EffectiveFrom, &i.Value, &i.IsDefault); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const effectiveSettings = `-- name: EffectiveSettings :many
 SELECT DISTINCT ON (key) key, value, is_default, effective_from
 FROM setting_changes

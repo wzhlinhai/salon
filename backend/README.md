@@ -107,7 +107,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 ## 操作日志
 
 - `audit_log` 只追加，`salon_app` 只有 SELECT 和 INSERT 权限。日志与业务操作在同一事务里写入，任何一步失败都会一起回滚。同一员工或角色的修改用行锁排队，在读取改前快照前加锁，日志的改前才接得上前一次的改后。
-- 当前记录角色的新建、修改、删除，以及员工的新建、档案修改、登录设置、停用、恢复和角色分配；保留改前改后，删除角色时还保留持有员工的 ID、姓名。`list_audit_log` 需要操作日志权限，可按目标 ID 查询。每条日志记录目标种类及其关联顾客；`list_audit_log` 按调用者的顾客查看范围过滤关联顾客的日志。底薪（`base_salary`，目标为员工 ID）、加减项（`payroll_adjustment`，目标为加减项 ID，均不关联顾客）、提成方案（`commission_scheme`，不关联顾客）、卡类型、开卡、充值、开单、加项目、去掉项目、换岗位员工、改价、合并单、结账已记录日志。新增关联顾客的种类（例如单）时，添加接收顾客 ID 的构造函数，并扩展迁移中的 CHECK 列表。
+- 当前记录角色的新建、修改、删除，以及员工的新建、档案修改、登录设置、停用、恢复和角色分配；保留改前改后，删除角色时还保留持有员工的 ID、姓名。`list_audit_log` 需要操作日志权限，可按目标 ID 查询。每条日志记录目标种类及其关联顾客；`list_audit_log` 按调用者的顾客查看范围过滤关联顾客的日志。底薪（`base_salary`，目标为员工 ID）、加减项（`payroll_adjustment`，目标为加减项 ID）、工资锁月（`payroll_month`，目标为提成结算 ID，均不关联顾客）、提成方案（`commission_scheme`，不关联顾客）、卡类型、开卡、充值、开单、加项目、去掉项目、换岗位员工、改价、合并单、结账已记录日志。新增关联顾客的种类（例如单）时，添加接收顾客 ID 的构造函数，并扩展迁移中的 CHECK 列表。
 - 新操作在成功路径末尾用同一个 `env` 调用 `audit.Record`，传入不含密码或密码哈希的返回值视图；新建前、删除后传 nil。手机号字段的 JSON 键名必须是 `phone`，`audit.Record` 遇到别的键名会拒绝写入（读取时只按这个键名打码）。
 
 ## 共享修改与引用检查
@@ -148,7 +148,7 @@ performance_entries.member 在非 sale 时必填，既有非销售行迁移为 f
 
 保存与 audit.Record 在同一事务，目标 commission_scheme，action 为 save_commission_scheme，before 为上一个最新版本视图（首次 nil），after 为新版本视图。日志不关联顾客，不包含手机号；日志查询对这一种类额外要求 settings.manage，避免操作日志权限泄露方案里的员工覆盖。业务规则通过 ops.Rule，沿用仓库统一的 HTTP 409；请求格式、金额和百分比格式校验为 422。
 
-提成计算以一次结账内的（kind、order_item_id、slot）为一笔，将同笔全部支付方式的业绩记录合并；同一员工占两个岗位仍算两笔。sale 每条业绩单独一笔。staff_id 为空的门店未分配记录不产生提成。导出 Commissions(ctx, q, storeID, from, to, staffID) 供后续月锁、员工端和解释功能调用，提成不另存表；零金额也返回解释。
+提成计算以一次结账内的（kind、order_item_id、slot）为一笔，将同笔全部支付方式的业绩记录合并；同一员工占两个岗位仍算两笔。sale 每条业绩单独一笔。staff_id 为空的门店未分配记录不产生提成。导出 Commissions(ctx, q, storeID, from, to, staffID) 供后续月锁、员工端和解释功能调用，未锁定时提成现算；零金额也返回解释。
 
 版本只批量读取一次，由 selectVersion 这个纯函数统一选择：effective_from 不晚于业绩营业日，saved_at 不晚于单位内最早 created_at，取最大生效日期，再取最高版本号。VersionInForce 和 get_commission_scheme 的日期查询也共用它。无版本或员工在 excluded_staff 中不计提成。先查员工 × 项目覆盖，再查项目、员工覆盖，最后按岗位、指定、会员键找规则格子；覆盖即使没有匹配格子仍然生效，但必须有该来源规则。项目覆盖仅作用于 item、consume、labor。没有命中项不产生提成。
 
@@ -160,7 +160,7 @@ item 基数按单位汇总：paid 为 paid_amount 之和；performance 为 amoun
 
 list_commissions 是 Read / AIDirect，要求 performance.view。本人与全店范围沿用 list_performance；本人范围叠加他人的 staff_id 时为空，不能扩大范围。按营业日范围（相隔最多 92 天）、staff_id、source 筛选。以营业日降序、单位最早 created_at 降序、稳定单位 ID 降序排列；单位 ID 为该笔最小业绩记录 ID，limit / before_id 翻页。total 与按 item、consume、labor、sale 的 totals 使用完整筛选范围，原笔减冲回，不受分页影响。entries、explanation、totals 都在同一权限范围内，不含任何顾客字段。
 
-加载将请求范围扩至 date_from 所在月首日到 date_to 所在月末日，员工过滤仍在业绩查询中应用；计算后只返回原请求营业日范围，解释和 totals 也仅针对这些输出。始终为七条批查询：完整月份业绩、冲回原记录、项目行事实、全部方案版本、员工名称、岗位名称、项目名称。项目行事实只读取 order_items.price / item_id、orders.designated 与业绩实收之和，不回读单据重算价格、支付或业绩。查询数不随单位数增长，由 TestCommissionReadQueryCount 通过 HTTP 与 AI 验证。
+加载将请求范围扩至 date_from 所在月首日到 date_to 所在月末日，员工过滤仍在业绩查询中应用；计算后只返回原请求营业日范围，解释和 totals 也仅针对这些输出。全部按批查询（查询数不随行数增长），包括：完整月份业绩、冲回原记录、项目行事实、全部方案版本、提成结算状态与已结算提成、员工名称、岗位名称、项目名称。项目行事实只读取 order_items.price / item_id、orders.designated 与业绩实收之和，不回读单据重算价格、支付或业绩。查询数不随单位数增长，由 TestCommissionReadQueryCount 通过 HTTP 与 AI 验证。
 
 阶梯格子 tiers = {mode: whole | progressive, levels: [{from: money.Amount, percent: money.Percent}]}，档内只允许比例，至少两档，首档从 0.00 开始，from 严格递增，达到起点（含等号）适用。覆盖比例仅允许比例或固定金额。
 
@@ -174,16 +174,31 @@ progressive（超额累进）从本笔前累计 c 开始，把 [c, c + base] 在
 
 ## 工资
 
-`internal/payroll` 保存底薪与加减项，本步不计算工资表。结算月使用 YYYY-MM，按营业日所在的自然月算；统一用 CheckMonth 解析，并以 settings.BusinessDate(stores.created_at) 的月份为开店月下限，允许未来月份。
+`internal/payroll` 保存底薪、加减项和工资表，`internal/commission` 保存提成结算。结算月使用 YYYY-MM，按营业日所在的自然月算；统一用 CheckMonth 解析，并以 settings.BusinessDate(stores.created_at) 的月份为开店月下限，允许未来月份。
 
 `staff_base_salaries` 按员工追加计薪方式（base 底薪 + 提成，guarantee 保底）、非负金额、生效月、保存人和保存时刻。旧记录不改不删。BaseSalariesInForce 一次查询选出本店所有员工 effective_month ≤ 结算月的最大生效月，同月取 saved_at 最新的一条；时刻也相同时按 ID 倒序确定。未设置返回 null，客户端按 base、0 显示。所有员工包括离职员工按编号返回。
 
-`payroll_adjustments` 记录结算月、员工、自由名称、非零有符号金额及备注；名称去首尾空白后不能空，最多 20 字，备注最多 100 字。允许离职员工；删除是真正 DELETE，日志保留删除前完整视图。月份锁与锁定后的拒绝属于下一步。
+`payroll_adjustments` 记录结算月、员工、自由名称、非零有符号金额及备注；名称去首尾空白后不能空，最多 20 字，备注最多 100 字。允许离职员工；删除是真正 DELETE，日志保留删除前完整视图。锁定后的月份不能添加、删除加减项。
 
-所有写操作先拿 LockPayroll 的门店级咨询锁（store_id + /payroll），底薪、加减项与下一步锁月共用它。设置底薪锁序：咨询锁 → 月份检查 → staff.LockReferences 的员工 FOR SHARE → 读取执行底薪 → 追加；添加加减项：咨询锁 → 月份检查 → 员工 FOR SHARE → 插入；删除：咨询锁 → 本店加减项 → 删除。下一步可在咨询锁内增加锁月检查，不会插入到锁定期间。
+所有写操作先拿 LockPayroll 的门店级咨询锁（store_id + /payroll），底薪、加减项与锁月共用它。设置底薪锁序：咨询锁 → 月份检查 → staff.LockReferences 的员工 FOR SHARE → 读取执行底薪 → 追加；添加加减项：咨询锁 → 月份检查 → 员工 FOR SHARE → 插入；删除：咨询锁 → 本店加减项 → 删除。三条写路径在咨询锁内通过 commission.Settlement 检查月份未锁定；底薪及添加在 CheckMonth 后检查，删除在加载本店加减项后检查。锁定后不能再设置底薪，也不能添加或删除加减项。
 
 set_base_salary、add_payroll_adjustment、delete_payroll_adjustment 是 Write / AIDraft；list_base_salaries、list_payroll_adjustments 是 Read / AIDirect，全部要求 payroll.manage。底薪列表覆盖全店在职与离职员工；加减项按月、可选员工筛选，以 created_at、id 倒序游标分页。姓名批量查询，查询数不随行数增长。
 
 写入与 audit.Record 同事务；底薪目标 base_salary 的 target_id 是员工 ID，before 是该月原执行视图（首次 nil），after 是新设置；加减项目标 payroll_adjustment 的 ID 是该条 ID，新增 before nil，删除 after nil。视图与日志无顾客或手机号，日志读取额外要求 payroll.manage。
 
 两表有租户 RLS、tenant_id/id 唯一约束，以及门店、员工、保存人或创建人的租户组合外键。salon_app 对 staff_base_salaries 仅有 SELECT、INSERT，对 payroll_adjustments 仅有 SELECT、INSERT、DELETE，没有 UPDATE。月份在数据库约束为月首；计薪方式、金额、名称、备注也有 CHECK。
+
+
+`commission_settlements` 每店每月唯一，月份 CHECK 为月首，记录 settled_by / settled_at。`settled_commissions` 保存每笔提成的金额、冲回标识、解释和排序时刻 unit_created_at；月份与营业日所在月有 CHECK，同一店的提成 ID 唯一，结算通过 (tenant_id, store_id, settlement_id, month) → commission_settlements (tenant_id, store_id, id, month) 的组合外键同时绑定租户、门店与月份；payroll_lines 通过 (tenant_id, store_id, settlement_id) → commission_settlements (tenant_id, store_id, id) 绑定结算所属门店。父表只保留这两组供引用的组合唯一键，去掉不含门店的旧组合唯一键。两表与 `payroll_lines` 均有租户 RLS、门店与员工的租户组合外键，仅授予 salon_app SELECT、INSERT，不允许 UPDATE 或 DELETE。
+
+Commissions 通过一条 commission_settlements LEFT JOIN settled_commissions 语句同时读取范围内的结算月份与已保存明细，以同一 READ COMMITTED 语句快照构造锁定月份集合、替换对应月的现算结果，避免锁定事务在两个查询之间提交时重复拼入现算与存储明细。空结算月仍返回月份标记，员工过滤置于 JOIN 条件中，即使该员工没有保存明细也不丢失锁定标记。未锁定月仍现算。恢复 explanation 和 unit_created_at，统一按原日期范围过滤、按营业日 / createdAt / ID 倒序排序，再批量解析员工、岗位与项目的当前名称。金额、方案版本、计算解释固定；名字可更新。list_commissions 的来源筛选、合计、分页及本人范围继续在同一输出路径执行，锁定不会扩大数据范围。
+
+工资表按月批量加载员工、BaseSalariesInForce、整月 Commissions 与当月全部加减项。员工创建时刻的营业月不晚于当月，且仍在职或离职时刻的营业月不早于当月时，当月计整月底薪；入职、离职均不按天折算。日期转换用 settings.BusinessDates（BusinessDate 是它的单个时刻形式，规则只有一份，默认值取设置目录），设置历史只批量取一次。没有设置按 base、0；非当月在职的 applied_amount 为 0。员工有执行底薪（在职且金额 > 0）、任一提成记录（含零提成）或任一加减项时列入，按编号、ID 排序，离职员工亦可出现。
+
+工资表行保存 mode、applied_amount、base_pay、item_commission、consume_commission、labor_commission、sale_commission、commission_total、guarantee_top_up、adjustments_total、total。四类提成按有符号 Commission.Amount 求和；加减项按有符号金额求和。payroll_lines 的 CHECK 保证 commission_total 等于四类之和，total = base_pay + commission_total + guarantee_top_up + adjustments_total；base 模式 base_pay = applied_amount 且补差 0；guarantee 模式 base_pay = 0 且补差 = greatest(0, applied_amount - commission_total)。mode 只允许 base / guarantee，applied_amount 非负。结算与员工唯一。全店 totals 对每个金额列按工资表行逐列相加。
+
+list_payroll_months、get_payroll 是 Read / AIDirect，lock_payroll_month 是 Write / AIDraft，三个都要求 payroll.manage。状态从当前营业月到开店月倒序，含锁定人、时刻与 lockable；get_payroll 对开放月每次重算（允许未来月），锁定月从 payroll_lines 读取、名称在读取时解析。
+
+锁定顺序：LockPayroll → CheckMonth → commission.Settlement 检查未锁定 → settings.BusinessDate 检查月份已结束 → 检查前月已锁定（开店月免此项）→ commission.Settle 保存提成结算与每笔结果 → 现算工资表（此时 Commissions 读刚存下的提成，工资表各列与提成明细出自同一份数据）→ 保存工资表行 → 读回锁定视图 → audit.Record。所有步骤同一事务，失败全部回滚并提示，可重试，无后台补算。锁定不可撤销；错误以后月加减项更正。加减项不复制，原表在锁后禁止增加或删除。底薪与加减项写操作始终先取同一咨询锁，锁定期间请求会等待，提交后再检查锁定。
+
+锁月日志 action 为 lock_payroll_month，目标 payroll_month，无关联顾客，before 为 nil，after 为返回的完整工资表；list_audit_log 额外要求 payroll.manage 才能读取。三个接口、提成查询与工资日志不输出顾客或手机号；工资接口的整店工资视图由 payroll.manage 授权，提成查询仍需 performance.view 并保留 self 范围。

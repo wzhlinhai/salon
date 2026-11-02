@@ -4,6 +4,7 @@ package payroll
 import (
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 
 	"github.com/wzhlinhai/salon/backend/internal/money"
@@ -82,4 +83,65 @@ type ListPayrollAdjustmentsInput struct {
 // PayrollAdjustmentList 是按创建时间倒序排列的加减项页。
 type PayrollAdjustmentList struct {
 	Entries []PayrollAdjustment `json:"entries"`
+}
+
+// PayrollTotals 是工资表各金额列的全店合计。
+type PayrollTotals struct {
+	AppliedAmount     money.Amount `json:"applied_amount"`
+	BasePay           money.Change `json:"base_pay"`
+	ItemCommission    money.Change `json:"item_commission"`
+	ConsumeCommission money.Change `json:"consume_commission"`
+	LaborCommission   money.Change `json:"labor_commission"`
+	SaleCommission    money.Change `json:"sale_commission"`
+	CommissionTotal   money.Change `json:"commission_total"`
+	GuaranteeTopUp    money.Amount `json:"guarantee_top_up"`
+	AdjustmentsTotal  money.Change `json:"adjustments_total"`
+	Total             money.Change `json:"total"`
+}
+
+// PayrollLine 是一位员工的工资表行。
+type PayrollLine struct {
+	Staff  staff.Ref `json:"staff"`
+	Active bool      `json:"active"`
+	Mode   string    `json:"mode" enum:"base,guarantee"`
+	PayrollTotals
+}
+
+// Payroll 是结算月的工资表及锁定状态。
+type Payroll struct {
+	Month    string        `json:"month"`
+	Locked   bool          `json:"locked"`
+	LockedBy *staff.Ref    `json:"locked_by"`
+	LockedAt *time.Time    `json:"locked_at"`
+	Lines    []PayrollLine `json:"lines"`
+	Totals   PayrollTotals `json:"totals"`
+}
+
+// PayrollMonth 是一个结算月的锁定状态及当前是否允许锁定。
+type PayrollMonth struct {
+	Month    string     `json:"month"`
+	Locked   bool       `json:"locked"`
+	LockedBy *staff.Ref `json:"locked_by"`
+	LockedAt *time.Time `json:"locked_at"`
+	Lockable bool       `json:"lockable"`
+}
+
+// PayrollMonthList 是从当前营业月倒序到开店月的结算状态。
+type PayrollMonthList struct {
+	Entries []PayrollMonth `json:"entries"`
+}
+
+// ListPayrollMonthsInput 是无需参数的结算状态查询。
+type ListPayrollMonthsInput struct{}
+
+// TransformSchema 声明开放工资表的锁定人可以为空。
+func (Payroll) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
+	s.Properties["locked_by"] = &huma.Schema{AnyOf: []*huma.Schema{s.Properties["locked_by"], {Type: "null"}}}
+	return s
+}
+
+// TransformSchema 声明开放结算月的锁定人可以为空。
+func (PayrollMonth) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
+	s.Properties["locked_by"] = &huma.Schema{AnyOf: []*huma.Schema{s.Properties["locked_by"], {Type: "null"}}}
+	return s
 }
