@@ -1,9 +1,11 @@
 """Gate summaries preserve file order and report incomplete records."""
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 GATE = Path(__file__).with_name('gate.py').resolve()
@@ -47,6 +49,28 @@ class SummaryTests(unittest.TestCase):
             (Path(folder) / 'gates.jsonl').touch()
             empty = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual((empty.returncode, empty.stdout, empty.stderr), (0, '', ''))
+
+
+class HeavyLockTests(unittest.TestCase):
+    def run_gate(self, folder, label, script, env):
+        return subprocess.Popen([sys.executable, str(GATE), folder, label, '--', 'sh', '-c', script],
+                                stdout=subprocess.PIPE, text=True, env=env)
+
+    def test_heavy_gates_wait_for_each_other_and_light_gates_do_not(self):
+        with tempfile.TemporaryDirectory() as folder:
+            env = dict(os.environ, GATE_HEAVY_LOCK=str(Path(folder) / 'heavy.lock'))
+            first = self.run_gate(folder, 'first', 'sleep 1; : go test', env)
+            time.sleep(0.3)
+            second = self.run_gate(folder, 'second', ': mutchecks.py', env)
+            light = self.run_gate(folder, 'light', ': npm run lint', env)
+            records = {}
+            for process in (first, second, light):
+                out, _ = process.communicate()
+                record = json.loads(out)
+                records[record['label']] = record
+            self.assertEqual(records['first']['lock_wait'], 0)
+            self.assertGreater(records['second']['lock_wait'], 0.4)
+            self.assertNotIn('lock_wait', records['light'])
 
 
 if __name__ == '__main__':

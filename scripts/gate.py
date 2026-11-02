@@ -18,8 +18,16 @@ listed in the record's artifacts array. Move failures are recorded in
 artifact_errors; the record is still written and the command's exit preserved.
 Use a fresh label for each run to keep its output. This script exits with the
 command's exit code; a command terminated by a signal exits with 128 + signal.
+
+Heavy gates run one at a time: a command whose text mentions go test, mutchecks,
+mutcheck.sh, dev.sh or e2e first takes an exclusive lock on .dev/heavy.lock
+(GATE_HEAVY_LOCK overrides the path) and waits while another heavy gate holds it,
+because they compete for Docker and the CPU and time out under load. The record's
+lock_wait gives the seconds spent waiting.
 """
 import argparse
+import fcntl
+import os
 import json
 from pathlib import Path
 import re
@@ -27,6 +35,8 @@ import shutil
 import subprocess
 import sys
 import time
+
+HEAVY = re.compile(r'\bgo test\b|mutchecks\.py|mutcheck\.sh|dev\.sh|\be2e\b')
 
 
 def main():
@@ -60,6 +70,15 @@ def main():
     folder.mkdir(parents=True, exist_ok=True)
     cwd = args.cwd.resolve()
     log = folder / (args.label + '.log')
+    lock = None
+    waited = 0.0
+    if HEAVY.search(' '.join(command)):
+        path = Path(os.environ.get('GATE_HEAVY_LOCK') or Path(__file__).resolve().parents[1] / '.dev/heavy.lock')
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lock = path.open('w')
+        begin = time.monotonic()
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        waited = round(time.monotonic() - begin, 2)
     start = time.monotonic()
     with log.open('w') as output:
         try:
@@ -68,10 +87,14 @@ def main():
         except OSError as exc:
             output.write(str(exc) + '\n')
             code = 127
+    if lock:
+        lock.close()
     if code < 0:
         code = 128 - code
     record = dict(label=args.label, cwd=str(cwd), command=command, exit=code,
                   seconds=round(time.monotonic() - start, 2))
+    if lock:
+        record['lock_wait'] = waited
     runs_mutchecks = Path(command[0]).name == 'mutchecks.py' or (
         len(command) > 1 and re.fullmatch(r'python(?:\d+(?:\.\d+)*)?(?:\.exe)?', Path(command[0]).name)
         and Path(command[1]).name == 'mutchecks.py')
