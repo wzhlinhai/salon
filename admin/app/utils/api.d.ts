@@ -55,6 +55,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/add_payroll_adjustment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 添加员工月度加减项 */
+        post: operations["add_payroll_adjustment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/add_safety_label": {
         parameters: {
             query?: never;
@@ -361,6 +378,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/delete_payroll_adjustment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 删除员工加减项 */
+        post: operations["delete_payroll_adjustment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/delete_role": {
         parameters: {
             query?: never;
@@ -525,6 +559,23 @@ export interface paths {
         put?: never;
         /** 查看业务操作的修改记录：谁、何时、改了什么、改前改后 */
         post: operations["list_audit_log"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_base_salaries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看结算月每位员工执行的底薪 */
+        post: operations["list_base_salaries"];
         delete?: never;
         options?: never;
         head?: never;
@@ -814,6 +865,23 @@ export interface paths {
         put?: never;
         /** 列出本店挂单 */
         post: operations["list_open_orders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_payroll_adjustments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 列出结算月加减项 */
+        post: operations["list_payroll_adjustments"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1296,6 +1364,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/set_base_salary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 追加员工底薪设置 */
+        post: operations["set_base_salary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/set_order_item_staff": {
         parameters: {
             query?: never;
@@ -1563,6 +1648,13 @@ export interface components {
             item: components["schemas"]["OrderItemInput"];
             order_id: string;
         };
+        AddPayrollAdjustmentInput: {
+            amount: string;
+            month: string;
+            name: string;
+            note?: string;
+            staff_id: string;
+        };
         AddSafetyLabelInput: {
             customer_id: string;
             /** @enum {string} */
@@ -1587,6 +1679,19 @@ export interface components {
         AssignCustomerResponsibleInput: {
             customer_ids: string[];
             staff_id?: string;
+        };
+        BaseSalary: {
+            amount: string;
+            effective_month: string;
+            /** @enum {string} */
+            mode: "base" | "guarantee";
+            /** Format: date-time */
+            saved_at: string;
+            saved_by: components["schemas"]["Ref"];
+            staff: components["schemas"]["Ref"];
+        };
+        BaseSalaryList: {
+            entries: components["schemas"]["StaffBaseSalary"][];
         };
         Card: {
             bonus: string;
@@ -2169,6 +2274,9 @@ export interface components {
             scoped: boolean;
             windowed: boolean;
         };
+        DeletePayrollAdjustmentInput: {
+            id: string;
+        };
         Entry: {
             action: string;
             actor: components["schemas"]["Actor"];
@@ -2435,6 +2543,13 @@ export interface components {
         ListInput: Record<string, never>;
         ListItemsInput: Record<string, never>;
         ListOpenOrdersInput: Record<string, never>;
+        ListPayrollAdjustmentsInput: {
+            before_id?: string;
+            /** Format: int32 */
+            limit?: number;
+            month: string;
+            staff_id?: string;
+        };
         ListPerformanceInput: {
             before_id?: string;
             /** Format: date */
@@ -2488,6 +2603,9 @@ export interface components {
         MergeOrdersInput: {
             merged_order_ids: string[];
             order_id: string;
+        };
+        MonthInput: {
+            month: string;
         };
         OK: {
             ok: boolean;
@@ -2627,6 +2745,20 @@ export interface components {
             method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "card" | "count" | "red_packet";
             order_item_id?: string;
             red_packet_id?: string;
+        };
+        PayrollAdjustment: {
+            amount: string;
+            /** Format: date-time */
+            created_at: string;
+            created_by: components["schemas"]["Ref"];
+            id: string;
+            month: string;
+            name: string;
+            note: string;
+            staff: components["schemas"]["Ref"];
+        };
+        PayrollAdjustmentList: {
+            entries: components["schemas"]["PayrollAdjustment"][];
         };
         PerformanceEntry: {
             /** @description 非负业绩金额，reversal 为 true 时计负数 */
@@ -2932,6 +3064,13 @@ export interface components {
             query?: string;
             responsible_staff_id?: string;
         };
+        SetBaseSalaryInput: {
+            amount: string;
+            /** @enum {string} */
+            mode: "base" | "guarantee";
+            month: string;
+            staff_id: string;
+        };
         SetOrderItemStaffInput: {
             order_id: string;
             order_item_id: string;
@@ -3020,6 +3159,11 @@ export interface components {
             /** @description 岗位 */
             position?: components["schemas"]["Ref"];
             roles: components["schemas"]["Ref"][];
+        };
+        StaffBaseSalary: {
+            active: boolean;
+            base_salary: components["schemas"]["BaseSalary"];
+            staff: components["schemas"]["Ref"];
         };
         StaffIDInput: {
             staff_id: string;
@@ -3263,6 +3407,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Order"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    add_payroll_adjustment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddPayrollAdjustmentInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollAdjustment"];
                 };
             };
             /** @description Error */
@@ -3870,6 +4047,39 @@ export interface operations {
             };
         };
     };
+    delete_payroll_adjustment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeletePayrollAdjustmentInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OK"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     delete_role: {
         parameters: {
             query?: never;
@@ -4187,6 +4397,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LogList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_base_salaries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MonthInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaseSalaryList"];
                 };
             };
             /** @description Error */
@@ -4748,6 +4991,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_payroll_adjustments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListPayrollAdjustmentsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollAdjustmentList"];
                 };
             };
             /** @description Error */
@@ -5672,6 +5948,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CustomerList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    set_base_salary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetBaseSalaryInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaseSalary"];
                 };
             };
             /** @description Error */

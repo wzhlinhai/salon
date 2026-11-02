@@ -186,7 +186,7 @@ func Register(r *ops.Registry) {
 			}
 			rows, err := env.Q.ListAuditLog(ctx, dbgen.ListAuditLogParams{
 				StoreID: env.Caller.StoreID, TargetID: in.TargetID, BeforeID: in.BeforeID, RowLimit: limit,
-				CustomerView: customerView, CustomerSelfID: self, SettingsManage: env.Caller.Has(perm.SettingsManage),
+				CustomerView: customerView, CustomerSelfID: self, SettingsManage: env.Caller.Has(perm.SettingsManage), PayrollManage: env.Caller.Has(perm.PayrollManage),
 			})
 			if err != nil {
 				return nil, err
@@ -272,3 +272,9 @@ func DebtTarget(id, customerID uuid.UUID) Target {
 
 // CommissionSchemeTarget 创建不关联顾客的提成方案日志目标。
 func CommissionSchemeTarget(id uuid.UUID) Target { return Target{kind: "commission_scheme", id: id} }
+
+// BaseSalaryTarget 创建以员工标识为目标的底薪日志目标。
+func BaseSalaryTarget(staffID uuid.UUID) Target { return Target{kind: "base_salary", id: staffID} }
+
+// PayrollAdjustmentTarget 创建不关联顾客的加减项日志目标。
+func PayrollAdjustmentTarget(id uuid.UUID) Target { return Target{kind: "payroll_adjustment", id: id} }
