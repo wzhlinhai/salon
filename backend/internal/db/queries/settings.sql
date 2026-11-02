@@ -44,3 +44,8 @@ SELECT * FROM settings_snapshots WHERE id = $1 AND store_id = $2;
 -- name: LockSettingKey :exec
 -- 在事务结束前锁住门店的一项设置，同一项设置的修改排队进行。
 SELECT pg_advisory_xact_lock(hashtextextended(CAST(sqlc.arg(store_id)::uuid AS text) || '/' || sqlc.arg(key)::text, 0));
+
+-- name: BusinessDayEndHistory :many
+SELECT DISTINCT ON (effective_from) effective_from, value, is_default
+FROM setting_changes WHERE store_id = $1 AND key = 'business_day_end'
+ORDER BY effective_from DESC, changed_at DESC, id DESC;

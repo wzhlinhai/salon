@@ -472,3 +472,27 @@ _English_: guaranteed pay
 按结算月、员工记录的自由名称、金额和备注，正数为加、负数为减，金额不能为零。未锁定前可以删除，也可记给离职员工。
 _English_: payroll adjustment
 _Avoid_: 奖惩、扣款项
+
+**提成结算**:
+锁定工资月份时保存的每笔提成计算结果与解释。
+_English_: commission settlement
+
+**锁定**:
+将已结束的工资月份永久结算；不能撤销，错误在之后月份用加减项更正。
+_English_: lock
+
+**底薪部分**:
+底薪 + 提成模式执行的底薪金额；保底模式为零。
+_English_: base pay
+
+**保底补差**:
+保底模式下 max(0, 保底 − 提成合计)，底薪 + 提成模式为零。
+_English_: guarantee top-up
+
+**应发**:
+底薪部分、四类提成、保底补差与加减项的合计。
+_English_: gross pay
+
+**工资表行**:
+工资表中一位员工的底薪部分、四类提成、保底补差、加减项合计及应发。
+_English_: payroll line

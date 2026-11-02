@@ -480,6 +480,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/get_payroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看月度工资表 */
+        post: operations["get_payroll"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/get_settings": {
         parameters: {
             query?: never;
@@ -888,6 +905,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_payroll_months": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 列出各月工资结算状态 */
+        post: operations["list_payroll_months"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_performance": {
         parameters: {
             query?: never;
@@ -1018,6 +1052,23 @@ export interface paths {
         put?: never;
         /** 列出本店员工名称和在职状态，用于选择负责人 */
         post: operations["list_staff_options"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/lock_payroll_month": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 锁定月度工资与提成 */
+        post: operations["lock_payroll_month"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2550,6 +2601,7 @@ export interface components {
             month: string;
             staff_id?: string;
         };
+        ListPayrollMonthsInput: Record<string, never>;
         ListPerformanceInput: {
             before_id?: string;
             /** Format: date */
@@ -2746,6 +2798,15 @@ export interface components {
             order_item_id?: string;
             red_packet_id?: string;
         };
+        Payroll: {
+            lines: components["schemas"]["PayrollLine"][];
+            locked: boolean;
+            /** Format: date-time */
+            locked_at: string | null;
+            locked_by: components["schemas"]["Ref"] | null;
+            month: string;
+            totals: components["schemas"]["PayrollTotals"];
+        };
         PayrollAdjustment: {
             amount: string;
             /** Format: date-time */
@@ -2759,6 +2820,45 @@ export interface components {
         };
         PayrollAdjustmentList: {
             entries: components["schemas"]["PayrollAdjustment"][];
+        };
+        PayrollLine: {
+            active: boolean;
+            adjustments_total: string;
+            applied_amount: string;
+            base_pay: string;
+            commission_total: string;
+            consume_commission: string;
+            guarantee_top_up: string;
+            item_commission: string;
+            labor_commission: string;
+            /** @enum {string} */
+            mode: "base" | "guarantee";
+            sale_commission: string;
+            staff: components["schemas"]["Ref"];
+            total: string;
+        };
+        PayrollMonth: {
+            lockable: boolean;
+            locked: boolean;
+            /** Format: date-time */
+            locked_at: string | null;
+            locked_by: components["schemas"]["Ref"] | null;
+            month: string;
+        };
+        PayrollMonthList: {
+            entries: components["schemas"]["PayrollMonth"][];
+        };
+        PayrollTotals: {
+            adjustments_total: string;
+            applied_amount: string;
+            base_pay: string;
+            commission_total: string;
+            consume_commission: string;
+            guarantee_top_up: string;
+            item_commission: string;
+            labor_commission: string;
+            sale_commission: string;
+            total: string;
         };
         PerformanceEntry: {
             /** @description 非负业绩金额，reversal 为 true 时计负数 */
@@ -4245,6 +4345,39 @@ export interface operations {
             };
         };
     };
+    get_payroll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MonthInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Payroll"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     get_settings: {
         parameters: {
             query?: never;
@@ -5037,6 +5170,39 @@ export interface operations {
             };
         };
     };
+    list_payroll_months: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListPayrollMonthsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollMonthList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     list_performance: {
         parameters: {
             query?: never;
@@ -5288,6 +5454,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffOptionList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    lock_payroll_month: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MonthInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Payroll"];
                 };
             };
             /** @description Error */

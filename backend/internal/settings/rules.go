@@ -134,17 +134,21 @@ func Effective(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, day tim
 // BusinessDate 返回时刻 t 属于哪一个营业日。
 // 营业日 D 的结束时间取 D 那天生效的设置：次日结束时间之前的时刻仍属于 D。
 func BusinessDate(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, t time.Time) (time.Time, error) {
-	local := t.In(Location)
-	today := Date(local)
-	prev := today.AddDate(0, 0, -1)
-	rules, err := Effective(ctx, q, storeID, prev)
+	days, err := BusinessDates(ctx, q, storeID, []time.Time{t})
 	if err != nil {
 		return time.Time{}, err
 	}
-	if local.Format("15:04") < rules.BusinessDayEnd() {
-		return prev, nil
+	return days[0], nil
+}
+
+func businessDate(t time.Time, end string) time.Time {
+	local := t.In(Location)
+	today := Date(local)
+	prev := today.AddDate(0, 0, -1)
+	if local.Format("15:04") < end {
+		return prev
 	}
-	return today, nil
+	return today
 }
 
 // Date 返回 t 在门店时区的日历日期，表示为 UTC 零点。
@@ -248,4 +252,32 @@ func (r Rules) PerformanceRatio(category string) int {
 	var v int
 	r.decode(key, &v)
 	return v
+}
+
+// BusinessDates 批量按 BusinessDate 的相同规则换算时刻，设置历史只查询一次。
+func BusinessDates(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, times []time.Time) ([]time.Time, error) {
+	rows, err := q.BusinessDayEndHistory(ctx, storeID)
+	if err != nil {
+		return nil, err
+	}
+	def, _ := Lookup(KeyBusinessDayEnd)
+	out := make([]time.Time, 0, len(times))
+	for _, t := range times {
+		// 营业日 D 的结束时间取 D 那天执行的设置：生效日期不晚于前一天的最后一次修改，恢复默认或没有修改时用目录默认值。
+		prev := Date(t).AddDate(0, 0, -1)
+		end := def.Default.(string)
+		for _, row := range rows {
+			if row.EffectiveFrom.Time.After(prev) {
+				continue
+			}
+			if !row.IsDefault {
+				if err := json.Unmarshal(row.Value, &end); err != nil {
+					return nil, err
+				}
+			}
+			break
+		}
+		out = append(out, businessDate(t, end))
+	}
+	return out, nil
 }

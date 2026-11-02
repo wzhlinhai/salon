@@ -237,6 +237,15 @@ type CommissionSchemeVersion struct {
 	SavedAt       pgtype.Timestamptz
 }
 
+type CommissionSettlement struct {
+	TenantID  uuid.UUID
+	StoreID   uuid.UUID
+	ID        uuid.UUID
+	Month     pgtype.Date
+	SettledBy uuid.UUID
+	SettledAt pgtype.Timestamptz
+}
+
 type Customer struct {
 	ID                 uuid.UUID
 	TenantID           uuid.UUID
@@ -455,6 +464,24 @@ type PayrollAdjustment struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type PayrollLine struct {
+	TenantID          uuid.UUID
+	StoreID           uuid.UUID
+	SettlementID      uuid.UUID
+	StaffID           uuid.UUID
+	Mode              string
+	AppliedAmount     money.Amount
+	BasePay           money.Change
+	ItemCommission    money.Change
+	ConsumeCommission money.Change
+	LaborCommission   money.Change
+	SaleCommission    money.Change
+	CommissionTotal   money.Change
+	GuaranteeTopUp    money.Amount
+	AdjustmentsTotal  money.Change
+	Total             money.Change
+}
+
 type PerformanceEntry struct {
 	TenantID           uuid.UUID
 	StoreID            uuid.UUID
@@ -554,6 +581,21 @@ type SettingsSnapshot struct {
 	Rules     []byte
 	Digest    string
 	CreatedAt pgtype.Timestamptz
+}
+
+type SettledCommission struct {
+	TenantID      uuid.UUID
+	StoreID       uuid.UUID
+	SettlementID  uuid.UUID
+	Month         pgtype.Date
+	ID            uuid.UUID
+	BusinessDate  pgtype.Date
+	Source        string
+	StaffID       uuid.UUID
+	Amount        money.Change
+	Reversal      bool
+	Explanation   []byte
+	UnitCreatedAt pgtype.Timestamptz
 }
 
 type Staff struct {

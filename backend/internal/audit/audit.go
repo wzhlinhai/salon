@@ -278,3 +278,6 @@ func BaseSalaryTarget(staffID uuid.UUID) Target { return Target{kind: "base_sala
 
 // PayrollAdjustmentTarget 创建不关联顾客的加减项日志目标。
 func PayrollAdjustmentTarget(id uuid.UUID) Target { return Target{kind: "payroll_adjustment", id: id} }
+
+// PayrollMonthTarget 创建不关联顾客的工资锁月日志目标。
+func PayrollMonthTarget(id uuid.UUID) Target { return Target{kind: "payroll_month", id: id} }
