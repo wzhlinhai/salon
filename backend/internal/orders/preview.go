@@ -45,14 +45,16 @@ func previewCheckout(ctx context.Context, env ops.Env, in *PreviewCheckoutInput)
 	if in.AutoCard && rules.CardSelection() == "manual" {
 		return nil, ops.Rule("门店是手动选卡，请指定卡")
 	}
-	pricingCardID := in.CardID
-	candidates := []uuid.UUID{}
-	used := map[uuid.UUID]*cards.PaymentCard{}
-	if in.AutoCard {
-		day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
+	var day time.Time
+	if in.CardID != nil || in.AutoCard {
+		day, err = settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
 		if err != nil {
 			return nil, err
 		}
+	}
+	candidates := []uuid.UUID{}
+	used := map[uuid.UUID]*cards.PaymentCard{}
+	if in.AutoCard {
 		candidates, err = cards.SelectionCandidates(ctx, env, row.CustomerID, nil)
 		if err != nil {
 			return nil, err
@@ -61,29 +63,20 @@ func previewCheckout(ctx context.Context, env ops.Env, in *PreviewCheckoutInput)
 		if err != nil {
 			return nil, err
 		}
-		candidates = usableCandidates(candidates, used, row.CustomerID, day)
 	}
-	var typeID *uuid.UUID
 	typeIDs := []uuid.UUID{}
 	if in.CardID != nil {
-		day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
+		used, err = cards.PaymentCards(ctx, env, []uuid.UUID{*in.CardID}, day, false)
 		if err != nil {
 			return nil, err
 		}
-		used, err := cards.PaymentCards(ctx, env, []uuid.UUID{*in.CardID}, day, false)
-		if err != nil {
-			return nil, err
-		}
-		card := used[*in.CardID]
-		if err := card.CheckBalancePayment(); err != nil {
-			return nil, err
-		}
-		if err := card.CheckHolder(row.CustomerID, rules); err != nil {
-			return nil, err
-		}
-		typeID = new(card.CardTypeID())
-		typeIDs = append(typeIDs, *typeID)
+		typeIDs = append(typeIDs, used[*in.CardID].CardTypeID())
 	}
+	snapshots := make(map[uuid.UUID]cards.CardSnapshot, len(used))
+	for id, card := range used {
+		snapshots[id] = card.Snapshot()
+	}
+	candidates = usableCandidates(candidates, snapshots, row.CustomerID, day)
 	for _, id := range candidates {
 		typeIDs = append(typeIDs, used[id].CardTypeID())
 	}
@@ -91,21 +84,13 @@ func previewCheckout(ctx context.Context, env ops.Env, in *PreviewCheckoutInput)
 	if err != nil {
 		return nil, err
 	}
-	if in.AutoCard {
-		candidates, err = orderCandidates(*order, candidates, used, rules, types, lines, members)
-		if err != nil {
-			return nil, err
-		}
-		pricingCardID = new(candidates[0])
-		typeID = new(used[*pricingCardID].CardTypeID())
+	state := checkoutState{cards: snapshots, discounts: map[uuid.UUID]*money.Percent{}, lines: lines, members: members, day: day}
+	for id, cardType := range types {
+		state.discounts[id] = cardType.DiscountPercent
 	}
-	var percent *money.Percent
-	var prices map[uuid.UUID]money.Amount
-	if typeID != nil {
-		percent = types[*typeID].DiscountPercent
-		prices = members[*typeID]
+	out, pricingCardID, err := quoteOrder(state, checkoutOrder{order: *order, rules: checkoutRules{rules.CardSelection(), rules.MemberPriceRule(), rules.OthersCardPayment()}, candidates: candidates}, in.CardID, in.AutoCard)
+	if err != nil {
+		return nil, err
 	}
-	out := priceCheckout(*order, pricingLines(lines, prices), typeID, percent, rules.MemberPriceRule())
-	out.Payments = []OrderPayment{}
 	return &PreviewCheckout{Order: out, PricingCardID: pricingCardID}, nil
 }

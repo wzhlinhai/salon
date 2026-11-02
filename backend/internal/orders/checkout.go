@@ -2,7 +2,6 @@ package orders
 
 import (
 	"context"
-	"reflect"
 	"time"
 
 	"github.com/google/uuid"
@@ -146,10 +145,22 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 		if err != nil {
 			return err
 		}
+		snapshots := make(map[uuid.UUID]cards.CardSnapshot, len(used))
+		for id, card := range used {
+			snapshots[id] = card.Snapshot()
+		}
+		inputs := make([]checkoutOrder, len(orders))
+		for i, order := range orders {
+			inputs[i] = checkoutOrder{order: order, rules: checkoutRules{rules[i].CardSelection(), rules[i].MemberPriceRule(), rules[i].OthersCardPayment()}, candidates: candidates[i], payments: in.Orders[i].Payments}
+		}
+		if err := checkExplicitCards(snapshots, inputs); err != nil {
+			return err
+		}
+		// 保留原加载范围：首笔显式卡余额支付的类型，以及首次过滤通过的候选类型。
 		pricingTypes := make([]*uuid.UUID, len(rows))
 		typeIDs := []uuid.UUID{}
 		for i, row := range rows {
-			candidates[i] = usableCandidates(candidates[i], used, row.CustomerID, day)
+			candidates[i] = usableCandidates(candidates[i], snapshots, row.CustomerID, day)
 			for _, id := range candidates[i] {
 				typeIDs = append(typeIDs, used[id].CardTypeID())
 			}
@@ -158,14 +169,6 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 					continue
 				}
 				card := used[*payment.CardID]
-				if err := card.CheckHolder(row.CustomerID, rules[i]); err != nil {
-					return err
-				}
-				if payment.Method == "card" {
-					if err := card.CheckBalancePayment(); err != nil {
-						return err
-					}
-				}
 				if payment.Method == "card" && pricingTypes[i] == nil {
 					pricingTypes[i] = new(card.CardTypeID())
 					typeIDs = append(typeIDs, *pricingTypes[i])
@@ -191,104 +194,64 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 		if err != nil {
 			return err
 		}
-		priced := make([]Order, len(orders))
-		for i, order := range orders {
-			// 前面各单已扣过款，选卡与计价必须使用本次调用中的当前余额。
-			candidates[i] = usableCandidates(candidates[i], used, rows[i].CustomerID, day)
-			for _, payment := range in.Orders[i].Payments {
-				if payment.Method != "card" || payment.CardID != nil {
-					continue
-				}
-				candidates[i], err = orderCandidates(orders[i], candidates[i], used, rules[i], types, lines, members)
-				if err != nil {
-					return err
-				}
-			}
-			// 第一笔卡余额支付才决定计价卡；扣次不参与。
-			for _, payment := range in.Orders[i].Payments {
-				if payment.Method != "card" {
-					continue
-				}
-				if payment.CardID == nil {
-					pricingTypes[i] = new(used[candidates[i][0]].CardTypeID())
-				}
-				break
-			}
-			var percent *money.Percent
-			var prices map[uuid.UUID]money.Amount
-			if pricingTypes[i] != nil {
-				percent = types[*pricingTypes[i]].DiscountPercent
-				prices = members[*pricingTypes[i]]
-			}
-			priced[i] = priceCheckout(order, pricingLines(lines, prices), pricingTypes[i], percent, rules[i].MemberPriceRule())
-			if err := checkCountPayments(priced[i], in.Orders[i].Payments); err != nil {
-				return err
-			}
-			if err := checkCheckout(priced[i], in.Orders[i].Payments); err != nil {
-				return err
-			}
-			for j, line := range priced[i].Items {
-				before := orders[i].Items[j]
-				if line.RemovedAt != nil || line.Price.Cmp(before.Price) == 0 && line.PriceSource == before.PriceSource && reflect.DeepEqual(line.LevelID, before.LevelID) && reflect.DeepEqual(line.CardTypeID, before.CardTypeID) && line.Discount.Cmp(before.Discount) == 0 {
-					continue
-				}
+		state := checkoutState{cards: snapshots, discounts: map[uuid.UUID]*money.Percent{}, lines: lines, members: members, day: day}
+		for id, cardType := range types {
+			state.discounts[id] = cardType.DiscountPercent
+		}
+		plans, err := planCheckout(state, inputs)
+		if err != nil {
+			return err
+		}
+		for i, plan := range plans {
+			for _, line := range plan.changedLines {
 				if err := env.Q.CheckoutOrderItem(ctx, dbgen.CheckoutOrderItemParams{ID: line.ID, Price: line.Price, PriceSource: line.PriceSource, LevelID: line.LevelID, CardTypeID: line.CardTypeID, Discount: line.Discount}); err != nil {
 					return err
 				}
 			}
-			for _, inputPayment := range in.Orders[i].Payments {
-				payments := []PaymentInput{inputPayment}
-				if inputPayment.Method == "card" && inputPayment.CardID == nil {
-					payments, err = selectionPayments(inputPayment, candidates[i], used)
+			for _, payment := range plan.payments {
+				if payment.Method == "red_packet" {
+					packet := packets[*payment.RedPacketID]
+					if err := redpackets.CheckUsable(ctx, env, packet, rows[i].CustomerID, day); err != nil {
+						return err
+					}
+					if payment.Amount.Cmp(packet.FaceValue) > 0 {
+						return ops.Rule("红包抵扣不能超过面额")
+					}
+				}
+				var ledgerID, countLedgerID *uuid.UUID
+				if payment.Method == "count" {
+					var itemID uuid.UUID
+					for _, line := range plan.order.Items {
+						if line.ID == *payment.OrderItemID {
+							itemID = line.ItemID
+							break
+						}
+					}
+					id, err := used[*payment.CardID].ConsumeCount(ctx, env, itemID, rules[i].CardCountOrder(), day)
 					if err != nil {
+						return err
+					}
+					countLedgerID = &id
+				}
+				if payment.Method == "card" {
+					id, err := used[*payment.CardID].Consume(ctx, env, payment.Amount, rules[i].CardDeductionOrder(), day)
+					if err != nil {
+						return err
+					}
+					ledgerID = &id
+				}
+				paymentID, err := env.Q.CreateOrderPayment(ctx, dbgen.CreateOrderPaymentParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CheckoutID: checkout.ID, OrderID: rows[i].ID, Method: payment.Method, Amount: payment.Amount, CardID: payment.CardID, CardLedgerID: ledgerID, OrderItemID: payment.OrderItemID, CardCountLedgerID: countLedgerID, RedPacketID: payment.RedPacketID})
+				if err != nil {
+					return err
+				}
+				if payment.Method == "red_packet" {
+					if err := redpackets.MarkUsed(ctx, env, *payment.RedPacketID, paymentID); err != nil {
 						return err
 					}
 				}
-				for _, payment := range payments {
-					if payment.Method == "red_packet" {
-						packet := packets[*payment.RedPacketID]
-						if err := redpackets.CheckUsable(ctx, env, packet, rows[i].CustomerID, day); err != nil {
-							return err
-						}
-						if payment.Amount.Cmp(packet.FaceValue) > 0 {
-							return ops.Rule("红包抵扣不能超过面额")
-						}
-					}
-					var ledgerID, countLedgerID *uuid.UUID
-					if payment.Method == "count" {
-						var itemID uuid.UUID
-						for _, line := range priced[i].Items {
-							if line.ID == *payment.OrderItemID {
-								itemID = line.ItemID
-								break
-							}
-						}
-						id, err := used[*payment.CardID].ConsumeCount(ctx, env, itemID, rules[i].CardCountOrder(), day)
-						if err != nil {
-							return err
-						}
-						countLedgerID = &id
-					}
-					if payment.Method == "card" {
-						id, err := used[*payment.CardID].Consume(ctx, env, payment.Amount, rules[i].CardDeductionOrder(), day)
-						if err != nil {
-							return err
-						}
-						ledgerID = &id
-					}
-					paymentID, err := env.Q.CreateOrderPayment(ctx, dbgen.CreateOrderPaymentParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CheckoutID: checkout.ID, OrderID: rows[i].ID, Method: payment.Method, Amount: payment.Amount, CardID: payment.CardID, CardLedgerID: ledgerID, OrderItemID: payment.OrderItemID, CardCountLedgerID: countLedgerID, RedPacketID: payment.RedPacketID})
-					if err != nil {
+				if payment.Method == "debt" {
+					if err := debts.RecordOrderDebt(ctx, env, rows[i].CustomerID, rows[i].ID, paymentID, payment.Amount, day); err != nil {
 						return err
-					}
-					if payment.Method == "red_packet" {
-						if err := redpackets.MarkUsed(ctx, env, *payment.RedPacketID, paymentID); err != nil {
-							return err
-						}
-					}
-					if payment.Method == "debt" {
-						if err := debts.RecordOrderDebt(ctx, env, rows[i].CustomerID, rows[i].ID, paymentID, payment.Amount, day); err != nil {
-							return err
-						}
 					}
 				}
 			}
@@ -308,7 +271,7 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 				consumptions[*p.OrderItemID] = &performance.CountConsumption{Method: method, UnitPrice: *p.CountUnitPrice}
 			}
 			performanceLines := []performance.Line{}
-			for _, line := range priced[i].Items {
+			for _, line := range plan.order.Items {
 				if line.RemovedAt != nil {
 					continue
 				}
@@ -350,64 +313,4 @@ func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput,
 		return nil, err
 	}
 	return &OrderList{Items: after}, nil
-}
-
-func checkCheckout(order Order, payments []PaymentInput) error {
-	active := 0
-	net := money.Total{}
-	missing := false
-	for _, item := range order.Items {
-		if item.RemovedAt != nil {
-			continue
-		}
-		active++
-		amount, _ := item.Price.Apply(money.Amount{}.Sub(item.Discount))
-		net = net.AddProduct(amount, 1)
-		for _, p := range item.Positions {
-			if p.Required && p.StaffID == nil {
-				missing = true
-			}
-		}
-	}
-	if active == 0 {
-		return ops.Rule("单上没有项目")
-	}
-	if missing {
-		return ops.Rule("必填岗位还没填人")
-	}
-	total := money.Total{}
-	for _, payment := range payments {
-		if payment.Amount.Cmp(money.Amount{}) <= 0 {
-			return ops.Rule("支付金额须大于零")
-		}
-		total = total.AddProduct(payment.Amount, 1)
-	}
-	if total.CmpTotal(net) != 0 {
-		return ops.Rule("支付合计须等于实收")
-	}
-	return nil
-}
-
-func checkCountPayments(order Order, payments []PaymentInput) error {
-	for _, payment := range payments {
-		if payment.Method != "count" {
-			continue
-		}
-		found := false
-		for _, line := range order.Items {
-			if line.ID != *payment.OrderItemID || line.RemovedAt != nil {
-				continue
-			}
-			found = true
-			net, _ := line.Price.Apply(money.Amount{}.Sub(line.Discount))
-			if payment.Amount.Cmp(net) != 0 {
-				return ops.Rule("扣次金额须等于这一行的实收")
-			}
-			break
-		}
-		if !found {
-			return ops.Rule("扣次的项目行不在这张单上")
-		}
-	}
-	return nil
 }
