@@ -48,16 +48,18 @@ SELECT a.id, a.tenant_id, a.store_id, a.action, a.target_id, a.before, a.after, 
 FROM audit_log a JOIN staff s ON s.id = a.actor_id
 LEFT JOIN customers c ON c.id = a.customer_id
 WHERE a.store_id = $1 AND ($2::uuid IS NULL OR a.target_id = $2)
-    AND (a.target_kind <> 'commission_scheme' OR $3::boolean)
-    AND (a.customer_id IS NULL OR ($4::boolean AND ($5::uuid IS NULL OR c.responsible_staff_id = $5)))
-    AND ($6::uuid IS NULL OR (a.at, a.id) < (SELECT b.at, b.id FROM audit_log b WHERE b.id = $6 AND b.store_id = $1))
+    AND (a.target_kind NOT IN ('base_salary','payroll_adjustment') OR $3::boolean)
+    AND (a.target_kind <> 'commission_scheme' OR $4::boolean)
+    AND (a.customer_id IS NULL OR ($5::boolean AND ($6::uuid IS NULL OR c.responsible_staff_id = $6)))
+    AND ($7::uuid IS NULL OR (a.at, a.id) < (SELECT b.at, b.id FROM audit_log b WHERE b.id = $7 AND b.store_id = $1))
 ORDER BY a.at DESC, a.id DESC
-LIMIT $7
+LIMIT $8
 `
 
 type ListAuditLogParams struct {
 	StoreID        uuid.UUID
 	TargetID       *uuid.UUID
+	PayrollManage  bool
 	SettingsManage bool
 	CustomerView   bool
 	CustomerSelfID *uuid.UUID
@@ -74,6 +76,7 @@ func (q *Queries) ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]L
 	rows, err := q.db.Query(ctx, listAuditLog,
 		arg.StoreID,
 		arg.TargetID,
+		arg.PayrollManage,
 		arg.SettingsManage,
 		arg.CustomerView,
 		arg.CustomerSelfID,

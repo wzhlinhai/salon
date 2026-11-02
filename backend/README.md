@@ -107,7 +107,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 ## 操作日志
 
 - `audit_log` 只追加，`salon_app` 只有 SELECT 和 INSERT 权限。日志与业务操作在同一事务里写入，任何一步失败都会一起回滚。同一员工或角色的修改用行锁排队，在读取改前快照前加锁，日志的改前才接得上前一次的改后。
-- 当前记录角色的新建、修改、删除，以及员工的新建、档案修改、登录设置、停用、恢复和角色分配；保留改前改后，删除角色时还保留持有员工的 ID、姓名。`list_audit_log` 需要操作日志权限，可按目标 ID 查询。每条日志记录目标种类及其关联顾客；`list_audit_log` 按调用者的顾客查看范围过滤关联顾客的日志。提成方案（`commission_scheme`，不关联顾客）、卡类型、开卡、充值、开单、加项目、去掉项目、换岗位员工、改价、合并单、结账已记录日志。新增关联顾客的种类（例如单）时，添加接收顾客 ID 的构造函数，并扩展迁移中的 CHECK 列表。
+- 当前记录角色的新建、修改、删除，以及员工的新建、档案修改、登录设置、停用、恢复和角色分配；保留改前改后，删除角色时还保留持有员工的 ID、姓名。`list_audit_log` 需要操作日志权限，可按目标 ID 查询。每条日志记录目标种类及其关联顾客；`list_audit_log` 按调用者的顾客查看范围过滤关联顾客的日志。底薪（`base_salary`，目标为员工 ID）、加减项（`payroll_adjustment`，目标为加减项 ID，均不关联顾客）、提成方案（`commission_scheme`，不关联顾客）、卡类型、开卡、充值、开单、加项目、去掉项目、换岗位员工、改价、合并单、结账已记录日志。新增关联顾客的种类（例如单）时，添加接收顾客 ID 的构造函数，并扩展迁移中的 CHECK 列表。
 - 新操作在成功路径末尾用同一个 `env` 调用 `audit.Record`，传入不含密码或密码哈希的返回值视图；新建前、删除后传 nil。手机号字段的 JSON 键名必须是 `phone`，`audit.Record` 遇到别的键名会拒绝写入（读取时只按这个键名打码）。
 
 ## 共享修改与引用检查
@@ -171,3 +171,19 @@ whole（整笔跳档）使用截至查询时完整月份的总累计 T，包括�
 progressive（超额累进）从本笔前累计 c 开始，把 [c, c + base] 在档位起点处分段，各段乘比例并分别四舍五入到分后相加。零以下用首档；冲回覆盖 [c + base, c]，分段基数与提成均为负。同月原笔与冲回使当月净累计恢复；跨月冲回只减少冲回月累计。月中结果截至查询时，月底由 #39 锁定。
 
 命中阶梯格子时 explanation 才含 tier：mode、month（YYYY-MM）、base_kind、whole 的有符号 cumulative 或 progressive 的 before/after、累计后达到的 level（index 从 0 起，含 from/percent），以及各段 parts（from、percent、有符号 base/amount）。whole 恰有一段；Commission.Amount 等于所有分段金额之和。原有 base、match（含完整 tiers）、version 保持原含义。
+
+## 工资
+
+`internal/payroll` 保存底薪与加减项，本步不计算工资表。结算月使用 YYYY-MM，按营业日所在的自然月算；统一用 CheckMonth 解析，并以 settings.BusinessDate(stores.created_at) 的月份为开店月下限，允许未来月份。
+
+`staff_base_salaries` 按员工追加计薪方式（base 底薪 + 提成，guarantee 保底）、非负金额、生效月、保存人和保存时刻。旧记录不改不删。BaseSalariesInForce 一次查询选出本店所有员工 effective_month ≤ 结算月的最大生效月，同月取 saved_at 最新的一条；时刻也相同时按 ID 倒序确定。未设置返回 null，客户端按 base、0 显示。所有员工包括离职员工按编号返回。
+
+`payroll_adjustments` 记录结算月、员工、自由名称、非零有符号金额及备注；名称去首尾空白后不能空，最多 20 字，备注最多 100 字。允许离职员工；删除是真正 DELETE，日志保留删除前完整视图。月份锁与锁定后的拒绝属于下一步。
+
+所有写操作先拿 LockPayroll 的门店级咨询锁（store_id + /payroll），底薪、加减项与下一步锁月共用它。设置底薪锁序：咨询锁 → 月份检查 → staff.LockReferences 的员工 FOR SHARE → 读取执行底薪 → 追加；添加加减项：咨询锁 → 月份检查 → 员工 FOR SHARE → 插入；删除：咨询锁 → 本店加减项 → 删除。下一步可在咨询锁内增加锁月检查，不会插入到锁定期间。
+
+set_base_salary、add_payroll_adjustment、delete_payroll_adjustment 是 Write / AIDraft；list_base_salaries、list_payroll_adjustments 是 Read / AIDirect，全部要求 payroll.manage。底薪列表覆盖全店在职与离职员工；加减项按月、可选员工筛选，以 created_at、id 倒序游标分页。姓名批量查询，查询数不随行数增长。
+
+写入与 audit.Record 同事务；底薪目标 base_salary 的 target_id 是员工 ID，before 是该月原执行视图（首次 nil），after 是新设置；加减项目标 payroll_adjustment 的 ID 是该条 ID，新增 before nil，删除 after nil。视图与日志无顾客或手机号，日志读取额外要求 payroll.manage。
+
+两表有租户 RLS、tenant_id/id 唯一约束，以及门店、员工、保存人或创建人的租户组合外键。salon_app 对 staff_base_salaries 仅有 SELECT、INSERT，对 payroll_adjustments 仅有 SELECT、INSERT、DELETE，没有 UPDATE。月份在数据库约束为月首；计薪方式、金额、名称、备注也有 CHECK。

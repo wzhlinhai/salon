@@ -442,6 +442,19 @@ type OrderVoid struct {
 	At           pgtype.Timestamptz
 }
 
+type PayrollAdjustment struct {
+	TenantID  uuid.UUID
+	StoreID   uuid.UUID
+	ID        uuid.UUID
+	StaffID   uuid.UUID
+	Month     pgtype.Date
+	Name      string
+	Amount    money.Change
+	Note      string
+	CreatedBy uuid.UUID
+	CreatedAt pgtype.Timestamptz
+}
+
 type PerformanceEntry struct {
 	TenantID           uuid.UUID
 	StoreID            uuid.UUID
@@ -559,6 +572,18 @@ type Staff struct {
 	TokenVersion  int32
 	FailedLogins  int32
 	LockedUntil   pgtype.Timestamptz
+}
+
+type StaffBaseSalary struct {
+	TenantID       uuid.UUID
+	StoreID        uuid.UUID
+	ID             uuid.UUID
+	StaffID        uuid.UUID
+	EffectiveMonth pgtype.Date
+	Mode           string
+	Amount         money.Amount
+	SavedBy        uuid.UUID
+	SavedAt        pgtype.Timestamptz
 }
 
 type StaffRole struct {
