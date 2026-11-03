@@ -25,29 +25,20 @@ type cardChange struct {
 // change 先按 UUID 锁住所有卡，再检查查看范围、读改前、执行修改并逐卡记日志。
 // 业绩员工由调用方在卡之前锁住；营业日对整次修改只计算一次。
 func change(ctx context.Context, env ops.Env, action string, ids []uuid.UUID, edit func([]cardChange, time.Time) error, now time.Time) ([]*Card, error) {
-	ordered := slices.Clone(ids)
-	slices.SortFunc(ordered, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
-	locked := make(map[uuid.UUID]dbgen.Card, len(ids))
-	for _, id := range ordered {
-		row, err := env.Q.LockCard(ctx, dbgen.LockCardParams{StoreID: env.Caller.StoreID, ID: id})
-		if err != nil {
-			return nil, rowError(err)
-		}
-		locked[id] = row
+	locked, err := lockCards(ctx, env, ids)
+	if err != nil {
+		return nil, err
 	}
 	changes := make([]cardChange, len(ids))
 	for i, id := range ids {
-		row := locked[id]
+		row := locked[id].row
 		if err := customers.CheckViewable(ctx, env, row.CustomerID); err != nil {
 			return nil, err
 		}
 		if row.Status == "refunded" {
 			return nil, ops.Rule("卡已退")
 		}
-		before, err := cardView(ctx, env, id)
-		if err != nil {
-			return nil, err
-		}
+		before := locked[id].before
 		changes[i] = cardChange{row: row, before: before}
 	}
 	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, now)
@@ -101,6 +92,11 @@ func writeBalance(ctx context.Context, env ops.Env, id uuid.UUID, kind string, p
 	return env.Q.AddCardLedger(ctx, dbgen.AddCardLedgerParams{RefundID: refundID, ReversesID: reversesID, OrderVoidID: orderVoidID, TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: id, Kind: kind, PrincipalBefore: principal, PrincipalDelta: principalDelta, PrincipalAfter: pa, BonusBefore: bonus, BonusDelta: bonusDelta, BonusAfter: ba, BusinessDate: pgtype.Date{Time: day, Valid: true}, ActorID: env.Caller.StaffID})
 }
 
+// writeCount 以次数前值和差额计算后值并追加流水。
+func writeCount(ctx context.Context, env ops.Env, id, itemID uuid.UUID, kind string, paid, gift, paidDelta, giftDelta int32, day time.Time, adjustmentID, reversesID, orderVoidID, refundID *uuid.UUID) (uuid.UUID, error) {
+	return env.Q.AddCardCountEntry(ctx, dbgen.AddCardCountEntryParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: id, ItemID: itemID, Kind: kind, PaidBefore: paid, PaidDelta: paidDelta, PaidAfter: paid + paidDelta, GiftBefore: gift, GiftDelta: giftDelta, GiftAfter: gift + giftDelta, BusinessDate: pgtype.Date{Time: day, Valid: true}, ActorID: env.Caller.StaffID, AdjustmentID: adjustmentID, ReversesID: reversesID, OrderVoidID: orderVoidID, RefundID: refundID})
+}
+
 // writePoints 将积分前值、差额和目标值收在同一处，充值与调整共用。
 func writePoints(ctx context.Context, env ops.Env, in dbgen.AddCardPointsParams, before, after int32) error {
 	if after < 0 || after > 99999999 {
@@ -109,4 +105,23 @@ func writePoints(ctx context.Context, env ops.Env, in dbgen.AddCardPointsParams,
 	in.TenantID, in.StoreID, in.ActorID = env.Caller.TenantID, env.Caller.StoreID, env.Caller.StaffID
 	in.Before, in.Delta, in.After = before, after-before, after
 	return env.Q.AddCardPoints(ctx, in)
+}
+
+// lockCards 按 UUID 去重加锁并读取改前视图，检查由调用方按原顺序执行。
+func lockCards(ctx context.Context, env ops.Env, ids []uuid.UUID) (map[uuid.UUID]*PaymentCard, error) {
+	ordered := slices.Clone(ids)
+	slices.SortFunc(ordered, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
+	out := map[uuid.UUID]*PaymentCard{}
+	for _, id := range slices.Compact(ordered) {
+		row, err := env.Q.LockCard(ctx, dbgen.LockCardParams{StoreID: env.Caller.StoreID, ID: id})
+		if err != nil {
+			return nil, rowError(err)
+		}
+		before, err := cardView(ctx, env, id)
+		if err != nil {
+			return nil, err
+		}
+		out[id] = &PaymentCard{row: row, before: before, principal: before.Principal, bonus: before.Bonus}
+	}
+	return out, nil
 }

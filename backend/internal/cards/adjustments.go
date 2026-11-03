@@ -68,7 +68,11 @@ func adjustCard(ctx context.Context, env ops.Env, in *AdjustCardInput) (*Card, e
 			typeID = ct.ID
 			typeBefore, typeAfter = &card.CardTypeID, &typeID
 		}
-		changes := []dbgen.AddCardCountEntryParams{}
+		type countChange struct {
+			itemID                           uuid.UUID
+			paid, gift, paidDelta, giftDelta int32
+		}
+		changes := []countChange{}
 		seen := map[uuid.UUID]bool{}
 		for _, target := range in.Counts {
 			if seen[target.ItemID] || target.Paid < 0 || target.Gift < 0 {
@@ -80,7 +84,7 @@ func adjustCard(ctx context.Context, env ops.Env, in *AdjustCardInput) (*Card, e
 				if item.ItemID == target.ItemID {
 					found = true
 					if target.Paid != item.PaidRemaining || target.Gift != item.GiftRemaining {
-						changes = append(changes, dbgen.AddCardCountEntryParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: card.ID, ItemID: target.ItemID, Kind: "adjust", PaidBefore: item.PaidRemaining, PaidDelta: target.Paid - item.PaidRemaining, PaidAfter: target.Paid, GiftBefore: item.GiftRemaining, GiftDelta: target.Gift - item.GiftRemaining, GiftAfter: target.Gift, ActorID: env.Caller.StaffID})
+						changes = append(changes, countChange{itemID: target.ItemID, paid: item.PaidRemaining, gift: item.GiftRemaining, paidDelta: target.Paid - item.PaidRemaining, giftDelta: target.Gift - item.GiftRemaining})
 					}
 				}
 			}
@@ -118,9 +122,7 @@ func adjustCard(ctx context.Context, env ops.Env, in *AdjustCardInput) (*Card, e
 			}
 		}
 		for _, change := range changes {
-			change.AdjustmentID = &adjustment.ID
-			change.BusinessDate = pgtype.Date{Time: day, Valid: true}
-			if err := env.Q.AddCardCountEntry(ctx, change); err != nil {
+			if _, err := writeCount(ctx, env, card.ID, change.itemID, "adjust", change.paid, change.gift, change.paidDelta, change.giftDelta, day, &adjustment.ID, nil, nil, nil); err != nil {
 				return err
 			}
 		}

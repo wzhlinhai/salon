@@ -152,7 +152,7 @@ func refundCard(ctx context.Context, env ops.Env, in *RefundCardInput) (*CardRef
 			return err
 		}
 		for _, item := range c.before.Items {
-			if err := env.Q.AddCardCountEntry(ctx, dbgen.AddCardCountEntryParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: in.CardID, ItemID: item.ItemID, Kind: "refund", PaidBefore: item.PaidRemaining, PaidDelta: -item.PaidRemaining, PaidAfter: 0, GiftBefore: item.GiftRemaining, GiftDelta: -item.GiftRemaining, GiftAfter: 0, RefundID: &row.ID, BusinessDate: row.BusinessDate, ActorID: env.Caller.StaffID}); err != nil {
+			if _, err := writeCount(ctx, env, in.CardID, item.ItemID, "refund", item.PaidRemaining, item.GiftRemaining, -item.PaidRemaining, -item.GiftRemaining, day, nil, nil, nil, &row.ID); err != nil {
 				return err
 			}
 		}

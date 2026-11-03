@@ -131,9 +131,9 @@ func (q *Queries) AddCardAdjustment(ctx context.Context, arg AddCardAdjustmentPa
 	return i, err
 }
 
-const addCardCountEntry = `-- name: AddCardCountEntry :exec
+const addCardCountEntry = `-- name: AddCardCountEntry :one
 INSERT INTO card_count_ledger (tenant_id,store_id,card_id,item_id,kind,paid_before,paid_delta,paid_after,gift_before,gift_delta,gift_after,adjustment_id,business_date,actor_id,reverses_id,order_void_id,refund_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id
 `
 
 type AddCardCountEntryParams struct {
@@ -156,8 +156,8 @@ type AddCardCountEntryParams struct {
 	RefundID     *uuid.UUID
 }
 
-func (q *Queries) AddCardCountEntry(ctx context.Context, arg AddCardCountEntryParams) error {
-	_, err := q.db.Exec(ctx, addCardCountEntry,
+func (q *Queries) AddCardCountEntry(ctx context.Context, arg AddCardCountEntryParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, addCardCountEntry,
 		arg.TenantID,
 		arg.StoreID,
 		arg.CardID,
@@ -176,7 +176,9 @@ func (q *Queries) AddCardCountEntry(ctx context.Context, arg AddCardCountEntryPa
 		arg.OrderVoidID,
 		arg.RefundID,
 	)
-	return err
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const addCardItem = `-- name: AddCardItem :exec
@@ -636,46 +638,6 @@ func (q *Queries) CardViews(ctx context.Context, arg CardViewsParams) ([]CardVie
 		return nil, err
 	}
 	return items, nil
-}
-
-const consumeCardCount = `-- name: ConsumeCardCount :one
-INSERT INTO card_count_ledger (tenant_id,store_id,card_id,item_id,kind,paid_before,paid_delta,paid_after,gift_before,gift_delta,gift_after,business_date,actor_id)
-VALUES ($1,$2,$3,$4,'consume',$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id
-`
-
-type ConsumeCardCountParams struct {
-	TenantID     uuid.UUID
-	StoreID      uuid.UUID
-	CardID       uuid.UUID
-	ItemID       uuid.UUID
-	PaidBefore   int32
-	PaidDelta    int32
-	PaidAfter    int32
-	GiftBefore   int32
-	GiftDelta    int32
-	GiftAfter    int32
-	BusinessDate pgtype.Date
-	ActorID      uuid.UUID
-}
-
-func (q *Queries) ConsumeCardCount(ctx context.Context, arg ConsumeCardCountParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, consumeCardCount,
-		arg.TenantID,
-		arg.StoreID,
-		arg.CardID,
-		arg.ItemID,
-		arg.PaidBefore,
-		arg.PaidDelta,
-		arg.PaidAfter,
-		arg.GiftBefore,
-		arg.GiftDelta,
-		arg.GiftAfter,
-		arg.BusinessDate,
-		arg.ActorID,
-	)
-	var id uuid.UUID
-	err := row.Scan(&id)
-	return id, err
 }
 
 const createCard = `-- name: CreateCard :one
@@ -1833,100 +1795,4 @@ type UpdateUpgradedCardParams struct {
 func (q *Queries) UpdateUpgradedCard(ctx context.Context, arg UpdateUpgradedCardParams) error {
 	_, err := q.db.Exec(ctx, updateUpgradedCard, arg.ID, arg.CardTypeID)
 	return err
-}
-
-const voidBalanceConsumes = `-- name: VoidBalanceConsumes :many
-SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.kind, l.principal_before, l.principal_delta, l.principal_after, l.bonus_before, l.bonus_delta, l.bonus_after, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id, l.refund_id FROM card_ledger l JOIN order_payments p ON p.card_ledger_id=l.id WHERE p.store_id=$1 AND p.order_id=$2 ORDER BY p.id
-`
-
-type VoidBalanceConsumesParams struct {
-	StoreID uuid.UUID
-	OrderID uuid.UUID
-}
-
-func (q *Queries) VoidBalanceConsumes(ctx context.Context, arg VoidBalanceConsumesParams) ([]CardLedger, error) {
-	rows, err := q.db.Query(ctx, voidBalanceConsumes, arg.StoreID, arg.OrderID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []CardLedger
-	for rows.Next() {
-		var i CardLedger
-		if err := rows.Scan(
-			&i.ID,
-			&i.TenantID,
-			&i.StoreID,
-			&i.CardID,
-			&i.Kind,
-			&i.PrincipalBefore,
-			&i.PrincipalDelta,
-			&i.PrincipalAfter,
-			&i.BonusBefore,
-			&i.BonusDelta,
-			&i.BonusAfter,
-			&i.BusinessDate,
-			&i.ActorID,
-			&i.At,
-			&i.ReversesID,
-			&i.OrderVoidID,
-			&i.RefundID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const voidCountConsumes = `-- name: VoidCountConsumes :many
-SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.item_id, l.kind, l.paid_before, l.paid_delta, l.paid_after, l.gift_before, l.gift_delta, l.gift_after, l.adjustment_id, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id, l.refund_id FROM card_count_ledger l JOIN order_payments p ON p.card_count_ledger_id=l.id WHERE p.store_id=$1 AND p.order_id=$2 ORDER BY p.id
-`
-
-type VoidCountConsumesParams struct {
-	StoreID uuid.UUID
-	OrderID uuid.UUID
-}
-
-func (q *Queries) VoidCountConsumes(ctx context.Context, arg VoidCountConsumesParams) ([]CardCountLedger, error) {
-	rows, err := q.db.Query(ctx, voidCountConsumes, arg.StoreID, arg.OrderID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []CardCountLedger
-	for rows.Next() {
-		var i CardCountLedger
-		if err := rows.Scan(
-			&i.ID,
-			&i.TenantID,
-			&i.StoreID,
-			&i.CardID,
-			&i.ItemID,
-			&i.Kind,
-			&i.PaidBefore,
-			&i.PaidDelta,
-			&i.PaidAfter,
-			&i.GiftBefore,
-			&i.GiftDelta,
-			&i.GiftAfter,
-			&i.AdjustmentID,
-			&i.BusinessDate,
-			&i.ActorID,
-			&i.At,
-			&i.ReversesID,
-			&i.OrderVoidID,
-			&i.RefundID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }

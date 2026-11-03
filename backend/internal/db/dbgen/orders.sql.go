@@ -205,44 +205,6 @@ func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams
 	return i, err
 }
 
-const createOrderPayment = `-- name: CreateOrderPayment :one
-INSERT INTO order_payments (tenant_id,store_id,checkout_id,order_id,method,amount,card_id,card_ledger_id,order_item_id,card_count_ledger_id,red_packet_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id
-`
-
-type CreateOrderPaymentParams struct {
-	TenantID          uuid.UUID
-	StoreID           uuid.UUID
-	CheckoutID        uuid.UUID
-	OrderID           uuid.UUID
-	Method            string
-	Amount            money.Amount
-	CardID            *uuid.UUID
-	CardLedgerID      *uuid.UUID
-	OrderItemID       *uuid.UUID
-	CardCountLedgerID *uuid.UUID
-	RedPacketID       *uuid.UUID
-}
-
-func (q *Queries) CreateOrderPayment(ctx context.Context, arg CreateOrderPaymentParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, createOrderPayment,
-		arg.TenantID,
-		arg.StoreID,
-		arg.CheckoutID,
-		arg.OrderID,
-		arg.Method,
-		arg.Amount,
-		arg.CardID,
-		arg.CardLedgerID,
-		arg.OrderItemID,
-		arg.CardCountLedgerID,
-		arg.RedPacketID,
-	)
-	var id uuid.UUID
-	err := row.Scan(&id)
-	return id, err
-}
-
 const createOrderVoid = `-- name: CreateOrderVoid :one
 INSERT INTO order_voids (tenant_id,store_id,order_id,reason,business_date,voided_by)
 VALUES ($1,$2,$3,$4,$5,$6) RETURNING tenant_id, store_id, id, order_id, reason, business_date, voided_by, at
