@@ -18,6 +18,7 @@ type Commission struct {
 	Reversal     bool                  `json:"reversal"`
 	Explanation  CommissionExplanation `json:"explanation"`
 	createdAt    time.Time
+	businessDate time.Time
 }
 
 // CommissionExplanation 留存计算使用的来源事实、基数、命中项和方案版本。

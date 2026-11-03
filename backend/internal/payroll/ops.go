@@ -14,6 +14,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/commission"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/payrollmonth"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
@@ -32,22 +33,17 @@ func Register(r *ops.Registry) {
 }
 
 func setBaseSalary(ctx context.Context, env ops.Env, in *SetBaseSalaryInput) (*BaseSalary, error) {
-	if err := env.Q.LockPayroll(ctx, env.Caller.StoreID); err != nil {
-		return nil, err
-	}
-	month, err := CheckMonth(ctx, env.Q, env.Caller.StoreID, in.Month)
+	month, err := payrollmonth.Parse(in.Month)
 	if err != nil {
 		return nil, err
 	}
-	if locked, err := commission.Settlement(ctx, env.Q, env.Caller.StoreID, month); err != nil {
+	if err := payrollmonth.Guard(ctx, env.Q, env.Caller.StoreID, month, "设置底薪"); err != nil {
 		return nil, err
-	} else if locked != nil {
-		return nil, ops.Rule(in.Month + " 已经锁定，不能再设置底薪")
 	}
 	if _, err := staff.LockReferences(ctx, env.Q, env.Caller.StoreID, in.StaffID); err != nil {
 		return nil, err
 	}
-	salaries, err := BaseSalariesInForce(ctx, env.Q, env.Caller.StoreID, month)
+	salaries, err := BaseSalariesInForce(ctx, env.Q, env.Caller.StoreID, month.First())
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +51,7 @@ func setBaseSalary(ctx context.Context, env ops.Env, in *SetBaseSalaryInput) (*B
 	if old, ok := salaries[in.StaffID]; ok {
 		before = old
 	}
-	row, err := env.Q.AddBaseSalary(ctx, dbgen.AddBaseSalaryParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, StaffID: in.StaffID, EffectiveMonth: pgtype.Date{Time: month, Valid: true}, Mode: in.Mode, Amount: in.Amount, SavedBy: env.Caller.StaffID})
+	row, err := env.Q.AddBaseSalary(ctx, dbgen.AddBaseSalaryParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, StaffID: in.StaffID, EffectiveMonth: pgtype.Date{Time: month.First(), Valid: true}, Mode: in.Mode, Amount: in.Amount, SavedBy: env.Caller.StaffID})
 	if err != nil {
 		return nil, err
 	}
@@ -71,17 +67,12 @@ func setBaseSalary(ctx context.Context, env ops.Env, in *SetBaseSalaryInput) (*B
 }
 
 func addPayrollAdjustment(ctx context.Context, env ops.Env, in *AddPayrollAdjustmentInput) (*PayrollAdjustment, error) {
-	if err := env.Q.LockPayroll(ctx, env.Caller.StoreID); err != nil {
-		return nil, err
-	}
-	month, err := CheckMonth(ctx, env.Q, env.Caller.StoreID, in.Month)
+	month, err := payrollmonth.Parse(in.Month)
 	if err != nil {
 		return nil, err
 	}
-	if locked, err := commission.Settlement(ctx, env.Q, env.Caller.StoreID, month); err != nil {
+	if err := payrollmonth.Guard(ctx, env.Q, env.Caller.StoreID, month, "添加加减项"); err != nil {
 		return nil, err
-	} else if locked != nil {
-		return nil, ops.Rule(in.Month + " 已经锁定，不能再添加加减项")
 	}
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
@@ -93,7 +84,7 @@ func addPayrollAdjustment(ctx context.Context, env ops.Env, in *AddPayrollAdjust
 	if _, err := staff.LockReferences(ctx, env.Q, env.Caller.StoreID, in.StaffID); err != nil {
 		return nil, err
 	}
-	row, err := env.Q.AddPayrollAdjustment(ctx, dbgen.AddPayrollAdjustmentParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Month: pgtype.Date{Time: month, Valid: true}, StaffID: in.StaffID, Name: name, Amount: in.Amount, Note: in.Note, CreatedBy: env.Caller.StaffID})
+	row, err := env.Q.AddPayrollAdjustment(ctx, dbgen.AddPayrollAdjustmentParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Month: pgtype.Date{Time: month.First(), Valid: true}, StaffID: in.StaffID, Name: name, Amount: in.Amount, Note: in.Note, CreatedBy: env.Caller.StaffID})
 	if err != nil {
 		return nil, err
 	}
@@ -109,9 +100,6 @@ func addPayrollAdjustment(ctx context.Context, env ops.Env, in *AddPayrollAdjust
 }
 
 func deletePayrollAdjustment(ctx context.Context, env ops.Env, in *DeletePayrollAdjustmentInput) (*staff.OK, error) {
-	if err := env.Q.LockPayroll(ctx, env.Caller.StoreID); err != nil {
-		return nil, err
-	}
 	row, err := env.Q.GetPayrollAdjustment(ctx, dbgen.GetPayrollAdjustmentParams{StoreID: env.Caller.StoreID, ID: in.ID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf("加减项不存在：%w", ops.ErrNotFound)
@@ -119,17 +107,19 @@ func deletePayrollAdjustment(ctx context.Context, env ops.Env, in *DeletePayroll
 	if err != nil {
 		return nil, err
 	}
-	if locked, err := commission.Settlement(ctx, env.Q, env.Caller.StoreID, row.Month.Time); err != nil {
+	if err := payrollmonth.Guard(ctx, env.Q, env.Caller.StoreID, payrollmonth.Of(row.Month.Time), "删除加减项"); err != nil {
 		return nil, err
-	} else if locked != nil {
-		return nil, ops.Rule(row.Month.Time.Format(monthLayout) + " 已经锁定，不能再删除加减项")
 	}
 	views, err := adjustmentViews(ctx, env, []dbgen.PayrollAdjustment{row})
 	if err != nil {
 		return nil, err
 	}
-	if err := env.Q.DeletePayrollAdjustment(ctx, dbgen.DeletePayrollAdjustmentParams{StoreID: env.Caller.StoreID, ID: in.ID}); err != nil {
+	deleted, err := env.Q.DeletePayrollAdjustment(ctx, dbgen.DeletePayrollAdjustmentParams{StoreID: env.Caller.StoreID, ID: in.ID})
+	if err != nil {
 		return nil, err
+	}
+	if deleted == 0 {
+		return nil, fmt.Errorf("加减项不存在：%w", ops.ErrNotFound)
 	}
 	if err := audit.Record(ctx, env, "delete_payroll_adjustment", audit.PayrollAdjustmentTarget(row.ID), views[0], nil); err != nil {
 		return nil, err

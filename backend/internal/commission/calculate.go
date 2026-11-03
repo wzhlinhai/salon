@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
+	"github.com/wzhlinhai/salon/backend/internal/payrollmonth"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 
@@ -118,9 +119,9 @@ func calculate(entries, originals []dbgen.PerformanceEntry, facts map[lineKey]li
 			if err != nil {
 				return nil, err
 			}
-			c.Explanation.Tier, c.Amount = calculateTier(*cell.Tiers, e.BusinessDate.Time.Format("2006-01"), c.Explanation.Base.Kind, position)
+			c.Explanation.Tier, c.Amount = calculateTier(*cell.Tiers, payrollmonth.Of(e.BusinessDate.Time), c.Explanation.Base.Kind, position)
 		}
-		c.ID, c.BusinessDate, c.createdAt = e.ID, e.BusinessDate.Time.Format(time.DateOnly), u.createdAt
+		c.ID, c.BusinessDate, c.businessDate, c.createdAt = e.ID, e.BusinessDate.Time.Format(time.DateOnly), e.BusinessDate.Time, u.createdAt
 		out = append(out, c)
 	}
 	sortCommissions(out)

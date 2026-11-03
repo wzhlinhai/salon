@@ -7,11 +7,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
+	"github.com/wzhlinhai/salon/backend/internal/payrollmonth"
 )
 
 type cumulativeKey struct {
-	staff         uuid.UUID
-	source, month string
+	staff  uuid.UUID
+	source string
+	month  payrollmonth.Month
 }
 type cumulativePosition struct{ before, after, total int64 }
 type cumulative struct {
@@ -44,7 +46,7 @@ func newCumulative(all []unit, facts map[lineKey]lineFact) *cumulative {
 }
 
 func groupKey(e dbgen.PerformanceEntry) cumulativeKey {
-	return cumulativeKey{staff: *e.StaffID, source: e.Kind, month: e.BusinessDate.Time.Format("2006-01")}
+	return cumulativeKey{staff: *e.StaffID, source: e.Kind, month: payrollmonth.Of(e.BusinessDate.Time)}
 }
 
 func (c *cumulative) position(target unit, kind string) (cumulativePosition, error) {
@@ -93,8 +95,8 @@ func reached(t Tiers, cumulative int64) int {
 	return level
 }
 
-func calculateTier(t Tiers, month, kind string, p cumulativePosition) (*CommissionTier, money.Change) {
-	out := &CommissionTier{Mode: t.Mode, Month: month, BaseKind: kind, Parts: []CommissionTierPart{}}
+func calculateTier(t Tiers, month payrollmonth.Month, kind string, p cumulativePosition) (*CommissionTier, money.Change) {
+	out := &CommissionTier{Mode: t.Mode, Month: month.String(), BaseKind: kind, Parts: []CommissionTierPart{}}
 	var amount int64
 	part := func(index int, base int64) {
 		b := money.ChangeFromFen(base)

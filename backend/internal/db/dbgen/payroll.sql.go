@@ -96,6 +96,50 @@ func (q *Queries) AddPayrollAdjustment(ctx context.Context, arg AddPayrollAdjust
 	return i, err
 }
 
+const addPayrollLine = `-- name: AddPayrollLine :exec
+INSERT INTO payroll_lines (tenant_id,store_id,settlement_id,staff_id,mode,applied_amount,base_pay,item_commission,consume_commission,labor_commission,sale_commission,commission_total,guarantee_top_up,adjustments_total,total)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+`
+
+type AddPayrollLineParams struct {
+	TenantID          uuid.UUID
+	StoreID           uuid.UUID
+	SettlementID      uuid.UUID
+	StaffID           uuid.UUID
+	Mode              string
+	AppliedAmount     money.Amount
+	BasePay           money.Change
+	ItemCommission    money.Change
+	ConsumeCommission money.Change
+	LaborCommission   money.Change
+	SaleCommission    money.Change
+	CommissionTotal   money.Change
+	GuaranteeTopUp    money.Amount
+	AdjustmentsTotal  money.Change
+	Total             money.Change
+}
+
+func (q *Queries) AddPayrollLine(ctx context.Context, arg AddPayrollLineParams) error {
+	_, err := q.db.Exec(ctx, addPayrollLine,
+		arg.TenantID,
+		arg.StoreID,
+		arg.SettlementID,
+		arg.StaffID,
+		arg.Mode,
+		arg.AppliedAmount,
+		arg.BasePay,
+		arg.ItemCommission,
+		arg.ConsumeCommission,
+		arg.LaborCommission,
+		arg.SaleCommission,
+		arg.CommissionTotal,
+		arg.GuaranteeTopUp,
+		arg.AdjustmentsTotal,
+		arg.Total,
+	)
+	return err
+}
+
 const baseSalariesInForce = `-- name: BaseSalariesInForce :many
 SELECT DISTINCT ON (staff_id) tenant_id, store_id, id, staff_id, effective_month, mode, amount, saved_by, saved_at FROM staff_base_salaries
 WHERE store_id = $1 AND effective_month <= $2::date
@@ -137,7 +181,7 @@ func (q *Queries) BaseSalariesInForce(ctx context.Context, arg BaseSalariesInFor
 	return items, nil
 }
 
-const deletePayrollAdjustment = `-- name: DeletePayrollAdjustment :exec
+const deletePayrollAdjustment = `-- name: DeletePayrollAdjustment :execrows
 DELETE FROM payroll_adjustments WHERE store_id = $1 AND id = $2
 `
 
@@ -146,9 +190,12 @@ type DeletePayrollAdjustmentParams struct {
 	ID      uuid.UUID
 }
 
-func (q *Queries) DeletePayrollAdjustment(ctx context.Context, arg DeletePayrollAdjustmentParams) error {
-	_, err := q.db.Exec(ctx, deletePayrollAdjustment, arg.StoreID, arg.ID)
-	return err
+func (q *Queries) DeletePayrollAdjustment(ctx context.Context, arg DeletePayrollAdjustmentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deletePayrollAdjustment, arg.StoreID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getPayrollAdjustment = `-- name: GetPayrollAdjustment :one
@@ -272,12 +319,88 @@ func (q *Queries) ListPayrollStaff(ctx context.Context, storeID uuid.UUID) ([]St
 	return items, nil
 }
 
-const lockPayroll = `-- name: LockPayroll :exec
-SELECT pg_advisory_xact_lock(hashtextextended(CAST($1::uuid AS text) || '/payroll', 0))
+const payrollLines = `-- name: PayrollLines :many
+SELECT p.tenant_id, p.store_id, p.settlement_id, p.staff_id, p.mode, p.applied_amount, p.base_pay, p.item_commission, p.consume_commission, p.labor_commission, p.sale_commission, p.commission_total, p.guarantee_top_up, p.adjustments_total, p.total FROM payroll_lines p JOIN staff s ON s.id = p.staff_id
+WHERE p.store_id = $1 AND p.settlement_id = $2 ORDER BY s.number, s.id
 `
 
-// 底薪、加减项和第二步的锁月在同一门店咨询锁上排队。
-func (q *Queries) LockPayroll(ctx context.Context, storeID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, lockPayroll, storeID)
-	return err
+type PayrollLinesParams struct {
+	StoreID      uuid.UUID
+	SettlementID uuid.UUID
+}
+
+func (q *Queries) PayrollLines(ctx context.Context, arg PayrollLinesParams) ([]PayrollLine, error) {
+	rows, err := q.db.Query(ctx, payrollLines, arg.StoreID, arg.SettlementID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PayrollLine
+	for rows.Next() {
+		var i PayrollLine
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.SettlementID,
+			&i.StaffID,
+			&i.Mode,
+			&i.AppliedAmount,
+			&i.BasePay,
+			&i.ItemCommission,
+			&i.ConsumeCommission,
+			&i.LaborCommission,
+			&i.SaleCommission,
+			&i.CommissionTotal,
+			&i.GuaranteeTopUp,
+			&i.AdjustmentsTotal,
+			&i.Total,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const payrollMonthAdjustments = `-- name: PayrollMonthAdjustments :many
+SELECT tenant_id, store_id, id, staff_id, month, name, amount, note, created_by, created_at FROM payroll_adjustments WHERE store_id = $1 AND month = $2
+`
+
+type PayrollMonthAdjustmentsParams struct {
+	StoreID uuid.UUID
+	Month   pgtype.Date
+}
+
+func (q *Queries) PayrollMonthAdjustments(ctx context.Context, arg PayrollMonthAdjustmentsParams) ([]PayrollAdjustment, error) {
+	rows, err := q.db.Query(ctx, payrollMonthAdjustments, arg.StoreID, arg.Month)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PayrollAdjustment
+	for rows.Next() {
+		var i PayrollAdjustment
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ID,
+			&i.StaffID,
+			&i.Month,
+			&i.Name,
+			&i.Amount,
+			&i.Note,
+			&i.CreatedBy,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

@@ -231,6 +231,25 @@ func TestPayrollReferencesAndStoreIsolation(t *testing.T) {
 			t.Fatal(rows)
 		}
 	}
+	t.Run("调用店锁月仍隐藏外店加减项", func(t *testing.T) {
+		s, m := pastShop(t)
+		otherStore, adjustment := uuid.New(), uuid.New()
+		tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+		dbtest.Exec(t, tx, "INSERT INTO stores(id,tenant_id,name,created_at) VALUES($1,$2,'分店',$3)", otherStore, s.Res.TenantID, m)
+		dbtest.Exec(t, tx, "INSERT INTO payroll_adjustments(id,tenant_id,store_id,month,staff_id,name,amount,created_by) VALUES($1,$2,$3,$4,$5,'外店加项',1,$5)", adjustment, s.Res.TenantID, otherStore, m, s.Res.OwnerID)
+		dbtest.Commit(t, tx)
+		s.Call(t, s.Owner, "lock_payroll_month", map[string]any{"month": month(m)}, 200)
+		reject(t, s.HTTPWithToken(t, s.Owner, "delete_payroll_adjustment", map[string]any{"id": adjustment}), 404, "加减项不存在")
+		tx = dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+		var count int
+		if err := tx.QueryRow(t.Context(), "SELECT count(*) FROM payroll_adjustments WHERE id=$1", adjustment).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 {
+			t.Fatal("foreign adjustment changed", count)
+		}
+		dbtest.Rollback(t, tx)
+	})
 }
 
 func TestPayrollAdjustments(t *testing.T) {
