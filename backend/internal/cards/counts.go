@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/wzhlinhai/salon/backend/internal/catalog"
 	"github.com/wzhlinhai/salon/backend/internal/customers"
@@ -129,7 +128,7 @@ func openCounts(ctx context.Context, env ops.Env, card uuid.UUID, ct uuid.UUID, 
 		if err := env.Q.AddCardItem(ctx, dbgen.AddCardItemParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: card, ItemID: x.ItemID, UnitPrice: x.UnitPrice, PaidCountOpened: x.PaidCount, GiftCountOpened: x.GiftCount}); err != nil {
 			return err
 		}
-		if err := env.Q.AddCardCountEntry(ctx, dbgen.AddCardCountEntryParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: card, ItemID: x.ItemID, Kind: "open", PaidDelta: x.PaidCount, PaidAfter: x.PaidCount, GiftDelta: x.GiftCount, GiftAfter: x.GiftCount, BusinessDate: pgtype.Date{Time: day, Valid: true}, ActorID: env.Caller.StaffID}); err != nil {
+		if _, err := writeCount(ctx, env, card, x.ItemID, "open", 0, 0, x.PaidCount, x.GiftCount, day, nil, nil, nil, nil); err != nil {
 			return err
 		}
 	}

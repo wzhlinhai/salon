@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/wzhlinhai/salon/backend/internal/customers"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
@@ -25,24 +24,28 @@ type PaymentCard struct {
 // CardTypeID 返回计价卡的卡类型。
 func (c *PaymentCard) CardTypeID() uuid.UUID { return c.row.CardTypeID }
 
-// PaymentCards 按 UUID 一起锁显式卡和候选卡并检查查看范围；显式卡检查有效期，候选卡留待筛选，试算只读。
-func PaymentCards(ctx context.Context, env ops.Env, ids []uuid.UUID, day time.Time, lock bool, candidates ...uuid.UUID) (map[uuid.UUID]*PaymentCard, error) {
-	if !lock {
-		return readPaymentCards(ctx, env, ids, day, candidates)
-	}
+// PaymentCards 只读试算卡及候选卡，检查查看范围和显式卡状态。
+func PaymentCards(ctx context.Context, env ops.Env, ids []uuid.UUID, day time.Time, candidates ...uuid.UUID) (map[uuid.UUID]*PaymentCard, error) {
+	return readPaymentCards(ctx, env, ids, day, candidates)
+}
+
+// LockPayments 锁住支付用卡，撤单只检查已退状态，结账检查查看范围及显式卡有效期。
+func LockPayments(ctx context.Context, env ops.Env, ids, candidates []uuid.UUID, day time.Time, reverse bool) (map[uuid.UUID]*PaymentCard, error) {
 	ordered := append(slices.Clone(ids), candidates...)
+	out, err := lockCards(ctx, env, ordered)
+	if err != nil {
+		return nil, err
+	}
 	slices.SortFunc(ordered, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
-	out := map[uuid.UUID]*PaymentCard{}
 	for _, id := range slices.Compact(ordered) {
-		row, err := env.Q.LockCard(ctx, dbgen.LockCardParams{StoreID: env.Caller.StoreID, ID: id})
-		if err != nil {
-			return nil, rowError(err)
+		row := out[id].row
+		if reverse {
+			if row.Status == "refunded" {
+				return nil, ops.Rule("卡已退，不能撤单退回")
+			}
+			continue
 		}
 		if err := customers.CheckViewable(ctx, env, row.CustomerID); err != nil {
-			return nil, err
-		}
-		before, err := cardView(ctx, env, id)
-		if err != nil {
 			return nil, err
 		}
 		if !slices.Contains(candidates, id) || slices.Contains(ids, id) {
@@ -53,7 +56,6 @@ func PaymentCards(ctx context.Context, env ops.Env, ids []uuid.UUID, day time.Ti
 				return nil, err
 			}
 		}
-		out[id] = &PaymentCard{row: row, before: before, principal: before.Principal, bonus: before.Bonus}
 	}
 	return out, nil
 }
@@ -130,8 +132,8 @@ func (c *PaymentCard) Consume(ctx context.Context, env ops.Env, amount money.Amo
 	return ledger.ID, nil
 }
 
-// AuditPaymentCards 为本次结账用过的每张卡记录一次改前改后。
-func AuditPaymentCards(ctx context.Context, env ops.Env, used map[uuid.UUID]*PaymentCard) error {
+// Audit 为本次支付或冲回用过的每张卡记录一次改前改后。
+func Audit(ctx context.Context, env ops.Env, action string, used map[uuid.UUID]*PaymentCard) error {
 	ids := make([]uuid.UUID, 0, len(used))
 	for id := range used {
 		ids = append(ids, id)
@@ -142,7 +144,7 @@ func AuditPaymentCards(ctx context.Context, env ops.Env, used map[uuid.UUID]*Pay
 		if !c.charged {
 			continue
 		}
-		if _, err := recordChange(ctx, env, "checkout_orders", c.row, c.before); err != nil {
+		if _, err := recordChange(ctx, env, action, c.row, c.before); err != nil {
 			return err
 		}
 	}
@@ -170,7 +172,7 @@ func (c *PaymentCard) ConsumeCount(ctx context.Context, env ops.Env, itemID uuid
 			gd = -1
 		}
 		c.charged = true
-		return env.Q.ConsumeCardCount(ctx, dbgen.ConsumeCardCountParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CardID: c.row.ID, ItemID: itemID, PaidBefore: paid, PaidDelta: pd, PaidAfter: paid + pd, GiftBefore: gift, GiftDelta: gd, GiftAfter: gift + gd, BusinessDate: pgtype.Date{Time: day, Valid: true}, ActorID: env.Caller.StaffID})
+		return writeCount(ctx, env, c.row.ID, itemID, "consume", paid, gift, pd, gd, day, nil, nil, nil, nil)
 	}
 	return uuid.Nil, ops.Rule("卡上没有这个项目")
 }

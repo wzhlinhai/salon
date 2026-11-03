@@ -59,14 +59,14 @@ func previewCheckout(ctx context.Context, env ops.Env, in *PreviewCheckoutInput)
 		if err != nil {
 			return nil, err
 		}
-		used, err = cards.PaymentCards(ctx, env, nil, day, false, candidates...)
+		used, err = cards.PaymentCards(ctx, env, nil, day, candidates...)
 		if err != nil {
 			return nil, err
 		}
 	}
 	typeIDs := []uuid.UUID{}
 	if in.CardID != nil {
-		used, err = cards.PaymentCards(ctx, env, []uuid.UUID{*in.CardID}, day, false)
+		used, err = cards.PaymentCards(ctx, env, []uuid.UUID{*in.CardID}, day)
 		if err != nil {
 			return nil, err
 		}

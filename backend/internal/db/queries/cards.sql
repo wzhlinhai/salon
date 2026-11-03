@@ -100,9 +100,9 @@ DELETE FROM card_type_items WHERE card_type_id=$1 AND item_id=$2;
 -- name: AddCardItem :exec
 INSERT INTO card_items (tenant_id,store_id,card_id,item_id,unit_price,paid_count_opened,gift_count_opened) VALUES ($1,$2,$3,$4,$5,$6,$7);
 
--- name: AddCardCountEntry :exec
+-- name: AddCardCountEntry :one
 INSERT INTO card_count_ledger (tenant_id,store_id,card_id,item_id,kind,paid_before,paid_delta,paid_after,gift_before,gift_delta,gift_after,adjustment_id,business_date,actor_id,reverses_id,order_void_id,refund_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17);
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id;
 
 -- name: RemainingCounts :many
 SELECT sqlc.embed(ci), i.name AS item_name, l.paid_after, l.gift_after FROM card_items ci JOIN items i ON i.id=ci.item_id
@@ -185,9 +185,6 @@ FROM card_points_ledger l JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustm
 WHERE l.card_id=$1 AND (sqlc.narg(before_id)::uuid IS NULL OR (l.at,l.id) < (SELECT at,id FROM card_points_ledger WHERE id=sqlc.narg(before_id) AND card_id=$1))
 ORDER BY l.at DESC,l.id DESC LIMIT sqlc.arg(row_limit);
 
--- name: ConsumeCardCount :one
-INSERT INTO card_count_ledger (tenant_id,store_id,card_id,item_id,kind,paid_before,paid_delta,paid_after,gift_before,gift_delta,gift_after,business_date,actor_id)
-VALUES ($1,$2,$3,$4,'consume',$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id;
 
 -- name: GetCardTypes :many
 SELECT * FROM card_types WHERE store_id=sqlc.arg(store_id) AND id=ANY(sqlc.arg(ids)::uuid[]);
@@ -198,11 +195,7 @@ FROM cards c JOIN card_types t ON t.id=c.card_type_id
 JOIN LATERAL (SELECT principal_after,bonus_after FROM card_ledger WHERE card_id=c.id ORDER BY at DESC,id DESC LIMIT 1) l ON true
 WHERE c.store_id=sqlc.arg(store_id) AND c.id=ANY(sqlc.arg(ids)::uuid[]);
 
--- name: VoidBalanceConsumes :many
-SELECT l.* FROM card_ledger l JOIN order_payments p ON p.card_ledger_id=l.id WHERE p.store_id=$1 AND p.order_id=$2 ORDER BY p.id;
 
--- name: VoidCountConsumes :many
-SELECT l.* FROM card_count_ledger l JOIN order_payments p ON p.card_count_ledger_id=l.id WHERE p.store_id=$1 AND p.order_id=$2 ORDER BY p.id;
 
 -- name: CardOpeningSale :one
 SELECT COALESCE((SELECT sum(unit_price * paid_count_opened) FROM card_items WHERE card_id=c.id),0)::text AS counts_value,

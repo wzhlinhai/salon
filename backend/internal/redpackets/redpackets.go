@@ -244,9 +244,21 @@ func CheckUsable(ctx context.Context, env ops.Env, row dbgen.RedPacket, customer
 	return nil
 }
 
-// MarkUsed 在持锁的调用者事务中把红包一次用掉并关联支付。
-func MarkUsed(ctx context.Context, env ops.Env, id, paymentID uuid.UUID) error {
-	return env.Q.UseRedPacket(ctx, dbgen.UseRedPacketParams{ID: id, OrderPaymentID: &paymentID})
+// MarkUsed 在持锁事务中用掉红包、关联支付并记录改前改后日志。
+func MarkUsed(ctx context.Context, env ops.Env, row dbgen.RedPacket, paymentID uuid.UUID, day time.Time) error {
+	before, err := view(ctx, env, row, day)
+	if err != nil {
+		return err
+	}
+	if err := env.Q.UseRedPacket(ctx, dbgen.UseRedPacketParams{ID: row.ID, OrderPaymentID: &paymentID}); err != nil {
+		return err
+	}
+	row.OrderPaymentID = &paymentID
+	after, err := view(ctx, env, row, day)
+	if err != nil {
+		return err
+	}
+	return audit.Record(ctx, env, "checkout_orders", audit.RedPacketTarget(row.ID, row.CustomerID), before, after)
 }
 
 // Restore 在已持红包锁的事务中退回支付并记录改前改后日志。

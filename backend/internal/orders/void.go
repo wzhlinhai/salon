@@ -6,13 +6,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/wzhlinhai/salon/backend/internal/cards"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
-	"github.com/wzhlinhai/salon/backend/internal/debts"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/payments"
 	"github.com/wzhlinhai/salon/backend/internal/performance"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
-	"github.com/wzhlinhai/salon/backend/internal/redpackets"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
@@ -43,37 +41,15 @@ func voidOrder(ctx context.Context, env ops.Env, in *VoidOrderInput) (*Order, er
 
 	after, err := change(ctx, env, "void_order", "paid", []uuid.UUID{in.OrderID}, func(rows []dbgen.Order) error {
 		row := &rows[0]
-		// 与顾客合并、结账同序：单 → 欠款 → 卡 → 红包；各组按 UUID，持锁后不回锁顾客。
-		if err := debts.LockOrderForVoid(ctx, env, row.ID); err != nil {
-			return err
-		}
-		payments, err := env.Q.ListOrderPayments(ctx, dbgen.ListOrderPaymentsParams{StoreID: env.Caller.StoreID, OrderIds: []uuid.UUID{row.ID}})
-		if err != nil {
-			return err
-		}
-		cardIDs, packetIDs := []uuid.UUID{}, []uuid.UUID{}
-		for _, p := range payments {
-			if p.CardID != nil {
-				cardIDs = append(cardIDs, *p.CardID)
-			}
-			if p.RedPacketID != nil {
-				packetIDs = append(packetIDs, *p.RedPacketID)
-			}
-		}
-		used, err := cards.LockRestores(ctx, env, cardIDs)
-		if err != nil {
-			return err
-		}
-		packets, err := redpackets.LockPayments(ctx, env, packetIDs)
-		if err != nil {
-			return err
-		}
 		day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, now)
 		if err != nil {
 			return err
 		}
 		reversal, err := env.Q.CreateOrderVoid(ctx, dbgen.CreateOrderVoidParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, OrderID: row.ID, Reason: reason, BusinessDate: pgtype.Date{Time: day, Valid: true}, VoidedBy: env.Caller.StaffID})
 		if err != nil {
+			return err
+		}
+		if err := payments.Reverse(ctx, env, row.ID, reversal.ID, day); err != nil {
 			return err
 		}
 		if err := performance.ReverseOrder(ctx, env, row.ID, reversal.ID, day); err != nil {
@@ -83,30 +59,7 @@ func voidOrder(ctx context.Context, env ops.Env, in *VoidOrderInput) (*Order, er
 			return err
 		}
 		row.Status = "voided"
-		balances, err := env.Q.VoidBalanceConsumes(ctx, dbgen.VoidBalanceConsumesParams{StoreID: env.Caller.StoreID, OrderID: row.ID})
-		if err != nil {
-			return err
-		}
-		for _, consume := range balances {
-			if err := used[consume.CardID].RestoreBalance(ctx, env, consume, reversal.ID, day); err != nil {
-				return err
-			}
-		}
-		counts, err := env.Q.VoidCountConsumes(ctx, dbgen.VoidCountConsumesParams{StoreID: env.Caller.StoreID, OrderID: row.ID})
-		if err != nil {
-			return err
-		}
-		for _, consume := range counts {
-			if err := used[consume.CardID].RestoreCount(ctx, env, consume, reversal.ID, day); err != nil {
-				return err
-			}
-		}
-		for _, id := range packetIDs {
-			if err := redpackets.Restore(ctx, env, packets[id], day); err != nil {
-				return err
-			}
-		}
-		return cards.AuditRestores(ctx, env, used)
+		return nil
 	}, now)
 	if err != nil {
 		return nil, err
