@@ -125,7 +125,7 @@ func TestCheckoutTogether(t *testing.T) {
 	s := open(t)
 	line := s.checkoutLine()
 	a := s.customerOrder(line)
-	b := s.openAt(s.MustCaller(s.Owner), time.Now().AddDate(0, 0, -5), line)
+	b := s.openAt(s.MustCaller(s.Owner), time.Now().In(settings.Location).AddDate(0, 0, -5), line)
 	s.call("add_customer_phone", map[string]any{"id": b["customer_id"], "phone": "13800000002"}, 200)
 	if a["customer_id"] == b["customer_id"] || a["business_date"] == b["business_date"] {
 		t.Fatal(a, b)

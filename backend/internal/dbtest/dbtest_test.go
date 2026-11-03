@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/pressly/goose/v3"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go"
 
 	"github.com/wzhlinhai/salon/backend/internal/db"
 )
@@ -51,41 +51,88 @@ func TestNewPoolDoesNotChangeTemplate(t *testing.T) {
 	}
 }
 
+type fakePostgres struct {
+	err        error
+	terminated int
+}
+
+func (c *fakePostgres) ConnectionString(context.Context, ...string) (string, error) {
+	return "dsn", c.err
+}
+
+func (c *fakePostgres) Terminate(context.Context, ...testcontainers.TerminateOption) error {
+	c.terminated++
+	return nil
+}
+
 func TestRunPostgres(t *testing.T) {
-	reaperErr := errors.New("create container: reaper: new reaper: No such container")
+	portErr := errors.New(`port "5432/tcp" not found`)
 	otherErr := errors.New("pull postgres: unavailable")
 	for _, tc := range []struct {
-		name  string
-		first error
-		next  error
-		calls int
-		want  error
+		name          string
+		runErr        error
+		connectionErr error
+		failures      int
+		noContainer   bool
+		nextErr       error
+		calls         int
+		want          error
 	}{
 		{name: "success", calls: 1},
-		{name: "reaper recovers", first: reaperErr, calls: 2},
-		{name: "reaper fails twice", first: reaperErr, next: reaperErr, calls: 2, want: reaperErr},
-		{name: "retry returns other error", first: reaperErr, next: otherErr, calls: 2, want: otherErr},
-		{name: "other error is not retried", first: otherErr, calls: 1, want: otherErr},
+		{name: "reaper recovers", runErr: errors.New("create container: reaper: new reaper: No such container"), failures: 1, calls: 2},
+		{name: "nil container", runErr: portErr, noContainer: true, failures: 1, calls: 2},
+		{name: "retry returns other error", runErr: portErr, nextErr: otherErr, failures: 2, calls: 2, want: otherErr},
+		{name: "Run missing port", runErr: portErr, failures: 1, calls: 2},
+		{name: "Ryuk missing port", runErr: errors.New("reaper: mapped port: invalid port"), failures: 1, calls: 2},
+		{name: "connection missing port", connectionErr: portErr, failures: 1, calls: 2},
+		{name: "three connection failures", connectionErr: portErr, failures: 3, calls: 3, want: portErr},
+		{name: "three failures", runErr: portErr, failures: 3, calls: 3, want: portErr},
+		{name: "other Run error", runErr: otherErr, failures: 1, calls: 1, want: otherErr},
+		{name: "other connection error", connectionErr: otherErr, failures: 1, calls: 1, want: otherErr},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			container := &postgres.PostgresContainer{}
 			calls := 0
-			got, err := runPostgres(func() (*postgres.PostgresContainer, error) {
+			var containers []*fakePostgres
+			got, err := runPostgres(context.Background(), func() (postgresContainer, error) {
 				calls++
-				failure := tc.first
-				if calls > 1 {
-					failure = tc.next
+				c := &fakePostgres{}
+				containers = append(containers, c)
+				if calls <= tc.failures {
+					c.err = tc.connectionErr
+					if tc.noContainer {
+						return nil, tc.runErr
+					}
+					if calls > 1 && tc.nextErr != nil {
+						return c, tc.nextErr
+					}
+					return c, tc.runErr
 				}
-				if failure != nil {
-					return nil, failure
-				}
-				return container, nil
+				return c, nil
 			})
 			if calls != tc.calls || !errors.Is(err, tc.want) {
-				t.Fatalf("calls=%d, err=%v; want calls=%d, err=%v", calls, err, tc.calls, tc.want)
+				t.Fatalf("calls=%d err=%v; want calls=%d err=%v", calls, err, tc.calls, tc.want)
 			}
-			if tc.want == nil && got != container {
-				t.Fatal("successful run did not return its container")
+			if tc.want != nil {
+				diagnostic := "确认 Docker 已运行（WSL 下打开 Docker Desktop 并启用 WSL 集成）"
+				if tc.connectionErr != nil {
+					diagnostic = "读取连接地址"
+				}
+				want := "启动 PostgreSQL 测试容器失败：" + diagnostic + "：" + tc.want.Error()
+				if err.Error() != want {
+					t.Fatalf("message=%q, want %q", err.Error(), want)
+				}
+			}
+			if err == nil && got != "dsn" {
+				t.Fatalf("dsn=%q", got)
+			}
+			for i, c := range containers {
+				want := 0
+				if i < tc.failures && !tc.noContainer {
+					want = 1
+				}
+				if c.terminated != want {
+					t.Fatalf("container %d terminated=%d, want %d", i, c.terminated, want)
+				}
 			}
 		})
 	}

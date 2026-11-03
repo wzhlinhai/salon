@@ -7,6 +7,7 @@ package dbtest
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -40,8 +41,8 @@ const templateName = "template_salon"
 
 func start() {
 	ctx := context.Background()
-	c, err := runPostgres(func() (*postgres.PostgresContainer, error) {
-		return postgres.Run(ctx, Image,
+	adminDSN, startErr = runPostgres(ctx, func() (postgresContainer, error) {
+		c, err := postgres.Run(ctx, Image,
 			testcontainers.WithTmpfs(map[string]string{"/var/lib/postgresql": ""}),
 			postgres.WithDatabase("salon"),
 			postgres.WithUsername("salon"),
@@ -50,25 +51,43 @@ func start() {
 				wait.ForLog("database system is ready to accept connections").
 					WithOccurrence(2).WithStartupTimeout(60*time.Second)),
 		)
+		if c == nil {
+			return nil, err
+		}
+		return c, err
 	})
-	if err != nil {
-		startErr = fmt.Errorf("启动 PostgreSQL 测试容器失败：确认 Docker 已运行（WSL 下打开 Docker Desktop 并启用 WSL 集成）：%w", err)
-		return
-	}
-	adminDSN, err = c.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		startErr = fmt.Errorf("启动 PostgreSQL 测试容器失败：读取连接地址：%w", err)
-	}
 }
 
-// runPostgres 只对 Ryuk 启动竞争重试一次，保留其他启动错误。
-func runPostgres(run func() (*postgres.PostgresContainer, error)) (*postgres.PostgresContainer, error) {
-	c, err := run()
-	if err != nil && strings.Contains(err.Error(), "reaper") {
+type postgresContainer interface {
+	ConnectionString(context.Context, ...string) (string, error)
+	Terminate(context.Context, ...testcontainers.TerminateOption) error
+}
+
+var missingPort = regexp.MustCompile(`port "[^"\n]+/tcp" not found`)
+
+// runPostgres 在端口映射缺失时清理容器并重新启动，最多尝试三次。
+func runPostgres(ctx context.Context, run func() (postgresContainer, error)) (string, error) {
+	for attempt := 1; ; attempt++ {
+		c, err := run()
+		diagnostic := "确认 Docker 已运行（WSL 下打开 Docker Desktop 并启用 WSL 集成）"
+		var dsn string
+		if err == nil {
+			diagnostic = "读取连接地址"
+			dsn, err = c.ConnectionString(ctx, "sslmode=disable")
+		}
+		if err == nil {
+			return dsn, nil
+		}
+		if c != nil {
+			_ = c.Terminate(ctx)
+		}
+		// 保留 Ryuk/reaper 启动失败的重试，另识别 PostgreSQL 的端口映射缺失。
+		retry := missingPort.MatchString(err.Error()) || strings.Contains(err.Error(), "reaper")
+		if !retry || attempt == 3 {
+			return "", fmt.Errorf("启动 PostgreSQL 测试容器失败：%s：%w", diagnostic, err)
+		}
 		time.Sleep(500 * time.Millisecond)
-		return run()
 	}
-	return c, err
 }
 
 // NewEmptyPool 新建一个空数据库（未执行迁移）并返回连接池。测试结束时关闭连接池并删除数据库。

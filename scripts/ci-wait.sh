@@ -8,6 +8,8 @@
 # Accepted non-zero checks codes require non-empty stdout; otherwise retry.
 # Wait for workflow runs, not gh pr checks --watch: jobs with needs: (such as
 # e2e) appear only after their dependencies finish, so checks can look done early.
+# Reading a failure of a run that was re-run: gh run view <id> --attempt 1 --log-failed
+# (without --attempt it reads the latest attempt and prints nothing).
 set -euo pipefail
 
 if [[ $# != 1 || ! $1 =~ ^[1-9][0-9]*$ ]]; then

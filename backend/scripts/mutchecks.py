@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """按清单验证保护：mutchecks.py [manifest.py] [--since <git-ref>] [--locate] [--jobs N] [names...]。
 
-清单的条目必须原地改写，不允许执行代码。
+清单只包含字面量数据，不允许执行代码。
+--set <manifest> <name> <field> <value-file> 只替换所选字段的 AST 字面量范围。
+guards/packages 的文件为 JSON 列表；其他字段为原文：仅当文件恰以一个换行结尾、
+且旧值不以换行结尾时移除这一个换行，其余字符原样保留。
+--append <manifest> <entries-json-file> 将 JSON 字典列表作为新的 ENTRIES.extend([...]) 追加。
+编辑先重新 load_manifest 并对涉及的条目执行 --locate 检查，失败不改动清单。
 只为删掉后行为会变的保护写条目；op 的 Kind、Summary 这类没有运行时效果的声明不写，变异抓不到它们。
 --jobs N（默认 1）将所有清单的 go 项按包排序放入同一个队列，空闲副本领取下一项，使用 .dev/mutcheck-worktrees/<n>/ 的
 临时文件副本；所有清单合并各包的守护测试基线在主工作树至多 N 个并发运行，通过后才创建副本并运行变异。
@@ -82,6 +87,66 @@ def load_manifest(path):
             pass
         raise ValueError(f'{path}:{node.lineno}: only literal ENTRIES/SKIPPED statements are allowed; edit the entry in place')
     return values
+
+
+def entry_nodes(tree):
+    """Track the effective entry literals through the supported data statements."""
+    entries = []
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and node.targets[0].id == 'ENTRIES':
+            entries = list(node.value.elts)
+        elif isinstance(node, ast.AugAssign) and node.target.id == 'ENTRIES':
+            entries.extend(node.value.elts)
+        elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+            call = node.value
+            if call.func.value.id == 'ENTRIES':
+                entries.extend([call.args[0]] if call.func.attr == 'append' else call.args[0].elts)
+    return entries
+
+
+def edit_manifest(path, selector=None, field=None, value_file=None, append_file=None):
+    """Validate a candidate before publishing any changed manifest bytes."""
+    values = load_manifest(path)
+    entries = values['ENTRIES']
+    source = path.read_bytes()
+    if append_file is not None:
+        added = json.loads(append_file.read_text())
+        if not isinstance(added, list) or not all(isinstance(e, dict) for e in added):
+            raise ValueError('append requires a JSON list of dicts')
+        candidate = source + (b'' if source.endswith(b'\n') else b'\n')
+        candidate += ('ENTRIES.extend(' + repr(added) + ')\n').encode('utf-8')
+        indices = range(len(entries), len(entries) + len(added))
+    else:
+        indices = [i for i, entry in enumerate(entries)
+                   if selector in (entry['name'], entry['step'] + '/' + entry['name'])]
+        if len(indices) != 1:
+            raise ValueError(f'{selector}: expected exactly one entry, found {len(indices)}')
+        index = indices[0]
+        node = entry_nodes(ast.parse(source))[index]
+        fields = [value for key, value in zip(node.keys, node.values)
+                  if ast.literal_eval(key) == field]
+        if len(fields) != 1:
+            raise ValueError(f'{field}: expected exactly one field literal')
+        literal = fields[0]
+        value = value_file.read_bytes().decode('utf-8')
+        if field in ('guards', 'packages'):
+            value = json.loads(value)
+            if not isinstance(value, list):
+                raise ValueError(f'{field} requires a JSON list')
+        elif value.endswith('\n') and not value.endswith('\n\n') and not entries[index][field].endswith('\n'):
+            value = value[:-1]
+        lines = source.splitlines(keepends=True)
+        start = sum(map(len, lines[:literal.lineno - 1])) + literal.col_offset
+        end = sum(map(len, lines[:literal.end_lineno - 1])) + literal.end_col_offset
+        candidate = source[:start] + repr(value).encode('utf-8') + source[end:]
+    # Loading the candidate from disk exercises the same parser as normal runs.
+    with tempfile.TemporaryDirectory() as folder:
+        temporary = Path(folder) / path.name
+        temporary.write_bytes(candidate)
+        checked = load_manifest(temporary)['ENTRIES']
+        for index in indices:
+            locate(checked[index])
+    path.write_bytes(candidate)
 
 
 def partition_entries(entries):
@@ -603,6 +668,9 @@ def run_e2e(entry, logs, results):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    edits = parser.add_mutually_exclusive_group()
+    edits.add_argument('--set', nargs=4, metavar=('MANIFEST', 'NAME', 'FIELD', 'VALUE_FILE'))
+    edits.add_argument('--append', nargs=2, metavar=('MANIFEST', 'ENTRIES_JSON_FILE'))
     parser.add_argument('manifest', type=Path, nargs='?')
     parser.add_argument('--jobs', type=int, default=1)
     parser.add_argument('--worker-logs', type=Path, help=argparse.SUPPRESS)
@@ -610,6 +678,20 @@ def main():
     parser.add_argument('--since', metavar='git-ref')
     parser.add_argument('names', nargs='*')
     args = parser.parse_intermixed_args()
+    if args.set or args.append:
+        if args.manifest or args.names or args.locate or args.since or args.worker_logs or args.jobs != 1:
+            parser.error('editing commands cannot be combined with run options')
+        try:
+            if args.set:
+                manifest, name, field, value_file = args.set
+                edit_manifest(Path(manifest), name, field, Path(value_file))
+            else:
+                manifest, entries_file = args.append
+                edit_manifest(Path(manifest), append_file=Path(entries_file))
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        return 0
     if args.jobs < 1:
         parser.error('--jobs must be positive')
     if args.manifest is None:

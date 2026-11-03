@@ -20,3 +20,5 @@ npm run typecheck
 - 顾客详情的卡列表、开卡充值、调整、升级转余额和流水在 `CustomerCards` 中，切换顾客时详情先清空 `customer` 使卡面板卸载并重新挂载，卸载失效会丢弃旧响应，因此面板不逐响应比较 ID，保存后的列表和已展开明细统一由 `refreshCards` 刷新。
 
 全套端到端测试须先运行 `scripts/dev.sh reset` 使用全新数据库，因为 `payroll-store` 项目会永久锁定上个月。
+
+同一个 spec 文件里的用例在一个 worker 中按顺序运行，可以共用门店级数据（提成方案、设置）。用 `--repeat-each` 反复运行以复现偶发失败时加 `--workers 1`：多个副本并行会互相改写这些数据，失败与要复现的问题无关。

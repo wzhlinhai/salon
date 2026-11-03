@@ -358,7 +358,7 @@ func TestEditScope(t *testing.T) {
 		}
 	}
 	// 改价只有自己的权限，不受 order.edit 的范围和窗口限制。
-	o := s.openAt(s.MustCaller(s.Owner), time.Now().AddDate(0, 0, -10), s.line())
+	o := s.openAt(s.MustCaller(s.Owner), time.Now().In(settings.Location).AddDate(0, 0, -10), s.line())
 	caller := s.MustCaller(token)
 	caller.Permissions[perm.OrderEdit] = ops.Grant{Scope: ops.ScopeSelf, WindowDays: new(0)}
 	caller.Permissions[perm.OrderReprice] = ops.Grant{}
@@ -656,7 +656,7 @@ func TestRequoteLockOrder(t *testing.T) {
 
 func TestAddUsesCreateGrant(t *testing.T) {
 	s := open(t)
-	o := s.openAt(s.MustCaller(s.Owner), time.Now().AddDate(0, 0, -10), s.line())
+	o := s.openAt(s.MustCaller(s.Owner), time.Now().In(settings.Location).AddDate(0, 0, -10), s.line())
 	caller := s.MustCaller(s.Owner)
 	caller.StaffID = s.employee
 	caller.Permissions = map[ops.Permission]ops.Grant{

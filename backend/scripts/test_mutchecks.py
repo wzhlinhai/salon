@@ -63,6 +63,110 @@ SKIPPED.extend([('1', 'd', 'reason')])
                     self.load('ENTRIES = []\n' + statement)
 
 
+class ManifestEditTests(unittest.TestCase):
+    def setUp(self):
+        self.folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        self.root = Path(self.folder.name)
+        self.path = self.root / 'manifest.py'
+        self.value = self.root / 'value'
+        (self.root / 'guard').write_text('原文\n')
+        self.entry = dict(kind='go', step='1', name='guard', file='guard',
+                          original='原文', replacement='changed', guards=['TestGuard'], packages=['a'])
+
+    def invoke(self, *args):
+        return AllManifestTests().invoke(self.root, *args)
+
+    def test_set_preserves_other_bytes_in_each_literal_form(self):
+        for form in ('ENTRIES = [{entry}]', 'ENTRIES = []\nENTRIES += [{entry}]',
+                     'ENTRIES = []\nENTRIES.append({entry})',
+                     'ENTRIES = []\nENTRIES.extend([{entry}])'):
+            with self.subTest(form=form):
+                source = ('# 中文 comment\r\n' + form.format(entry=repr(self.entry)) + ' # keep\r\n').encode()
+                self.path.write_bytes(source)
+                self.value.write_text('new replacement\n')
+                code, _, error = self.invoke('--set', str(self.path), 'guard', 'replacement', str(self.value))
+                self.assertEqual(code, 0, error)
+                self.assertEqual(self.path.read_bytes(), source.replace(b"'changed'", b"'new replacement'"))
+
+    def test_multiline_literal_span_and_effective_assignment(self):
+        source = ("ENTRIES = [{'name': 'discarded'}]\nSKIPPED = []\n"
+                  "ENTRIES = [" + repr(self.entry).replace("'changed'", "\"\"\"old\nreplacement\"\"\"") + "] # keep\n")
+        self.path.write_text(source)
+        self.value.write_text('new\nreplacement')
+        code, _, error = self.invoke('--set', str(self.path), 'guard', 'replacement', str(self.value))
+        self.assertEqual(code, 0, error)
+        self.assertEqual(self.path.read_text(), source.replace('\"\"\"old\nreplacement\"\"\"', repr('new\nreplacement')))
+
+    def test_step_name_disambiguates_and_guards_are_json(self):
+        second = dict(self.entry, step='2')
+        self.path.write_text('ENTRIES = ' + repr([self.entry, second]))
+        self.value.write_text('["TestOther", "TestGuard"]\n')
+        code, _, error = self.invoke('--set', str(self.path), '2/guard', 'guards', str(self.value))
+        self.assertEqual(code, 0, error)
+        entries = mutchecks.load_manifest(self.path)['ENTRIES']
+        self.assertEqual(entries[0]['guards'], ['TestGuard'])
+        self.assertEqual(entries[1]['guards'], ['TestOther', 'TestGuard'])
+
+    def test_ambiguous_name_leaves_bytes_unchanged(self):
+        self.path.write_text('ENTRIES = ' + repr([self.entry, dict(self.entry, step='2')]))
+        before = self.path.read_bytes()
+        self.value.write_text('new')
+        code, _, error = self.invoke('--set', str(self.path), 'guard', 'replacement', str(self.value))
+        self.assertEqual(code, 1)
+        self.assertIn('found 2', error)
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_rejected_edits_leave_bytes_unchanged(self):
+        self.path.write_text('ENTRIES = ' + repr([self.entry]))
+        before = self.path.read_bytes()
+        for field, value in [('original', 'missing'), ('guards', '{}')]:
+            with self.subTest(field=field):
+                self.value.write_text(value)
+                code, _, _ = self.invoke('--set', str(self.path), 'guard', field, str(self.value))
+                self.assertEqual(code, 1)
+                self.assertEqual(self.path.read_bytes(), before)
+        self.value.write_text(json.dumps([self.entry, dict(self.entry, original='missing')]))
+        code, _, error = self.invoke('--append', str(self.path), str(self.value))
+        self.assertEqual(code, 1)
+        self.assertIn('original occurs 0 times', error)
+        self.assertEqual(self.path.read_bytes(), before)
+        self.value.write_text('[{}]')
+        code, _, _ = self.invoke('--append', str(self.path), str(self.value))
+        self.assertEqual(code, 1)
+        self.assertEqual(self.path.read_bytes(), before)
+        self.path.write_text('ENTRIES = []\nprint("no code")')
+        before = self.path.read_bytes()
+        code, _, _ = self.invoke('--append', str(self.path), str(self.value))
+        self.assertEqual(code, 1)
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_text_newline_rule_and_packages_json(self):
+        for old, value, expected in [('changed', 'new\n', 'new'),
+                                     ('changed\n', 'new\n', 'new\n'),
+                                     ('changed', 'new\n\n', 'new\n\n'),
+                                     ('changed', 'new', 'new')]:
+            with self.subTest(old=old, value=value):
+                self.path.write_text('ENTRIES = ' + repr([dict(self.entry, replacement=old)]))
+                self.value.write_text(value)
+                code, _, error = self.invoke('--set', str(self.path), 'guard', 'replacement', str(self.value))
+                self.assertEqual(code, 0, error)
+                self.assertEqual(mutchecks.load_manifest(self.path)['ENTRIES'][0]['replacement'], expected)
+        self.value.write_text('["./internal/dbtest"]')
+        code, _, error = self.invoke('--set', str(self.path), 'guard', 'packages', str(self.value))
+        self.assertEqual(code, 0, error)
+        self.assertEqual(mutchecks.load_manifest(self.path)['ENTRIES'][0]['packages'], ['./internal/dbtest'])
+
+    def test_append_python_literals_preserves_prefix(self):
+        before = b'ENTRIES = [] # keep'
+        self.path.write_bytes(before)
+        self.value.write_text(json.dumps([self.entry]))
+        code, _, error = self.invoke('--append', str(self.path), str(self.value))
+        self.assertEqual(code, 0, error)
+        self.assertEqual(self.path.read_bytes(), before + ('\nENTRIES.extend(' + repr([self.entry]) + ')\n').encode())
+        self.assertEqual(mutchecks.load_manifest(self.path)['ENTRIES'], [self.entry])
+
+
 class AllManifestTests(unittest.TestCase):
     def invoke(self, root, *args):
         with patch.object(mutchecks, 'ROOT', root), patch.object(sys, 'argv', ['mutchecks.py', *args]), patch('sys.stdout', new=io.StringIO()) as output, patch('sys.stderr', new=io.StringIO()) as error:
