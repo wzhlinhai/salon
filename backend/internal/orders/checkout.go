@@ -2,7 +2,6 @@ package orders
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -23,10 +22,7 @@ func registerCheckout(r *ops.Registry) {
 }
 
 func checkoutOrders(ctx context.Context, env ops.Env, in *CheckoutOrdersInput) (*OrderList, error) {
-	return checkoutOrdersAt(ctx, env, in, time.Now())
-}
-
-func checkoutOrdersAt(ctx context.Context, env ops.Env, in *CheckoutOrdersInput, now time.Time) (*OrderList, error) {
+	now := env.Now
 	ids := make([]uuid.UUID, len(in.Orders))
 	seen := map[uuid.UUID]bool{}
 	for i, order := range in.Orders {

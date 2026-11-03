@@ -21,7 +21,7 @@ import (
 
 func (s *fixture) windowSetting(n int) {
 	s.t.Helper()
-	s.call("change_setting", map[string]any{"key": settings.KeyVoidWindowMinutes, "value": n, "effective_from": settings.Date(time.Now()).Format(time.DateOnly)}, 200)
+	s.call("change_setting", map[string]any{"key": settings.KeyVoidWindowMinutes, "value": n, "effective_from": settings.Date(s.Now()).Format(time.DateOnly)}, 200)
 }
 func (s *fixture) openWindow(c ops.Caller, password string, status int, detail string) map[string]any {
 	s.t.Helper()
@@ -92,37 +92,41 @@ func TestVoidWindowLifecycle(t *testing.T) {
 		t.Fatal(log)
 	}
 	at := end
-	orders.RegisterVoidWindowAtForTest(s.Registry, func() time.Time { return at })
+	s.SetNow(at)
 	before := s.voidSnapshot()
-	r := s.HTTP(t, &c, "test_void_order", voidInput(o))
+	r := s.HTTP(t, &c, "void_order", voidInput(o))
 	if r.Status != 409 || r.Body["detail"] != "请先输入登录密码开启撤单授权窗口" || before != s.voidSnapshot() {
 		t.Fatal(r)
 	}
 	s.windowSetting(1) // 缩短设置不影响已有窗口。
 	at = start.Add(5 * time.Minute)
+	s.SetNow(at)
 	for range 2 {
-		if s.HTTP(t, &c, "test_void_order", voidInput(o)).Status != 200 {
+		if s.HTTP(t, &c, "void_order", voidInput(o)).Status != 200 {
 			t.Fatal("window did not allow void")
 		}
 		o = s.paid(s.customerOrder(line), payment("cash", "100"))
 	}
 	at = end
-	r = s.HTTP(t, &c, "test_open_void_window", orders.OpenVoidWindowInput{Password: optest.OwnerPassword})
+	s.SetNow(at)
+	r = s.HTTP(t, &c, "open_void_window", orders.OpenVoidWindowInput{Password: optest.OwnerPassword})
 	if r.Status != 200 {
 		t.Fatal(r)
 	}
-	if r = s.HTTP(t, &c, "test_void_order", voidInput(o)); r.Status != 200 {
+	if r = s.HTTP(t, &c, "void_order", voidInput(o)); r.Status != 200 {
 		t.Fatal(r)
 	}
 
 	o = s.paid(s.customerOrder(line), payment("cash", "100"))
 	at = end.Add(30 * time.Second)
-	r = s.HTTP(t, &c, "test_open_void_window", orders.OpenVoidWindowInput{Password: optest.OwnerPassword})
+	s.SetNow(at)
+	r = s.HTTP(t, &c, "open_void_window", orders.OpenVoidWindowInput{Password: optest.OwnerPassword})
 	if r.Status != 200 {
 		t.Fatal(r)
 	}
 	at = end.Add(time.Minute) // 上一个窗口已过期，重开的较晚窗口仍有效。
-	if r = s.HTTP(t, &c, "test_void_order", voidInput(o)); r.Status != 200 {
+	s.SetNow(at)
+	if r = s.HTTP(t, &c, "void_order", voidInput(o)); r.Status != 200 {
 		t.Fatal(r)
 	}
 	s.windowSetting(0)
@@ -212,13 +216,13 @@ func TestVoidWindowBusinessDate(t *testing.T) {
 	s.call("change_setting", map[string]any{"key": settings.KeyVoidWindowMinutes, "value": 10, "effective_from": day.Format(time.DateOnly)}, 200)
 	s.call("change_setting", map[string]any{"key": settings.KeyVoidWindowMinutes, "value": 0, "effective_from": day.AddDate(0, 0, 1).Format(time.DateOnly)}, 200)
 	at := time.Date(day.Year(), day.Month(), day.Day()+1, 1, 30, 0, 0, settings.Location)
-	orders.RegisterVoidWindowAtForTest(s.Registry, func() time.Time { return at })
+	s.SetNow(at)
 	o := s.paid(s.customerOrder(s.checkoutLine()), payment("cash", "100"))
-	r := s.HTTP(t, &c, "test_void_order", voidInput(o))
+	r := s.HTTP(t, &c, "void_order", voidInput(o))
 	if r.Status != 409 || r.Body["detail"] != "请先输入登录密码开启撤单授权窗口" {
 		t.Fatal(r)
 	}
-	r = s.HTTP(t, &c, "test_open_void_window", orders.OpenVoidWindowInput{Password: optest.OwnerPassword})
+	r = s.HTTP(t, &c, "open_void_window", orders.OpenVoidWindowInput{Password: optest.OwnerPassword})
 	if r.Status != 200 {
 		t.Fatal(r)
 	}
@@ -226,7 +230,7 @@ func TestVoidWindowBusinessDate(t *testing.T) {
 	if err != nil || !end.Equal(at.Add(10*time.Minute)) {
 		t.Fatal(r, err)
 	}
-	if r = s.HTTP(t, &c, "test_void_order", voidInput(o)); r.Status != 200 {
+	if r = s.HTTP(t, &c, "void_order", voidInput(o)); r.Status != 200 {
 		t.Fatal(r)
 	}
 }

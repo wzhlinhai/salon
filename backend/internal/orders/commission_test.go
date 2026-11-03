@@ -9,12 +9,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/wzhlinhai/salon/backend/internal/db"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/optest"
-	"github.com/wzhlinhai/salon/backend/internal/orders"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
@@ -22,8 +20,8 @@ func (s *fixture) commissionScheme(percent string) map[string]any {
 	s.t.Helper()
 	return s.call("save_commission_scheme", map[string]any{"effective_from": settings.Date(time.Now()).Format(time.DateOnly), "scheme": map[string]any{"rules": []any{map[string]any{"source": "item", "base": "paid", "by_position": false, "by_designated": false, "by_member": false, "cells": []any{map[string]any{"percent": percent}}}}, "overrides": []any{}, "excluded_staff": []any{}}}, 200)
 }
-func commissionArgs() map[string]any {
-	day := settings.Date(time.Now()).Format(time.DateOnly)
+func commissionArgs(now time.Time) map[string]any {
+	day := settings.Date(now).Format(time.DateOnly)
 	return map[string]any{"date_from": day, "date_to": day}
 }
 func TestCommissionReadHistory(t *testing.T) {
@@ -35,7 +33,7 @@ func TestCommissionReadHistory(t *testing.T) {
 	card := s.paymentCard(s.paymentType("提成卡", nil), "30", "30")
 	packet := s.redPacket(s.customer, "20")
 	o := s.paid(s.customerOrder(line), payment("cash", "20"), cardPayment(card, "60"), packetPayment(packet, "20"))
-	first := s.call("list_commissions", commissionArgs(), 200)
+	first := s.call("list_commissions", commissionArgs(s.Now()), 200)
 	if first["total"] != "10.00" || len(first["entries"].([]any)) != 2 {
 		t.Fatal(first)
 	}
@@ -49,7 +47,7 @@ func TestCommissionReadHistory(t *testing.T) {
 			want = "3.00"
 			base = "30.00"
 		}
-		if c["amount"] != want || c["source"] != "item" || c["business_date"] != commissionArgs()["date_from"] || c["reversal"] != false || origin["order_id"] != o["id"] || origin["order_item_id"] != firstLine(o)["id"] || origin["checkout_id"] != o["checkout_id"] || origin["item"].(map[string]any)["id"] != line.ItemID.String() || origin["position"].(map[string]any)["id"] != s.position.String() || origin["position"].(map[string]any)["name"] != "大工" || e["base"].(map[string]any)["amount"] != base || e["base"].(map[string]any)["kind"] != "paid" || e["version"].(map[string]any)["id"] != scheme["id"] || e["version"].(map[string]any)["version"] != float64(1) || e["version"].(map[string]any)["effective_from"] != commissionArgs()["date_from"] || e["match"].(map[string]any)["cell"].(map[string]any)["percent"] != "10.00" || e["member"] != true || e["designated"] != true || len(e["entries"].([]any)) != 4 {
+		if c["amount"] != want || c["source"] != "item" || c["business_date"] != commissionArgs(s.Now())["date_from"] || c["reversal"] != false || origin["order_id"] != o["id"] || origin["order_item_id"] != firstLine(o)["id"] || origin["checkout_id"] != o["checkout_id"] || origin["item"].(map[string]any)["id"] != line.ItemID.String() || origin["position"].(map[string]any)["id"] != s.position.String() || origin["position"].(map[string]any)["name"] != "大工" || e["base"].(map[string]any)["amount"] != base || e["base"].(map[string]any)["kind"] != "paid" || e["version"].(map[string]any)["id"] != scheme["id"] || e["version"].(map[string]any)["version"] != float64(1) || e["version"].(map[string]any)["effective_from"] != commissionArgs(s.Now())["date_from"] || e["match"].(map[string]any)["cell"].(map[string]any)["percent"] != "10.00" || e["member"] != true || e["designated"] != true || len(e["entries"].([]any)) != 4 {
 			t.Fatal(c)
 		}
 		for _, entry := range e["entries"].([]any) {
@@ -61,14 +59,14 @@ func TestCommissionReadHistory(t *testing.T) {
 	}
 	s.commissionScheme("20")
 	for _, ch := range s.Channels() {
-		got := ch.Call(t, s.MustCaller(s.Owner), "list_commissions", commissionArgs())
+		got := ch.Call(t, s.MustCaller(s.Owner), "list_commissions", commissionArgs(s.Now()))
 		if got.Status != 200 || !reflect.DeepEqual(got.Body, first) {
 			t.Fatal(ch.Name, got, first)
 		}
 	}
 	s.paid(s.customerOrder(line), payment("cash", "100"))
 	for _, ch := range s.Channels() {
-		got := ch.Call(t, s.MustCaller(s.Owner), "list_commissions", commissionArgs())
+		got := ch.Call(t, s.MustCaller(s.Owner), "list_commissions", commissionArgs(s.Now()))
 		if got.Status != 200 || got.Body["total"] != "30.00" || len(got.Body["entries"].([]any)) != 4 {
 			t.Fatal(got)
 		}
@@ -99,7 +97,7 @@ func TestCommissionReadScopePaging(t *testing.T) {
 	denied.Permissions = map[ops.Permission]ops.Grant{}
 	for _, ch := range s.Channels() {
 		t.Run(ch.Name, func(t *testing.T) {
-			args := commissionArgs()
+			args := commissionArgs(s.Now())
 			all := ch.Call(t, owner, "list_commissions", args)
 			if all.Status != 200 || len(all.Body["entries"].([]any)) != 3 || all.Body["total"] != "20.00" {
 				t.Fatal(all)
@@ -117,7 +115,7 @@ func TestCommissionReadScopePaging(t *testing.T) {
 			if filtered.Status != 200 || len(filtered.Body["entries"].([]any)) != 0 || filtered.Body["total"] != "0.00" {
 				t.Fatal(filtered)
 			}
-			args = commissionArgs()
+			args = commissionArgs(s.Now())
 			args["source"] = "sale"
 			filtered = ch.Call(t, owner, "list_commissions", args)
 			if filtered.Status != 200 || len(filtered.Body["entries"].([]any)) != 0 || filtered.Body["total"] != "0.00" {
@@ -128,7 +126,7 @@ func TestCommissionReadScopePaging(t *testing.T) {
 			if filtered.Status != 200 || !reflect.DeepEqual(all.Body, filtered.Body) {
 				t.Fatal(filtered)
 			}
-			args = commissionArgs()
+			args = commissionArgs(s.Now())
 			args["limit"] = 1
 			page := ch.Call(t, owner, "list_commissions", args)
 			if page.Status != 200 || len(page.Body["entries"].([]any)) != 1 || page.Body["total"] != all.Body["total"] || !reflect.DeepEqual(page.Body["totals"], all.Body["totals"]) {
@@ -150,7 +148,7 @@ func TestCommissionReadScopePaging(t *testing.T) {
 			if got.Status != 200 {
 				t.Fatal(got)
 			}
-			got = ch.Call(t, denied, "list_commissions", commissionArgs())
+			got = ch.Call(t, denied, "list_commissions", commissionArgs(s.Now()))
 			if got.Status != 403 || got.Detail() != "permission denied" {
 				t.Fatal(got)
 			}
@@ -162,17 +160,13 @@ func TestCommissionReadReversal(t *testing.T) {
 	s.commissionScheme("10")
 	o := s.paid(s.customerOrder(s.performanceLine(70, 30)), payment("cash", "100"))
 	s.commissionScheme("90")
-	day := settings.Date(time.Now()).AddDate(0, 0, 1)
-	err := db.InTenant(t.Context(), s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error {
-		_, err := orders.VoidOrderAtForTest(t.Context(), ops.Env{Caller: s.MustCaller(s.Owner), Q: q}, new(voidInput(o)), day.Add(8*time.Hour))
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	originalNow := s.Now()
+	day := settings.Date(originalNow).AddDate(0, 0, 1)
+	s.SetNow(day.Add(8 * time.Hour))
+	s.call("void_order", voidInput(o), 200)
 	for _, ch := range s.Channels() {
 		for _, onlyVoid := range []bool{false, true} {
-			args := commissionArgs()
+			args := commissionArgs(originalNow)
 			args["date_to"] = day.Format(time.DateOnly)
 			want := "0.00"
 			n := 4
@@ -218,7 +212,7 @@ func TestCommissionReadQueryCount(t *testing.T) {
 				s.paid(s.customerOrder(s.performanceLine(70, 30), s.performanceLine(70, 30)), payment("cash", "200"))
 			}
 			counter.all.Store(0)
-			got := ch.Call(t, s.MustCaller(s.Owner), "list_commissions", commissionArgs())
+			got := ch.Call(t, s.MustCaller(s.Owner), "list_commissions", commissionArgs(s.Now()))
 			if got.Status != 200 || len(got.Body["entries"].([]any)) == 0 {
 				t.Fatal(got)
 			}
@@ -238,19 +232,27 @@ func TestCheckoutCommissionMember(t *testing.T) {
 			s := open(t)
 			line := s.performanceLine(70, 30)
 			if tc.name != "no card" {
-				ct := s.paymentType("会员", nil)
-				if tc.name == "count empty" {
-					ct = s.call("create_card_type", map[string]any{"name": "空次卡", "kind": "count", "validity_kind": "none", "items": []any{map[string]any{"item_id": line.ItemID, "paid_count": 1, "gift_count": 0, "unit_price": "0"}}}, 200)
+				typeInput := map[string]any{"name": "会员", "kind": "stored_value", "validity_kind": "none"}
+				switch tc.name {
+				case "count empty":
+					typeInput = map[string]any{"name": "空次卡", "kind": "count", "validity_kind": "none", "items": []any{map[string]any{"item_id": line.ItemID, "paid_count": 1, "gift_count": 0, "unit_price": "0"}}}
+				case "today", "expired":
+					typeInput["validity_kind"], typeInput["validity_days"] = "days_after_open", 1
+				}
+				ct := s.call("create_card_type", typeInput, 200)
+				if tc.name == "today" || tc.name == "expired" {
+					opened := settings.Date(s.Now()).AddDate(0, 0, -1)
+					if tc.name == "expired" {
+						opened = opened.AddDate(0, 0, -1)
+					}
+					s.SetNow(time.Date(opened.Year(), opened.Month(), opened.Day(), 12, 0, 0, 0, settings.Location))
 				}
 				c := s.paymentCard(ct, "0", "0")
+				if tc.name == "today" || tc.name == "expired" {
+					s.SetNow(time.Time{})
+				}
 				tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 				switch tc.name {
-				case "today", "expired":
-					day := settings.Date(time.Now())
-					if tc.name == "expired" {
-						day = day.AddDate(0, 0, -1)
-					}
-					dbtest.Exec(t, tx, "UPDATE cards SET expires_on=$2 WHERE id=$1", c["id"], day)
 				case "refunded":
 					dbtest.Exec(t, tx, "UPDATE cards SET status='refunded' WHERE id=$1", c["id"])
 				case "other owner":
@@ -315,7 +317,7 @@ func TestCommissionLinePriceFacts(t *testing.T) {
  SELECT tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,'cash',100,100,100,member FROM performance_entries WHERE order_id=$1 LIMIT 1`, o["id"])
 	dbtest.Commit(t, tx)
 	for _, ch := range s.Channels() {
-		got := ch.Call(t, s.MustCaller(s.Owner), "list_commissions", commissionArgs())
+		got := ch.Call(t, s.MustCaller(s.Owner), "list_commissions", commissionArgs(s.Now()))
 		if got.Status != 200 || len(got.Body["entries"].([]any)) != 2 || got.Body["total"] != "5.00" {
 			t.Fatal(got)
 		}
@@ -346,7 +348,7 @@ func TestCommissionAllSources(t *testing.T) {
 	o := s.customerOrder(line)
 	s.paid(o, countPayment(card, firstLine(o), "100"))
 	for _, ch := range s.Channels() {
-		got := ch.Call(t, s.MustCaller(s.Owner), "list_commissions", commissionArgs())
+		got := ch.Call(t, s.MustCaller(s.Owner), "list_commissions", commissionArgs(s.Now()))
 		if got.Status != 200 || len(got.Body["entries"].([]any)) != 6 || got.Body["total"] != "23.00" {
 			t.Fatal(got)
 		}
@@ -377,11 +379,11 @@ func TestCommissionStoreTenantScope(t *testing.T) {
 	caller := foreign.MustCaller(foreign.Owner)
 	caller.StoreID = s.Res.StoreID
 	for _, ch := range s.Channels() {
-		got := ch.Call(t, s.MustCaller(s.Owner), "list_commissions", commissionArgs())
+		got := ch.Call(t, s.MustCaller(s.Owner), "list_commissions", commissionArgs(s.Now()))
 		if got.Status != 200 || len(got.Body["entries"].([]any)) != 1 || got.Body["total"] != "10.00" {
 			t.Fatal(got)
 		}
-		got = ch.Call(t, caller, "list_commissions", commissionArgs())
+		got = ch.Call(t, caller, "list_commissions", commissionArgs(s.Now()))
 		if got.Status != 200 || len(got.Body["entries"].([]any)) != 0 || got.Body["total"] != "0.00" {
 			t.Fatal(got)
 		}

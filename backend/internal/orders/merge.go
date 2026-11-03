@@ -2,7 +2,6 @@ package orders
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
@@ -51,7 +50,7 @@ func mergeOrders(ctx context.Context, env ops.Env, in *MergeOrdersInput) (*Order
 			rows[i].MergedInto = &kept.ID
 		}
 		return nil
-	}, time.Now())
+	}, env.Now)
 	if err != nil {
 		return nil, err
 	}

@@ -209,7 +209,7 @@ func getPayroll(ctx context.Context, env ops.Env, in *MonthInput) (*Payroll, err
 }
 
 func listPayrollMonths(ctx context.Context, env ops.Env, _ *ListPayrollMonthsInput) (*PayrollMonthList, error) {
-	rows, err := payrollmonth.List(ctx, env.Q, env.Caller.StoreID)
+	rows, err := payrollmonth.List(ctx, env.Q, env.Caller.StoreID, env.Now)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +237,7 @@ func listPayrollMonths(ctx context.Context, env ops.Env, _ *ListPayrollMonthsInp
 }
 
 func lockPayrollMonth(ctx context.Context, env ops.Env, in *MonthInput) (*Payroll, error) {
-	settlement, err := payrollmonth.Lock(ctx, env.Q, env.Caller.StoreID, in.Month, env.Caller.StaffID)
+	settlement, err := payrollmonth.Lock(ctx, env.Q, env.Caller.StoreID, in.Month, env.Caller.StaffID, env.Now)
 	if err != nil {
 		return nil, err
 	}

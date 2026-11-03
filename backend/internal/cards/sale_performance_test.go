@@ -148,19 +148,15 @@ func TestCardSaleOnlySources(t *testing.T) {
 
 func TestCardSaleBusinessDate(t *testing.T) {
 	s := open(t)
-	caller := s.MustCaller(s.Owner)
+	s.SetNow(time.Date(2029, 12, 31, 12, 0, 0, 0, settings.Location))
+	s.call("change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": "2030-01-01"}, 200)
+	s.SetNow(time.Date(2030, 1, 2, 1, 30, 0, 0, settings.Location))
+	opening := s.opening()
+	opening["principal"], opening["bonus"] = "100", "0"
+	out := s.call("open_card", opening, 200)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	dbtest.Exec(t, tx, `INSERT INTO setting_changes(tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES($1,$2,'business_day_end','"02:00"',false,'"00:00"',true,'2020-01-01',$3)`, s.Res.TenantID, s.Res.StoreID, s.Res.OwnerID)
-	var principal money.Amount
-	if err := principal.Scan("100"); err != nil {
-		t.Fatal(err)
-	}
-	out, err := cards.OpenCardAtForTest(context.Background(), ops.Env{Q: dbgen.New(tx), Caller: caller}, &cards.OpenCardInput{CustomerID: uuid.MustParse(s.customer), CardTypeID: uuid.MustParse(s.cardType), TopUpInput: cards.TopUpInput{Principal: principal, SalesStaffIDs: []uuid.UUID{s.Res.OwnerID}}}, time.Date(2030, 1, 2, 1, 30, 0, 0, settings.Location))
-	if err != nil {
-		t.Fatal(err)
-	}
 	var ok bool
-	if err := tx.QueryRow(context.Background(), `SELECT count(*)=1 AND bool_and(e.business_date=l.business_date AND e.business_date='2030-01-01') FROM performance_entries e JOIN card_ledger l ON l.id=e.card_ledger_id WHERE l.card_id=$1`, out.ID).Scan(&ok); err != nil || !ok {
+	if err := tx.QueryRow(context.Background(), `SELECT count(*)=1 AND bool_and(e.business_date=l.business_date AND e.business_date='2030-01-01') FROM performance_entries e JOIN card_ledger l ON l.id=e.card_ledger_id WHERE l.card_id=$1`, out["id"]).Scan(&ok); err != nil || !ok {
 		t.Fatal(ok, err)
 	}
 	dbtest.Rollback(t, tx)
@@ -174,7 +170,7 @@ func TestCardSaleConcurrentFirst(t *testing.T) {
 	if err := value.Scan("100"); err != nil {
 		t.Fatal(err)
 	}
-	_, err := cards.OpenCardAtForTest(context.Background(), ops.Env{Q: dbgen.New(tx), Caller: caller}, &cards.OpenCardInput{CustomerID: uuid.MustParse(s.customer), CardTypeID: uuid.MustParse(s.cardType), TopUpInput: cards.TopUpInput{Principal: value, SalesStaffIDs: []uuid.UUID{s.Res.OwnerID}}}, time.Now())
+	_, err := cards.OpenCardForTest(context.Background(), ops.Env{Now: time.Now(), Q: dbgen.New(tx), Caller: caller}, &cards.OpenCardInput{CustomerID: uuid.MustParse(s.customer), CardTypeID: uuid.MustParse(s.cardType), TopUpInput: cards.TopUpInput{Principal: value, SalesStaffIDs: []uuid.UUID{s.Res.OwnerID}}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -32,10 +32,6 @@ func registerVoidWindow(r *ops.Registry) {
 	ops.Register(r, ops.Operation[OpenVoidWindowInput, VoidWindow]{Name: "open_void_window", Summary: "输入本人登录密码开启撤单授权窗口", Kind: ops.Write, Permission: perm.OrderVoid, AI: ops.AINone, Handle: openVoidWindow})
 }
 
-func openVoidWindow(ctx context.Context, env ops.Env, in *OpenVoidWindowInput) (*VoidWindow, error) {
-	return openVoidWindowAt(ctx, env, in, time.Now())
-}
-
 func voidWindowMinutes(ctx context.Context, env ops.Env, now time.Time) (int, error) {
 	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, now)
 	if err != nil {
@@ -48,7 +44,8 @@ func voidWindowMinutes(ctx context.Context, env ops.Env, now time.Time) (int, er
 	return rules.VoidWindowMinutes(), nil
 }
 
-func openVoidWindowAt(ctx context.Context, env ops.Env, in *OpenVoidWindowInput, now time.Time) (*VoidWindow, error) {
+func openVoidWindow(ctx context.Context, env ops.Env, in *OpenVoidWindowInput) (*VoidWindow, error) {
+	now := env.Now
 	minutes, err := voidWindowMinutes(ctx, env, now)
 	if err != nil {
 		return nil, err

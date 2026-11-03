@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/wzhlinhai/salon/backend/internal/db"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
@@ -353,15 +352,11 @@ func TestVoidWindow(t *testing.T) {
 		c := s.MustCaller(s.Owner)
 		grant := ops.Grant{WindowDays: new(0)}
 		before := s.voidSnapshot()
-		err := db.InTenant(context.Background(), s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error {
-			out, err := orders.VoidOrderAtForTest(context.Background(), ops.Env{Caller: c, Q: q, Grant: grant}, new(voidInput(o)), at)
-			if err == nil && out.Void.BusinessDate != day.Format(time.DateOnly) {
-				t.Fatal(out)
-			}
-			return err
-		})
-		if age == 0 && err != nil || age == 1 && (!errors.Is(err, ops.ErrForbidden) || err.Error() != "permission denied" || before != s.voidSnapshot()) {
-			t.Fatal(err)
+		c.Permissions[perm.OrderVoid] = grant
+		s.SetNow(at)
+		r := s.HTTP(t, &c, "void_order", voidInput(o))
+		if age == 0 && (r.Status != 200 || r.Body["void"].(map[string]any)["business_date"] != day.Format(time.DateOnly)) || age == 1 && (r.Status != 403 || r.Detail() != "permission denied" || before != s.voidSnapshot()) {
+			t.Fatal(r)
 		}
 	}
 }
@@ -464,14 +459,10 @@ func TestVoidRestoreBusinessDate(t *testing.T) {
 	day := settings.Date(time.Now()).AddDate(0, 0, 2)
 	s.call("change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": day.Format(time.DateOnly)}, 200)
 	at := time.Date(day.Year(), day.Month(), day.Day()+1, 1, 30, 0, 0, settings.Location)
-	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	out, err := orders.VoidOrderAtForTest(context.Background(), ops.Env{Caller: s.MustCaller(s.Owner), Q: dbgen.New(tx)}, new(voidInput(o)), at)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dbtest.Commit(t, tx)
+	s.SetNow(at)
+	out := s.call("void_order", voidInput(o), 200)
 	for _, l := range []map[string]any{s.consumeEntries(c)[0].(map[string]any), s.countEntries(cc)[0].(map[string]any)} {
-		if l["business_date"] != day.Format(time.DateOnly) || l["order_void_id"] != out.Void.ID.String() {
+		if l["business_date"] != day.Format(time.DateOnly) || l["order_void_id"] != out["void"].(map[string]any)["id"] {
 			t.Fatal(l, out)
 		}
 	}

@@ -253,25 +253,22 @@ func TestRepriceOrderItem(t *testing.T) {
 
 func (s *fixture) openAt(caller ops.Caller, at time.Time, line orders.OrderItemInput) map[string]any {
 	s.t.Helper()
-	var orderID uuid.UUID
-	if err := db.InTenant(context.Background(), s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error {
-		o, err := orders.OpenOrderAtForTest(context.Background(), ops.Env{Caller: caller, Q: q}, new(s.opening(line)), at)
-		if err == nil {
-			orderID = o.ID
-		}
-		return err
-	}); err != nil {
-		s.t.Fatal(err)
+	s.SetNow(at)
+	defer s.SetNow(time.Time{})
+	r := s.HTTP(s.t, &caller, "open_order", new(s.opening(line)))
+	if r.Status != 200 {
+		s.t.Fatal(r)
 	}
-	return s.call("get_order", orders.GetOrderInput{ID: orderID}, 200)
+	return s.call("get_order", orders.GetOrderInput{ID: id(r.Body["id"])}, 200)
 }
 
 func TestEditWindow(t *testing.T) {
 	s := open(t)
+	effective := time.Date(2000, 1, 1, 0, 0, 0, 0, settings.Location)
+	s.SetNow(effective.AddDate(0, 0, -2).Add(12 * time.Hour))
+	s.Call(t, s.Owner, "change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": effective.Format(time.DateOnly)}, 200)
+	s.SetNow(time.Time{})
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	dbtest.Exec(t, tx, `INSERT INTO setting_changes (tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES ($1,$2,'business_day_end','"02:00"',false,'"00:00"',true,'2000-01-01',$3)`, s.Res.TenantID, s.Res.StoreID, s.Res.OwnerID)
-	dbtest.Commit(t, tx)
-	tx = dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	today, err := settings.BusinessDate(context.Background(), dbgen.New(tx), s.Res.StoreID, time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -589,14 +586,15 @@ func TestOrderEditsMigrationDown(t *testing.T) {
 func TestEditWindowBusinessDate(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()
-	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	dbtest.Exec(t, tx, `INSERT INTO setting_changes (tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES ($1,$2,'business_day_end','"02:00"',false,'"00:00"',true,'2000-01-01',$3)`, s.Res.TenantID, s.Res.StoreID, s.Res.OwnerID)
-	dbtest.Commit(t, tx)
+	effective := time.Date(2000, 1, 1, 0, 0, 0, 0, settings.Location)
+	s.SetNow(effective.AddDate(0, 0, -2).Add(12 * time.Hour))
+	s.Call(t, s.Owner, "change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": effective.Format(time.DateOnly)}, 200)
+	s.SetNow(time.Time{})
 	yesterday := time.Date(2026, time.May, 9, 12, 0, 0, 0, settings.Location)
 	caller := s.MustCaller(s.Owner)
 	o := s.openAt(caller, yesterday, s.line())
 	caller.Permissions[perm.OrderEdit] = ops.Grant{Scope: ops.ScopeStore, WindowDays: new(0)}
-	tx = dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	q := dbgen.New(tx)
 	order, err := q.LockOrder(ctx, dbgen.LockOrderParams{StoreID: s.Res.StoreID, ID: id(o["id"])})
 	if err != nil {

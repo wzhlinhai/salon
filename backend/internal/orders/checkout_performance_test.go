@@ -9,10 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/wzhlinhai/salon/backend/internal/db"
-	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
-	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/orders"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
@@ -204,13 +201,8 @@ func TestPerformanceCheckoutBusinessDate(t *testing.T) {
 	day := settings.Date(time.Now()).AddDate(0, 0, 5)
 	at := time.Date(day.Year(), day.Month(), day.Day()+1, 1, 30, 0, 0, settings.Location)
 	s.call("change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": day.Format(time.DateOnly)}, 200)
-	err := db.InTenant(context.Background(), s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error {
-		_, err := orders.CheckoutOrdersAtForTest(context.Background(), ops.Env{Caller: s.MustCaller(s.Owner), Q: q}, new(checkoutInput(checkoutOrder(o, payment("cash", "100")))), at)
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	s.SetNow(at)
+	s.call("checkout_orders", checkoutInput(checkoutOrder(o, payment("cash", "100"))), 200)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	var got string
 	if err := tx.QueryRow(context.Background(), "SELECT business_date::text FROM performance_entries WHERE order_id=$1", o["id"]).Scan(&got); err != nil {

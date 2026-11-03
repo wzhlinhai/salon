@@ -111,8 +111,8 @@ func lockable(m, opened, current Month, locked, previous bool) bool {
 }
 
 // List 从当前营业月倒序列出到开店月的结算状态。
-func List(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID) ([]Status, error) {
-	_, months, err := storeMonths(ctx, q, storeID, time.Now())
+func List(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, now time.Time) ([]Status, error) {
+	_, months, err := storeMonths(ctx, q, storeID, now)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +134,7 @@ func List(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID) ([]Status, e
 }
 
 // Lock 检查锁定条件并写入结算月锁定记录，调用者在同一事务保存提成和工资表行。
-func Lock(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, s string, by uuid.UUID) (*Settlement, error) {
+func Lock(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, s string, by uuid.UUID, now time.Time) (*Settlement, error) {
 	if err := q.LockPayroll(ctx, storeID); err != nil {
 		return nil, err
 	}
@@ -153,7 +153,7 @@ func Lock(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, s string, by
 	if existing != nil {
 		return nil, ops.Rule(m.String() + " 已经锁定")
 	}
-	today, err := settings.BusinessDate(ctx, q, storeID, time.Now())
+	today, err := settings.BusinessDate(ctx, q, storeID, now)
 	if err != nil {
 		return nil, err
 	}

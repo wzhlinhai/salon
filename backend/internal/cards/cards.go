@@ -69,9 +69,7 @@ func cardView(ctx context.Context, env ops.Env, id uuid.UUID) (*Card, error) {
 	return &views[0], nil
 }
 func openCard(ctx context.Context, env ops.Env, in *OpenCardInput) (*Card, error) {
-	return openCardAt(ctx, env, in, time.Now())
-}
-func openCardAt(ctx context.Context, env ops.Env, in *OpenCardInput, now time.Time) (*Card, error) {
+	now := env.Now
 	if err := staff.LockSalesStaff(ctx, env, in.SalesStaffIDs); err != nil {
 		return nil, err
 	}
@@ -140,7 +138,7 @@ func rechargeCard(ctx context.Context, env ops.Env, in *RechargeInput) (*Recharg
 		}
 		upgraded, err = autoUpgradeCard(ctx, env, c.row, in.Principal, ledger.ID, day)
 		return err
-	}, time.Now())
+	}, env.Now)
 	if err != nil {
 		return nil, err
 	}

@@ -19,12 +19,28 @@ linters:
     forbidigo:
       analyze-types: true
       forbid:
+        - pattern: '^time\.(Now|Since|Until)$'
+          pkg: '^time$'
+          msg: 业务代码取当前时刻用 env.Now（或调用方传入的 now）。
         - pattern: '^money\.(Amount|Change|Total|Percent)\.String$'
           pkg: '^github\.com/wzhlinhai/salon/backend/internal/money$'
           msg: 金额比较和运算必须使用 money 方法。
   exclusions:
     rules:
-      # 测试可以把显示文本与金额字面量对照。
-      - path: '(_test\.go$|internal/money/)'
+      # 测试可以直接取时间，也可以把显示文本与金额字面量对照。
+      - path: '_test\.go$'
+        linters:
+          - forbidigo
+      - path: 'internal/money/'
+        text: '金额比较和运算必须使用 money 方法'
+        linters:
+          - forbidigo
+      - path: '(internal/(auth|optest|dbtest)/|^cmd/)'
+        text: '业务代码取当前时刻用 env.Now'
+        linters:
+          - forbidigo
+      - path: 'internal/httpapi/server\.go$'
+        source: 'cfg\.Now = time\.Now$'
+        text: '业务代码取当前时刻用 env.Now'
         linters:
           - forbidigo

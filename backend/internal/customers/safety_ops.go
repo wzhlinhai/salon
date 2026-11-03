@@ -39,7 +39,7 @@ func registerSafety(r *ops.Registry) {
 					// rule-untested: AddSafetyLabelInput.ObservedOn 的 schema format=date 在调用前用 time.DateOnly 校验
 					return ops.Rule("观察日期格式不正确")
 				}
-				today, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
+				today, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, env.Now)
 				if err != nil {
 					return err
 				}

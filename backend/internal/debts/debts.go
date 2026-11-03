@@ -36,10 +36,7 @@ func RecordOrderDebt(ctx context.Context, env ops.Env, customerID, orderID, paym
 
 // RegisterHistoricalDebt 在调用者事务中校验并登记历史欠款，供操作和导入复用。
 func RegisterHistoricalDebt(ctx context.Context, env ops.Env, in *RegisterHistoricalDebtInput) (*Debt, error) {
-	return registerHistoricalDebtAt(ctx, env, in, time.Now())
-}
-
-func registerHistoricalDebtAt(ctx context.Context, env ops.Env, in *RegisterHistoricalDebtInput, now time.Time) (*Debt, error) {
+	now := env.Now
 	if in.Amount.Cmp(money.Amount{}) <= 0 {
 		return nil, ops.Rule("欠款金额须大于零")
 	}
@@ -173,10 +170,7 @@ func view(ctx context.Context, env ops.Env, row dbgen.Debt) (*Debt, error) {
 }
 
 func repayDebt(ctx context.Context, env ops.Env, in *RepayDebtInput) (*Debt, error) {
-	return repayDebtAt(ctx, env, in, time.Now())
-}
-
-func repayDebtAt(ctx context.Context, env ops.Env, in *RepayDebtInput, now time.Time) (*Debt, error) {
+	now := env.Now
 	if in.Amount.Cmp(money.Amount{}) <= 0 {
 		return nil, ops.Rule("还款金额须大于零")
 	}

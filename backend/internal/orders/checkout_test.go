@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wzhlinhai/salon/backend/internal/db"
-	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
@@ -281,17 +280,10 @@ func TestCheckoutBusinessDate(t *testing.T) {
 	o := s.customerOrder(s.checkoutLine())
 	at := time.Date(day.Year(), day.Month(), day.Day()+1, 1, 30, 0, 0, settings.Location)
 	caller := s.MustCaller(s.Owner)
-	if err := db.InTenant(context.Background(), s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error {
-		out, err := orders.CheckoutOrdersAtForTest(context.Background(), ops.Env{Caller: caller, Q: q}, new(checkoutInput(checkoutOrder(o, payment("cash", "100")))), at)
-		if err != nil {
-			return err
-		}
-		if len(out.Items) != 1 || out.Items[0].Status != "paid" {
-			t.Fatal(out)
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
+	s.SetNow(at)
+	out := s.call("checkout_orders", checkoutInput(checkoutOrder(o, payment("cash", "100"))), 200)
+	if len(lines(out)) != 1 || lines(out)[0].(map[string]any)["status"] != "paid" {
+		t.Fatal(out)
 	}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	var date string

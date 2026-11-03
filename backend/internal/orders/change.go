@@ -92,7 +92,7 @@ func checkEdit(ctx context.Context, env ops.Env, order dbgen.Order, now time.Tim
 }
 
 func changeOne(ctx context.Context, env ops.Env, action string, id uuid.UUID, edit func(*dbgen.Order) error) (*Order, error) {
-	after, err := change(ctx, env, action, "open", []uuid.UUID{id}, func(rows []dbgen.Order) error { return edit(&rows[0]) }, time.Now())
+	after, err := change(ctx, env, action, "open", []uuid.UUID{id}, func(rows []dbgen.Order) error { return edit(&rows[0]) }, env.Now)
 	if err != nil {
 		return nil, err
 	}

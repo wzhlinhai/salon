@@ -190,9 +190,9 @@ func TestPayrollEmployment(t *testing.T) {
 		assertMoney(t, lines[ids[4].String()], map[string]string{"applied_amount": "0.00", "base_pay": "0.00", "total": "-1.00"})
 	}
 	// 午夜后两点前离职属于前一个营业月；入职也用营业月。
-	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	dbtest.Exec(t, tx, `INSERT INTO setting_changes(tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES($1,$2,'business_day_end','"02:00"',false,'"00:00"',true,$3,$4)`, s.Res.TenantID, s.Res.StoreID, first, s.Res.OwnerID)
-	dbtest.Commit(t, tx)
+	s.SetNow(first.AddDate(0, 0, -2).Add(12 * time.Hour))
+	s.Call(t, s.Owner, "change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": first.Format(time.DateOnly)}, 200)
+	s.SetNow(time.Time{})
 	midnight := time.Date(m.Year(), m.Month(), 1, 1, 0, 0, 0, settings.Location)
 	historicalStaff(t, s, ids[1], first, &midnight)
 	historicalStaff(t, s, ids[3], midnight, nil)
@@ -527,7 +527,7 @@ func TestPayrollLockQueue(t *testing.T) {
 		m = m.AddDate(0, 1, 0)
 		adjustment := add(t, s, s.Res.OwnerID, m, "待锁", "1")
 		tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-		_, err := payroll.LockPayrollMonthForTest(t.Context(), ops.Env{Caller: s.MustCaller(s.Owner), Q: dbgen.New(tx)}, &payroll.MonthInput{Month: month(m)})
+		_, err := payroll.LockPayrollMonthForTest(t.Context(), ops.Env{Now: time.Now(), Caller: s.MustCaller(s.Owner), Q: dbgen.New(tx)}, &payroll.MonthInput{Month: month(m)})
 		if err != nil {
 			dbtest.Rollback(t, tx)
 			t.Fatal(err)

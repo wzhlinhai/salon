@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/google/uuid"
@@ -20,7 +21,7 @@ import (
 func TestCommitRuleKeepsWrites(t *testing.T) {
 	s := optest.OpenShop(t)
 	mux, api := humatest.New(t)
-	r := ops.NewRegistry(s.Pool, api)
+	r := ops.NewRegistry(s.Pool, api, time.Now)
 	c := s.MustCaller(s.Owner)
 	var rule *ops.RuleError
 	// rejection-detail: 测试 CommitRule 的错误类型和状态映射，提示文字在下方 HTTP 断言。
@@ -81,7 +82,7 @@ func TestCommitRuleCommitFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	mux, api := humatest.New(t)
-	r := ops.NewRegistry(s.Pool, api)
+	r := ops.NewRegistry(s.Pool, api, time.Now)
 	c := s.MustCaller(s.Owner)
 	var created uuid.UUID
 	ops.Register(r, ops.Operation[in, out]{Name: "commit_failure", Kind: ops.Write, Permission: ops.LoggedIn, AI: ops.AIDraft, Handle: func(ctx context.Context, env ops.Env, _ *in) (*out, error) {

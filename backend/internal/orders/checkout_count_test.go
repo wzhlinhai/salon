@@ -9,8 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/wzhlinhai/salon/backend/internal/db"
-	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/optest"
@@ -274,13 +272,8 @@ func TestCountConsumeBusinessDate(t *testing.T) {
 	day := settings.Date(time.Now()).AddDate(0, 0, 2)
 	s.call("change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": day.Format(time.DateOnly)}, 200)
 	at := time.Date(day.Year(), day.Month(), day.Day()+1, 1, 30, 0, 0, settings.Location)
-	caller := s.MustCaller(s.Owner)
-	if err := db.InTenant(context.Background(), s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error {
-		_, err := orders.CheckoutOrdersAtForTest(context.Background(), ops.Env{Caller: caller, Q: q}, new(checkoutInput(checkoutOrder(o, countPayment(c, firstLine(o), "100")))), at)
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
+	s.SetNow(at)
+	s.call("checkout_orders", checkoutInput(checkoutOrder(o, countPayment(c, firstLine(o), "100"))), 200)
 	if l := s.countEntries(c)[0].(map[string]any); l["business_date"] != day.Format(time.DateOnly) {
 		t.Fatal(l)
 	}

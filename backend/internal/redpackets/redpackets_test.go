@@ -141,7 +141,7 @@ func TestIssueStaffValidation(t *testing.T) {
 			if err := amount.Scan("1"); err != nil {
 				return err
 			}
-			_, err := redpackets.IssueRedPacketAtForTest(context.Background(), ops.Env{Caller: caller, Q: q}, &redpackets.IssueRedPacketInput{CustomerID: s.customer, Kind: "sold", FaceValue: amount, Price: &amount, ExpiresOn: "2999-01-01", SalesStaffIDs: ids}, time.Now())
+			_, err := redpackets.IssueRedPacketForTest(context.Background(), ops.Env{Now: time.Now(), Caller: caller, Q: q}, &redpackets.IssueRedPacketInput{CustomerID: s.customer, Kind: "sold", FaceValue: amount, Price: &amount, ExpiresOn: "2999-01-01", SalesStaffIDs: ids})
 			return err
 		})
 		if ops.StatusOf(err) != 409 || err.Error() != "请选择一到十名不同的业绩归属人" {
@@ -158,17 +158,12 @@ func TestIssueBusinessDate(t *testing.T) {
 	if err := a.Scan("10"); err != nil {
 		t.Fatal(err)
 	}
+	s.SetNow(at)
 	for _, offset := range []int{0, -1} {
 		before := s.snapshot()
-		err := db.InTenant(context.Background(), s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error {
-			p, err := redpackets.IssueRedPacketAtForTest(context.Background(), ops.Env{Caller: s.MustCaller(s.Owner), Q: q}, &redpackets.IssueRedPacketInput{CustomerID: s.customer, Kind: "gift", FaceValue: a, ExpiresOn: day.AddDate(0, 0, offset).Format(time.DateOnly)}, at)
-			if err == nil && (p.BusinessDate != day.Format(time.DateOnly) || p.Status != "available") {
-				t.Fatal(p)
-			}
-			return err
-		})
-		if offset == 0 && err != nil || offset == -1 && (ops.StatusOf(err) != 409 || err.Error() != "有效期不能早于今天" || s.snapshot() != before) {
-			t.Fatal(err)
+		r := s.HTTPWithToken(t, s.Owner, "issue_red_packet", &redpackets.IssueRedPacketInput{CustomerID: s.customer, Kind: "gift", FaceValue: a, ExpiresOn: day.AddDate(0, 0, offset).Format(time.DateOnly)})
+		if offset == 0 && (r.Status != 200 || r.Body["business_date"] != day.Format(time.DateOnly) || r.Body["status"] != "available") || offset == -1 && (r.Status != 409 || r.Detail() != "有效期不能早于今天" || s.snapshot() != before) {
+			t.Fatal(r)
 		}
 	}
 	// 固定营业日验证过期：自然日已是次日，但到期当日仍可用。
@@ -198,13 +193,9 @@ func TestIssueBusinessDate(t *testing.T) {
 }
 func (s *fixture) expired() map[string]any {
 	s.t.Helper()
-	tx := dbtest.AppTx(s.t, s.Pool, s.Res.TenantID)
-	var packet uuid.UUID
-	if err := tx.QueryRow(context.Background(), `INSERT INTO red_packets(tenant_id,store_id,customer_id,kind,face_value,expires_on,business_date,issued_by) VALUES($1,$2,$3,'gift',10,'2020-01-01','2020-01-01',$4) RETURNING id`, s.Res.TenantID, s.Res.StoreID, s.customer, s.Res.OwnerID).Scan(&packet); err != nil {
-		s.t.Fatal(err)
-	}
-	dbtest.Commit(s.t, tx)
-	return map[string]any{"id": packet.String()}
+	s.SetNow(time.Date(2020, 1, 1, 12, 0, 0, 0, settings.Location))
+	defer s.SetNow(time.Time{})
+	return s.call("issue_red_packet", map[string]any{"customer_id": s.customer, "kind": "gift", "face_value": "10", "expires_on": "2020-01-01"}, 200)
 }
 func TestRevokeRules(t *testing.T) {
 	s := open(t)
@@ -432,26 +423,21 @@ func TestIssueReferenceLocks(t *testing.T) {
 
 func TestRedPacketListBusinessDate(t *testing.T) {
 	s := open(t)
-	// 模拟昨天已经生效的营业日划分；API 不允许当天临时改变划分。
-	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	dbtest.Exec(t, tx, `INSERT INTO setting_changes(tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES($1,$2,'business_day_end','"23:59"',false,'"00:00"',true,'2000-01-01',$3)`, s.Res.TenantID, s.Res.StoreID, s.Res.OwnerID)
-	day, err := settings.BusinessDate(context.Background(), dbgen.New(tx), s.Res.StoreID, time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
+	calendar := settings.Date(time.Now())
+	day := calendar.AddDate(0, 0, -1)
+	s.SetNow(day.AddDate(0, 0, -2).Add(12 * time.Hour))
+	s.call("change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": day.AddDate(0, 0, -1).Format(time.DateOnly)}, 200)
 	var available, expired uuid.UUID
 	for i, expiry := range []time.Time{day, day.AddDate(0, 0, -1)} {
-		var packet uuid.UUID
-		if err := tx.QueryRow(context.Background(), `INSERT INTO red_packets(tenant_id,store_id,customer_id,kind,face_value,expires_on,business_date,issued_by) VALUES($1,$2,$3,'gift',1,$4,$4,$5) RETURNING id`, s.Res.TenantID, s.Res.StoreID, s.customer, expiry, s.Res.OwnerID).Scan(&packet); err != nil {
-			t.Fatal(err)
-		}
+		s.SetNow(expiry.Add(12 * time.Hour))
+		packet := s.call("issue_red_packet", map[string]any{"customer_id": s.customer, "kind": "gift", "face_value": "1", "expires_on": expiry.Format(time.DateOnly)}, 200)
 		if i == 0 {
-			available = packet
+			available = id(packet["id"])
 		} else {
-			expired = packet
+			expired = id(packet["id"])
 		}
 	}
-	dbtest.Commit(t, tx)
+	s.SetNow(time.Date(calendar.Year(), calendar.Month(), calendar.Day(), 1, 30, 0, 0, settings.Location))
 	for _, ch := range s.Channels() {
 		r := ch.Call(t, s.MustCaller(s.Owner), "list_customer_red_packets", map[string]any{"customer_id": s.customer})
 		if r.Status != 200 {

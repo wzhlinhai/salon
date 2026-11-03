@@ -6,11 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/wzhlinhai/salon/backend/internal/db"
-	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/debts"
-	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/orders"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
@@ -25,13 +22,8 @@ func TestCheckoutDebt(t *testing.T) {
 	s.call("change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": day.Format(time.DateOnly)}, 200)
 	at := time.Date(day.Year(), day.Month(), day.Day()+1, 1, 30, 0, 0, settings.Location)
 	caller := s.MustCaller(s.Owner)
-	err := db.InTenant(context.Background(), s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error {
-		_, err := orders.CheckoutOrdersAtForTest(context.Background(), ops.Env{Caller: caller, Q: q}, new(checkoutInput(checkoutOrder(a, payment("debt", "100")), checkoutOrder(b, payment("cash", "40"), payment("debt", "60")))), at)
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	s.SetNow(at)
+	s.call("checkout_orders", checkoutInput(checkoutOrder(a, payment("debt", "100")), checkoutOrder(b, payment("cash", "40"), payment("debt", "60"))), 200)
 	for _, ch := range s.Channels() {
 		for i, o := range []map[string]any{a, b} {
 			r := ch.Call(t, caller, "get_order", orders.GetOrderInput{ID: id(o["id"])})

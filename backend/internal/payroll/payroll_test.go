@@ -374,9 +374,10 @@ func TestOpeningMonthUsesBusinessDate(t *testing.T) {
 	if _, err := s.Pool.Exec(t.Context(), "UPDATE stores SET created_at='2026-02-01 01:00:00+08' WHERE id=$1", s.Res.StoreID); err != nil {
 		t.Fatal(err)
 	}
-	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	dbtest.Exec(t, tx, `INSERT INTO setting_changes(tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES($1,$2,'business_day_end','"02:00"',false,'"00:00"',true,'2026-01-01',$3)`, s.Res.TenantID, s.Res.StoreID, s.Res.OwnerID)
-	dbtest.Commit(t, tx)
+	effective := time.Date(2026, 1, 1, 0, 0, 0, 0, settings.Location)
+	s.SetNow(effective.AddDate(0, 0, -2).Add(12 * time.Hour))
+	s.Call(t, s.Owner, "change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": effective.Format(time.DateOnly)}, 200)
+	s.SetNow(time.Time{})
 	for _, ch := range s.Channels() {
 		rows := entries(t, ch.Call(t, s.MustCaller(s.Owner), "list_base_salaries", map[string]any{"month": "2026-01"}))
 		if len(rows) != 1 {

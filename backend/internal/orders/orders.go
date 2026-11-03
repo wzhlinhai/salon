@@ -40,10 +40,7 @@ func rowError(err error) error {
 }
 
 func openOrder(ctx context.Context, env ops.Env, in *OpenOrderInput) (*Order, error) {
-	return openOrderAt(ctx, env, in, time.Time{})
-}
-
-func openOrderAt(ctx context.Context, env ops.Env, in *OpenOrderInput, now time.Time) (*Order, error) {
+	now := env.Now
 	var customerID uuid.UUID
 	if in.CustomerID != nil {
 		row, err := customers.LockReference(ctx, env, *in.CustomerID)
@@ -57,9 +54,6 @@ func openOrderAt(ctx context.Context, env ops.Env, in *OpenOrderInput, now time.
 			return nil, err
 		}
 		customerID = id
-	}
-	if now.IsZero() {
-		now = time.Now()
 	}
 	snapshot, err := settings.TakeSnapshot(ctx, env.Q, env.Caller.TenantID, env.Caller.StoreID, now)
 	if err != nil {

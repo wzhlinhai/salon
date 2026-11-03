@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/wzhlinhai/salon/backend/internal/db"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
@@ -102,13 +101,8 @@ func TestGuestVisitVoid(t *testing.T) {
 	// The business day ends after midnight, exercising BusinessDate rather than Date.
 	s.call("change_setting", map[string]any{"key": settings.KeyBusinessDayEnd, "value": "02:00", "effective_from": day.Format(time.DateOnly)}, 200)
 	at := time.Date(day.Year(), day.Month(), day.Day()+1, 1, 30, 0, 0, settings.Location)
-	err := db.InTenant(context.Background(), s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error {
-		_, err := orders.VoidOrderAtForTest(context.Background(), ops.Env{Caller: s.MustCaller(s.Owner), Q: q}, new(voidInput(o)), at)
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	s.SetNow(at)
+	s.call("void_order", voidInput(o), 200)
 	from := day.AddDate(0, 0, -1).Format(time.DateOnly)
 	for _, ch := range s.Channels() {
 		r := ch.Call(t, s.MustCaller(s.Owner), "list_guest_visits", map[string]any{"date_from": from, "date_to": day.Format(time.DateOnly)})

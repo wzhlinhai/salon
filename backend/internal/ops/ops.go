@@ -8,6 +8,7 @@ package ops
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -168,6 +169,8 @@ func CommitRule(msg string) error { return &RuleError{Message: msg, commit: true
 
 // Env 是操作执行时可用的环境。Q 已处于调用者租户的事务中。
 type Env struct {
+	// Now 是本次调用的时刻，整个操作只用这一个。
+	Now    time.Time
 	Caller Caller
 	// Grant 是调用者在该操作所需权限上的限制。有数据范围或时间窗口的操作要按它过滤。
 	Grant Grant

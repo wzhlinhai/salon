@@ -1,7 +1,4 @@
 package debts
 
-// RepayDebtAtForTest 让测试以固定时刻调用还款处理函数。
-var RepayDebtAtForTest = repayDebtAt
-
-// RegisterHistoricalDebtAtForTest 让测试以固定时刻登记历史欠款。
-var RegisterHistoricalDebtAtForTest = registerHistoricalDebtAt
+// RepayDebtForTest 在测试持有的事务里执行真实还款流程，供并发测试控制提交时刻。
+var RepayDebtForTest = repayDebt

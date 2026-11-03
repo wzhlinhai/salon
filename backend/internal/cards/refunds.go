@@ -65,10 +65,7 @@ func registerRefunds(r *ops.Registry) {
 }
 
 func previewCardRefund(ctx context.Context, env ops.Env, in *PreviewCardRefundInput) (*CardRefundQuote, error) {
-	return previewCardRefundAt(ctx, env, in, time.Now())
-}
-
-func previewCardRefundAt(ctx context.Context, env ops.Env, in *PreviewCardRefundInput, now time.Time) (*CardRefundQuote, error) {
+	now := env.Now
 	row, err := env.Q.GetCard(ctx, dbgen.GetCardParams{StoreID: env.Caller.StoreID, ID: in.CardID})
 	if err != nil {
 		return nil, rowError(err)
@@ -137,10 +134,7 @@ func refundQuote(ctx context.Context, env ops.Env, card *Card, day time.Time) (*
 }
 
 func refundCard(ctx context.Context, env ops.Env, in *RefundCardInput) (*CardRefund, error) {
-	return refundCardAt(ctx, env, in, time.Now())
-}
-
-func refundCardAt(ctx context.Context, env ops.Env, in *RefundCardInput, now time.Time) (*CardRefund, error) {
+	now := env.Now
 	var out CardRefund
 	card, err := changeOne(ctx, env, "refund_card", in.CardID, func(c cardChange, day time.Time) error {
 		quote, err := refundQuote(ctx, env, c.before, day)

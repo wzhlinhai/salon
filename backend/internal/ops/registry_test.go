@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2/humatest"
 
@@ -18,7 +19,7 @@ func handle(context.Context, ops.Env, *in) (*out, error) { return &out{}, nil }
 
 func newRegistry(t *testing.T) *ops.Registry {
 	_, api := humatest.New(t)
-	return ops.NewRegistry(nil, api)
+	return ops.NewRegistry(nil, api, time.Now)
 }
 
 func valid() ops.Operation[in, out] {

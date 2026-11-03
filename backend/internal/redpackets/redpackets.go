@@ -36,10 +36,7 @@ func rowError(err error) error {
 }
 
 func issueRedPacket(ctx context.Context, env ops.Env, in *IssueRedPacketInput) (*RedPacket, error) {
-	return issueRedPacketAt(ctx, env, in, time.Now())
-}
-
-func issueRedPacketAt(ctx context.Context, env ops.Env, in *IssueRedPacketInput, now time.Time) (*RedPacket, error) {
+	now := env.Now
 	if in.FaceValue.Cmp(money.Amount{}) <= 0 {
 		return nil, ops.Rule("面额须大于零")
 	}
@@ -119,7 +116,7 @@ func revokeRedPacket(ctx context.Context, env ops.Env, in *RevokeRedPacketInput)
 	if row.RevokedAt.Valid {
 		return nil, ops.Rule("红包已撤回")
 	}
-	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
+	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, env.Now)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +142,7 @@ func listCustomerRedPackets(ctx context.Context, env ops.Env, in *ListCustomerRe
 	if err := customers.CheckViewable(ctx, env, in.CustomerID); err != nil {
 		return nil, err
 	}
-	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
+	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, env.Now)
 	if err != nil {
 		return nil, err
 	}

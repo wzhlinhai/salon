@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/wzhlinhai/salon/backend/internal/db"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
@@ -140,19 +139,14 @@ func TestCheckoutRedPacketBusinessDate(t *testing.T) {
 	line := s.checkoutLine()
 	for _, offset := range []int{-1, 0} {
 		o := s.customerOrder(line)
-		tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-		var packet uuid.UUID
-		if err := tx.QueryRow(context.Background(), `INSERT INTO red_packets(tenant_id,store_id,customer_id,kind,face_value,expires_on,business_date,issued_by) VALUES($1,$2,$3,'gift',100,$4,$4,$5) RETURNING id`, s.Res.TenantID, s.Res.StoreID, s.customer, day.AddDate(0, 0, offset), s.Res.OwnerID).Scan(&packet); err != nil {
-			t.Fatal(err)
-		}
-		dbtest.Commit(t, tx)
+		expiry := day.AddDate(0, 0, offset)
+		s.SetNow(expiry.Add(12 * time.Hour))
+		packet := s.call("issue_red_packet", map[string]any{"customer_id": s.customer, "kind": "gift", "face_value": "100", "expires_on": expiry.Format(time.DateOnly)}, 200)
 		before := s.packetSnapshot()
-		err := db.InTenant(context.Background(), s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error {
-			_, err := orders.CheckoutOrdersAtForTest(context.Background(), ops.Env{Caller: s.MustCaller(s.Owner), Q: q}, new(checkoutInput(checkoutOrder(o, packetPayment(map[string]any{"id": packet.String()}, "100")))), at)
-			return err
-		})
-		if offset == 0 && err != nil || offset == -1 && (ops.StatusOf(err) != 409 || err.Error() != "红包已过期" || before != s.packetSnapshot()) {
-			t.Fatal(err)
+		s.SetNow(at)
+		r := s.HTTPWithToken(t, s.Owner, "checkout_orders", checkoutInput(checkoutOrder(o, packetPayment(packet, "100"))))
+		if offset == 0 && r.Status != 200 || offset == -1 && (r.Status != 409 || r.Detail() != "红包已过期" || before != s.packetSnapshot()) {
+			t.Fatal(r)
 		}
 	}
 }
