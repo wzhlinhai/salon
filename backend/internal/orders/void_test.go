@@ -323,7 +323,7 @@ func TestVoidWindow(t *testing.T) {
 	today := settings.Date(time.Now())
 	for _, window := range []int{0, 7} {
 		for _, age := range []int{window, window + 1} {
-			o := s.openAt(s.MustCaller(s.Owner), time.Now().AddDate(0, 0, -age), line)
+			o := s.openAt(s.MustCaller(s.Owner), time.Now().In(settings.Location).AddDate(0, 0, -age), line)
 			s.paid(o, payment("cash", "100"))
 			c := s.MustCaller(s.Owner)
 			c.Permissions[perm.OrderVoid] = ops.Grant{WindowDays: new(window)}
