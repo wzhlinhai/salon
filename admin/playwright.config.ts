@@ -16,7 +16,8 @@ export default defineConfig({
   ],
   use: {
     baseURL: env.baseURL,
-    screenshot: 'only-on-failure'
+    screenshot: 'only-on-failure',
+    trace: 'retain-on-failure'
   },
   reporter: [['list']]
 })

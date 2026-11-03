@@ -25,6 +25,8 @@ async function choose(page: Page, container: Locator, label: string, option: str
 }
 
 async function openEditor(page: Page) {
+  await expect(page.getByTestId('scheme-detail')).toBeVisible()
+  await expect(page.getByText('加载中', { exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: '修改方案', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '修改提成方案', exact: true })
   await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeEnabled()
