@@ -25,19 +25,21 @@ type Line struct {
 	Price           money.Amount
 	LaborFeeAmount  *money.Amount
 	LaborFeePercent *money.Percent
-	Count           *CountConsumption
 }
 
-// CountConsumption 是扣次流水使用的次数种类及随卡留存的单次金额。
-type CountConsumption struct {
+type consumption struct {
 	Method    string
 	UnitPrice money.Amount
 }
 
-// Category 是按卡流水拆分后的支付方式金额。
-type Category struct {
+type category struct {
 	Method string
 	Amount money.Amount
+}
+
+type allocationLine struct {
+	Line
+	Count *consumption
 }
 
 type allocation struct {
@@ -50,8 +52,6 @@ type allocation struct {
 	ratio               int16
 	amount              money.Amount
 }
-
-var methods = []string{"cash", "unionpay", "wechat", "alipay", "debt", "red_packet", "card_principal", "card_bonus"}
 
 func fen(a money.Amount) int64 { return a.Fen() }
 
@@ -71,8 +71,9 @@ func mulDiv(a, b, n int64) int64 {
 	return product.Quo(&product, &denominator).Int64()
 }
 
-func allocate(lines []Line, categories []Category, split string, ratios map[string]int) []allocation {
-	lines = slices.DeleteFunc(slices.Clone(lines), func(l Line) bool { return l.Count != nil })
+func allocate(lines []allocationLine, categories []category, split string, ratios map[string]int) []allocation {
+	methods := allocationMethods()
+	lines = slices.DeleteFunc(slices.Clone(lines), func(l allocationLine) bool { return l.Count != nil })
 	amounts := make([]int64, len(methods))
 	for _, c := range categories {
 		i := slices.Index(methods, c.Method)
@@ -121,7 +122,7 @@ func allocate(lines []Line, categories []Category, split string, ratios map[stri
 	return out
 }
 
-func splitCell(line Line, method string, cell int64, split string, ratio int) []allocation {
+func splitCell(line allocationLine, method string, cell int64, split string, ratio int) []allocation {
 	slots := slices.Clone(line.Slots)
 	slices.SortFunc(slots, func(a, b Slot) int { return int(a.Slot) - int(b.Slot) })
 	shares := split == "by_position"
@@ -171,7 +172,7 @@ func splitCell(line Line, method string, cell int64, split string, ratio int) []
 	return out
 }
 
-func consumeAndLabor(lines []Line, split string, ratios map[string]int) []allocation {
+func consumeAndLabor(lines []allocationLine, split string, ratios map[string]int) []allocation {
 	out := []allocation{}
 	for _, line := range lines {
 		if line.Count != nil && fen(line.Count.UnitPrice) != 0 {

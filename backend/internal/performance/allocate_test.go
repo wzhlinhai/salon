@@ -18,8 +18,8 @@ func amount(v string) money.Amount {
 
 func TestAllocateMarginals(t *testing.T) {
 	a, b := uuid.New(), uuid.New()
-	lines := []Line{{OrderItemID: a, Net: amount("0.03")}, {OrderItemID: b, Net: amount("0.04")}}
-	got := allocate(lines, []Category{{Method: "wechat", Amount: amount("0.03")}, {Method: "cash", Amount: amount("0.04")}}, "equal", map[string]int{"cash": 100, "wechat": 100})
+	lines := []allocationLine{{Line: Line{OrderItemID: a, Net: amount("0.03")}}, {Line: Line{OrderItemID: b, Net: amount("0.04")}}}
+	got := allocate(lines, []category{{Method: "wechat", Amount: amount("0.03")}, {Method: "cash", Amount: amount("0.04")}}, "equal", map[string]int{"cash": 100, "wechat": 100})
 	// Floors are [1,1], [2,1]; northwest adds cash to row 1, wechat to row 2.
 	want := []int64{2, 1, 2, 2}
 	if len(got) != 4 {
@@ -65,7 +65,7 @@ func TestAllocateSlots(t *testing.T) {
 		{"zero slot omitted", "by_position", "0.01", []Slot{slot(1, new(int16(100)), true), slot(2, new(int16(0)), true)}, []int64{1}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := allocate([]Line{{OrderItemID: uuid.New(), Net: amount(tc.cell), Slots: tc.slots}}, []Category{{Method: "cash", Amount: amount(tc.cell)}}, tc.split, map[string]int{"cash": 100})
+			got := allocate([]allocationLine{{Line: Line{OrderItemID: uuid.New(), Net: amount(tc.cell), Slots: tc.slots}}}, []category{{Method: "cash", Amount: amount(tc.cell)}}, tc.split, map[string]int{"cash": 100})
 			paid := []int64{}
 			for _, e := range got {
 				paid = append(paid, fen(e.paidAmount))
@@ -85,7 +85,7 @@ func TestAllocateSlots(t *testing.T) {
 
 func TestAllocateZeroAndRatio(t *testing.T) {
 	for _, ratio := range []int{0, 50, 100} {
-		got := allocate([]Line{{Net: amount("0.01")}}, []Category{{Method: "cash", Amount: amount("0.01")}, {Method: "wechat", Amount: amount("0")}}, "equal", map[string]int{"cash": ratio})
+		got := allocate([]allocationLine{{Line: Line{Net: amount("0.01")}}}, []category{{Method: "cash", Amount: amount("0.01")}, {Method: "wechat", Amount: amount("0")}}, "equal", map[string]int{"cash": ratio})
 		want := "0.01"
 		if ratio == 0 {
 			want = "0.00"
@@ -94,13 +94,13 @@ func TestAllocateZeroAndRatio(t *testing.T) {
 			t.Fatal(got)
 		}
 	}
-	if got := allocate([]Line{{Net: amount("0")}}, nil, "equal", nil); len(got) != 0 {
+	if got := allocate([]allocationLine{{Line: Line{Net: amount("0")}}}, nil, "equal", nil); len(got) != 0 {
 		t.Fatal(got)
 	}
 }
 
 func TestAllocateLargeAmounts(t *testing.T) {
-	got := allocate([]Line{{Net: amount("99999999.99")}, {Net: amount("99999999.99")}}, []Category{{Method: "cash", Amount: amount("99999999.99")}, {Method: "alipay", Amount: amount("99999999.99")}}, "equal", map[string]int{"cash": 100, "alipay": 100})
+	got := allocate([]allocationLine{{Line: Line{Net: amount("99999999.99")}}, {Line: Line{Net: amount("99999999.99")}}}, []category{{Method: "cash", Amount: amount("99999999.99")}, {Method: "alipay", Amount: amount("99999999.99")}}, "equal", map[string]int{"cash": 100, "alipay": 100})
 	if len(got) != 4 || got[0].paidAmount.String() != "50000000.00" || got[1].paidAmount.String() != "49999999.99" {
 		t.Fatal(got)
 	}

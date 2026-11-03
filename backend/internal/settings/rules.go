@@ -222,33 +222,8 @@ func (r Rules) GuestCountSplit() string {
 	return v
 }
 
-// PerformanceRatio 返回支付方式的业绩比例。
-func (r Rules) PerformanceRatio(category string) int {
-	var key string
-	switch category {
-	case "count_paid":
-		key = KeyPerformanceRatioCountPaid
-	case "count_gift":
-		key = KeyPerformanceRatioCountGift
-	case "cash":
-		key = KeyPerformanceRatioCash
-	case "unionpay":
-		key = KeyPerformanceRatioUnionpay
-	case "wechat":
-		key = KeyPerformanceRatioWechat
-	case "alipay":
-		key = KeyPerformanceRatioAlipay
-	case "debt":
-		key = KeyPerformanceRatioDebt
-	case "card_principal":
-		key = KeyPerformanceRatioCardPrincipal
-	case "card_bonus":
-		key = KeyPerformanceRatioCardBonus
-	case "red_packet":
-		key = KeyPerformanceRatioRedPacket
-	default:
-		panic("settings: unknown performance category: " + category)
-	}
+// PerformanceRatio 返回设置键对应的业绩比例。
+func (r Rules) PerformanceRatio(key string) int {
 	var v int
 	r.decode(key, &v)
 	return v

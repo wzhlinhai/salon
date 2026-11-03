@@ -36,3 +36,18 @@ GROUP BY e.kind;
 -- name: AddSalePerformance :exec
 INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,staff_id,method,paid_amount,ratio,amount,card_ledger_id,red_packet_id,purchase)
 VALUES ($1,$2,'sale',$3,$4,$5,$6,100,$6,$7,$8,$9);
+
+-- name: PerformanceUnitEntries :many
+SELECT * FROM performance_entries
+WHERE store_id = @store_id AND business_date BETWEEN @date_from::date AND @date_to::date
+AND staff_id IS NOT NULL AND (sqlc.narg(staff_id)::uuid IS NULL OR staff_id = sqlc.narg(staff_id));
+
+-- name: PerformanceOriginalEntries :many
+SELECT * FROM performance_entries WHERE store_id = @store_id AND id = ANY(@ids::uuid[]);
+
+-- name: PerformanceLineFacts :many
+SELECT i.id, i.item_id, i.price, o.designated, e.checkout_id,
+COALESCE(sum(e.paid_amount) FILTER (WHERE e.kind = 'item'),0)::text AS line_paid
+FROM performance_entries e JOIN order_items i ON i.id = e.order_item_id JOIN orders o ON o.id = e.order_id
+WHERE e.store_id = @store_id AND e.order_item_id = ANY(@ids::uuid[]) AND e.reverses_id IS NULL
+GROUP BY i.id, i.item_id, i.price, o.designated, e.checkout_id;

@@ -171,21 +171,6 @@ func checkoutOrders(ctx context.Context, env ops.Env, in *CheckoutOrdersInput) (
 			if err := pay.Record(ctx, checkout.ID, rows[i], items, rules[i], paymentInputs(plan.payments)); err != nil {
 				return err
 			}
-			recordedPayments, err := env.Q.ListOrderPayments(ctx, dbgen.ListOrderPaymentsParams{StoreID: env.Caller.StoreID, OrderIds: []uuid.UUID{rows[i].ID}})
-			if err != nil {
-				return err
-			}
-			consumptions := map[uuid.UUID]*performance.CountConsumption{}
-			for _, p := range recordedPayments {
-				if p.Method != "count" {
-					continue
-				}
-				method := "count_paid"
-				if p.Gift > 0 {
-					method = "count_gift"
-				}
-				consumptions[*p.OrderItemID] = &performance.CountConsumption{Method: method, UnitPrice: *p.CountUnitPrice}
-			}
 			performanceLines := []performance.Line{}
 			for _, line := range plan.order.Items {
 				if line.RemovedAt != nil {
@@ -196,24 +181,13 @@ func checkoutOrders(ctx context.Context, env ops.Env, in *CheckoutOrdersInput) (
 				for _, p := range line.Positions {
 					slots = append(slots, performance.Slot{Slot: p.Slot, PositionID: p.PositionID, StaffID: p.StaffID, SharePercent: p.SharePercent})
 				}
-				performanceLines = append(performanceLines, performance.Line{OrderItemID: line.ID, Net: net, Price: line.Price, LaborFeeAmount: line.LaborFeeAmount, LaborFeePercent: line.LaborFeePercent, Count: consumptions[line.ID], Slots: slots})
-			}
-			categories := []performance.Category{}
-			for _, p := range recordedPayments {
-				switch p.Method {
-				case "count":
-					continue
-				case "card":
-					categories = append(categories, performance.Category{Method: "card_principal", Amount: *p.Principal}, performance.Category{Method: "card_bonus", Amount: *p.Bonus})
-				default:
-					categories = append(categories, performance.Category{Method: p.Method, Amount: p.Amount})
-				}
+				performanceLines = append(performanceLines, performance.Line{OrderItemID: line.ID, Net: net, Price: line.Price, LaborFeeAmount: line.LaborFeeAmount, LaborFeePercent: line.LaborFeePercent, Slots: slots})
 			}
 			member, err := cards.HasValidCard(ctx, env.Q, env.Caller.StoreID, rows[i].CustomerID, day)
 			if err != nil {
 				return err
 			}
-			if err := performance.RecordCheckout(ctx, env, performance.CheckoutInput{Member: member, CheckoutID: checkout.ID, BusinessDate: day, OrderID: rows[i].ID, SettingsSnapshotID: rows[i].SettingsSnapshotID, Rules: rules[i], Lines: performanceLines, Payments: categories, Designated: rows[i].Designated, Gender: rows[i].Gender}); err != nil {
+			if err := performance.RecordCheckout(ctx, env, performance.CheckoutInput{Member: member, CheckoutID: checkout.ID, BusinessDate: day, OrderID: rows[i].ID, SettingsSnapshotID: rows[i].SettingsSnapshotID, Rules: rules[i], Lines: performanceLines, Designated: rows[i].Designated, Gender: rows[i].Gender}); err != nil {
 				return err
 			}
 

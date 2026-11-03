@@ -11,6 +11,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/catalog"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/payrollmonth"
+	"github.com/wzhlinhai/salon/backend/internal/performance"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 
@@ -88,41 +89,15 @@ func Commissions(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, from,
 func liveCommissions(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, from, to time.Time, staffID *uuid.UUID) ([]Commission, error) {
 	monthFrom := payrollmonth.Of(from).First()
 	monthTo := payrollmonth.Of(to).Last()
-	entries, err := q.CommissionPerformance(ctx, dbgen.CommissionPerformanceParams{StoreID: storeID, DateFrom: pgtype.Date{Time: monthFrom, Valid: true}, DateTo: pgtype.Date{Time: monthTo, Valid: true}, StaffID: staffID})
+	units, err := performance.Units(ctx, q, storeID, monthFrom, monthTo, staffID)
 	if err != nil {
 		return nil, err
-	}
-	ids, lines := []uuid.UUID{}, []uuid.UUID{}
-	for _, e := range entries {
-		if e.ReversesID != nil {
-			ids = append(ids, *e.ReversesID)
-		}
-		if e.OrderItemID != nil {
-			lines = append(lines, *e.OrderItemID)
-		}
-	}
-	originals, err := q.CommissionOriginalEntries(ctx, dbgen.CommissionOriginalEntriesParams{StoreID: storeID, Ids: ids})
-	if err != nil {
-		return nil, err
-	}
-	for _, e := range originals {
-		if e.OrderItemID != nil {
-			lines = append(lines, *e.OrderItemID)
-		}
-	}
-	rows, err := q.CommissionLineFacts(ctx, dbgen.CommissionLineFactsParams{StoreID: storeID, Ids: lines})
-	if err != nil {
-		return nil, err
-	}
-	facts := map[lineKey]lineFact{}
-	for _, r := range rows {
-		facts[lineKey{r.ID, optional(r.CheckoutID)}] = lineFact{itemID: r.ItemID, price: r.Price, paid: r.LinePaid, designated: r.Designated}
 	}
 	versions, err := q.AllCommissionSchemeVersions(ctx, storeID)
 	if err != nil {
 		return nil, err
 	}
-	out, err := calculate(entries, originals, facts, versions)
+	out, err := calculate(units, versions)
 	if err != nil {
 		return nil, err
 	}

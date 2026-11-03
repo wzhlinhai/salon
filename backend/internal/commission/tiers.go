@@ -5,9 +5,9 @@ import (
 	"slices"
 
 	"github.com/google/uuid"
-	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/payrollmonth"
+	"github.com/wzhlinhai/salon/backend/internal/performance"
 )
 
 type cumulativeKey struct {
@@ -17,72 +17,58 @@ type cumulativeKey struct {
 }
 type cumulativePosition struct{ before, after, total int64 }
 type cumulative struct {
-	units     []unit
-	originals map[uuid.UUID]unit
-	facts     map[lineKey]lineFact
-	kinds     map[string]map[uuid.UUID]cumulativePosition
+	units []performance.Unit
+	kinds map[string]map[uuid.UUID]cumulativePosition
 }
 
-func newCumulative(all []unit, facts map[lineKey]lineFact) *cumulative {
+func newCumulative(all []performance.Unit) *cumulative {
 	ordered := slices.Clone(all)
-	slices.SortFunc(ordered, func(a, b unit) int {
-		if n := a.first.BusinessDate.Time.Compare(b.first.BusinessDate.Time); n != 0 {
+	slices.SortFunc(ordered, func(a, b performance.Unit) int {
+		if n := a.BusinessDate.Compare(b.BusinessDate); n != 0 {
 			return n
 		}
-		if n := a.createdAt.Compare(b.createdAt); n != 0 {
+		if n := a.CreatedAt.Compare(b.CreatedAt); n != 0 {
 			return n
 		}
-		return cmp.Compare(a.first.ID.String(), b.first.ID.String())
+		return cmp.Compare(a.ID.String(), b.ID.String())
 	})
-	c := &cumulative{units: ordered, originals: map[uuid.UUID]unit{}, facts: facts, kinds: map[string]map[uuid.UUID]cumulativePosition{}}
-	for _, u := range all {
-		if u.first.ReversesID == nil {
-			for _, e := range u.entries {
-				c.originals[e.ID] = u
-			}
-		}
-	}
-	return c
+	return &cumulative{units: ordered, kinds: map[string]map[uuid.UUID]cumulativePosition{}}
 }
 
-func groupKey(e dbgen.PerformanceEntry) cumulativeKey {
-	return cumulativeKey{staff: *e.StaffID, source: e.Kind, month: payrollmonth.Of(e.BusinessDate.Time)}
+func groupKey(u performance.Unit) cumulativeKey {
+	return cumulativeKey{staff: u.StaffID, source: u.Kind, month: payrollmonth.Of(u.BusinessDate)}
 }
 
-func (c *cumulative) position(target unit, kind string) (cumulativePosition, error) {
+func (c *cumulative) position(target performance.Unit, kind string) (cumulativePosition, error) {
 	if cached, ok := c.kinds[kind]; ok {
-		return cached[target.first.ID], nil
+		return cached[target.ID], nil
 	}
 	positions := map[uuid.UUID]cumulativePosition{}
 	totals := map[cumulativeKey]int64{}
 	for _, u := range c.units {
 		original := u
 		sign := int64(1)
-		if u.first.ReversesID != nil {
-			original = c.originals[*u.first.ReversesID]
+		if u.Reverses != nil {
+			original = *u.Reverses
 			sign = -1
 		}
-		if len(original.entries) == 0 {
-			continue
-		}
-		e := original.first
-		base, err := unitBase(original, kind, c.facts[lineKey{optional(e.OrderItemID), optional(e.CheckoutID)}])
+		base, err := unitBase(original, kind)
 		if err != nil {
 			return cumulativePosition{}, err
 		}
-		key := groupKey(u.first)
+		key := groupKey(u)
 		before := totals[key]
 		after := before + sign*base.Amount.Fen()
-		positions[u.first.ID] = cumulativePosition{before: before, after: after}
+		positions[u.ID] = cumulativePosition{before: before, after: after}
 		totals[key] = after
 	}
 	for _, u := range c.units {
-		p := positions[u.first.ID]
-		p.total = totals[groupKey(u.first)]
-		positions[u.first.ID] = p
+		p := positions[u.ID]
+		p.total = totals[groupKey(u)]
+		positions[u.ID] = p
 	}
 	c.kinds[kind] = positions
-	return positions[target.first.ID], nil
+	return positions[target.ID], nil
 }
 
 func reached(t Tiers, cumulative int64) int {
