@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/wzhlinhai/salon/backend/internal/catalog"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
+	"github.com/wzhlinhai/salon/backend/internal/payrollmonth"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 
@@ -20,20 +21,22 @@ func Commissions(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, from,
 		return nil, err
 	}
 	// 锁定标记和明细必须取自同一语句快照，不能分别读取后拼接。
-	stored, err := q.SettledCommissions(ctx, dbgen.SettledCommissionsParams{StoreID: storeID, DateFrom: pgtype.Date{Time: monthStart(from), Valid: true}, DateTo: pgtype.Date{Time: monthStart(to), Valid: true}, StaffID: staffID})
+	stored, err := q.SettledCommissions(ctx, dbgen.SettledCommissionsParams{StoreID: storeID, DateFrom: pgtype.Date{Time: payrollmonth.Of(from).First(), Valid: true}, DateTo: pgtype.Date{Time: payrollmonth.Of(to).First(), Valid: true}, StaffID: staffID})
 	if err != nil {
 		return nil, err
 	}
-	locked := map[string]bool{}
+	locked := map[payrollmonth.Month]bool{}
 	for _, row := range stored {
-		locked[row.SettlementMonth.Time.Format("2006-01")] = true
+		locked[payrollmonth.Of(row.SettlementMonth.Time)] = true
 	}
-	rows = slices.DeleteFunc(rows, func(c Commission) bool { return locked[c.BusinessDate[:7]] })
+	rows = slices.DeleteFunc(rows, func(c Commission) bool {
+		return locked[payrollmonth.Of(c.businessDate)]
+	})
 	for _, row := range stored {
 		if row.ID == nil {
 			continue
 		}
-		c := Commission{ID: *row.ID, BusinessDate: row.BusinessDate.Time.Format(time.DateOnly), Source: *row.Source, Staff: staff.Ref{ID: *row.StaffID}, Reversal: *row.Reversal, createdAt: row.UnitCreatedAt.Time}
+		c := Commission{ID: *row.ID, BusinessDate: row.BusinessDate.Time.Format(time.DateOnly), Source: *row.Source, Staff: staff.Ref{ID: *row.StaffID}, Reversal: *row.Reversal, createdAt: row.UnitCreatedAt.Time, businessDate: row.BusinessDate.Time}
 		if err := c.Amount.Scan(row.Amount); err != nil {
 			return nil, err
 		}
@@ -83,8 +86,8 @@ func Commissions(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, from,
 }
 
 func liveCommissions(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, from, to time.Time, staffID *uuid.UUID) ([]Commission, error) {
-	monthFrom := time.Date(from.Year(), from.Month(), 1, 0, 0, 0, 0, from.Location())
-	monthTo := time.Date(to.Year(), to.Month()+1, 0, 0, 0, 0, 0, to.Location())
+	monthFrom := payrollmonth.Of(from).First()
+	monthTo := payrollmonth.Of(to).Last()
 	entries, err := q.CommissionPerformance(ctx, dbgen.CommissionPerformanceParams{StoreID: storeID, DateFrom: pgtype.Date{Time: monthFrom, Valid: true}, DateTo: pgtype.Date{Time: monthTo, Valid: true}, StaffID: staffID})
 	if err != nil {
 		return nil, err

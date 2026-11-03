@@ -10,12 +10,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/wzhlinhai/salon/backend/internal/commission"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/optest"
 	"github.com/wzhlinhai/salon/backend/internal/payroll"
+	"github.com/wzhlinhai/salon/backend/internal/payrollmonth"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
@@ -256,7 +256,7 @@ func TestPayrollLockRules(t *testing.T) {
 		t.Logf("list_payroll_months: %s", raw)
 	}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	settlement, err := commission.Settlement(t.Context(), dbgen.New(tx), s.Res.StoreID, m)
+	settlement, err := payrollmonth.GetSettlement(t.Context(), dbgen.New(tx), s.Res.StoreID, payrollmonth.Of(m))
 	dbtest.Rollback(t, tx)
 	if err != nil {
 		t.Fatal(err)

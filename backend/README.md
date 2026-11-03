@@ -176,13 +176,13 @@ progressive（超额累进）从本笔前累计 c 开始，把 [c, c + base] 在
 
 `list_payroll_commissions` 使用 `payroll.manage` 查看员工当月的提成明细，与工资表采用相同数据，不受业绩本人范围限制。全新开发环境的门店从上个月开店，便于验证锁月。
 
-`internal/payroll` 保存底薪、加减项和工资表，`internal/commission` 保存提成结算。结算月使用 YYYY-MM，按营业日所在的自然月算；统一用 CheckMonth 解析，并以 settings.BusinessDate(stores.created_at) 的月份为开店月下限，允许未来月份。
+`internal/payrollmonth` 统一结算月：Month 以 UTC 月首表示营业日所属的自然月，输入输出仍使用 YYYY-MM；Check 解析并以 settings.BusinessDate(stores.created_at) 的月份为开店月下限，允许未来月份；Guard 保护写入，Lock 创建锁定记录 Settlement，GetSettlement 读取记录，List 列出各月状态与可锁定标记。`internal/payroll` 保存底薪、加减项和工资表，`internal/commission` 保存提成结算明细；两者依赖 payrollmonth，payrollmonth 不依赖它们。
 
 `staff_base_salaries` 按员工追加计薪方式（base 底薪 + 提成，guarantee 保底）、非负金额、生效月、保存人和保存时刻。旧记录不改不删。BaseSalariesInForce 一次查询选出本店所有员工 effective_month ≤ 结算月的最大生效月，同月取 saved_at 最新的一条；时刻也相同时按 ID 倒序确定。未设置返回 null，客户端按 base、0 显示。所有员工包括离职员工按编号返回。
 
 `payroll_adjustments` 记录结算月、员工、自由名称、非零有符号金额及备注；名称去首尾空白后不能空，最多 20 字，备注最多 100 字。允许离职员工；删除是真正 DELETE，日志保留删除前完整视图。锁定后的月份不能添加、删除加减项。
 
-所有写操作先拿 LockPayroll 的门店级咨询锁（store_id + /payroll），底薪、加减项与锁月共用它。设置底薪锁序：咨询锁 → 月份检查 → staff.LockReferences 的员工 FOR SHARE → 读取执行底薪 → 追加；添加加减项：咨询锁 → 月份检查 → 员工 FOR SHARE → 插入；删除：咨询锁 → 本店加减项 → 删除。三条写路径在咨询锁内通过 commission.Settlement 检查月份未锁定；底薪及添加在 CheckMonth 后检查，删除在加载本店加减项后检查。锁定后不能再设置底薪，也不能添加或删除加减项。
+底薪、加减项与锁月共用 payrollmonth 内的 LockPayroll 门店级咨询锁（store_id + /payroll）。设置底薪锁序：Parse → Guard（咨询锁 → 开店月 → 未锁定）→ staff.LockReferences 的员工 FOR SHARE → 读取执行底薪 → 追加；添加加减项：Parse → Guard → 名称与金额检查 → 员工 FOR SHARE → 插入；删除：读加减项 → 咨询锁 → 开店月 → 未锁定 → 删除（0 行即不存在）。三条写路径统一由 Guard 检查开店月下限与未锁定。锁定后不能再设置底薪，也不能添加或删除加减项。
 
 set_base_salary、add_payroll_adjustment、delete_payroll_adjustment 是 Write / AIDraft；list_base_salaries、list_payroll_adjustments 是 Read / AIDirect，全部要求 payroll.manage。底薪列表覆盖全店在职与离职员工；加减项按月、可选员工筛选，以 created_at、id 倒序游标分页。姓名批量查询，查询数不随行数增长。
 
@@ -201,6 +201,6 @@ Commissions 通过一条 commission_settlements LEFT JOIN settled_commissions �
 
 list_payroll_months、get_payroll 是 Read / AIDirect，lock_payroll_month 是 Write / AIDraft，三个都要求 payroll.manage。状态从当前营业月到开店月倒序，含锁定人、时刻与 lockable；get_payroll 对开放月每次重算（允许未来月），锁定月从 payroll_lines 读取、名称在读取时解析。
 
-锁定顺序：LockPayroll → CheckMonth → commission.Settlement 检查未锁定 → settings.BusinessDate 检查月份已结束 → 检查前月已锁定（开店月免此项）→ commission.Settle 保存提成结算与每笔结果 → 现算工资表（此时 Commissions 读刚存下的提成，工资表各列与提成明细出自同一份数据）→ 保存工资表行 → 读回锁定视图 → audit.Record。所有步骤同一事务，失败全部回滚并提示，可重试，无后台补算。锁定不可撤销；错误以后月加减项更正。加减项不复制，原表在锁后禁止增加或删除。底薪与加减项写操作始终先取同一咨询锁，锁定期间请求会等待，提交后再检查锁定。
+锁定顺序：payrollmonth.Lock（咨询锁 → Check → GetSettlement 检查未锁定 → settings.BusinessDate 检查月份已结束 → 检查前月已锁定，开店月免此项 → 插入锁定记录并返回 Settlement）→ commission.Settle 保存每笔提成结果 → 现算工资表（此时 Commissions 读刚存下的提成，工资表各列与提成明细出自同一份数据）→ 保存工资表行 → 读回锁定视图 → audit.Record。所有步骤同一事务，失败全部回滚并提示，可重试，无后台补算。锁定不可撤销；错误以后月加减项更正。加减项不复制，原表在锁后禁止增加或删除。底薪与加减项写操作在检查开店月和锁定状态前取同一咨询锁，锁定期间请求会等待，提交后再检查锁定。
 
 锁月日志 action 为 lock_payroll_month，目标 payroll_month，无关联顾客，before 为 nil，after 为返回的完整工资表；list_audit_log 额外要求 payroll.manage 才能读取。三个接口、提成查询与工资日志不输出顾客或手机号；工资接口的整店工资视图由 payroll.manage 授权，提成查询仍需 performance.view 并保留 self 范围。

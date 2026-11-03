@@ -11,26 +11,27 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/payrollmonth"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 
 func monthDate(t time.Time) pgtype.Date { return pgtype.Date{Time: t, Valid: true} }
 
-func livePayroll(ctx context.Context, env ops.Env, month time.Time) (*Payroll, error) {
+func livePayroll(ctx context.Context, env ops.Env, month payrollmonth.Month) (*Payroll, error) {
 	staffRows, err := env.Q.ListPayrollStaff(ctx, env.Caller.StoreID)
 	if err != nil {
 		return nil, err
 	}
-	salaries, err := BaseSalariesInForce(ctx, env.Q, env.Caller.StoreID, month)
+	salaries, err := BaseSalariesInForce(ctx, env.Q, env.Caller.StoreID, month.First())
 	if err != nil {
 		return nil, err
 	}
-	commissions, err := commission.Commissions(ctx, env.Q, env.Caller.StoreID, month, month.AddDate(0, 1, -1), nil)
+	commissions, err := commission.Commissions(ctx, env.Q, env.Caller.StoreID, month.First(), month.Last(), nil)
 	if err != nil {
 		return nil, err
 	}
-	adjustments, err := env.Q.PayrollMonthAdjustments(ctx, dbgen.PayrollMonthAdjustmentsParams{StoreID: env.Caller.StoreID, Month: monthDate(month)})
+	adjustments, err := env.Q.PayrollMonthAdjustments(ctx, dbgen.PayrollMonthAdjustmentsParams{StoreID: env.Caller.StoreID, Month: monthDate(month.First())})
 	if err != nil {
 		return nil, err
 	}
@@ -53,10 +54,10 @@ func livePayroll(ctx context.Context, env ops.Env, month time.Time) (*Payroll, e
 	if err != nil {
 		return nil, err
 	}
-	out := &Payroll{Month: month.Format(monthLayout), Lines: []PayrollLine{}}
+	out := &Payroll{Month: month.String(), Lines: []PayrollLine{}}
 	for i, row := range staffRows {
 		salary, hasSalary := salaries[row.ID]
-		employed := days[2*i].Format(monthLayout) <= out.Month && (row.Active || days[2*i+1].Format(monthLayout) >= out.Month)
+		employed := !month.Before(payrollmonth.Of(days[2*i])) && (row.Active || !payrollmonth.Of(days[2*i+1]).Before(month))
 		_, hasCommission := byStaff[row.ID]
 		_, hasAdjustment := sums[row.ID]
 		if (!employed || salary.Amount.Fen() <= 0) && !hasCommission && !hasAdjustment {
@@ -165,7 +166,7 @@ func payrollTotals(out *Payroll) error {
 	return nil
 }
 
-func lockedPayroll(ctx context.Context, env ops.Env, settlement *dbgen.CommissionSettlement) (*Payroll, error) {
+func lockedPayroll(ctx context.Context, env ops.Env, settlement *payrollmonth.Settlement) (*Payroll, error) {
 	rows, err := env.Q.PayrollLines(ctx, dbgen.PayrollLinesParams{StoreID: env.Caller.StoreID, SettlementID: settlement.ID})
 	if err != nil {
 		return nil, err
@@ -181,7 +182,7 @@ func lockedPayroll(ctx context.Context, env ops.Env, settlement *dbgen.Commissio
 		active[person.ID] = person.Active
 	}
 	by := refs[settlement.SettledBy]
-	out := &Payroll{Month: settlement.Month.Time.Format(monthLayout), Locked: true, LockedBy: &by, LockedAt: &settlement.SettledAt.Time, Lines: []PayrollLine{}}
+	out := &Payroll{Month: settlement.Month.String(), Locked: true, LockedBy: &by, LockedAt: &settlement.SettledAt, Lines: []PayrollLine{}}
 	for _, row := range rows {
 		out.Lines = append(out.Lines, PayrollLine{Staff: refs[row.StaffID], Active: active[row.StaffID], Mode: row.Mode, PayrollTotals: PayrollTotals{
 			AppliedAmount: row.AppliedAmount, BasePay: row.BasePay, ItemCommission: row.ItemCommission, ConsumeCommission: row.ConsumeCommission, LaborCommission: row.LaborCommission, SaleCommission: row.SaleCommission, CommissionTotal: row.CommissionTotal, GuaranteeTopUp: row.GuaranteeTopUp, AdjustmentsTotal: row.AdjustmentsTotal, Total: row.Total}})
@@ -193,11 +194,11 @@ func lockedPayroll(ctx context.Context, env ops.Env, settlement *dbgen.Commissio
 }
 
 func getPayroll(ctx context.Context, env ops.Env, in *MonthInput) (*Payroll, error) {
-	month, err := CheckMonth(ctx, env.Q, env.Caller.StoreID, in.Month)
+	month, err := payrollmonth.Check(ctx, env.Q, env.Caller.StoreID, in.Month)
 	if err != nil {
 		return nil, err
 	}
-	settlement, err := commission.Settlement(ctx, env.Q, env.Caller.StoreID, month)
+	settlement, err := payrollmonth.GetSettlement(ctx, env.Q, env.Caller.StoreID, month)
 	if err != nil {
 		return nil, err
 	}
@@ -208,40 +209,27 @@ func getPayroll(ctx context.Context, env ops.Env, in *MonthInput) (*Payroll, err
 }
 
 func listPayrollMonths(ctx context.Context, env ops.Env, _ *ListPayrollMonthsInput) (*PayrollMonthList, error) {
-	store, err := env.Q.GetStore(ctx, env.Caller.StoreID)
+	rows, err := payrollmonth.List(ctx, env.Q, env.Caller.StoreID)
 	if err != nil {
 		return nil, err
 	}
-	days, err := settings.BusinessDates(ctx, env.Q, env.Caller.StoreID, []time.Time{store.CreatedAt.Time, time.Now()})
-	if err != nil {
-		return nil, err
-	}
-	rows, err := env.Q.ListCommissionSettlements(ctx, env.Caller.StoreID)
-	if err != nil {
-		return nil, err
-	}
-	locked := map[string]dbgen.CommissionSettlement{}
 	ids := []uuid.UUID{}
 	for _, row := range rows {
-		locked[row.Month.Time.Format(monthLayout)] = row
-		ids = append(ids, row.SettledBy)
+		if row.Settlement != nil {
+			ids = append(ids, row.Settlement.SettledBy)
+		}
 	}
 	refs, err := names(ctx, env.Q, env.Caller.StoreID, ids)
 	if err != nil {
 		return nil, err
 	}
 	out := &PayrollMonthList{Entries: []PayrollMonth{}}
-	first := days[0].Format(monthLayout)
-	current := time.Date(days[1].Year(), days[1].Month(), 1, 0, 0, 0, 0, time.UTC)
-	for m := current; m.Format(monthLayout) >= first; m = m.AddDate(0, -1, 0) {
-		key := m.Format(monthLayout)
-		row, ok := locked[key]
-		_, previous := locked[m.AddDate(0, -1, 0).Format(monthLayout)]
-		entry := PayrollMonth{Month: key, Locked: ok, Lockable: !ok && m.Before(current) && (key == first || previous)}
-		if ok {
-			by := refs[row.SettledBy]
+	for _, row := range rows {
+		entry := PayrollMonth{Month: row.Month.String(), Locked: row.Settlement != nil, Lockable: row.Lockable}
+		if row.Settlement != nil {
+			by := refs[row.Settlement.SettledBy]
 			entry.LockedBy = &by
-			entry.LockedAt = &row.SettledAt.Time
+			entry.LockedAt = &row.Settlement.SettledAt
 		}
 		out.Entries = append(out.Entries, entry)
 	}
@@ -249,51 +237,15 @@ func listPayrollMonths(ctx context.Context, env ops.Env, _ *ListPayrollMonthsInp
 }
 
 func lockPayrollMonth(ctx context.Context, env ops.Env, in *MonthInput) (*Payroll, error) {
-	if err := env.Q.LockPayroll(ctx, env.Caller.StoreID); err != nil {
-		return nil, err
-	}
-	month, err := CheckMonth(ctx, env.Q, env.Caller.StoreID, in.Month)
+	settlement, err := payrollmonth.Lock(ctx, env.Q, env.Caller.StoreID, in.Month, env.Caller.StaffID)
 	if err != nil {
 		return nil, err
 	}
-	existing, err := commission.Settlement(ctx, env.Q, env.Caller.StoreID, month)
-	if err != nil {
-		return nil, err
-	}
-	if existing != nil {
-		return nil, ops.Rule(in.Month + " 已经锁定")
-	}
-	today, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
-	if err != nil {
-		return nil, err
-	}
-	if !today.After(month.AddDate(0, 1, -1)) {
-		return nil, ops.Rule(in.Month + " 还没结束，不能锁定")
-	}
-	store, err := env.Q.GetStore(ctx, env.Caller.StoreID)
-	if err != nil {
-		return nil, err
-	}
-	opened, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, store.CreatedAt.Time)
-	if err != nil {
-		return nil, err
-	}
-	if in.Month > opened.Format(monthLayout) {
-		previous := month.AddDate(0, -1, 0)
-		settlement, err := commission.Settlement(ctx, env.Q, env.Caller.StoreID, previous)
-		if err != nil {
-			return nil, err
-		}
-		if settlement == nil {
-			return nil, ops.Rule("请先锁定 " + previous.Format(monthLayout))
-		}
-	}
-	settlement, err := commission.Settle(ctx, env.Q, env.Caller.StoreID, month, env.Caller.StaffID)
-	if err != nil {
+	if err := commission.Settle(ctx, env.Q, env.Caller.StoreID, *settlement); err != nil {
 		return nil, err
 	}
 	// 先存提成，工资表再读刚存下的提成，工资表各列与提成明细出自同一份数据。
-	live, err := livePayroll(ctx, env, month)
+	live, err := livePayroll(ctx, env, settlement.Month)
 	if err != nil {
 		return nil, err
 	}
