@@ -362,7 +362,7 @@ func TestPayrollLocks(t *testing.T) {
 			}
 			done := make(chan optest.Result, 1)
 			go func() { done <- s.HTTPWithToken(t, s.Owner, tc.op, tc.args) }()
-			optest.AssertWaiting(t, done)
+			optest.AssertWaiting(t, s.Pool, done, 1)
 			dbtest.Rollback(t, tx)
 			optest.WaitResult(t, done, 200)
 		})

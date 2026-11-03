@@ -23,7 +23,7 @@ func TestVoidWaitsForCard(t *testing.T) {
 	dbtest.Exec(t, held, `INSERT INTO card_ledger(tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id) VALUES($1,$2,$3,'recharge',0,25,25,80,10,90,$4,$5)`, s.Res.TenantID, s.Res.StoreID, c["id"], settings.Date(time.Now()), s.Res.OwnerID)
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "void_order", voidInput(o)) }()
-	optest.AssertWaiting(t, done)
+	optest.AssertWaiting(t, s.Pool, done, 1)
 	dbtest.Commit(t, held)
 	optest.WaitResult(t, done, 200)
 	l := s.consumeEntries(c)[0].(map[string]any)
@@ -41,7 +41,7 @@ func TestVoidWaitsForRepayment(t *testing.T) {
 	expected := dbtest.SnapshotTx(t, held, "orders", "order_voids", "debts", "debt_repayments", "audit_log")
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "void_order", voidInput(o)) }()
-	optest.AssertWaiting(t, done)
+	optest.AssertWaiting(t, s.Pool, done, 1)
 	dbtest.Commit(t, held)
 	r := optest.WaitResult(t, done, 409)
 	if r.Body["detail"] != "这张单的挂账已有还款，不能撤单" || expected != dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "orders", "order_voids", "debts", "debt_repayments", "audit_log") {
@@ -62,7 +62,7 @@ func TestRepaymentWaitsForVoid(t *testing.T) {
 	go func() {
 		done <- s.HTTPWithToken(t, s.Owner, "repay_debt", map[string]any{"debt_id": d, "amount": "1", "method": "cash"})
 	}()
-	optest.AssertWaiting(t, done)
+	optest.AssertWaiting(t, s.Pool, done, 1)
 	dbtest.Commit(t, tx)
 	r := optest.WaitResult(t, done, 409)
 	if r.Body["detail"] != "这笔欠款已撤单" {
@@ -87,7 +87,7 @@ func TestCheckoutWaitsForVoidRedPacket(t *testing.T) {
 			done <- s.HTTPWithToken(t, s.Owner, "checkout_orders", checkoutInput(checkoutOrder(n, packetPayment(p, "100"))))
 		}()
 	}
-	optest.AssertWaiting(t, done)
+	optest.AssertWaiting(t, s.Pool, done, 2)
 	dbtest.Commit(t, tx)
 	statuses := map[int]int{}
 	for range 2 {
@@ -177,7 +177,7 @@ func TestVoidWaitsForCheckout(t *testing.T) {
 	}
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "void_order", voidInput(a)) }()
-	optest.AssertWaiting(t, done)
+	optest.AssertWaiting(t, s.Pool, done, 1)
 	dbtest.Commit(t, tx)
 	optest.WaitResult(t, done, 200)
 	l := s.consumeEntries(c)[0].(map[string]any)

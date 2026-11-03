@@ -169,7 +169,7 @@ func TestCheckoutWaitsForRedPacket(t *testing.T) {
 	go func() {
 		done <- s.HTTP(t, &c, "checkout_orders", checkoutInput(checkoutOrder(o, packetPayment(p, "100"))))
 	}()
-	optest.AssertWaiting(t, done)
+	optest.AssertWaiting(t, s.Pool, done, 1)
 	dbtest.Commit(t, tx)
 	r := optest.WaitResult(t, done, 409)
 	if r.Body["detail"] != "红包已撤回" || s.packetSnapshot() != expected {

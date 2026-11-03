@@ -180,7 +180,7 @@ func TestCardSaleConcurrentFirst(t *testing.T) {
 	}
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTP(t, &caller, "open_card", s.opening()) }()
-	optest.AssertWaiting(t, done)
+	optest.AssertWaiting(t, s.Pool, done, 1)
 	dbtest.Commit(t, tx)
 	optest.WaitResult(t, done, 200)
 	assertSQL(t, s, `SELECT count(*)=2 AND count(*) FILTER(WHERE purchase='first')=1 AND count(*) FILTER(WHERE purchase='repeat')=1 FROM performance_entries WHERE kind='sale'`)

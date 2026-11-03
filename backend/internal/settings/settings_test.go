@@ -414,11 +414,7 @@ func TestConcurrentChangesToOneSettingKeepTheTrail(t *testing.T) {
 	go func() {
 		done <- s.HTTP(t, &s.owner, "change_setting", map[string]any{"key": "business_day_end", "value": "03:00", "effective_from": day(1)})
 	}()
-	select {
-	case r := <-done:
-		t.Fatalf("second change finished with %d while the first was in progress; want it to wait", r.Status)
-	case <-time.After(300 * time.Millisecond):
-	}
+	optest.AssertWaiting(t, s.Pool, done, 1)
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}

@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -252,11 +251,7 @@ func TestConcurrentOwnerRemovalKeepsOneOwner(t *testing.T) {
 		done <- s.HTTPWithToken(t, s.Owner, "set_staff_roles",
 			map[string]any{"staff_id": second, "role_ids": []any{}})
 	}()
-	select {
-	case r := <-done:
-		t.Fatalf("removal finished with %d while the owner role was locked; want it to wait", r.Status)
-	case <-time.After(300 * time.Millisecond):
-	}
+	optest.AssertWaiting(t, s.Pool, done, 1)
 	// 老板 A 的凭证此时还有效（删除尚未提交）。提交后，等待中的请求继续执行。
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)

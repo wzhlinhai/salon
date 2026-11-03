@@ -85,8 +85,7 @@ func TestRoleEscalationSerializesStaffAuthorization(t *testing.T) {
 			}
 			done := make(chan optest.Result, 1)
 			go func() { done <- s.HTTPWithToken(t, manager, action, args) }()
-			dbtest.WaitForLockWait(t, s.Pool)
-			optest.AssertWaiting(t, done)
+			optest.AssertWaiting(t, s.Pool, done, 1)
 			release()
 			optest.WaitResult(t, updated, http.StatusOK)
 			if r := optest.WaitResult(t, done, http.StatusForbidden); r.Detail() != "permission denied" {
@@ -138,8 +137,7 @@ func TestInactiveLevelAndPositionWaitBeforeAssignment(t *testing.T) {
 				}
 				done := make(chan optest.Result, 1)
 				go func() { done <- s.HTTPWithToken(t, s.Owner, action, args) }()
-				dbtest.WaitForLockWait(t, s.Pool)
-				optest.AssertWaiting(t, done)
+				optest.AssertWaiting(t, s.Pool, done, 1)
 				if err := tx.Commit(ctx); err != nil {
 					t.Fatal(err)
 				}
