@@ -127,7 +127,7 @@ func Register(r *ops.Registry) {
 
 func dayOrToday(ctx context.Context, env ops.Env, s string) (time.Time, error) {
 	if s == "" {
-		return BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
+		return BusinessDate(ctx, env.Q, env.Caller.StoreID, env.Now)
 	}
 	d, err := time.Parse(DateLayout, s)
 	if err != nil {
@@ -180,7 +180,7 @@ func changeSetting(ctx context.Context, env ops.Env, in *ChangeSettingInput) (*S
 		// rule-untested: ChangeSettingInput.EffectiveFrom 的 schema format=date 在调用前用 time.DateOnly 校验
 		return nil, ops.Rule("生效日期的格式是 YYYY-MM-DD")
 	}
-	today, err := BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
+	today, err := BusinessDate(ctx, env.Q, env.Caller.StoreID, env.Now)
 	if err != nil {
 		return nil, err
 	}

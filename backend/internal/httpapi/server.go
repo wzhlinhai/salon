@@ -38,6 +38,8 @@ type LoginFunc func(ctx context.Context, account, password string) (string, erro
 
 // Config 是组装 HTTP 接口所需的依赖。
 type Config struct {
+	// Now 提供每次业务调用的时刻，nil 时使用真实时钟。
+	Now          func() time.Time
 	Authenticate Authenticator
 	Login        LoginFunc
 }
@@ -68,7 +70,10 @@ func New(pool *pgxpool.Pool, cfg Config) (*echo.Echo, *ops.Registry) {
 	api := humaecho.New(e, hc)
 	registerLogin(api, cfg.Login)
 
-	reg := ops.NewRegistry(pool, api)
+	if cfg.Now == nil {
+		cfg.Now = time.Now
+	}
+	reg := ops.NewRegistry(pool, api, cfg.Now)
 	stores.Register(reg)
 	staff.Register(reg)
 	catalog.Register(reg)

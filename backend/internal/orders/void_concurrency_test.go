@@ -55,7 +55,7 @@ func TestRepaymentWaitsForVoid(t *testing.T) {
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	q := dbgen.New(tx)
 	c := s.MustCaller(s.Owner)
-	if _, err := orders.VoidOrderAtForTest(context.Background(), ops.Env{Caller: c, Q: q}, new(voidInput(o)), time.Now()); err != nil {
+	if _, err := orders.VoidOrderForTest(context.Background(), ops.Env{Now: time.Now(), Caller: c, Q: q}, new(voidInput(o))); err != nil {
 		t.Fatal(err)
 	}
 	done := make(chan optest.Result, 1)
@@ -78,7 +78,7 @@ func TestCheckoutWaitsForVoidRedPacket(t *testing.T) {
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	q := dbgen.New(tx)
 	c := s.MustCaller(s.Owner)
-	if _, err := orders.VoidOrderAtForTest(context.Background(), ops.Env{Caller: c, Q: q}, new(voidInput(o)), time.Now()); err != nil {
+	if _, err := orders.VoidOrderForTest(context.Background(), ops.Env{Now: time.Now(), Caller: c, Q: q}, new(voidInput(o))); err != nil {
 		t.Fatal(err)
 	}
 	done := make(chan optest.Result, 2)
@@ -108,12 +108,9 @@ func TestCheckoutWaitsForVoidRedPacket(t *testing.T) {
 
 func (s *fixture) checkoutAtForVoid(o map[string]any, at time.Time, ps ...orders.PaymentInput) {
 	s.t.Helper()
-	tx := dbtest.AppTx(s.t, s.Pool, s.Res.TenantID)
-	_, err := orders.CheckoutOrdersAtForTest(context.Background(), ops.Env{Caller: s.MustCaller(s.Owner), Q: dbgen.New(tx)}, new(checkoutInput(checkoutOrder(o, ps...))), at)
-	if err != nil {
-		s.t.Fatal(err)
-	}
-	dbtest.Commit(s.t, tx)
+	s.SetNow(at)
+	defer s.SetNow(time.Time{})
+	s.call("checkout_orders", checkoutInput(checkoutOrder(o, ps...)), 200)
 }
 
 func TestVoidLockOrder(t *testing.T) {
@@ -171,7 +168,7 @@ func TestVoidWaitsForCheckout(t *testing.T) {
 	a := s.paid(s.customerOrder(line), cardPayment(c, "100"))
 	b := s.customerOrder(line)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	_, err := orders.CheckoutOrdersAtForTest(context.Background(), ops.Env{Caller: s.MustCaller(s.Owner), Q: dbgen.New(tx)}, new(checkoutInput(checkoutOrder(b, cardPayment(c, "30"), payment("cash", "70")))), time.Now())
+	_, err := orders.CheckoutOrdersForTest(context.Background(), ops.Env{Now: time.Now(), Caller: s.MustCaller(s.Owner), Q: dbgen.New(tx)}, new(checkoutInput(checkoutOrder(b, cardPayment(c, "30"), payment("cash", "70")))))
 	if err != nil {
 		t.Fatal(err)
 	}

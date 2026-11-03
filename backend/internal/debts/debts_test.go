@@ -2,7 +2,6 @@ package debts_test
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -291,14 +290,14 @@ func TestRepaymentConcurrency(t *testing.T) {
 	d := s.historical("100")
 	c := s.MustCaller(s.Owner)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	env := ops.Env{Caller: c, Q: dbgen.New(tx)}
+	env := ops.Env{Now: time.Now(), Caller: c, Q: dbgen.New(tx)}
 	var input debts.RepayDebtInput
 	input.DebtID = id(d["id"])
 	input.Method = "cash"
 	if err := input.Amount.Scan("60"); err != nil {
 		t.Fatal(err)
 	}
-	first, err := debts.RepayDebtAtForTest(context.Background(), env, &input, time.Now())
+	first, err := debts.RepayDebtForTest(context.Background(), env, &input)
 	if err != nil || first.Repaid.String() != "60.00" {
 		t.Fatal(first, err)
 	}
@@ -317,26 +316,17 @@ func TestRepaymentConcurrency(t *testing.T) {
 func TestDebtBusinessDate(t *testing.T) {
 	s := open(t)
 	d := s.historical("100")
-	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	dbtest.Exec(t, tx, `INSERT INTO setting_changes(tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES($1,$2,'business_day_end','"02:00"',false,'"00:00"',true,'2020-01-01',$3)`, s.Res.TenantID, s.Res.StoreID, s.Res.OwnerID)
-	dbtest.Commit(t, tx)
-	now := time.Date(2026, 5, 10, 1, 30, 0, 0, settings.Location)
-	tx = dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	env := ops.Env{Caller: s.MustCaller(s.Owner), Q: dbgen.New(tx)}
-	in := debts.RepayDebtInput{DebtID: id(d["id"]), Method: "cash"}
-	if err := in.Amount.Scan("1"); err != nil {
-		t.Fatal(err)
+	s.SetNow(time.Date(2026, 5, 8, 12, 0, 0, 0, settings.Location))
+	s.call("change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": "2026-05-09"}, 200)
+	s.SetNow(time.Date(2026, 5, 10, 1, 30, 0, 0, settings.Location))
+	out := s.call("repay_debt", repay(d, "1"), 200)
+	if out["repayments"].([]any)[0].(map[string]any)["business_date"] != "2026-05-09" {
+		t.Fatal(out)
 	}
-	out, err := debts.RepayDebtAtForTest(context.Background(), env, &in, now)
-	if err != nil || out.Repayments[0].BusinessDate != "2026-05-09" {
-		t.Fatal(out, err)
+	r := s.HTTPWithToken(t, s.Owner, "register_historical_debt", map[string]any{"customer_id": s.customer, "amount": "1", "incurred_on": "2026-05-10"})
+	if r.Status != 409 || r.Detail() != "欠款日期不能晚于今天" {
+		t.Fatal(r)
 	}
-	hist := debts.RegisterHistoricalDebtInput{CustomerID: s.customer, Amount: in.Amount, IncurredOn: "2026-05-10"}
-	_, err = debts.RegisterHistoricalDebtAtForTest(context.Background(), env, &hist, now)
-	if err == nil || !strings.Contains(err.Error(), "欠款日期不能晚于今天") {
-		t.Fatal(err)
-	}
-	dbtest.Rollback(t, tx)
 }
 
 func TestHistoricalReferenceLock(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -36,13 +37,14 @@ type entry struct {
 // Registry 保存所有已声明的操作。
 type Registry struct {
 	pool *pgxpool.Pool
+	now  func() time.Time
 	api  huma.API
 	ops  map[string]*entry
 }
 
 // NewRegistry 返回一个空的 Registry。注册的操作会挂到 api 上。
-func NewRegistry(pool *pgxpool.Pool, api huma.API) *Registry {
-	return &Registry{pool: pool, api: api, ops: map[string]*entry{}}
+func NewRegistry(pool *pgxpool.Pool, api huma.API, now func() time.Time) *Registry {
+	return &Registry{pool: pool, now: now, api: api, ops: map[string]*entry{}}
 }
 
 // Register 声明一个操作，并生成它的 HTTP 接口。声明不合规时 panic，在启动时暴露错误。
@@ -163,11 +165,12 @@ func (r *Registry) invoke(ctx context.Context, caller Caller, e *entry, run func
 		// 草稿（ADR-0008）实现前，AI 对写操作的调用一律拒绝。
 		return nil, ErrDraftRequired
 	}
+	now := r.now()
 	var out any
 	var committedRule error
 	err := db.InTenant(ctx, r.pool, caller.TenantID, func(q *dbgen.Queries) error {
 		var err error
-		out, err = run(ctx, Env{Caller: caller, Grant: caller.Grant(e.permission), Q: q})
+		out, err = run(ctx, Env{Now: now, Caller: caller, Grant: caller.Grant(e.permission), Q: q})
 		var rule *RuleError
 		if errors.As(err, &rule) && rule.commit {
 			committedRule = err

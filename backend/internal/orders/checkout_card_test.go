@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/wzhlinhai/salon/backend/internal/db"
-	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/optest"
@@ -380,13 +378,8 @@ func TestConsumeBusinessDate(t *testing.T) {
 	c := s.paymentCard(s.paymentType("余额", nil), "100", "0")
 	o := s.customerOrder(s.checkoutLine())
 	at := time.Date(day.Year(), day.Month(), day.Day()+1, 1, 30, 0, 0, settings.Location)
-	caller := s.MustCaller(s.Owner)
-	if err := db.InTenant(context.Background(), s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error {
-		_, err := orders.CheckoutOrdersAtForTest(context.Background(), ops.Env{Caller: caller, Q: q}, new(checkoutInput(checkoutOrder(o, cardPayment(c, "100")))), at)
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
+	s.SetNow(at)
+	s.call("checkout_orders", checkoutInput(checkoutOrder(o, cardPayment(c, "100"))), 200)
 	entries := s.consumeEntries(c)
 	if entries[0].(map[string]any)["business_date"] != day.Format(time.DateOnly) {
 		t.Fatal(entries)

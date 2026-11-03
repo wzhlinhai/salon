@@ -49,10 +49,10 @@ func TestGuardAndLock(t *testing.T) {
 		{current, current.String() + " 还没结束，不能锁定"},
 		{current.Prev(), "请先锁定 " + current.Prev().Prev().String()},
 	} {
-		_, err := payrollmonth.Lock(t.Context(), q, s.Res.StoreID, tc.month.String(), s.Res.OwnerID)
+		_, err := payrollmonth.Lock(t.Context(), q, s.Res.StoreID, tc.month.String(), s.Res.OwnerID, time.Now())
 		rule(t, err, tc.want)
 	}
-	locked, err := payrollmonth.Lock(t.Context(), q, s.Res.StoreID, opened.String(), s.Res.OwnerID)
+	locked, err := payrollmonth.Lock(t.Context(), q, s.Res.StoreID, opened.String(), s.Res.OwnerID, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestGuardAndLock(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(read, locked) {
 		t.Fatal(read, locked, err)
 	}
-	_, err = payrollmonth.Lock(t.Context(), q, s.Res.StoreID, opened.String(), s.Res.OwnerID)
+	_, err = payrollmonth.Lock(t.Context(), q, s.Res.StoreID, opened.String(), s.Res.OwnerID, time.Now())
 	rule(t, err, opened.String()+" 已经锁定")
 	for _, action := range []string{"设置底薪", "添加加减项", "删除加减项"} {
 		rule(t, payrollmonth.Guard(t.Context(), q, s.Res.StoreID, opened, action), opened.String()+" 已经锁定，不能再"+action)
@@ -71,7 +71,7 @@ func TestGuardAndLock(t *testing.T) {
 	// 即使有未来月份的记录，列表也只列到当前营业月。
 	future := payrollmonth.Of(current.First().AddDate(0, 1, 0))
 	dbtest.Exec(t, tx, "INSERT INTO commission_settlements(tenant_id,store_id,month,settled_by) VALUES($1,$2,$3,$4)", s.Res.TenantID, s.Res.StoreID, future.First(), s.Res.OwnerID)
-	statuses, err := payrollmonth.List(t.Context(), q, s.Res.StoreID)
+	statuses, err := payrollmonth.List(t.Context(), q, s.Res.StoreID, time.Now())
 	if err != nil || len(statuses) != 4 {
 		t.Fatal(statuses, err)
 	}
@@ -82,11 +82,11 @@ func TestGuardAndLock(t *testing.T) {
 	}
 	// 当前月已锁同时违反未结束条件，应先返回已锁定。
 	dbtest.Exec(t, tx, "INSERT INTO commission_settlements(tenant_id,store_id,month,settled_by) VALUES($1,$2,$3,$4)", s.Res.TenantID, s.Res.StoreID, current.First(), s.Res.OwnerID)
-	_, err = payrollmonth.Lock(t.Context(), q, s.Res.StoreID, current.String(), s.Res.OwnerID)
+	_, err = payrollmonth.Lock(t.Context(), q, s.Res.StoreID, current.String(), s.Res.OwnerID, time.Now())
 	rule(t, err, current.String()+" 已经锁定")
 	// 开店月之前即使已有锁定记录，也先拒绝开店月下限。
 	dbtest.Exec(t, tx, "INSERT INTO commission_settlements(tenant_id,store_id,month,settled_by) VALUES($1,$2,$3,$4)", s.Res.TenantID, s.Res.StoreID, before.First(), s.Res.OwnerID)
-	_, err = payrollmonth.Lock(t.Context(), q, s.Res.StoreID, before.String(), s.Res.OwnerID)
+	_, err = payrollmonth.Lock(t.Context(), q, s.Res.StoreID, before.String(), s.Res.OwnerID, time.Now())
 	rule(t, err, floorText)
 	rule(t, payrollmonth.Guard(t.Context(), q, s.Res.StoreID, before, "删除加减项"), floorText)
 	dbtest.Rollback(t, tx)

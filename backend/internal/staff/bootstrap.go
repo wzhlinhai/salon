@@ -2,6 +2,7 @@ package staff
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -60,7 +61,7 @@ func Bootstrap(ctx context.Context, pool *pgxpool.Pool, in BootstrapInput) (Boot
 			return err
 		}
 		res.Roles[owner.Name] = owner.ID
-		env := ops.Env{Caller: ops.Caller{TenantID: res.TenantID, StoreID: store.ID}, Q: q}
+		env := ops.Env{Now: time.Now(), Caller: ops.Caller{TenantID: res.TenantID, StoreID: store.ID}, Q: q} //nolint:forbidigo // 开店不经过 Registry，在此提供真实时刻。
 		for _, d := range perm.DefaultRoles {
 			role, err := q.CreateRole(ctx, dbgen.CreateRoleParams{TenantID: res.TenantID, StoreID: store.ID, Name: d.Name})
 			if err != nil {

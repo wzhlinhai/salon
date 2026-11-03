@@ -7,12 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/wzhlinhai/salon/backend/internal/db"
-	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
-	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
-	"github.com/wzhlinhai/salon/backend/internal/redpackets"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
@@ -38,22 +34,13 @@ func TestRedPacketSale(t *testing.T) {
 
 func TestRedPacketSaleBusinessDate(t *testing.T) {
 	s := open(t)
-	caller := s.MustCaller(s.Owner)
+	s.SetNow(time.Date(2029, 12, 31, 12, 0, 0, 0, settings.Location))
+	s.call("change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": "2030-01-01"}, 200)
+	s.SetNow(time.Date(2030, 1, 2, 1, 30, 0, 0, settings.Location))
+	in := s.input("sold")
+	in["face_value"], in["price"] = "88", "88"
+	s.call("issue_red_packet", in, 200)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	dbtest.Exec(t, tx, `INSERT INTO setting_changes(tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES($1,$2,'business_day_end','"02:00"',false,'"00:00"',true,'2020-01-01',$3)`, s.Res.TenantID, s.Res.StoreID, s.Res.OwnerID)
-	dbtest.Commit(t, tx)
-	var price money.Amount
-	if err := price.Scan("88"); err != nil {
-		t.Fatal(err)
-	}
-	err := db.InTenant(context.Background(), s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error {
-		_, err := redpackets.IssueRedPacketAtForTest(context.Background(), ops.Env{Q: q, Caller: caller}, &redpackets.IssueRedPacketInput{CustomerID: s.customer, Kind: "sold", FaceValue: price, Price: &price, ExpiresOn: "2999-01-01", SalesStaffIDs: []uuid.UUID{s.Res.OwnerID}}, time.Date(2030, 1, 2, 1, 30, 0, 0, settings.Location))
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	tx = dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	var ok bool
 	if err := tx.QueryRow(context.Background(), `SELECT count(*)=1 AND bool_and(e.business_date=p.business_date AND e.business_date='2030-01-01') FROM performance_entries e JOIN red_packets p ON p.id=e.red_packet_id`).Scan(&ok); err != nil || !ok {
 		t.Fatal(ok, err)

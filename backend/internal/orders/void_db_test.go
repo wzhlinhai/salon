@@ -157,15 +157,11 @@ func TestVoidExpiredPacket(t *testing.T) {
 	s := open(t)
 	line := s.checkoutLine()
 	day := settings.Date(time.Now()).AddDate(0, 0, -2)
-	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	var packet uuid.UUID
-	err := tx.QueryRow(context.Background(), `INSERT INTO red_packets(tenant_id,store_id,customer_id,kind,face_value,expires_on,business_date,issued_by) VALUES($1,$2,$3,'gift',100,$4,$4,$5) RETURNING id`, s.Res.TenantID, s.Res.StoreID, s.customer, day, s.Res.OwnerID).Scan(&packet)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dbtest.Commit(t, tx)
+	s.SetNow(day.Add(12 * time.Hour))
+	packet := s.call("issue_red_packet", map[string]any{"customer_id": s.customer, "kind": "gift", "face_value": "100", "expires_on": day.Format(time.DateOnly)}, 200)
+	s.SetNow(time.Time{})
 	o := s.customerOrder(line)
-	s.checkoutAtForVoid(o, day, packetPayment(map[string]any{"id": packet.String()}, "100"))
+	s.checkoutAtForVoid(o, day, packetPayment(packet, "100"))
 	s.void(o)
 	for _, ch := range s.Channels() {
 		r := ch.Call(t, s.MustCaller(s.Owner), "list_customer_red_packets", map[string]any{"customer_id": s.customer})

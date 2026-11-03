@@ -3,7 +3,6 @@ package orders
 import (
 	"context"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -23,10 +22,7 @@ func registerVoid(r *ops.Registry) {
 }
 
 func voidOrder(ctx context.Context, env ops.Env, in *VoidOrderInput) (*Order, error) {
-	return voidOrderAt(ctx, env, in, time.Now())
-}
-
-func voidOrderAt(ctx context.Context, env ops.Env, in *VoidOrderInput, now time.Time) (*Order, error) {
+	now := env.Now
 	reason := strings.TrimSpace(in.Reason)
 	if reason == "" || len([]rune(reason)) > 200 {
 		return nil, ops.Rule("请填写不超过200字的撤单原因")

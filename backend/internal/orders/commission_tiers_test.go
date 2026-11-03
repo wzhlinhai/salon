@@ -9,9 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/wzhlinhai/salon/backend/internal/db"
-	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
-	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/optest"
 	"github.com/wzhlinhai/salon/backend/internal/orders"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
@@ -34,13 +31,9 @@ func (s *fixture) tierCheckout(amount string, day time.Time, staff uuid.UUID) ma
 	in["positions"] = []any{map[string]any{"position_id": s.position, "required": false, "share_percent": 100}}
 	item := s.call("create_item", in, 200)
 	o := s.customerOrder(orders.OrderItemInput{ItemID: id(item["id"]), Staff: []orders.OrderItemStaffInput{{Slot: 1, StaffID: staff}}})
-	err := db.InTenant(s.t.Context(), s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error {
-		_, err := orders.CheckoutOrdersAtForTest(s.t.Context(), ops.Env{Caller: s.MustCaller(s.Owner), Q: q}, new(checkoutInput(checkoutOrder(o, payment("cash", amount)))), day.Add(12*time.Hour))
-		return err
-	})
-	if err != nil {
-		s.t.Fatal(err)
-	}
+	s.SetNow(day.Add(12 * time.Hour))
+	defer s.SetNow(time.Time{})
+	s.call("checkout_orders", checkoutInput(checkoutOrder(o, payment("cash", amount))), 200)
 	return o
 }
 func tierArgs(day time.Time) map[string]any {
@@ -121,13 +114,8 @@ func TestCommissionTierReadProgressiveReversal(t *testing.T) {
 	day := tierMonth()
 	original := s.tierCheckout("6000", day, s.Res.OwnerID)
 	s.tierCheckout("6000", day.AddDate(0, 0, 1), s.Res.OwnerID)
-	err := db.InTenant(t.Context(), s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error {
-		_, err := orders.VoidOrderAtForTest(t.Context(), ops.Env{Caller: s.MustCaller(s.Owner), Q: q}, new(voidInput(original)), day.AddDate(0, 0, 2).Add(12*time.Hour))
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	s.SetNow(day.AddDate(0, 0, 2).Add(12 * time.Hour))
+	s.call("void_order", voidInput(original), 200)
 	for _, ch := range s.Channels() {
 		got := ch.Call(t, s.MustCaller(s.Owner), "list_commissions", tierArgs(day.AddDate(0, 0, 2)))
 		if got.Status != 200 || len(got.Body["entries"].([]any)) != 1 || got.Body["total"] != "-700.00" {

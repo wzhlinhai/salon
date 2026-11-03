@@ -134,7 +134,7 @@ func Register(r *ops.Registry) {
 		Name: "quote_item_price", Summary: "按门店规则查询员工及卡类型适用的项目价格", Kind: ops.Read,
 		Permission: ops.LoggedIn, AI: ops.AIDirect,
 		Handle: func(ctx context.Context, env ops.Env, in *QuoteItemPriceInput) (*ItemPrice, error) {
-			day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
+			day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, env.Now)
 			if err != nil {
 				return nil, err
 			}

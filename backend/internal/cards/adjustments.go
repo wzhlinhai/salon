@@ -125,7 +125,7 @@ func adjustCard(ctx context.Context, env ops.Env, in *AdjustCardInput) (*Card, e
 			}
 		}
 		return nil
-	}, time.Now())
+	}, env.Now)
 }
 
 func listCardAdjustments(ctx context.Context, env ops.Env, in *ListCardAdjustmentsInput) (*CardAdjustmentList, error) {

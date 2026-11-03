@@ -47,7 +47,7 @@ func previewCheckout(ctx context.Context, env ops.Env, in *PreviewCheckoutInput)
 	}
 	var day time.Time
 	if in.CardID != nil || in.AutoCard {
-		day, err = settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
+		day, err = settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, env.Now)
 		if err != nil {
 			return nil, err
 		}

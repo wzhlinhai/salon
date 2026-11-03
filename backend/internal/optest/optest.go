@@ -28,6 +28,7 @@ type App struct {
 
 	mu      sync.Mutex
 	callers map[string]ops.Caller
+	instant *time.Time
 }
 
 // New 用 pool 组装后端。
@@ -38,7 +39,7 @@ func New(t testing.TB, pool *pgxpool.Pool) *App {
 		t.Fatal(err)
 	}
 	a := &App{Auth: svc, callers: map[string]ops.Caller{}}
-	a.Handler, a.Registry = httpapi.New(pool, httpapi.Config{Authenticate: a.authenticate, Login: svc.Login})
+	a.Handler, a.Registry = httpapi.New(pool, httpapi.Config{Authenticate: a.authenticate, Login: svc.Login, Now: a.Now})
 	return a
 }
 
@@ -175,4 +176,38 @@ func (a *App) Channels() []Channel {
 		{"http", func(t testing.TB, c ops.Caller, op string, args any) Result { return a.HTTP(t, &c, op, args) }},
 		{"ai", a.AI},
 	}
+}
+
+// SetNow 把业务操作的时刻固定为 t，零值恢复真实时间。
+func (a *App) SetNow(t time.Time) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if t.IsZero() {
+		a.instant = nil
+	} else {
+		a.instant = &t
+	}
+}
+
+// Advance 将当前时刻前移 d，未固定时从真实时刻开始并固定。
+func (a *App) Advance(d time.Duration) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	t := a.current().Add(d)
+	a.instant = &t
+}
+
+// Now 返回业务操作此刻会使用的时刻。
+func (a *App) Now() time.Time {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.current()
+}
+
+// current 在持有 mu 时读取时刻。
+func (a *App) current() time.Time {
+	if a.instant != nil {
+		return *a.instant
+	}
+	return time.Now()
 }

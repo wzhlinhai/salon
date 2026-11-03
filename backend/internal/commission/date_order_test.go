@@ -29,9 +29,7 @@ func TestCommissionEffectiveDateOrder(t *testing.T) {
 		}
 	}
 	// 保留先见新日期的断言，再追加先见旧日期、后见获胜日期的真实加载路径。
-	tx = dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	dbtest.Exec(t, tx, `INSERT INTO commission_scheme_versions(tenant_id,store_id,version,effective_from,scheme,saved_by) VALUES($1,$2,3,$3,'{"rules":[],"overrides":[],"excluded_staff":[]}',$4)`, s.Res.TenantID, s.Res.StoreID, day.AddDate(0, 0, 3), s.Res.OwnerID)
-	dbtest.Commit(t, tx)
+	save(t, s, day.AddDate(0, 0, 3), emptyScheme())
 	for _, ch := range s.Channels() {
 		r := ch.Call(t, s.MustCaller(s.Owner), "get_commission_scheme", map[string]any{"date": day.AddDate(0, 0, 4).Format(time.DateOnly)})
 		if r.Status != 200 || r.Body["version"] != float64(3) {
@@ -43,17 +41,16 @@ func TestCommissionEffectiveDateOrder(t *testing.T) {
 
 func TestCommissionBusinessDayBoundary(t *testing.T) {
 	s := optest.OpenShop(t)
-	// 本包不并行测试；把门店本地时刻固定在中午附近，避免 23:59 的最后一分钟使测试失效。
-	location := settings.Location
-	settings.Location = time.FixedZone("commission-test-noon", (12-time.Now().UTC().Hour())*60*60)
-	t.Cleanup(func() { settings.Location = location })
 	calendar := settings.Date(time.Now())
 	business := calendar.AddDate(0, 0, -1)
-	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	dbtest.Exec(t, tx, `INSERT INTO setting_changes(tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES($1,$2,'business_day_end','"23:59"',false,'"00:00"',true,$3,$4)`, s.Res.TenantID, s.Res.StoreID, business.AddDate(0, 0, -1), s.Res.OwnerID)
-	dbtest.Commit(t, tx)
-	if got := today(t, s); !got.Equal(business) || got.Equal(calendar) {
-		t.Fatalf("business date %s, calendar %s, want %s", got, calendar, business)
+	s.SetNow(business.AddDate(0, 0, -2).Add(12 * time.Hour))
+	s.Call(t, s.Owner, "change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": business.AddDate(0, 0, -1).Format(time.DateOnly)}, 200)
+	s.SetNow(time.Date(calendar.Year(), calendar.Month(), calendar.Day(), 1, 30, 0, 0, settings.Location))
+	for _, ch := range s.Channels() {
+		r := ch.Call(t, s.MustCaller(s.Owner), "get_settings", map[string]any{})
+		if r.Status != 200 || r.Body["business_date"] != business.Format(time.DateOnly) || r.Body["business_date"] == calendar.Format(time.DateOnly) {
+			t.Fatalf("%s: business date %v, calendar %s, want %s", ch.Name, r, calendar, business)
+		}
 	}
 	accepted := save(t, s, business, emptyScheme())
 	if accepted.Body["effective_from"] != business.Format(time.DateOnly) {

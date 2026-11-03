@@ -340,13 +340,10 @@ func TestSnapshotAndBusinessDate(t *testing.T) {
 	day := settings.Date(time.Now()).AddDate(0, 0, 2)
 	s.call("change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": day.Format(time.DateOnly)}, 200)
 	now := time.Date(day.Year(), day.Month(), day.Day()+1, 1, 30, 0, 0, settings.Location)
-	caller := s.MustCaller(s.Owner)
+	s.SetNow(now)
+	o := s.call("open_order", s.opening(), 200)
 	if err := db.InTenant(context.Background(), s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error {
-		o, err := orders.OpenOrderAtForTest(context.Background(), ops.Env{Caller: caller, Q: q}, new(s.opening()), now)
-		if err != nil {
-			return err
-		}
-		row, err := q.GetOrder(context.Background(), dbgen.GetOrderParams{StoreID: s.Res.StoreID, ID: o.ID})
+		row, err := q.GetOrder(context.Background(), dbgen.GetOrderParams{StoreID: s.Res.StoreID, ID: id(o["id"])})
 		if err != nil {
 			return err
 		}
@@ -358,7 +355,7 @@ func TestSnapshotAndBusinessDate(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if row.SettingsSnapshotID != snapshot.ID || o.BusinessDate != day.Format(time.DateOnly) || o.BusinessDate != businessDate.Format(time.DateOnly) {
+		if row.SettingsSnapshotID != snapshot.ID || o["business_date"] != day.Format(time.DateOnly) || o["business_date"] != businessDate.Format(time.DateOnly) {
 			t.Fatal(row, o, snapshot, businessDate)
 		}
 		return nil

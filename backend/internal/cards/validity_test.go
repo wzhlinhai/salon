@@ -5,13 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-
-	"github.com/wzhlinhai/salon/backend/internal/cards"
-	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
-	"github.com/wzhlinhai/salon/backend/internal/money"
-	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
@@ -21,48 +15,43 @@ func TestValidityUsesBusinessDate(t *testing.T) {
 	in["validity_kind"] = "days_after_open"
 	in["validity_days"] = 30
 	ct := s.call("create_card_type", in, 200)
-	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	dbtest.Exec(t, tx, `INSERT INTO setting_changes (tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES ($1,$2,'business_day_end','"02:00"',false,'"00:00"',true,'2020-01-01',$3)`, s.Res.TenantID, s.Res.StoreID, s.Res.OwnerID)
-	now := time.Date(2030, 1, 2, 1, 30, 0, 0, settings.Location)
-	out, err := cards.OpenCardAtForTest(context.Background(), ops.Env{Q: dbgen.New(tx), Caller: s.MustCaller(s.Owner)}, &cards.OpenCardInput{CustomerID: uuid.MustParse(s.customer), CardTypeID: uuid.MustParse(ct["id"].(string)), TopUpInput: cards.TopUpInput{Principal: money.Amount{}, Bonus: money.Amount{}, SalesStaffIDs: []uuid.UUID{s.Res.OwnerID}}}, now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out.ExpiresOn == nil || *out.ExpiresOn != "2030-01-31" {
+	s.SetNow(time.Date(2029, 12, 31, 12, 0, 0, 0, settings.Location))
+	s.call("change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": "2030-01-01"}, 200)
+	s.SetNow(time.Date(2030, 1, 2, 1, 30, 0, 0, settings.Location))
+	opening := s.opening()
+	opening["card_type_id"], opening["principal"], opening["bonus"] = ct["id"], "0", "0"
+	out := s.call("open_card", opening, 200)
+	if out["expires_on"] != "2030-01-31" {
 		t.Fatal(out)
 	}
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	var day string
-	if err := tx.QueryRow(context.Background(), "SELECT business_date::text FROM card_ledger WHERE card_id=$1", out.ID).Scan(&day); err != nil || day != "2030-01-01" {
+	if err := tx.QueryRow(context.Background(), "SELECT business_date::text FROM card_ledger WHERE card_id=$1", out["id"]).Scan(&day); err != nil || day != "2030-01-01" {
 		t.Fatal(day, err)
 	}
+	dbtest.Rollback(t, tx)
 }
 
 func TestPointsUseBusinessDateRate(t *testing.T) {
 	s := open(t)
-	caller := s.MustCaller(s.Owner)
 	later := settings.Date(time.Now())
 	earlier := later.AddDate(0, 0, -1)
+	s.SetNow(earlier.AddDate(0, 0, -1).Add(12 * time.Hour))
+	s.call("change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": earlier.Format(time.DateOnly)}, 200)
+	s.call("change_setting", map[string]any{"key": "points_per_recharge_yuan", "value": 10, "effective_from": earlier.Format(time.DateOnly)}, 200)
+	s.call("change_setting", map[string]any{"key": "points_per_recharge_yuan", "value": 1, "effective_from": later.Format(time.DateOnly)}, 200)
+	s.SetNow(time.Date(later.Year(), later.Month(), later.Day(), 1, 0, 0, 0, settings.Location))
+	opening := s.opening()
+	opening["principal"], opening["bonus"] = "25.99", "0"
+	out := s.call("open_card", opening, 200)
+	if out["points"] != float64(2) {
+		t.Fatalf("01:00 opening points = %v, want 2 at previous business day's rate 10", out["points"])
+	}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	dbtest.Exec(t, tx, `INSERT INTO setting_changes (tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES ($1,$2,'business_day_end','"02:00"',false,'"00:00"',true,$3,$4)`, s.Res.TenantID, s.Res.StoreID, earlier, caller.StaffID)
-	dbtest.Exec(t, tx, `INSERT INTO setting_changes (tenant_id,store_id,key,value,is_default,old_value,old_is_default,effective_from,changed_by) VALUES ($1,$2,'points_per_recharge_yuan','10',false,'0',true,$3,$4),($1,$2,'points_per_recharge_yuan','1',false,'10',false,$5,$4)`, s.Res.TenantID, s.Res.StoreID, earlier, caller.StaffID, later)
-	now := time.Date(later.Year(), later.Month(), later.Day(), 1, 0, 0, 0, settings.Location)
-	var principal money.Amount
-	if err := principal.Scan("25.99"); err != nil {
-		t.Fatal(err)
-	}
-	out, err := cards.OpenCardAtForTest(context.Background(), ops.Env{Q: dbgen.New(tx), Caller: caller}, &cards.OpenCardInput{CustomerID: uuid.MustParse(s.customer), CardTypeID: uuid.MustParse(s.cardType), TopUpInput: cards.TopUpInput{Principal: principal, SalesStaffIDs: []uuid.UUID{caller.StaffID}}}, now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out.Points != 2 {
-		t.Fatalf("01:00 opening points = %d, want 2 at previous business day's rate 10", out.Points)
-	}
 	var day string
 	var delta int32
-	err = tx.QueryRow(context.Background(), "SELECT business_date::text,delta FROM card_points_ledger WHERE card_id=$1", out.ID).Scan(&day, &delta)
-	if rollback := tx.Rollback(context.Background()); rollback != nil {
-		t.Fatal(rollback)
-	}
+	err := tx.QueryRow(context.Background(), "SELECT business_date::text,delta FROM card_points_ledger WHERE card_id=$1", out["id"]).Scan(&day, &delta)
+	dbtest.Rollback(t, tx)
 	if err != nil || day != earlier.Format(time.DateOnly) || delta != 2 {
 		t.Fatal(day, delta, err)
 	}

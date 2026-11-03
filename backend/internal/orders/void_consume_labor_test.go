@@ -1,15 +1,10 @@
 package orders_test
 
 import (
-	"context"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/wzhlinhai/salon/backend/internal/db"
-	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
-	"github.com/wzhlinhai/salon/backend/internal/ops"
-	"github.com/wzhlinhai/salon/backend/internal/orders"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
@@ -21,12 +16,8 @@ func TestVoidConsumeLabor(t *testing.T) {
 	s.paid(o, countPayment(c, firstLine(o), "100"))
 	original := withoutSale(s.performanceList()["entries"].([]any))
 	day := settings.Date(time.Now()).AddDate(0, 0, 1)
-	if err := db.InTenant(context.Background(), s.Pool, s.Res.TenantID, func(q *dbgen.Queries) error {
-		_, err := orders.VoidOrderAtForTest(context.Background(), ops.Env{Caller: s.MustCaller(s.Owner), Q: q}, new(voidInput(o)), day.Add(8*time.Hour))
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
+	s.SetNow(day.Add(8 * time.Hour))
+	s.call("void_order", voidInput(o), 200)
 	for _, ch := range s.Channels() {
 		r := ch.Call(t, s.MustCaller(s.Owner), "list_performance", map[string]any{"date_from": day.AddDate(0, 0, -1).Format(time.DateOnly), "date_to": day.Format(time.DateOnly)})
 		if r.Status != 200 || len(withoutSale(r.Body["entries"].([]any))) != 8 {

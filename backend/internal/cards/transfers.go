@@ -65,7 +65,7 @@ func transferCardBalance(ctx context.Context, env ops.Env, in *TransferCardBalan
 			return err
 		}
 		return nil
-	}, time.Now())
+	}, env.Now)
 	if err != nil {
 		return nil, err
 	}

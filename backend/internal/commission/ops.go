@@ -45,7 +45,7 @@ func save(ctx context.Context, env ops.Env, in *SaveCommissionSchemeInput) (*Com
 	if err := env.Q.LockCommissionScheme(ctx, env.Caller.StoreID); err != nil {
 		return nil, err
 	}
-	today, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, time.Now())
+	today, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, env.Now)
 	if err != nil {
 		return nil, err
 	}
