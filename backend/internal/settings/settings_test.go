@@ -491,3 +491,36 @@ func TestChoiceAndIntegerRulesAndSnapshot(t *testing.T) {
 		}
 	}
 }
+
+func TestSettingsOfAnotherStoreDoNotApply(t *testing.T) {
+	s := open(t)
+	day := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
+		st, err := q.CreateStore(ctx, dbgen.CreateStoreParams{TenantID: s.Res.TenantID, Name: "二店"})
+		if err != nil {
+			return err
+		}
+		_, err = q.AddSettingChange(ctx, dbgen.AddSettingChangeParams{
+			TenantID: s.Res.TenantID, StoreID: st.ID, Key: settings.KeyBusinessDayEnd, Value: []byte(`"04:00"`), OldValue: []byte(`"00:00"`), OldIsDefault: true,
+			EffectiveFrom: pgtype.Date{Time: day.AddDate(0, 0, -1), Valid: true}, ChangedBy: s.Res.OwnerID,
+		})
+		if err != nil {
+			return err
+		}
+		other, err := settings.Effective(ctx, q, st.ID, day)
+		if err != nil || other.BusinessDayEnd() != "04:00" {
+			t.Fatalf("other store's own setting = %q, %v", other.BusinessDayEnd(), err)
+		}
+		own, err := settings.Effective(ctx, q, s.Res.StoreID, day)
+		if err != nil || own.BusinessDayEnd() != "00:00" {
+			t.Fatalf("own store picked up another store's setting: %q, %v", own.BusinessDayEnd(), err)
+		}
+		// 03:00 按二店的 04:00 算属于前一天，按本店默认的 00:00 算属于当天。
+		at := time.Date(2026, 1, 3, 3, 0, 0, 0, settings.Location)
+		days, err := settings.BusinessDates(ctx, q, s.Res.StoreID, []time.Time{at})
+		if err != nil || !days[0].Equal(time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC)) {
+			t.Fatalf("own store business date = %v, %v", days, err)
+		}
+		return nil
+	})
+}

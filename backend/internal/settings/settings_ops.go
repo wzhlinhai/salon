@@ -138,34 +138,21 @@ func dayOrToday(ctx context.Context, env ops.Env, s string) (time.Time, error) {
 }
 
 func listSettings(ctx context.Context, env ops.Env, day time.Time) (*SettingList, error) {
-	rows, err := effectiveRows(ctx, env.Q, env.Caller.StoreID, day)
+	h, err := loadHistory(ctx, env.Q, env.Caller.StoreID, nil)
 	if err != nil {
 		return nil, err
 	}
 	out := &SettingList{BusinessDate: day.Format(DateLayout), Settings: make([]Setting, 0, len(Catalogue))}
 	for _, d := range Catalogue {
-		st := Setting{Key: d.Key, Label: d.Label, Hint: d.Hint, Kind: d.Kind, Options: d.Options, Min: d.Min, Max: d.Max, Value: d.Default, Default: d.Default, IsDefault: true, Upcoming: []ScheduledValue{}}
-		if row, ok := configured(rows, d.Key); ok {
-			st.Value = row.value
-			st.IsDefault = false
-			st.EffectiveFrom = new(row.effectiveFrom.Format(DateLayout))
+		now := h.at(d, day)
+		st := Setting{Key: d.Key, Label: d.Label, Hint: d.Hint, Kind: d.Kind, Options: d.Options, Min: d.Min, Max: d.Max, Value: now.value, Default: d.Default, IsDefault: now.isDefault, Upcoming: []ScheduledValue{}}
+		if !now.isDefault {
+			st.EffectiveFrom = new(now.from.Format(DateLayout))
+		}
+		for _, u := range h.upcoming(d, day) {
+			st.Upcoming = append(st.Upcoming, ScheduledValue{EffectiveFrom: u.from.Format(DateLayout), Value: u.value, IsDefault: u.isDefault})
 		}
 		out.Settings = append(out.Settings, st)
-	}
-	upcoming, err := env.Q.UpcomingSettingChanges(ctx, dbgen.UpcomingSettingChangesParams{StoreID: env.Caller.StoreID, After: pgDate(day)})
-	if err != nil {
-		return nil, err
-	}
-	for _, u := range upcoming {
-		for i := range out.Settings {
-			if st := &out.Settings[i]; st.Key == u.Key {
-				v := ScheduledValue{EffectiveFrom: u.EffectiveFrom.Time.Format(DateLayout), Value: st.Default, IsDefault: true}
-				if !u.IsDefault {
-					v.Value, v.IsDefault = json.RawMessage(u.Value), false
-				}
-				st.Upcoming = append(st.Upcoming, v)
-			}
-		}
 	}
 	return out, nil
 }
@@ -204,17 +191,14 @@ func changeSetting(ctx context.Context, env ops.Env, in *ChangeSettingInput) (*S
 	if err := env.Q.LockSettingKey(ctx, dbgen.LockSettingKeyParams{StoreID: env.Caller.StoreID, Key: d.Key}); err != nil {
 		return nil, err
 	}
-	rows, err := effectiveRows(ctx, env.Q, env.Caller.StoreID, from)
+	h, err := loadHistory(ctx, env.Q, env.Caller.StoreID, &d.Key)
 	if err != nil {
 		return nil, err
 	}
-	old, oldIsDefault := defaultJSON(d), true
-	if row, ok := configured(rows, d.Key); ok {
-		old, oldIsDefault = row.value, false
-	}
+	old := h.at(d, from)
 	row, err := env.Q.AddSettingChange(ctx, dbgen.AddSettingChangeParams{
 		TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Key: d.Key,
-		Value: value, IsDefault: isDefault, OldValue: old, OldIsDefault: oldIsDefault,
+		Value: value, IsDefault: isDefault, OldValue: old.value, OldIsDefault: old.isDefault,
 		EffectiveFrom: pgDate(from), ChangedBy: env.Caller.StaffID,
 	})
 	if err != nil {

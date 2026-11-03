@@ -71,7 +71,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 - 设置值支持 time（时刻）、time_range（时段）、choice（Options 中的字符串）和 integer（Min/Max 内的非负整数）。`member_price_rule` 默认会员价优先，也可取较低价；`points_per_recharge_yuan` 为每积一分所需充值本金元数，默认 0（不积分），范围 0–100000。开卡、充值和升级补差价按当日规则积分，赠送金、转余额和调整余额不积分。`guest_count_split` 默认将客次记给第一个岗位的员工，也可选择单上员工均分，当天可生效。`performance_split` 默认按岗位比例分多人业绩，也可选择均分，项目没设岗位比例时均分；`performance_ratio_*` 为八种支付方式各自的 0–100 业绩比例，本金、现金、银联、微信、支付宝和挂账默认 100%，赠送金和红包默认 0%；购买次数、赠送次数的耗卡业绩比例默认分别为 100%、0%，均可当天生效。退卡赠送金 `card_refund_bonus` 默认不退、作废，可选择扣回未被撤单退回的消费赠送金；`card_refund_fee_percent` 为 0–100 的退款手续费百分比，默认 0，当天可生效。撤单授权窗口 `void_window_minutes` 为 0（默认关闭）或 1–60 分钟，当天可生效。
 - 设置项在 `internal/settings` 的 `Catalogue` 里声明：名称、值的形式、系统默认做法和校验。新的业务规则（例如各项业务的做法选择）在这里加一项，再给 `Rules` 加一个读取它的方法。
-- 每次修改都在 `setting_changes` 追加一行：改前、改后、生效日期、修改人、修改时间。`salon_app` 只有 SELECT 和 INSERT 权限。某个营业日执行的值，取生效日期不晚于这一天的最后一次修改；没有修改，或者改成了"恢复默认"，就用系统当前的默认做法。生效日期不能早于今天；划分营业日的设置（`fromTomorrow`，例如营业日结束时间）最早明天生效。同一项设置的修改用咨询锁排队，改前值才接得上前一次的改后值。
+- 每次修改都在 `setting_changes` 追加一行：改前、改后、生效日期、修改人、修改时间。`salon_app` 只有 SELECT 和 INSERT 权限。某个营业日执行的值，取生效日期不晚于这一天的最大者，同一生效日期取最后保存的一次（修改时间，再按 ID）；没有修改，或者改成了"恢复默认"，就用系统当前的默认做法。这条选法只在 `internal/inforce` 写一份，门店设置、提成方案版本和底薪共用，各类历史提供自己的保存顺序（提成方案按版本号；设置和底薪按保存时间、ID），SQL 只按门店读出历史；设置的"恢复默认"只在 settings 的 `resolve` 换成目录默认值。生效日期不能早于今天；划分营业日的设置（`fromTomorrow`，例如营业日结束时间）最早明天生效。同一项设置的修改用咨询锁排队，改前值才接得上前一次的改后值。
 - 业务模块不直接查设置表：
   - `settings.BusinessDate` 算一个时刻属于哪个营业日，营业日 D 在第二天"营业日结束时间"截止，结束时间取 D 那天执行的设置；
   - `settings.Effective` 取某个营业日执行的设置；
@@ -147,7 +147,7 @@ performance_entries.member 在非 sale 时必填，既有非销售行迁移为 f
 
 `commission_scheme_versions` 只追加，salon_app 仅有 SELECT、INSERT，租户 RLS 与门店、修改人的组合外键保护租户隔离。保存先获取每店独立的事务咨询锁（`/commission_scheme`，与设置项锁区分），再取营业日、最新版本、校验日期与方案、分配 latest + 1 版本号并写入。同日可多次保存，生效日期不能早于 settings.BusinessDate 算出的今天，也不能早于最新版本。旧版本不改不删，规则按 item、consume、labor、sale 归一排序，格子和覆盖保持输入顺序。
 
-`save_commission_scheme`（Write、AIDraft）、`list_commission_scheme_versions` 和 `get_commission_scheme`（Read、AIDirect）均要求 settings.manage。列表版本号倒序、limit / before_version 翻页，含修改人名称而无方案内容；查询参数必须且只能指定版本号或营业日，保存与查询返回同样的完整名称视图。按营业日选择 effective_from ≤ 日期的最大生效日期，再取版本号最高的一版，即同日最后保存的方案。导出的 VersionInForce 还接受可选 saved-no-later-than 时刻，先排除该时刻之后保存的版本，供计算按业绩写入时刻选版。名称按员工、岗位、项目批量读取，查询数不随引用数量增加。
+`save_commission_scheme`（Write、AIDraft）、`list_commission_scheme_versions` 和 `get_commission_scheme`（Read、AIDirect）均要求 settings.manage。列表版本号倒序、limit / before_version 翻页，含修改人名称而无方案内容；查询参数必须且只能指定版本号或营业日，保存与查询返回同样的完整名称视图。按营业日选择 effective_from ≤ 日期的最大生效日期，同日取版本号最高的一版，即同日最后保存的方案（版本号在同一把锁里递增分配）。导出的 VersionInForce 还接受可选 saved-no-later-than 时刻，先排除该时刻之后保存的版本，供计算按业绩写入时刻选版。名称按员工、岗位、项目批量读取，查询数不随引用数量增加。
 
 保存与 audit.Record 在同一事务，目标 commission_scheme，action 为 save_commission_scheme，before 为上一个最新版本视图（首次 nil），after 为新版本视图。日志不关联顾客，不包含手机号；日志查询对这一种类额外要求 settings.manage，避免操作日志权限泄露方案里的员工覆盖。业务规则通过 ops.Rule，沿用仓库统一的 HTTP 409；请求格式、金额和百分比格式校验为 422。
 
@@ -155,7 +155,7 @@ performance 以一次结账内的（kind、order_item_id、slot）为一笔，�
 
 `internal/commission` 导出 Commissions(ctx, q, storeID, from, to, staffID) 供后续月锁、员工端和解释功能调用，未锁定时提成现算；零金额也返回解释。
 
-版本只批量读取一次，由 selectVersion 这个纯函数统一选择：effective_from 不晚于业绩营业日，saved_at 不晚于单位内最早 created_at，取最大生效日期，再取最高版本号。VersionInForce 和 get_commission_scheme 的日期查询也共用它。无版本或员工在 excluded_staff 中不计提成。先查员工 × 项目覆盖，再查项目、员工覆盖，最后按岗位、指定、会员键找规则格子；覆盖即使没有匹配格子仍然生效，但必须有该来源规则。项目覆盖仅作用于 item、consume、labor。没有命中项不产生提成。
+版本只批量读取一次，由 selectVersion 这个纯函数统一选择：saved_at 不晚于单位内最早 created_at 的版本中，按 inforce 取 effective_from 不晚于业绩营业日的最大生效日期，同日取版本号最高的一版，即最后保存的方案（版本号在锁内递增分配）。VersionInForce 和 get_commission_scheme 的日期查询也共用它。无版本或员工在 excluded_staff 中不计提成。先查员工 × 项目覆盖，再查项目、员工覆盖，最后按岗位、指定、会员键找规则格子；覆盖即使没有匹配格子仍然生效，但必须有该来源规则。项目覆盖仅作用于 item、consume、labor。没有命中项不产生提成。
 
 item 基数按单位汇总：paid 为 paid_amount 之和；performance 为 amount 之和；cash_performance 只含现金、银联、微信、支付宝、挂账；card_performance 只含本金、赠送金。红包仅在 performance 中。line_price 为结账时 order_items.price（折扣前，含级别价、会员价与改价）乘单位实收 / 本次结账该项目行全部 item 记录的实收，分母包括门店未分配记录。consume、labor、sale 基数均为单位 amount 之和。分到员工及乘比例都通过 money 四舍五入到分，固定金额每笔一次，基数为零仍计固定金额。
 
@@ -183,7 +183,7 @@ progressive（超额累进）从本笔前累计 c 开始，把 [c, c + base] 在
 
 `internal/payrollmonth` 统一结算月：Month 以 UTC 月首表示营业日所属的自然月，输入输出仍使用 YYYY-MM；Check 解析并以 settings.BusinessDate(stores.created_at) 的月份为开店月下限，允许未来月份；Guard 保护写入，Lock 创建锁定记录 Settlement，GetSettlement 读取记录，List 列出各月状态与可锁定标记。`internal/payroll` 保存底薪、加减项和工资表，`internal/commission` 保存提成结算明细；两者依赖 payrollmonth，payrollmonth 不依赖它们。
 
-`staff_base_salaries` 按员工追加计薪方式（base 底薪 + 提成，guarantee 保底）、非负金额、生效月、保存人和保存时刻。旧记录不改不删。BaseSalariesInForce 一次查询选出本店所有员工 effective_month ≤ 结算月的最大生效月，同月取 saved_at 最新的一条；时刻也相同时按 ID 倒序确定。未设置返回 null，客户端按 base、0 显示。所有员工包括离职员工按编号返回。
+`staff_base_salaries` 按员工追加计薪方式（base 底薪 + 提成，guarantee 保底）、非负金额、生效月、保存人和保存时刻。旧记录不改不删。BaseSalariesInForce 一次查询读出本店全部底薪记录，按员工用 inforce 选出 effective_month ≤ 结算月的最大生效月，同月取 saved_at 最新的一条；时刻也相同时取 ID 最大的。未设置返回 null，客户端按 base、0 显示。所有员工包括离职员工按编号返回。
 
 `payroll_adjustments` 记录结算月、员工、自由名称、非零有符号金额及备注；名称去首尾空白后不能空，最多 20 字，备注最多 100 字。允许离职员工；删除是真正 DELETE，日志保留删除前完整视图。锁定后的月份不能添加、删除加减项。
 

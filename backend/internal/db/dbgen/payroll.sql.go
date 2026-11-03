@@ -140,19 +140,13 @@ func (q *Queries) AddPayrollLine(ctx context.Context, arg AddPayrollLineParams) 
 	return err
 }
 
-const baseSalariesInForce = `-- name: BaseSalariesInForce :many
-SELECT DISTINCT ON (staff_id) tenant_id, store_id, id, staff_id, effective_month, mode, amount, saved_by, saved_at FROM staff_base_salaries
-WHERE store_id = $1 AND effective_month <= $2::date
-ORDER BY staff_id, effective_month DESC, saved_at DESC, id DESC
+const baseSalaryHistory = `-- name: BaseSalaryHistory :many
+SELECT tenant_id, store_id, id, staff_id, effective_month, mode, amount, saved_by, saved_at FROM staff_base_salaries WHERE store_id = $1
 `
 
-type BaseSalariesInForceParams struct {
-	StoreID uuid.UUID
-	Month   pgtype.Date
-}
-
-func (q *Queries) BaseSalariesInForce(ctx context.Context, arg BaseSalariesInForceParams) ([]StaffBaseSalary, error) {
-	rows, err := q.db.Query(ctx, baseSalariesInForce, arg.StoreID, arg.Month)
+// 本店全部底薪记录；某月执行哪一条由 inforce 选择。
+func (q *Queries) BaseSalaryHistory(ctx context.Context, storeID uuid.UUID) ([]StaffBaseSalary, error) {
+	rows, err := q.db.Query(ctx, baseSalaryHistory, storeID)
 	if err != nil {
 		return nil, err
 	}

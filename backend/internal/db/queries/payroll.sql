@@ -1,7 +1,6 @@
--- name: BaseSalariesInForce :many
-SELECT DISTINCT ON (staff_id) * FROM staff_base_salaries
-WHERE store_id = @store_id AND effective_month <= @month::date
-ORDER BY staff_id, effective_month DESC, saved_at DESC, id DESC;
+-- name: BaseSalaryHistory :many
+-- 本店全部底薪记录；某月执行哪一条由 inforce 选择。
+SELECT * FROM staff_base_salaries WHERE store_id = @store_id;
 
 -- name: AddBaseSalary :one
 INSERT INTO staff_base_salaries (tenant_id, store_id, staff_id, effective_month, mode, amount, saved_by)
