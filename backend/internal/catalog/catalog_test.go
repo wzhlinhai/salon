@@ -589,8 +589,7 @@ func TestQuoteLocksReferences(t *testing.T) {
 			go func() {
 				done <- s.HTTP(t, &caller, "quote_item_price", map[string]any{"item_id": item["id"], "staff_id": s.Res.OwnerID})
 			}()
-			dbtest.WaitForLockWait(t, s.Pool)
-			optest.AssertWaiting(t, done)
+			optest.AssertWaiting(t, s.Pool, done, 1)
 			dbtest.Commit(t, tx)
 			result := optest.WaitResult(t, done, 200)
 			if result.Body["price"] != want {

@@ -231,8 +231,7 @@ func TestCommissionSaveLock(t *testing.T) {
 			done <- s.HTTPWithToken(t, s.Owner, "save_commission_scheme", map[string]any{"effective_from": d.Format(time.DateOnly), "scheme": emptyScheme()})
 		}()
 	}
-	dbtest.WaitForLockWait(t, s.Pool)
-	optest.AssertWaiting(t, done)
+	optest.AssertWaiting(t, s.Pool, done, 2)
 	dbtest.Commit(t, tx)
 	a, b := optest.WaitResult(t, done, 200), optest.WaitResult(t, done, 200)
 	if fmt.Sprint(a.Body["version"], b.Body["version"]) != "1 2" && fmt.Sprint(a.Body["version"], b.Body["version"]) != "2 1" {

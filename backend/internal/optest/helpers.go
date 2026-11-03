@@ -1,8 +1,13 @@
 package optest
 
 import (
+	"context"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 )
 
 // Call 用凭证通过 HTTP 调用操作，want 为零时由调用方自行断言状态。
@@ -30,12 +35,44 @@ func WaitResult(t testing.TB, done <-chan Result, want int) Result {
 	return Result{}
 }
 
-// AssertWaiting 检查占锁期间并发请求仍然不能返回。
-func AssertWaiting(t testing.TB, done <-chan Result) {
+// AssertWaiting 检查并发请求尚未返回且当前数据库至少有 waiters 个会话等待锁，超过五秒则失败。
+func AssertWaiting(t testing.TB, pool *pgxpool.Pool, done <-chan Result, waiters int) {
 	t.Helper()
-	select {
-	case r := <-done:
-		t.Fatalf("request returned while transaction holds lock: %+v", r)
-	case <-time.After(300 * time.Millisecond):
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	observed := 0
+	for {
+		select {
+		case r := <-done:
+			t.Fatalf("request returned while transaction holds lock: expected at least %d lock waiters, observed %d: %+v", waiters, observed, r)
+		default:
+		}
+		waiting, err := dbtest.LockWaits(ctx, pool)
+		if err == nil {
+			observed = waiting
+		}
+		select {
+		case r := <-done:
+			t.Fatalf("request returned while transaction holds lock: expected at least %d lock waiters, observed %d: %+v", waiters, observed, r)
+		default:
+		}
+		if ctx.Err() != nil {
+			t.Fatalf("database lock waits: expected at least %d, observed %d within 5 seconds", waiters, observed)
+		}
+		if err != nil {
+			t.Fatalf("waiting for a database lock wait: %v", err)
+		}
+		if waiting >= waiters {
+			return
+		}
+		select {
+		case r := <-done:
+			t.Fatalf("request returned while transaction holds lock: expected at least %d lock waiters, observed %d: %+v", waiters, observed, r)
+		case <-ctx.Done():
+			t.Fatalf("database lock waits: expected at least %d, observed %d within 5 seconds", waiters, observed)
+		case <-ticker.C:
+		}
 	}
 }

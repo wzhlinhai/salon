@@ -72,8 +72,7 @@ func TestCustomerStaffShareLockWaitsForDeactivation(t *testing.T) {
 			}
 			done := make(chan optest.Result, 1)
 			go func() { done <- s.HTTPWithToken(t, s.Owner, action, args) }()
-			dbtest.WaitForLockWait(t, s.Pool)
-			optest.AssertWaiting(t, done)
+			optest.AssertWaiting(t, s.Pool, done, 1)
 			if _, err := q.DeactivateStaff(ctx, id); err != nil {
 				t.Fatal(err)
 			}
@@ -102,8 +101,7 @@ func TestConcurrentCustomerCreation(t *testing.T) {
 	}
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "create_customer", map[string]any{"phone": phone}) }()
-	dbtest.WaitForLockWait(t, s.Pool)
-	optest.AssertWaiting(t, done)
+	optest.AssertWaiting(t, s.Pool, done, 1)
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -164,8 +162,7 @@ func TestMergeAndPhoneChangeKeepAuditBefore(t *testing.T) {
 	go func() {
 		done <- s.HTTPWithToken(t, s.Owner, "change_customer_phone", map[string]any{"id": keep["id"], "phone": "13700131234"})
 	}()
-	dbtest.WaitForLockWait(t, s.Pool)
-	optest.AssertWaiting(t, done)
+	optest.AssertWaiting(t, s.Pool, done, 1)
 	if _, err := tx.Exec(ctx, "UPDATE customers SET phone=NULL, merged_into=$2 WHERE id=$1", aID(merged), aID(keep)); err != nil {
 		t.Fatal(err)
 	}

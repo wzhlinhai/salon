@@ -304,7 +304,7 @@ func TestRepaymentConcurrency(t *testing.T) {
 	}
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTP(t, &c, "repay_debt", repay(d, "60")) }()
-	optest.AssertWaiting(t, done)
+	optest.AssertWaiting(t, s.Pool, done, 1)
 	dbtest.Commit(t, tx)
 	r := optest.WaitResult(t, done, 409)
 	if r.Body["detail"] != "还款超过未还金额" {
@@ -347,7 +347,7 @@ func TestHistoricalReferenceLock(t *testing.T) {
 	go func() {
 		done <- s.HTTPWithToken(t, s.Owner, "register_historical_debt", map[string]any{"customer_id": s.customer, "amount": "10", "incurred_on": "2020-01-01"})
 	}()
-	optest.AssertWaiting(t, done)
+	optest.AssertWaiting(t, s.Pool, done, 1)
 	dbtest.Rollback(t, tx)
 	optest.WaitResult(t, done, 200)
 }

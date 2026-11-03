@@ -116,7 +116,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 跨模块引用检查由数据所属模块提供：`customers.LockReference` 检查本店、查看范围和未合并；`staff.LockAssignable` 按 UUID 锁住本店在职员工，交接来源用允许离职的 `staff.LockReferences`；`catalog.LockReference` 检查本店启用项目。只检查引用均用 FOR SHARE。报价 `catalog.Quote` 自己锁住读取的项目和员工；项目行岗位分配及是否重取价由 `catalog.QuoteLine` 负责。
 
-测试调用和并发请求等待共用 `optest.App.Call`、`optest.WaitResult`、`optest.AssertWaiting`；事务 SQL、提交回滚和固定行顺序的表快照共用 `dbtest` 的辅助函数。各业务包只准备自己的业务数据。
+测试调用和并发请求等待共用 `optest.App.Call`、`optest.WaitResult`、`optest.AssertWaiting(t, pool, done, waiters)`（每 10ms 查询当前数据库等待行锁或咨询锁的会话数，至少达到 waiters 才通过；同一测试已启动的其他等锁请求也计入总数；请求先返回或五秒内未达到预期数量即失败）；事务 SQL、提交回滚和固定行顺序的表快照共用 `dbtest` 的辅助函数。各业务包只准备自己的业务数据。
 
 ## 业绩
 

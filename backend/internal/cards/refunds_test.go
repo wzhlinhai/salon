@@ -210,7 +210,7 @@ func TestRefundSerializes(t *testing.T) {
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "refund_card", in) }()
 	dbtest.WaitForLockWait(t, s.Pool)
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "refund_card", in) }()
-	optest.AssertWaiting(t, done)
+	optest.AssertWaiting(t, s.Pool, done, 2)
 	dbtest.Commit(t, held)
 	var a optest.Result
 	select {

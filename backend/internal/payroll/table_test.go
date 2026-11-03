@@ -519,7 +519,7 @@ func TestPayrollLockQueue(t *testing.T) {
 	}
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "lock_payroll_month", map[string]any{"month": month(m)}) }()
-	optest.AssertWaiting(t, done)
+	optest.AssertWaiting(t, s.Pool, done, 1)
 	dbtest.Rollback(t, tx)
 	optest.WaitResult(t, done, 200)
 	// 用事务中的真实锁月处理器持锁，三个写操作各自排队，提交后才能检查锁月状态。
@@ -544,7 +544,7 @@ func TestPayrollLockQueue(t *testing.T) {
 		}
 		done := make(chan optest.Result, 1)
 		go func() { done <- s.HTTPWithToken(t, s.Owner, op, args) }()
-		optest.AssertWaiting(t, done)
+		optest.AssertWaiting(t, s.Pool, done, 1)
 		dbtest.Commit(t, tx)
 		result := optest.WaitResult(t, done, 409)
 		reject(t, result, 409, month(m)+" 已经锁定，不能再"+detail)

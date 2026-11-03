@@ -202,6 +202,13 @@ func AppTx(t testing.TB, pool *pgxpool.Pool, tenantID uuid.UUID) pgx.Tx {
 	return tx
 }
 
+// LockWaits 返回当前数据库中等待行锁或咨询锁的会话数。
+func LockWaits(ctx context.Context, pool *pgxpool.Pool) (int, error) {
+	var waiting int
+	err := pool.QueryRow(ctx, "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'").Scan(&waiting)
+	return waiting, err
+}
+
 // WaitForLockWait 等待当前数据库出现等待锁的请求，超过五秒则测试失败。
 func WaitForLockWait(t testing.TB, pool *pgxpool.Pool) {
 	t.Helper()
@@ -210,8 +217,8 @@ func WaitForLockWait(t testing.TB, pool *pgxpool.Pool) {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		var waiting int
-		if err := pool.QueryRow(ctx, "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'").Scan(&waiting); err != nil {
+		waiting, err := LockWaits(ctx, pool)
+		if err != nil {
 			t.Fatalf("waiting for a database lock wait: %v", err)
 		}
 		if waiting > 0 {

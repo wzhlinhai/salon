@@ -413,11 +413,7 @@ func TestCustomerUpdateLocksBeforeAudit(t *testing.T) {
 	go func() {
 		done <- s.HTTPWithToken(t, s.Owner, "update_customer_profile", map[string]any{"id": id, "name": "请求改名"})
 	}()
-	select {
-	case r := <-done:
-		t.Fatalf("returned while locked: %+v", r)
-	case <-time.After(300 * time.Millisecond):
-	}
+	optest.AssertWaiting(t, s.Pool, done, 1)
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}

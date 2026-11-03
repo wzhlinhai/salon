@@ -373,7 +373,7 @@ func TestRevokeLock(t *testing.T) {
 	dbtest.Exec(t, tx, "UPDATE red_packets SET revoked_by=$1,revoked_at=clock_timestamp(),revoke_reason='其他撤回' WHERE id=$2", s.Res.OwnerID, p["id"])
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTP(t, &c, "revoke_red_packet", revoke(p)) }()
-	optest.AssertWaiting(t, done)
+	optest.AssertWaiting(t, s.Pool, done, 1)
 	dbtest.Commit(t, tx)
 	r := optest.WaitResult(t, done, 409)
 	if r.Body["detail"] != "红包已撤回" {
@@ -416,7 +416,7 @@ func TestIssueReferenceLocks(t *testing.T) {
 			expected := dbtest.SnapshotTx(t, tx, "red_packets", "red_packet_sales", "audit_log")
 			done := make(chan optest.Result, 1)
 			go func() { done <- s.HTTP(t, &c, "issue_red_packet", in) }()
-			optest.AssertWaiting(t, done)
+			optest.AssertWaiting(t, s.Pool, done, 1)
 			dbtest.Commit(t, tx)
 			r := optest.WaitResult(t, done, 409)
 			want := "该顾客已合并到另一位顾客"

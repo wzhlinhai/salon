@@ -119,8 +119,7 @@ func TestRefundSelectionAfterListing(t *testing.T) {
 	go func() {
 		done <- s.HTTPWithToken(t, s.Owner, "checkout_orders", checkoutInput(checkoutOrder(o, payment("card", "100"))))
 	}()
-	dbtest.WaitForLockWait(t, s.Pool)
-	optest.AssertWaiting(t, done)
+	optest.AssertWaiting(t, s.Pool, done, 1)
 	dbtest.Commit(t, tx)
 	r := optest.WaitResult(t, done, 200)
 	assertSelectionPayments(t, lines(r.Body)[0].(map[string]any), []map[string]any{other}, []string{"100.00"})

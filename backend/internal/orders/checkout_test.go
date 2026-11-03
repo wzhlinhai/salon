@@ -337,7 +337,7 @@ func TestCheckoutWaitsForOrder(t *testing.T) {
 	go func() {
 		done <- s.HTTP(t, &caller, "checkout_orders", checkoutInput(checkoutOrder(o, payment("cash", "200"))))
 	}()
-	optest.AssertWaiting(t, done)
+	optest.AssertWaiting(t, s.Pool, done, 1)
 	dbtest.Commit(t, tx)
 	r := optest.WaitResult(t, done, 409)
 	if r.Body["detail"] != "支付合计须等于实收" || expected != s.checkoutSnapshot() {

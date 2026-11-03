@@ -36,8 +36,7 @@ func TestStaffOperationLockLevels(t *testing.T) {
 			done := make(chan optest.Result, 1)
 			go func() { done <- s.HTTPWithToken(t, s.Owner, action, args) }()
 			if action == "update_staff" {
-				dbtest.WaitForLockWait(t, s.Pool)
-				optest.AssertWaiting(t, done)
+				optest.AssertWaiting(t, s.Pool, done, 1)
 				if err := tx.Rollback(context.Background()); err != nil {
 					t.Fatal(err)
 				}

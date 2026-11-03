@@ -341,7 +341,7 @@ func TestCardCheckoutWaits(t *testing.T) {
 	go func() {
 		done <- s.HTTPWithToken(t, s.Owner, "checkout_orders", checkoutInput(checkoutOrder(o, cardPayment(c, "100"))))
 	}()
-	optest.AssertWaiting(t, done)
+	optest.AssertWaiting(t, s.Pool, done, 1)
 	dbtest.Commit(t, tx)
 	r := optest.WaitResult(t, done, 200)
 	pc := lines(r.Body)[0].(map[string]any)["payments"].([]any)[0].(map[string]any)["card"].(map[string]any)
@@ -367,7 +367,7 @@ func TestCardCheckoutPricingLocks(t *testing.T) {
 			go func() {
 				done <- s.HTTPWithToken(t, s.Owner, "checkout_orders", checkoutInput(checkoutOrder(o, cardPayment(c, "88"))))
 			}()
-			optest.AssertWaiting(t, done)
+			optest.AssertWaiting(t, s.Pool, done, 1)
 			dbtest.Commit(t, tx)
 			optest.WaitResult(t, done, 200)
 		})

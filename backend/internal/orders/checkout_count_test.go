@@ -247,7 +247,7 @@ func TestCountCheckoutWaits(t *testing.T) {
 	go func() {
 		done <- s.HTTPWithToken(t, s.Owner, "checkout_orders", checkoutInput(checkoutOrder(o, countPayment(c, firstLine(o), "100"))))
 	}()
-	optest.AssertWaiting(t, done)
+	optest.AssertWaiting(t, s.Pool, done, 1)
 	dbtest.Commit(t, tx)
 	optest.WaitResult(t, done, 200)
 	l := s.countEntries(c)[0].(map[string]any)
