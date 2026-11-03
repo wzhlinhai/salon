@@ -15,6 +15,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/optest"
 	"github.com/wzhlinhai/salon/backend/internal/orders"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
+	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
 func (s *fixture) customerOrder(items ...orders.OrderItemInput) map[string]any {
@@ -107,7 +108,7 @@ func TestMergeRules(t *testing.T) {
 	a, b := s.customerOrder(s.line()), s.customerOrder(s.line())
 	caller := s.MustCaller(s.Owner)
 	different := s.call("open_order", s.opening(s.line()), 200)
-	old := s.openAt(caller, time.Now().AddDate(0, 0, -2), s.line())
+	old := s.openAt(caller, time.Now().In(settings.Location).AddDate(0, 0, -2), s.line())
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	dbtest.Exec(t, tx, "UPDATE orders SET customer_id=$1 WHERE id=$2", s.customer, old["id"])
 	dbtest.Commit(t, tx)
@@ -174,7 +175,7 @@ func TestMergeEditScopeWindow(t *testing.T) {
 	s.assertMergeRefused(caller, mergeInput(a, b), 403, "permission denied")
 	s.assertMergeRefused(caller, mergeInput(b, a), 403, "permission denied")
 	caller = s.MustCaller(s.Owner)
-	old := s.openAt(caller, time.Now().AddDate(0, 0, -2), s.line())
+	old := s.openAt(caller, time.Now().In(settings.Location).AddDate(0, 0, -2), s.line())
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	dbtest.Exec(t, tx, "UPDATE orders SET customer_id=$1 WHERE id=$2", s.customer, old["id"])
 	dbtest.Commit(t, tx)
