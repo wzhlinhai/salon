@@ -98,18 +98,16 @@ LEFT JOIN order_items i ON i.id=e.order_item_id
 LEFT JOIN staff s ON s.id=e.staff_id
 WHERE e.store_id=$1
 AND e.business_date BETWEEN $2::date AND $3::date
-AND ($4::uuid IS NULL OR e.staff_id=$4)
-AND ($5::text IS NULL OR e.kind=$5)
-AND ($6::uuid IS NULL OR e.staff_id=$6)
-AND ($7::uuid IS NULL OR e.id < $7)
-ORDER BY e.id DESC LIMIT $8
+AND ($4::text IS NULL OR e.kind=$4)
+AND ($5::uuid IS NULL OR e.staff_id=$5)
+AND ($6::uuid IS NULL OR e.id < $6)
+ORDER BY e.id DESC LIMIT $7
 `
 
 type ListPerformanceParams struct {
 	StoreID  uuid.UUID
 	DateFrom pgtype.Date
 	DateTo   pgtype.Date
-	SelfID   *uuid.UUID
 	Kind     *string
 	StaffID  *uuid.UUID
 	BeforeID *uuid.UUID
@@ -149,7 +147,6 @@ func (q *Queries) ListPerformance(ctx context.Context, arg ListPerformanceParams
 		arg.StoreID,
 		arg.DateFrom,
 		arg.DateTo,
-		arg.SelfID,
 		arg.Kind,
 		arg.StaffID,
 		arg.BeforeID,
@@ -307,9 +304,8 @@ COALESCE(sum(CASE WHEN e.reverses_id IS NULL THEN e.paid_amount ELSE -e.paid_amo
 FROM performance_entries e
 WHERE e.store_id=$1
 AND e.business_date BETWEEN $2::date AND $3::date
-AND ($4::uuid IS NULL OR e.staff_id=$4)
-AND ($5::text IS NULL OR e.kind=$5)
-AND ($6::uuid IS NULL OR e.staff_id=$6)
+AND ($4::text IS NULL OR e.kind=$4)
+AND ($5::uuid IS NULL OR e.staff_id=$5)
 GROUP BY e.kind
 `
 
@@ -317,7 +313,6 @@ type PerformanceTotalsParams struct {
 	StoreID  uuid.UUID
 	DateFrom pgtype.Date
 	DateTo   pgtype.Date
-	SelfID   *uuid.UUID
 	Kind     *string
 	StaffID  *uuid.UUID
 }
@@ -333,7 +328,6 @@ func (q *Queries) PerformanceTotals(ctx context.Context, arg PerformanceTotalsPa
 		arg.StoreID,
 		arg.DateFrom,
 		arg.DateTo,
-		arg.SelfID,
 		arg.Kind,
 		arg.StaffID,
 	)

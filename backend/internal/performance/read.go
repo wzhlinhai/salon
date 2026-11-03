@@ -2,11 +2,11 @@ package performance
 
 import (
 	"context"
-	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/wzhlinhai/salon/backend/internal/daterange"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
@@ -72,35 +72,22 @@ func Register(r *ops.Registry) {
 }
 
 func listPerformance(ctx context.Context, env ops.Env, in *ListPerformanceInput) (*PerformanceList, error) {
-	from, err := time.Parse(settings.DateLayout, in.DateFrom)
-	if err != nil {
-		// rule-untested: ListPerformanceInput.DateFrom、DateTo 的 schema format=date 在调用前用 time.DateOnly 校验
-		return nil, ops.Rule("请填写有效的营业日")
-	}
-	to, err := time.Parse(settings.DateLayout, in.DateTo)
-	if err != nil {
-		// rule-untested: ListPerformanceInput.DateFrom、DateTo 的 schema format=date 在调用前用 time.DateOnly 校验
-		return nil, ops.Rule("请填写有效的营业日")
-	}
-	if from.After(to) {
-		return nil, ops.Rule("开始营业日不能晚于结束营业日")
-	}
-	if to.Sub(from) > 92*24*time.Hour {
-		return nil, ops.Rule("查询范围最多 92 天")
-	}
-	_, self := env.Caller.ScopeFilter(perm.PerformanceView)
-	limit := in.Limit
-	if limit == 0 {
-		limit = 50
-	}
-	datesFrom, datesTo := pgtype.Date{Time: from, Valid: true}, pgtype.Date{Time: to, Valid: true}
-	rows, err := env.Q.ListPerformance(ctx, dbgen.ListPerformanceParams{StoreID: env.Caller.StoreID, DateFrom: datesFrom, DateTo: datesTo, SelfID: self, StaffID: in.StaffID, Kind: in.Kind, BeforeID: in.BeforeID, RowLimit: limit})
+	q, err := daterange.Parse(env.Caller, perm.PerformanceView, in.DateFrom, in.DateTo, in.StaffID, in.Limit)
 	if err != nil {
 		return nil, err
 	}
-	totals, err := env.Q.PerformanceTotals(ctx, dbgen.PerformanceTotalsParams{StoreID: env.Caller.StoreID, DateFrom: datesFrom, DateTo: datesTo, SelfID: self, StaffID: in.StaffID, Kind: in.Kind})
-	if err != nil {
-		return nil, err
+	var rows []dbgen.ListPerformanceRow
+	var totals []dbgen.PerformanceTotalsRow
+	if !q.Empty {
+		datesFrom, datesTo := pgtype.Date{Time: q.From, Valid: true}, pgtype.Date{Time: q.To, Valid: true}
+		rows, err = env.Q.ListPerformance(ctx, dbgen.ListPerformanceParams{StoreID: env.Caller.StoreID, DateFrom: datesFrom, DateTo: datesTo, StaffID: q.StaffID, Kind: in.Kind, BeforeID: in.BeforeID, RowLimit: q.Limit})
+		if err != nil {
+			return nil, err
+		}
+		totals, err = env.Q.PerformanceTotals(ctx, dbgen.PerformanceTotalsParams{StoreID: env.Caller.StoreID, DateFrom: datesFrom, DateTo: datesTo, StaffID: q.StaffID, Kind: in.Kind})
+		if err != nil {
+			return nil, err
+		}
 	}
 	out := &PerformanceList{Entries: make([]PerformanceEntry, 0, len(rows)), Totals: []PerformanceTotals{{Kind: "item", Amount: "0", PaidAmount: "0"}, {Kind: "consume", Amount: "0", PaidAmount: "0"}, {Kind: "labor", Amount: "0", PaidAmount: "0"}, {Kind: "sale", Amount: "0", PaidAmount: "0"}}}
 	for _, total := range totals {

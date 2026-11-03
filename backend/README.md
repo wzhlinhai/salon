@@ -123,9 +123,11 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 ## 业绩
 
+营业日范围、92 天上限、本人范围求交和 limit 默认值统一在 `internal/daterange`，由 list_performance、list_guest_visits 和 list_commissions 共用。
+
 performance_entries.member 在非 sale 时必填，既有非销售行迁移为 false；sale 必须 NULL，由 CHECK 保护。RecordCheckout 把同一张单的判断写入 item、consume、labor 的所有记录；ReversePerformanceOrder 原样复制。list_performance 暴露这个可空布尔值，与提成解释一致。
 
-客数存于独立的 `guest_visits` 追加表。每张未合并的结账单计一个客次，一起结账仍逐单计。归属按开单规则快照的 `guest_count_split`：`first_slot` 取行序中首个有员工的有效项目行内最低已填岗位员工；`equal` 按行序、岗位序首次出现的不同员工均分。去掉的行不参与。份额向下取整到四位小数，余数全部给第一名员工，合计恰为 1；无人时记 staff 为空的门店记录、份额 1。复制单上的指定和男客、女客属性。撤单以撤单营业日追加正份额的冲回记录，统计时计负，原记录不改；每条仅冲回一次。`list_guest_visits` 按营业日、员工和本人或全店范围返回分页明细及完整范围的客数、指定、非指定、男客、女客净合计，只做一条明细和一条合计查询。表采用租户组合外键、RLS，仅授予 SELECT、INSERT。
+客数存于独立的 `guest_visits` 追加表。每张未合并的结账单计一个客次，一起结账仍逐单计。归属按开单规则快照的 `guest_count_split`：`first_slot` 取行序中首个有员工的有效项目行内最低已填岗位员工；`equal` 按行序、岗位序首次出现的不同员工均分。去掉的行不参与。份额向下取整到四位小数，余数全部给第一名员工，合计恰为 1；无人时记 staff 为空的门店记录、份额 1。复制单上的指定和男客、女客属性。撤单以撤单营业日追加正份额的冲回记录，统计时计负，原记录不改；每条仅冲回一次。`list_guest_visits` 按营业日、员工和本人或全店范围返回分页明细及完整范围的客数、指定、非指定、男客、女客净合计，员工条件交集为空时不查询，否则只做一条明细和一条合计查询。表采用租户组合外键、RLS，仅授予 SELECT、INSERT。
 
 `internal/performance` 拥有业绩表、纯分配函数和 `list_performance`。performance 对外给出业绩单位（含基数构成），提成只消费业绩单位；支付方式表只有一份。结账在支付写入后、标记已结账前，在已有单锁的事务内按各单规则快照追加记录；撤单在已有单锁的事务内逐条追加冲回，不改原记录，不另记操作日志。结账记录用结账营业日，冲回用撤单营业日。
 

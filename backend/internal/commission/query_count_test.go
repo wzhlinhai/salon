@@ -98,7 +98,6 @@ func TestCommissionReadQueryCount(t *testing.T) {
 					t.Fatal(ch.Name, "missing reversal or sale commissions", result)
 				}
 			}
-			t.Logf("%s large=%t commissions=%d queries=%d", ch.Name, large, len(rows), count)
 		}
 	}
 }

@@ -58,7 +58,6 @@ FROM guest_visits e
 WHERE e.store_id=$1
 AND e.business_date BETWEEN $2::date AND $3::date
 AND ($4::uuid IS NULL OR e.staff_id=$4)
-AND ($5::uuid IS NULL OR e.staff_id=$5)
 ) filtered
 `
 
@@ -66,7 +65,6 @@ type GuestVisitTotalsParams struct {
 	StoreID  uuid.UUID
 	DateFrom pgtype.Date
 	DateTo   pgtype.Date
-	SelfID   *uuid.UUID
 	StaffID  *uuid.UUID
 }
 
@@ -83,7 +81,6 @@ func (q *Queries) GuestVisitTotals(ctx context.Context, arg GuestVisitTotalsPara
 		arg.StoreID,
 		arg.DateFrom,
 		arg.DateTo,
-		arg.SelfID,
 		arg.StaffID,
 	)
 	var i GuestVisitTotalsRow
@@ -103,16 +100,14 @@ FROM guest_visits e LEFT JOIN staff s ON s.id=e.staff_id
 WHERE e.store_id=$1
 AND e.business_date BETWEEN $2::date AND $3::date
 AND ($4::uuid IS NULL OR e.staff_id=$4)
-AND ($5::uuid IS NULL OR e.staff_id=$5)
-AND ($6::uuid IS NULL OR e.id < $6)
-ORDER BY e.id DESC LIMIT $7
+AND ($5::uuid IS NULL OR e.id < $5)
+ORDER BY e.id DESC LIMIT $6
 `
 
 type ListGuestVisitsParams struct {
 	StoreID  uuid.UUID
 	DateFrom pgtype.Date
 	DateTo   pgtype.Date
-	SelfID   *uuid.UUID
 	StaffID  *uuid.UUID
 	BeforeID *uuid.UUID
 	RowLimit int32
@@ -137,7 +132,6 @@ func (q *Queries) ListGuestVisits(ctx context.Context, arg ListGuestVisitsParams
 		arg.StoreID,
 		arg.DateFrom,
 		arg.DateTo,
-		arg.SelfID,
 		arg.StaffID,
 		arg.BeforeID,
 		arg.RowLimit,

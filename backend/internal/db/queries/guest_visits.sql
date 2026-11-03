@@ -14,7 +14,6 @@ SELECT e.id,e.business_date,e.order_id,e.checkout_id,e.settings_snapshot_id,e.st
 FROM guest_visits e LEFT JOIN staff s ON s.id=e.staff_id
 WHERE e.store_id=sqlc.arg(store_id)
 AND e.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
-AND (sqlc.narg(self_id)::uuid IS NULL OR e.staff_id=sqlc.narg(self_id))
 AND (sqlc.narg(staff_id)::uuid IS NULL OR e.staff_id=sqlc.narg(staff_id))
 AND (sqlc.narg(before_id)::uuid IS NULL OR e.id < sqlc.narg(before_id))
 ORDER BY e.id DESC LIMIT sqlc.arg(row_limit);
@@ -30,6 +29,5 @@ SELECT e.designated,e.gender,CASE WHEN e.reverses_id IS NULL THEN e.share ELSE -
 FROM guest_visits e
 WHERE e.store_id=sqlc.arg(store_id)
 AND e.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
-AND (sqlc.narg(self_id)::uuid IS NULL OR e.staff_id=sqlc.narg(self_id))
 AND (sqlc.narg(staff_id)::uuid IS NULL OR e.staff_id=sqlc.narg(staff_id))
 ) filtered;
