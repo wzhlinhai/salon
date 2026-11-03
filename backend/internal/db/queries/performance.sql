@@ -16,7 +16,6 @@ LEFT JOIN order_items i ON i.id=e.order_item_id
 LEFT JOIN staff s ON s.id=e.staff_id
 WHERE e.store_id=sqlc.arg(store_id)
 AND e.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
-AND (sqlc.narg(self_id)::uuid IS NULL OR e.staff_id=sqlc.narg(self_id))
 AND (sqlc.narg(kind)::text IS NULL OR e.kind=sqlc.narg(kind))
 AND (sqlc.narg(staff_id)::uuid IS NULL OR e.staff_id=sqlc.narg(staff_id))
 AND (sqlc.narg(before_id)::uuid IS NULL OR e.id < sqlc.narg(before_id))
@@ -28,7 +27,6 @@ COALESCE(sum(CASE WHEN e.reverses_id IS NULL THEN e.paid_amount ELSE -e.paid_amo
 FROM performance_entries e
 WHERE e.store_id=sqlc.arg(store_id)
 AND e.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
-AND (sqlc.narg(self_id)::uuid IS NULL OR e.staff_id=sqlc.narg(self_id))
 AND (sqlc.narg(kind)::text IS NULL OR e.kind=sqlc.narg(kind))
 AND (sqlc.narg(staff_id)::uuid IS NULL OR e.staff_id=sqlc.narg(staff_id))
 GROUP BY e.kind;

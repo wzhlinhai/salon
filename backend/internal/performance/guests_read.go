@@ -2,11 +2,11 @@ package performance
 
 import (
 	"context"
-	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/wzhlinhai/salon/backend/internal/daterange"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
@@ -58,35 +58,24 @@ func registerGuestVisits(r *ops.Registry) {
 }
 
 func listGuestVisits(ctx context.Context, env ops.Env, in *ListGuestVisitsInput) (*GuestVisitList, error) {
-	from, err := time.Parse(settings.DateLayout, in.DateFrom)
-	if err != nil {
-		// rule-untested: ListGuestVisitsInput.DateFrom、DateTo 的 schema format=date 在调用前用 time.DateOnly 校验
-		return nil, ops.Rule("请填写有效的营业日")
-	}
-	to, err := time.Parse(settings.DateLayout, in.DateTo)
-	if err != nil {
-		// rule-untested: ListGuestVisitsInput.DateFrom、DateTo 的 schema format=date 在调用前用 time.DateOnly 校验
-		return nil, ops.Rule("请填写有效的营业日")
-	}
-	if from.After(to) {
-		return nil, ops.Rule("开始营业日不能晚于结束营业日")
-	}
-	if to.Sub(from) > 92*24*time.Hour {
-		return nil, ops.Rule("查询范围最多 92 天")
-	}
-	_, self := env.Caller.ScopeFilter(perm.PerformanceView)
-	limit := in.Limit
-	if limit == 0 {
-		limit = 50
-	}
-	dateFrom, dateTo := pgtype.Date{Time: from, Valid: true}, pgtype.Date{Time: to, Valid: true}
-	rows, err := env.Q.ListGuestVisits(ctx, dbgen.ListGuestVisitsParams{StoreID: env.Caller.StoreID, DateFrom: dateFrom, DateTo: dateTo, SelfID: self, StaffID: in.StaffID, BeforeID: in.BeforeID, RowLimit: limit})
+	q, err := daterange.Parse(env.Caller, perm.PerformanceView, in.DateFrom, in.DateTo, in.StaffID, in.Limit)
 	if err != nil {
 		return nil, err
 	}
-	totals, err := env.Q.GuestVisitTotals(ctx, dbgen.GuestVisitTotalsParams{StoreID: env.Caller.StoreID, DateFrom: dateFrom, DateTo: dateTo, SelfID: self, StaffID: in.StaffID})
-	if err != nil {
-		return nil, err
+	var rows []dbgen.ListGuestVisitsRow
+	var totals dbgen.GuestVisitTotalsRow
+	if !q.Empty {
+		dateFrom, dateTo := pgtype.Date{Time: q.From, Valid: true}, pgtype.Date{Time: q.To, Valid: true}
+		rows, err = env.Q.ListGuestVisits(ctx, dbgen.ListGuestVisitsParams{StoreID: env.Caller.StoreID, DateFrom: dateFrom, DateTo: dateTo, StaffID: q.StaffID, BeforeID: in.BeforeID, RowLimit: q.Limit})
+		if err != nil {
+			return nil, err
+		}
+		totals, err = env.Q.GuestVisitTotals(ctx, dbgen.GuestVisitTotalsParams{StoreID: env.Caller.StoreID, DateFrom: dateFrom, DateTo: dateTo, StaffID: q.StaffID})
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		totals = dbgen.GuestVisitTotalsRow{Total: "0.0000", Designated: "0.0000", NotDesignated: "0.0000", Male: "0.0000", Female: "0.0000"}
 	}
 	out := &GuestVisitList{Entries: make([]GuestVisit, 0, len(rows)), Totals: GuestVisitTotals{Total: totals.Total, Designated: totals.Designated, NotDesignated: totals.NotDesignated, Male: totals.Male, Female: totals.Female}}
 	for _, e := range rows {
