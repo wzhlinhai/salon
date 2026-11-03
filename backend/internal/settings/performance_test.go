@@ -45,7 +45,7 @@ func TestPerformanceSettings(t *testing.T) {
 			t.Fatal(r.PerformanceSplit())
 		}
 		for _, m := range []string{"cash", "unionpay", "wechat", "alipay", "debt", "red_packet", "card_principal", "card_bonus", "count_paid", "count_gift"} {
-			if r.PerformanceRatio(m) != 37 {
+			if r.PerformanceRatio("performance_ratio_"+m) != 37 {
 				t.Fatal(m)
 			}
 		}
@@ -54,7 +54,7 @@ func TestPerformanceSettings(t *testing.T) {
 				t.Error("unknown category did not panic")
 			}
 		}()
-		r.PerformanceRatio("card")
+		r.PerformanceRatio("unknown_performance_ratio")
 		return nil
 	})
 }

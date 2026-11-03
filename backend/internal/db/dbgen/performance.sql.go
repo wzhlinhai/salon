@@ -199,6 +199,108 @@ func (q *Queries) ListPerformance(ctx context.Context, arg ListPerformanceParams
 	return items, nil
 }
 
+const performanceLineFacts = `-- name: PerformanceLineFacts :many
+SELECT i.id, i.item_id, i.price, o.designated, e.checkout_id,
+COALESCE(sum(e.paid_amount) FILTER (WHERE e.kind = 'item'),0)::text AS line_paid
+FROM performance_entries e JOIN order_items i ON i.id = e.order_item_id JOIN orders o ON o.id = e.order_id
+WHERE e.store_id = $1 AND e.order_item_id = ANY($2::uuid[]) AND e.reverses_id IS NULL
+GROUP BY i.id, i.item_id, i.price, o.designated, e.checkout_id
+`
+
+type PerformanceLineFactsParams struct {
+	StoreID uuid.UUID
+	Ids     []uuid.UUID
+}
+
+type PerformanceLineFactsRow struct {
+	ID         uuid.UUID
+	ItemID     uuid.UUID
+	Price      money.Amount
+	Designated bool
+	CheckoutID *uuid.UUID
+	LinePaid   string
+}
+
+func (q *Queries) PerformanceLineFacts(ctx context.Context, arg PerformanceLineFactsParams) ([]PerformanceLineFactsRow, error) {
+	rows, err := q.db.Query(ctx, performanceLineFacts, arg.StoreID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PerformanceLineFactsRow
+	for rows.Next() {
+		var i PerformanceLineFactsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ItemID,
+			&i.Price,
+			&i.Designated,
+			&i.CheckoutID,
+			&i.LinePaid,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const performanceOriginalEntries = `-- name: PerformanceOriginalEntries :many
+SELECT tenant_id, store_id, id, kind, business_date, order_id, order_item_id, checkout_id, settings_snapshot_id, slot, position_id, staff_id, method, paid_amount, ratio, amount, void_id, reverses_id, created_at, card_ledger_id, red_packet_id, purchase, member FROM performance_entries WHERE store_id = $1 AND id = ANY($2::uuid[])
+`
+
+type PerformanceOriginalEntriesParams struct {
+	StoreID uuid.UUID
+	Ids     []uuid.UUID
+}
+
+func (q *Queries) PerformanceOriginalEntries(ctx context.Context, arg PerformanceOriginalEntriesParams) ([]PerformanceEntry, error) {
+	rows, err := q.db.Query(ctx, performanceOriginalEntries, arg.StoreID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PerformanceEntry
+	for rows.Next() {
+		var i PerformanceEntry
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ID,
+			&i.Kind,
+			&i.BusinessDate,
+			&i.OrderID,
+			&i.OrderItemID,
+			&i.CheckoutID,
+			&i.SettingsSnapshotID,
+			&i.Slot,
+			&i.PositionID,
+			&i.StaffID,
+			&i.Method,
+			&i.PaidAmount,
+			&i.Ratio,
+			&i.Amount,
+			&i.VoidID,
+			&i.ReversesID,
+			&i.CreatedAt,
+			&i.CardLedgerID,
+			&i.RedPacketID,
+			&i.Purchase,
+			&i.Member,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const performanceTotals = `-- name: PerformanceTotals :many
 SELECT e.kind, COALESCE(sum(CASE WHEN e.reverses_id IS NULL THEN e.amount ELSE -e.amount END),0)::text AS amount,
 COALESCE(sum(CASE WHEN e.reverses_id IS NULL THEN e.paid_amount ELSE -e.paid_amount END),0)::text AS paid_amount
@@ -243,6 +345,68 @@ func (q *Queries) PerformanceTotals(ctx context.Context, arg PerformanceTotalsPa
 	for rows.Next() {
 		var i PerformanceTotalsRow
 		if err := rows.Scan(&i.Kind, &i.Amount, &i.PaidAmount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const performanceUnitEntries = `-- name: PerformanceUnitEntries :many
+SELECT tenant_id, store_id, id, kind, business_date, order_id, order_item_id, checkout_id, settings_snapshot_id, slot, position_id, staff_id, method, paid_amount, ratio, amount, void_id, reverses_id, created_at, card_ledger_id, red_packet_id, purchase, member FROM performance_entries
+WHERE store_id = $1 AND business_date BETWEEN $2::date AND $3::date
+AND staff_id IS NOT NULL AND ($4::uuid IS NULL OR staff_id = $4)
+`
+
+type PerformanceUnitEntriesParams struct {
+	StoreID  uuid.UUID
+	DateFrom pgtype.Date
+	DateTo   pgtype.Date
+	StaffID  *uuid.UUID
+}
+
+func (q *Queries) PerformanceUnitEntries(ctx context.Context, arg PerformanceUnitEntriesParams) ([]PerformanceEntry, error) {
+	rows, err := q.db.Query(ctx, performanceUnitEntries,
+		arg.StoreID,
+		arg.DateFrom,
+		arg.DateTo,
+		arg.StaffID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PerformanceEntry
+	for rows.Next() {
+		var i PerformanceEntry
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ID,
+			&i.Kind,
+			&i.BusinessDate,
+			&i.OrderID,
+			&i.OrderItemID,
+			&i.CheckoutID,
+			&i.SettingsSnapshotID,
+			&i.Slot,
+			&i.PositionID,
+			&i.StaffID,
+			&i.Method,
+			&i.PaidAmount,
+			&i.Ratio,
+			&i.Amount,
+			&i.VoidID,
+			&i.ReversesID,
+			&i.CreatedAt,
+			&i.CardLedgerID,
+			&i.RedPacketID,
+			&i.Purchase,
+			&i.Member,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

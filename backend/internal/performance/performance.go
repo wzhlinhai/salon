@@ -19,7 +19,6 @@ type CheckoutInput struct {
 	SettingsSnapshotID uuid.UUID
 	Rules              settings.Rules
 	Lines              []Line
-	Payments           []Category
 	Member             bool
 	Designated         bool
 	Gender             string
@@ -27,15 +26,36 @@ type CheckoutInput struct {
 
 // RecordCheckout 在结账已持有单锁的事务内追加项目业绩、耗卡业绩和手工费。
 func RecordCheckout(ctx context.Context, env ops.Env, in CheckoutInput) error {
+	recordedPayments, err := env.Q.ListOrderPayments(ctx, dbgen.ListOrderPaymentsParams{StoreID: env.Caller.StoreID, OrderIds: []uuid.UUID{in.OrderID}})
+	if err != nil {
+		return err
+	}
+	consumptions := map[uuid.UUID]*consumption{}
+	categories := []category{}
+	for _, p := range recordedPayments {
+		switch p.Method {
+		case "count":
+			method := "count_paid"
+			if p.Gift > 0 {
+				method = "count_gift"
+			}
+			consumptions[*p.OrderItemID] = &consumption{Method: method, UnitPrice: *p.CountUnitPrice}
+		case "card":
+			categories = append(categories, category{Method: "card_principal", Amount: *p.Principal}, category{Method: "card_bonus", Amount: *p.Bonus})
+		default:
+			categories = append(categories, category{Method: p.Method, Amount: p.Amount})
+		}
+	}
+	lines := make([]allocationLine, 0, len(in.Lines))
+	for _, line := range in.Lines {
+		lines = append(lines, allocationLine{Line: line, Count: consumptions[line.OrderItemID]})
+	}
 	ratios := map[string]int{}
-	for _, method := range methods {
-		ratios[method] = in.Rules.PerformanceRatio(method)
+	for _, method := range paymentMethods {
+		ratios[method.name] = in.Rules.PerformanceRatio(method.ratioKey)
 	}
-	for _, method := range []string{"count_paid", "count_gift"} {
-		ratios[method] = in.Rules.PerformanceRatio(method)
-	}
-	entries := allocate(in.Lines, in.Payments, in.Rules.PerformanceSplit(), ratios)
-	entries = append(entries, consumeAndLabor(in.Lines, in.Rules.PerformanceSplit(), ratios)...)
+	entries := allocate(lines, categories, in.Rules.PerformanceSplit(), ratios)
+	entries = append(entries, consumeAndLabor(lines, in.Rules.PerformanceSplit(), ratios)...)
 	for _, e := range entries {
 		err := env.Q.AddPerformanceEntry(ctx, dbgen.AddPerformanceEntryParams{
 			TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID,

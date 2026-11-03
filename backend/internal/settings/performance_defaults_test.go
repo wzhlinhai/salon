@@ -15,8 +15,8 @@ func TestOldPerformanceSnapshotDefaults(t *testing.T) {
 		if m == "red_packet" || m == "card_bonus" || m == "count_gift" {
 			want = 0
 		}
-		if r.PerformanceRatio(m) != want {
-			t.Fatal(m, r.PerformanceRatio(m))
+		if r.PerformanceRatio("performance_ratio_"+m) != want {
+			t.Fatal(m, r.PerformanceRatio("performance_ratio_"+m))
 		}
 	}
 }
