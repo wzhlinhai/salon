@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
+	"github.com/wzhlinhai/salon/backend/internal/inforce"
 )
 
 // Location 是门店所在时区。P0 只服务中国的门店。
@@ -91,42 +92,72 @@ func (r Rules) PointsPerRechargeYuan() int {
 	return v
 }
 
-// effectiveRow 是某项设置在某个营业日生效的那次修改。
-type effectiveRow struct {
-	value         json.RawMessage
-	isDefault     bool
-	effectiveFrom time.Time
+// change 是一次设置修改中选值用到的部分。
+type change struct {
+	key       string
+	value     json.RawMessage
+	isDefault bool
 }
 
-func effectiveRows(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, day time.Time) (map[string]effectiveRow, error) {
-	rows, err := q.EffectiveSettings(ctx, dbgen.EffectiveSettingsParams{StoreID: storeID, BusinessDate: pgDate(day)})
+// history 是门店各项设置的修改历史，按 key 分组。
+type history map[string]inforce.Timeline[change]
+
+// loadHistory 读取门店的设置修改历史；key 不为空时只读这一项。
+func loadHistory(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, key *string) (history, error) {
+	rows, err := q.SettingHistory(ctx, dbgen.SettingHistoryParams{StoreID: storeID, Key: key})
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]effectiveRow, len(rows))
+	changes := make([]inforce.Change[change], 0, len(rows))
 	for _, row := range rows {
-		out[row.Key] = effectiveRow{value: row.Value, isDefault: row.IsDefault, effectiveFrom: row.EffectiveFrom.Time}
+		changes = append(changes, inforce.Change[change]{
+			From: row.EffectiveFrom.Time, SavedAt: row.ChangedAt.Time, ID: row.ID,
+			Value: change{key: row.Key, value: row.Value, isDefault: row.IsDefault},
+		})
 	}
-	return out, nil
+	return inforce.Group(changes, func(c inforce.Change[change]) string { return c.Value.key }), nil
 }
 
-// configured 返回 key 在这一天设置的值；没有设置或恢复了默认时返回 false。
-func configured(rows map[string]effectiveRow, key string) (effectiveRow, bool) {
-	row, ok := rows[key]
-	return row, ok && !row.isDefault
+// inForce 是一项设置从某一天起执行的值。
+type inForce struct {
+	value     json.RawMessage
+	isDefault bool
+	// from 是这次修改的生效日期；没有修改时为零值。
+	from time.Time
+}
+
+// resolve 把"没有修改"和"恢复默认"都换成目录默认值。
+func resolve(d Def, c inforce.Change[change], ok bool) inForce {
+	if !ok || c.Value.isDefault {
+		return inForce{value: defaultJSON(d), isDefault: true, from: c.From}
+	}
+	return inForce{value: c.Value.value, from: c.From}
+}
+
+// at 返回设置 d 在营业日 day 执行的值。
+func (h history) at(d Def, day time.Time) inForce {
+	c, ok := h[d.Key].At(day)
+	return resolve(d, c, ok)
+}
+
+// upcoming 返回设置 d 在营业日 day 之后安排好的值，每个生效日期一条，按日期升序。
+func (h history) upcoming(d Def, day time.Time) []inForce {
+	var out []inForce
+	for _, c := range h[d.Key].After(day) {
+		out = append(out, resolve(d, c, true))
+	}
+	return out
 }
 
 // Effective 返回门店在营业日 day 生效的设置。
 func Effective(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, day time.Time) (Rules, error) {
-	rows, err := effectiveRows(ctx, q, storeID, day)
+	h, err := loadHistory(ctx, q, storeID, nil)
 	if err != nil {
 		return Rules{}, err
 	}
-	values := map[string]json.RawMessage{}
+	values := make(map[string]json.RawMessage, len(Catalogue))
 	for _, d := range Catalogue {
-		if row, ok := configured(rows, d.Key); ok {
-			values[d.Key] = row.value
-		}
+		values[d.Key] = h.at(d, day).value
 	}
 	return rulesFrom(values), nil
 }
@@ -231,26 +262,17 @@ func (r Rules) PerformanceRatio(key string) int {
 
 // BusinessDates 批量按 BusinessDate 的相同规则换算时刻，设置历史只查询一次。
 func BusinessDates(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, times []time.Time) ([]time.Time, error) {
-	rows, err := q.BusinessDayEndHistory(ctx, storeID)
+	h, err := loadHistory(ctx, q, storeID, new(KeyBusinessDayEnd))
 	if err != nil {
 		return nil, err
 	}
 	def, _ := Lookup(KeyBusinessDayEnd)
 	out := make([]time.Time, 0, len(times))
 	for _, t := range times {
-		// 营业日 D 的结束时间取 D 那天执行的设置：生效日期不晚于前一天的最后一次修改，恢复默认或没有修改时用目录默认值。
-		prev := Date(t).AddDate(0, 0, -1)
-		end := def.Default.(string)
-		for _, row := range rows {
-			if row.EffectiveFrom.Time.After(prev) {
-				continue
-			}
-			if !row.IsDefault {
-				if err := json.Unmarshal(row.Value, &end); err != nil {
-					return nil, err
-				}
-			}
-			break
+		// 营业日 D 的结束时间取 D 那天执行的设置：时刻 t 的日历日前一天执行的值。
+		var end string
+		if err := json.Unmarshal(h.at(def, Date(t).AddDate(0, 0, -1)).value, &end); err != nil {
+			return nil, err
 		}
 		out = append(out, businessDate(t, end))
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
+	"github.com/wzhlinhai/salon/backend/internal/inforce"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/payrollmonth"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
@@ -29,22 +30,32 @@ func salaryView(row dbgen.StaffBaseSalary, refs map[uuid.UUID]staff.Ref) BaseSal
 	return BaseSalary{Staff: refs[row.StaffID], EffectiveMonth: payrollmonth.Of(row.EffectiveMonth.Time).String(), Mode: row.Mode, Amount: row.Amount, SavedBy: refs[row.SavedBy], SavedAt: row.SavedAt.Time}
 }
 
-// BaseSalariesInForce 批量读取本店所有员工在结算月执行的底薪，先取最大生效月，再取最后保存的一条。
+// BaseSalariesInForce 批量读取本店所有员工在结算月执行的底薪：生效月不晚于结算月的最大者，同月取最后保存的一条。
 func BaseSalariesInForce(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, month time.Time) (map[uuid.UUID]BaseSalary, error) {
-	rows, err := q.BaseSalariesInForce(ctx, dbgen.BaseSalariesInForceParams{StoreID: storeID, Month: pgtype.Date{Time: month, Valid: true}})
+	rows, err := q.BaseSalaryHistory(ctx, storeID)
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]uuid.UUID, 0, len(rows)*2)
+	changes := make([]inforce.Change[dbgen.StaffBaseSalary], 0, len(rows))
 	for _, row := range rows {
+		changes = append(changes, inforce.Change[dbgen.StaffBaseSalary]{From: row.EffectiveMonth.Time, SavedAt: row.SavedAt.Time, ID: row.ID, Value: row})
+	}
+	var inForce []dbgen.StaffBaseSalary
+	for _, timeline := range inforce.Group(changes, func(c inforce.Change[dbgen.StaffBaseSalary]) uuid.UUID { return c.Value.StaffID }) {
+		if c, ok := timeline.At(month); ok {
+			inForce = append(inForce, c.Value)
+		}
+	}
+	ids := make([]uuid.UUID, 0, len(inForce)*2)
+	for _, row := range inForce {
 		ids = append(ids, row.StaffID, row.SavedBy)
 	}
 	refs, err := names(ctx, q, storeID, ids)
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[uuid.UUID]BaseSalary, len(rows))
-	for _, row := range rows {
+	out := make(map[uuid.UUID]BaseSalary, len(inForce))
+	for _, row := range inForce {
 		out[row.StaffID] = salaryView(row, refs)
 	}
 	return out, nil

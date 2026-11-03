@@ -1,16 +1,8 @@
--- name: EffectiveSettings :many
--- 每项设置在营业日 @business_date 生效的那一行。
-SELECT DISTINCT ON (key) key, value, is_default, effective_from
+-- name: SettingHistory :many
+-- 门店的全部设置修改，@key 不为空时只取这一项；某天执行哪一次由 inforce 选择。
+SELECT id, key, value, is_default, effective_from, changed_at
 FROM setting_changes
-WHERE store_id = @store_id AND effective_from <= @business_date::date
-ORDER BY key, effective_from DESC, changed_at DESC, id DESC;
-
--- name: UpcomingSettingChanges :many
--- 营业日 @after 之后才生效的修改，每个生效日期只取最后一次修改。
-SELECT DISTINCT ON (key, effective_from) key, value, is_default, effective_from
-FROM setting_changes
-WHERE store_id = @store_id AND effective_from > @after::date
-ORDER BY key, effective_from, changed_at DESC, id DESC;
+WHERE store_id = @store_id AND (sqlc.narg(key)::text IS NULL OR key = sqlc.narg(key));
 
 -- name: AddSettingChange :one
 INSERT INTO setting_changes (tenant_id, store_id, key, value, is_default, old_value, old_is_default, effective_from, changed_by)
@@ -45,7 +37,3 @@ SELECT * FROM settings_snapshots WHERE id = $1 AND store_id = $2;
 -- 在事务结束前锁住门店的一项设置，同一项设置的修改排队进行。
 SELECT pg_advisory_xact_lock(hashtextextended(CAST(sqlc.arg(store_id)::uuid AS text) || '/' || sqlc.arg(key)::text, 0));
 
--- name: BusinessDayEndHistory :many
-SELECT DISTINCT ON (effective_from) effective_from, value, is_default
-FROM setting_changes WHERE store_id = $1 AND key = 'business_day_end'
-ORDER BY effective_from DESC, changed_at DESC, id DESC;

@@ -15,8 +15,11 @@ import (
 type previewDayCounter struct{ queries atomic.Int64 }
 
 func (c *previewDayCounter) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
-	if strings.HasPrefix(data.SQL, "-- name: BusinessDayEndHistory :") {
-		c.queries.Add(1)
+	// 换算营业日只读营业日结束时间这一项设置的历史。
+	if strings.HasPrefix(data.SQL, "-- name: SettingHistory :") {
+		if key, ok := data.Args[1].(*string); ok && key != nil && *key == "business_day_end" {
+			c.queries.Add(1)
+		}
 	}
 	return ctx
 }

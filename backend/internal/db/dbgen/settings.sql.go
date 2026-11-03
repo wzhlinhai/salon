@@ -59,83 +59,6 @@ func (q *Queries) AddSettingChange(ctx context.Context, arg AddSettingChangePara
 	return i, err
 }
 
-const businessDayEndHistory = `-- name: BusinessDayEndHistory :many
-SELECT DISTINCT ON (effective_from) effective_from, value, is_default
-FROM setting_changes WHERE store_id = $1 AND key = 'business_day_end'
-ORDER BY effective_from DESC, changed_at DESC, id DESC
-`
-
-type BusinessDayEndHistoryRow struct {
-	EffectiveFrom pgtype.Date
-	Value         []byte
-	IsDefault     bool
-}
-
-func (q *Queries) BusinessDayEndHistory(ctx context.Context, storeID uuid.UUID) ([]BusinessDayEndHistoryRow, error) {
-	rows, err := q.db.Query(ctx, businessDayEndHistory, storeID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []BusinessDayEndHistoryRow
-	for rows.Next() {
-		var i BusinessDayEndHistoryRow
-		if err := rows.Scan(&i.EffectiveFrom, &i.Value, &i.IsDefault); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const effectiveSettings = `-- name: EffectiveSettings :many
-SELECT DISTINCT ON (key) key, value, is_default, effective_from
-FROM setting_changes
-WHERE store_id = $1 AND effective_from <= $2::date
-ORDER BY key, effective_from DESC, changed_at DESC, id DESC
-`
-
-type EffectiveSettingsParams struct {
-	StoreID      uuid.UUID
-	BusinessDate pgtype.Date
-}
-
-type EffectiveSettingsRow struct {
-	Key           string
-	Value         []byte
-	IsDefault     bool
-	EffectiveFrom pgtype.Date
-}
-
-// 每项设置在营业日 @business_date 生效的那一行。
-func (q *Queries) EffectiveSettings(ctx context.Context, arg EffectiveSettingsParams) ([]EffectiveSettingsRow, error) {
-	rows, err := q.db.Query(ctx, effectiveSettings, arg.StoreID, arg.BusinessDate)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []EffectiveSettingsRow
-	for rows.Next() {
-		var i EffectiveSettingsRow
-		if err := rows.Scan(
-			&i.Key,
-			&i.Value,
-			&i.IsDefault,
-			&i.EffectiveFrom,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getSettingsSnapshot = `-- name: GetSettingsSnapshot :one
 SELECT id, tenant_id, store_id, rules, digest, created_at FROM settings_snapshots WHERE id = $1 AND store_id = $2
 `
@@ -260,40 +183,43 @@ func (q *Queries) SaveSettingsSnapshot(ctx context.Context, arg SaveSettingsSnap
 	return id, err
 }
 
-const upcomingSettingChanges = `-- name: UpcomingSettingChanges :many
-SELECT DISTINCT ON (key, effective_from) key, value, is_default, effective_from
+const settingHistory = `-- name: SettingHistory :many
+SELECT id, key, value, is_default, effective_from, changed_at
 FROM setting_changes
-WHERE store_id = $1 AND effective_from > $2::date
-ORDER BY key, effective_from, changed_at DESC, id DESC
+WHERE store_id = $1 AND ($2::text IS NULL OR key = $2)
 `
 
-type UpcomingSettingChangesParams struct {
+type SettingHistoryParams struct {
 	StoreID uuid.UUID
-	After   pgtype.Date
+	Key     *string
 }
 
-type UpcomingSettingChangesRow struct {
+type SettingHistoryRow struct {
+	ID            uuid.UUID
 	Key           string
 	Value         []byte
 	IsDefault     bool
 	EffectiveFrom pgtype.Date
+	ChangedAt     pgtype.Timestamptz
 }
 
-// 营业日 @after 之后才生效的修改，每个生效日期只取最后一次修改。
-func (q *Queries) UpcomingSettingChanges(ctx context.Context, arg UpcomingSettingChangesParams) ([]UpcomingSettingChangesRow, error) {
-	rows, err := q.db.Query(ctx, upcomingSettingChanges, arg.StoreID, arg.After)
+// 门店的全部设置修改，@key 不为空时只取这一项；某天执行哪一次由 inforce 选择。
+func (q *Queries) SettingHistory(ctx context.Context, arg SettingHistoryParams) ([]SettingHistoryRow, error) {
+	rows, err := q.db.Query(ctx, settingHistory, arg.StoreID, arg.Key)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []UpcomingSettingChangesRow
+	var items []SettingHistoryRow
 	for rows.Next() {
-		var i UpcomingSettingChangesRow
+		var i SettingHistoryRow
 		if err := rows.Scan(
+			&i.ID,
 			&i.Key,
 			&i.Value,
 			&i.IsDefault,
 			&i.EffectiveFrom,
+			&i.ChangedAt,
 		); err != nil {
 			return nil, err
 		}
