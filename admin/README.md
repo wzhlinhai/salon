@@ -10,6 +10,8 @@ npm run lint           # 检查代码格式
 npm run typecheck
 ```
 
+多个 worktree 并行开发时，每个 worktree 设置不同的 `DEV_DB_PORT`、`DEV_BACKEND_ADDR`、`DEV_ADMIN_PORT`，即可各用一套数据库容器、后端和前端（容器名随端口变化，形如 `salon-dev-db-55432`）。`.dev/e2e.json`、pid 和日志都在各自 worktree 的 `.dev` 下。`scripts/gate.py` 的重任务锁按 worktree 各一把，不跨 worktree 互斥；同时运行重任务仍会争用 CPU 和 Docker。
+
 - 接口类型 `app/utils/api.d.ts` 由 `npm run generate:api` 生成，不要手改。后端接口有变化时重新生成并提交。
 - 页面用 `definePageMeta({ permission: '...' })` 声明所需权限。导航只显示有权限的页面，直接访问会跳到无权限页。权限以后端检查为准，页面只是隐藏入口。
 - 生产环境用 `NUXT_PUBLIC_API_BASE` 指定后端地址。

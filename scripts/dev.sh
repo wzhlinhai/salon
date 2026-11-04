@@ -7,6 +7,7 @@
 #   scripts/dev.sh status  显示各部分是否在运行
 #
 # 环境变量：DEV_DB_PORT、DEV_BACKEND_ADDR、DEV_ADMIN_PORT、DEV_WAIT_SECONDS（每一步最多等多少秒，默认 60）。
+# 数据库容器名为 salon-dev-db-$DB_PORT，随 DEV_DB_PORT 变化。
 #
 # 进程的 pid 和日志在 .dev/ 下。停止进程只按 pid 文件里的进程组，不按名字匹配。
 # 启动前拒绝接管其他进程占用的端口；健康检查同时确认记录的服务进程仍在运行。
@@ -14,8 +15,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 STATE="$ROOT/.dev"
-DB_CONTAINER=salon-dev-db
 DB_PORT="${DEV_DB_PORT:-55432}"
+DB_CONTAINER="salon-dev-db-$DB_PORT"
 BACKEND_ADDR="${DEV_BACKEND_ADDR:-127.0.0.1:8080}"
 ADMIN_PORT="${DEV_ADMIN_PORT:-3000}"
 OWNER_ACCOUNT=boss
@@ -180,7 +181,8 @@ up() {
     start_proc backend "$ROOT/backend" "${BACKEND_ADDR##*:}" "$STATE/salon" serve
   wait_for backend curl --max-time 2 -sf "http://$BACKEND_ADDR/healthz"
   if [ ! -d "$ROOT/admin/node_modules" ]; then (cd "$ROOT/admin" && npm install); fi
-  start_proc admin "$ROOT/admin" "$ADMIN_PORT" npx nuxt dev --host localhost --port "$ADMIN_PORT"
+  NUXT_DEV_API_TARGET="http://$BACKEND_ADDR/api" \
+    start_proc admin "$ROOT/admin" "$ADMIN_PORT" npx nuxt dev --host localhost --port "$ADMIN_PORT"
   wait_for admin curl --max-time 2 -sf "http://localhost:$ADMIN_PORT/"
   # e2e 测试从这里读取地址和老板账号（admin/e2e/env.ts）。
   printf '{"baseURL":"http://localhost:%s","owner":{"account":"%s","password":"%s"}}\n' \
