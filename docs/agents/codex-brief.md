@@ -13,7 +13,8 @@ node ~/.claude/skills/codex-delegate/scripts/relay.mjs --brief .dev/codex/<task>
 - Read-only reviews use `--read-only --ignore-user-config` instead. The sandbox cannot write files there, so a review brief asks for the findings in the final message.
 - The thread id for a `--session` resume is `threadId` in `<out-dir>/result.json`; save it to `.dev/codex/<task>/thread.txt`.
 - While a read-only review is running, do not run mutchecks or other edits in the same worktree: the reviewer reads whatever is on disk, and a temporary mutation shows up as a finding.
-- Before dispatching, run `scripts/dev.sh down` and confirm ports 8080 and 3000 are free (`ss -ltnp | grep -E ':8080 |:3000 '`). The sandbox cannot see processes started outside it: a sandboxed `dev.sh down` deletes their pid files without stopping them, leaving orphans that block the next `dev.sh up`.
+- Before dispatching, run `scripts/dev.sh down` and confirm ports 8080 and 3000 are free (`ss -ltnp | grep -E ':8080 |:3000 '`). In a non-main worktree, first set that worktree's own three `DEV_*` variables and check those ports instead. The sandbox cannot see processes started outside it: a sandboxed `dev.sh down` deletes their pid files without stopping them, leaving orphans that block the next `dev.sh up`.
+- On merge, discard this side of every conflict in generated artifacts such as `api.d.ts`, `openapi.json`, and `dbgen/*`, then rerun `sqlc generate` / `npm run generate:api`; never hand-merge them. When migration numbers conflict, the later merger renames to the next free number and reruns the migration tests.
 
 ## Brief skeleton
 
