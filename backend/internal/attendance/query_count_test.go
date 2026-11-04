@@ -18,6 +18,7 @@ func (c *queryCounter) TraceQueryStart(ctx context.Context, _ *pgx.Conn, _ pgx.T
 	c.count.Add(1)
 	return ctx
 }
+
 func (*queryCounter) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
 
 func TestAttendanceQueryCount(t *testing.T) {

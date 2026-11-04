@@ -49,6 +49,176 @@ func (q *Queries) AddStaffShift(ctx context.Context, arg AddStaffShiftParams) (S
 	return i, err
 }
 
+const attendanceApprovals = `-- name: AttendanceApprovals :many
+SELECT tenant_id, store_id, id, staff_id, business_date, reason, approved_by, approved_at, revoked_by, revoked_at FROM attendance_approvals WHERE store_id = $1 AND business_date BETWEEN $2 AND $3
+`
+
+type AttendanceApprovalsParams struct {
+	StoreID  uuid.UUID
+	FirstDay pgtype.Date
+	LastDay  pgtype.Date
+}
+
+func (q *Queries) AttendanceApprovals(ctx context.Context, arg AttendanceApprovalsParams) ([]AttendanceApproval, error) {
+	rows, err := q.db.Query(ctx, attendanceApprovals, arg.StoreID, arg.FirstDay, arg.LastDay)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AttendanceApproval
+	for rows.Next() {
+		var i AttendanceApproval
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ID,
+			&i.StaffID,
+			&i.BusinessDate,
+			&i.Reason,
+			&i.ApprovedBy,
+			&i.ApprovedAt,
+			&i.RevokedBy,
+			&i.RevokedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const attendancePunches = `-- name: AttendancePunches :many
+SELECT tenant_id, store_id, id, staff_id, at, business_date, source, reason, created_by, created_at, voided_by, voided_at, void_reason FROM punches WHERE store_id = $1 AND business_date BETWEEN $2 AND $3 ORDER BY at, id
+`
+
+type AttendancePunchesParams struct {
+	StoreID  uuid.UUID
+	FirstDay pgtype.Date
+	LastDay  pgtype.Date
+}
+
+func (q *Queries) AttendancePunches(ctx context.Context, arg AttendancePunchesParams) ([]Punch, error) {
+	rows, err := q.db.Query(ctx, attendancePunches, arg.StoreID, arg.FirstDay, arg.LastDay)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Punch
+	for rows.Next() {
+		var i Punch
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ID,
+			&i.StaffID,
+			&i.At,
+			&i.BusinessDate,
+			&i.Source,
+			&i.Reason,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.VoidedBy,
+			&i.VoidedAt,
+			&i.VoidReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const createAttendanceApproval = `-- name: CreateAttendanceApproval :one
+INSERT INTO attendance_approvals (tenant_id,store_id,staff_id,business_date,reason,approved_by)
+VALUES ($1,$2,$3,$4,$5,$6) RETURNING tenant_id, store_id, id, staff_id, business_date, reason, approved_by, approved_at, revoked_by, revoked_at
+`
+
+type CreateAttendanceApprovalParams struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	StaffID      uuid.UUID
+	BusinessDate pgtype.Date
+	Reason       string
+	ApprovedBy   uuid.UUID
+}
+
+func (q *Queries) CreateAttendanceApproval(ctx context.Context, arg CreateAttendanceApprovalParams) (AttendanceApproval, error) {
+	row := q.db.QueryRow(ctx, createAttendanceApproval,
+		arg.TenantID,
+		arg.StoreID,
+		arg.StaffID,
+		arg.BusinessDate,
+		arg.Reason,
+		arg.ApprovedBy,
+	)
+	var i AttendanceApproval
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.StaffID,
+		&i.BusinessDate,
+		&i.Reason,
+		&i.ApprovedBy,
+		&i.ApprovedAt,
+		&i.RevokedBy,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
+const createPunch = `-- name: CreatePunch :one
+INSERT INTO punches (tenant_id,store_id,staff_id,at,business_date,source,reason,created_by)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING tenant_id, store_id, id, staff_id, at, business_date, source, reason, created_by, created_at, voided_by, voided_at, void_reason
+`
+
+type CreatePunchParams struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	StaffID      uuid.UUID
+	At           pgtype.Timestamptz
+	BusinessDate pgtype.Date
+	Source       string
+	Reason       string
+	CreatedBy    uuid.UUID
+}
+
+func (q *Queries) CreatePunch(ctx context.Context, arg CreatePunchParams) (Punch, error) {
+	row := q.db.QueryRow(ctx, createPunch,
+		arg.TenantID,
+		arg.StoreID,
+		arg.StaffID,
+		arg.At,
+		arg.BusinessDate,
+		arg.Source,
+		arg.Reason,
+		arg.CreatedBy,
+	)
+	var i Punch
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.StaffID,
+		&i.At,
+		&i.BusinessDate,
+		&i.Source,
+		&i.Reason,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.VoidedBy,
+		&i.VoidedAt,
+		&i.VoidReason,
+	)
+	return i, err
+}
+
 const createShift = `-- name: CreateShift :one
 INSERT INTO shifts (tenant_id,store_id,name,start_time,end_time,created_by)
 VALUES ($1,$2,$3,$4,$5,$6) RETURNING tenant_id, store_id, id, name, start_time, end_time, active, created_by, created_at
@@ -113,6 +283,93 @@ func (q *Queries) DeactivateShift(ctx context.Context, arg DeactivateShiftParams
 	return i, err
 }
 
+const getAttendanceApproval = `-- name: GetAttendanceApproval :one
+SELECT tenant_id, store_id, id, staff_id, business_date, reason, approved_by, approved_at, revoked_by, revoked_at FROM attendance_approvals WHERE store_id = $1 AND id = $2
+`
+
+type GetAttendanceApprovalParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) GetAttendanceApproval(ctx context.Context, arg GetAttendanceApprovalParams) (AttendanceApproval, error) {
+	row := q.db.QueryRow(ctx, getAttendanceApproval, arg.StoreID, arg.ID)
+	var i AttendanceApproval
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.StaffID,
+		&i.BusinessDate,
+		&i.Reason,
+		&i.ApprovedBy,
+		&i.ApprovedAt,
+		&i.RevokedBy,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
+const getPunch = `-- name: GetPunch :one
+SELECT tenant_id, store_id, id, staff_id, at, business_date, source, reason, created_by, created_at, voided_by, voided_at, void_reason FROM punches WHERE store_id = $1 AND id = $2
+`
+
+type GetPunchParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) GetPunch(ctx context.Context, arg GetPunchParams) (Punch, error) {
+	row := q.db.QueryRow(ctx, getPunch, arg.StoreID, arg.ID)
+	var i Punch
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.StaffID,
+		&i.At,
+		&i.BusinessDate,
+		&i.Source,
+		&i.Reason,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.VoidedBy,
+		&i.VoidedAt,
+		&i.VoidReason,
+	)
+	return i, err
+}
+
+const latestPunch = `-- name: LatestPunch :one
+SELECT tenant_id, store_id, id, staff_id, at, business_date, source, reason, created_by, created_at, voided_by, voided_at, void_reason FROM punches WHERE store_id = $1 AND staff_id = $2 AND voided_at IS NULL ORDER BY at DESC, id DESC LIMIT 1
+`
+
+type LatestPunchParams struct {
+	StoreID uuid.UUID
+	StaffID uuid.UUID
+}
+
+func (q *Queries) LatestPunch(ctx context.Context, arg LatestPunchParams) (Punch, error) {
+	row := q.db.QueryRow(ctx, latestPunch, arg.StoreID, arg.StaffID)
+	var i Punch
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.StaffID,
+		&i.At,
+		&i.BusinessDate,
+		&i.Source,
+		&i.Reason,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.VoidedBy,
+		&i.VoidedAt,
+		&i.VoidReason,
+	)
+	return i, err
+}
+
 const listShifts = `-- name: ListShifts :many
 SELECT tenant_id, store_id, id, name, start_time, end_time, active, created_by, created_at FROM shifts WHERE store_id = $1 ORDER BY active DESC, start_time, name
 `
@@ -147,6 +404,63 @@ func (q *Queries) ListShifts(ctx context.Context, storeID uuid.UUID) ([]Shift, e
 	return items, nil
 }
 
+const lockAttendanceApproval = `-- name: LockAttendanceApproval :one
+SELECT tenant_id, store_id, id, staff_id, business_date, reason, approved_by, approved_at, revoked_by, revoked_at FROM attendance_approvals WHERE store_id = $1 AND id = $2 FOR NO KEY UPDATE
+`
+
+type LockAttendanceApprovalParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) LockAttendanceApproval(ctx context.Context, arg LockAttendanceApprovalParams) (AttendanceApproval, error) {
+	row := q.db.QueryRow(ctx, lockAttendanceApproval, arg.StoreID, arg.ID)
+	var i AttendanceApproval
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.StaffID,
+		&i.BusinessDate,
+		&i.Reason,
+		&i.ApprovedBy,
+		&i.ApprovedAt,
+		&i.RevokedBy,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
+const lockPunch = `-- name: LockPunch :one
+SELECT tenant_id, store_id, id, staff_id, at, business_date, source, reason, created_by, created_at, voided_by, voided_at, void_reason FROM punches WHERE store_id = $1 AND id = $2 FOR NO KEY UPDATE
+`
+
+type LockPunchParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) LockPunch(ctx context.Context, arg LockPunchParams) (Punch, error) {
+	row := q.db.QueryRow(ctx, lockPunch, arg.StoreID, arg.ID)
+	var i Punch
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.StaffID,
+		&i.At,
+		&i.BusinessDate,
+		&i.Source,
+		&i.Reason,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.VoidedBy,
+		&i.VoidedAt,
+		&i.VoidReason,
+	)
+	return i, err
+}
+
 const lockShift = `-- name: LockShift :one
 SELECT tenant_id, store_id, id, name, start_time, end_time, active, created_by, created_at FROM shifts WHERE store_id = $1 AND id = $2 FOR NO KEY UPDATE
 `
@@ -173,6 +487,21 @@ func (q *Queries) LockShift(ctx context.Context, arg LockShiftParams) (Shift, er
 	return i, err
 }
 
+const lockStaffAttendance = `-- name: LockStaffAttendance :exec
+SELECT pg_advisory_xact_lock(hashtextextended(($1::uuid)::text || '/attendance/' || ($2::uuid)::text, 0))
+`
+
+type LockStaffAttendanceParams struct {
+	StoreID uuid.UUID
+	StaffID uuid.UUID
+}
+
+// 同一员工的所有考勤写入先排队，稳定去重与核准检查所读的打卡集合。
+func (q *Queries) LockStaffAttendance(ctx context.Context, arg LockStaffAttendanceParams) error {
+	_, err := q.db.Exec(ctx, lockStaffAttendance, arg.StoreID, arg.StaffID)
+	return err
+}
+
 const lockStaffShifts = `-- name: LockStaffShifts :exec
 SELECT pg_advisory_xact_lock(hashtextextended(($1::uuid)::text || '/staff_shift', 0))
 `
@@ -181,6 +510,40 @@ SELECT pg_advisory_xact_lock(hashtextextended(($1::uuid)::text || '/staff_shift'
 func (q *Queries) LockStaffShifts(ctx context.Context, storeID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, lockStaffShifts, storeID)
 	return err
+}
+
+const revokeAttendanceApproval = `-- name: RevokeAttendanceApproval :one
+UPDATE attendance_approvals SET revoked_by = $1, revoked_at = $2 WHERE store_id = $3 AND id = $4 RETURNING tenant_id, store_id, id, staff_id, business_date, reason, approved_by, approved_at, revoked_by, revoked_at
+`
+
+type RevokeAttendanceApprovalParams struct {
+	RevokedBy *uuid.UUID
+	RevokedAt pgtype.Timestamptz
+	StoreID   uuid.UUID
+	ID        uuid.UUID
+}
+
+func (q *Queries) RevokeAttendanceApproval(ctx context.Context, arg RevokeAttendanceApprovalParams) (AttendanceApproval, error) {
+	row := q.db.QueryRow(ctx, revokeAttendanceApproval,
+		arg.RevokedBy,
+		arg.RevokedAt,
+		arg.StoreID,
+		arg.ID,
+	)
+	var i AttendanceApproval
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.StaffID,
+		&i.BusinessDate,
+		&i.Reason,
+		&i.ApprovedBy,
+		&i.ApprovedAt,
+		&i.RevokedBy,
+		&i.RevokedAt,
+	)
+	return i, err
 }
 
 const shareShift = `-- name: ShareShift :one
@@ -266,4 +629,43 @@ func (q *Queries) StaffShiftHistory(ctx context.Context, storeID uuid.UUID) ([]S
 		return nil, err
 	}
 	return items, nil
+}
+
+const voidPunch = `-- name: VoidPunch :one
+UPDATE punches SET voided_by = $1, voided_at = $2, void_reason = $3 WHERE store_id = $4 AND id = $5 RETURNING tenant_id, store_id, id, staff_id, at, business_date, source, reason, created_by, created_at, voided_by, voided_at, void_reason
+`
+
+type VoidPunchParams struct {
+	VoidedBy   *uuid.UUID
+	VoidedAt   pgtype.Timestamptz
+	VoidReason *string
+	StoreID    uuid.UUID
+	ID         uuid.UUID
+}
+
+func (q *Queries) VoidPunch(ctx context.Context, arg VoidPunchParams) (Punch, error) {
+	row := q.db.QueryRow(ctx, voidPunch,
+		arg.VoidedBy,
+		arg.VoidedAt,
+		arg.VoidReason,
+		arg.StoreID,
+		arg.ID,
+	)
+	var i Punch
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.StaffID,
+		&i.At,
+		&i.BusinessDate,
+		&i.Source,
+		&i.Reason,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.VoidedBy,
+		&i.VoidedAt,
+		&i.VoidReason,
+	)
+	return i, err
 }

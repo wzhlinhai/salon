@@ -10,6 +10,19 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/money"
 )
 
+type AttendanceApproval struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	ID           uuid.UUID
+	StaffID      uuid.UUID
+	BusinessDate pgtype.Date
+	Reason       string
+	ApprovedBy   uuid.UUID
+	ApprovedAt   pgtype.Timestamptz
+	RevokedBy    *uuid.UUID
+	RevokedAt    pgtype.Timestamptz
+}
+
 type AuditLog struct {
 	ID         uuid.UUID
 	TenantID   uuid.UUID
@@ -515,6 +528,22 @@ type Position struct {
 	Name      string
 	Active    bool
 	CreatedAt pgtype.Timestamptz
+}
+
+type Punch struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	ID           uuid.UUID
+	StaffID      uuid.UUID
+	At           pgtype.Timestamptz
+	BusinessDate pgtype.Date
+	Source       string
+	Reason       string
+	CreatedBy    uuid.UUID
+	CreatedAt    pgtype.Timestamptz
+	VoidedBy     *uuid.UUID
+	VoidedAt     pgtype.Timestamptz
+	VoidReason   *string
 }
 
 type RedPacket struct {

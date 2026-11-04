@@ -151,15 +151,11 @@ func (h history) upcoming(d Def, day time.Time) []inForce {
 
 // Effective 返回门店在营业日 day 生效的设置。
 func Effective(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, day time.Time) (Rules, error) {
-	h, err := loadHistory(ctx, q, storeID, nil)
+	rules, err := EffectiveDays(ctx, q, storeID, []time.Time{day})
 	if err != nil {
 		return Rules{}, err
 	}
-	values := make(map[string]json.RawMessage, len(Catalogue))
-	for _, d := range Catalogue {
-		values[d.Key] = h.at(d, day).value
-	}
-	return rulesFrom(values), nil
+	return rules[0], nil
 }
 
 // BusinessDate 返回时刻 t 属于哪一个营业日。
@@ -275,6 +271,30 @@ func BusinessDates(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, tim
 			return nil, err
 		}
 		out = append(out, businessDate(t, end))
+	}
+	return out, nil
+}
+
+// AttendanceGraceMinutes 返回判断迟到、早退的宽限分钟数。
+func (r Rules) AttendanceGraceMinutes() int {
+	var v int
+	r.decode(KeyAttendanceGraceMinutes, &v)
+	return v
+}
+
+// EffectiveDays 一次加载设置历史，按输入顺序返回各营业日执行的设置。
+func EffectiveDays(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, days []time.Time) ([]Rules, error) {
+	h, err := loadHistory(ctx, q, storeID, nil)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Rules, len(days))
+	for i, day := range days {
+		values := make(map[string]json.RawMessage, len(Catalogue))
+		for _, d := range Catalogue {
+			values[d.Key] = h.at(d, day).value
+		}
+		out[i] = rulesFrom(values)
 	}
 	return out, nil
 }

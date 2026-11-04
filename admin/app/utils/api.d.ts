@@ -72,6 +72,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/add_punch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 给员工补卡 */
+        post: operations["add_punch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/add_safety_label": {
         parameters: {
             query?: never;
@@ -100,6 +117,23 @@ export interface paths {
         put?: never;
         /** 更正卡并追加调整单 */
         post: operations["adjust_card"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/approve_attendance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 核准当天全部考勤异常 */
+        post: operations["approve_attendance"];
         delete?: never;
         options?: never;
         head?: never;
@@ -185,6 +219,23 @@ export interface paths {
         put?: never;
         /** 一张或几张挂单一起结账并登记支付 */
         post: operations["checkout_orders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/clock_in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 本人打卡 */
+        post: operations["clock_in"];
         delete?: never;
         options?: never;
         head?: never;
@@ -548,6 +599,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/get_staff_attendance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看员工月度考勤 */
+        post: operations["get_staff_attendance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/get_store": {
         parameters: {
             query?: never;
@@ -593,6 +661,23 @@ export interface paths {
         put?: never;
         /** 卖或送红包给顾客 */
         post: operations["issue_red_packet"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_attendance_summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看本店月度考勤统计 */
+        post: operations["list_attendance_summary"];
         delete?: never;
         options?: never;
         head?: never;
@@ -899,6 +984,23 @@ export interface paths {
         put?: never;
         /** 列出本店的员工级别（例如首席、总监） */
         post: operations["list_levels"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_my_attendance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看本人月度考勤 */
+        post: operations["list_my_attendance"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1432,6 +1534,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/revoke_attendance_approval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 撤销考勤核准 */
+        post: operations["revoke_attendance_approval"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/revoke_red_packet": {
         parameters: {
             query?: never;
@@ -1789,6 +1908,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/void_punch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 作废补卡 */
+        post: operations["void_punch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1806,6 +1942,12 @@ export interface components {
             month: string;
             name: string;
             note?: string;
+            staff_id: string;
+        };
+        AddPunchInput: {
+            /** Format: date-time */
+            at: string;
+            reason: string;
             staff_id: string;
         };
         AddSafetyLabelInput: {
@@ -1829,9 +1971,64 @@ export interface components {
             principal?: string;
             reason: string;
         };
+        ApproveAttendanceInput: {
+            /** Format: date */
+            business_date: string;
+            reason: string;
+            staff_id: string;
+        };
         AssignCustomerResponsibleInput: {
             customer_ids: string[];
             staff_id?: string;
+        };
+        AttendanceApproval: {
+            /** Format: date-time */
+            approved_at: string;
+            approved_by: components["schemas"]["Ref"];
+            /** Format: date */
+            business_date: string;
+            id: string;
+            reason: string;
+            revoked_at: string | null;
+            revoked_by: components["schemas"]["Ref"] | null;
+            staff: components["schemas"]["Ref"];
+        };
+        AttendanceDay: {
+            approval: components["schemas"]["AttendanceApproval"] | null;
+            /** Format: date */
+            business_date: string;
+            clock_in: string | null;
+            clock_out: string | null;
+            early: boolean;
+            /** Format: int64 */
+            early_minutes: number;
+            late: boolean;
+            /** Format: int64 */
+            late_minutes: number;
+            missing: boolean;
+            punches: components["schemas"]["Punch"][];
+            shift: components["schemas"]["Shift"] | null;
+        };
+        AttendanceSummary: {
+            active: boolean;
+            /** Format: int64 */
+            approved_count: number;
+            /** Format: int64 */
+            attendance_days: number;
+            /** Format: int64 */
+            early_count: number;
+            /** Format: int64 */
+            early_minutes: number;
+            /** Format: int64 */
+            late_count: number;
+            /** Format: int64 */
+            late_minutes: number;
+            /** Format: int64 */
+            missing_count: number;
+            staff: components["schemas"]["Ref"];
+        };
+        AttendanceSummaryList: {
+            entries: components["schemas"]["AttendanceSummary"][];
         };
         BaseSalary: {
             amount: string;
@@ -2116,6 +2313,7 @@ export interface components {
             label: string;
             value: string;
         };
+        ClockInInput: Record<string, never>;
         Commission: {
             amount: string;
             /** Format: date */
@@ -2507,6 +2705,10 @@ export interface components {
              */
             date?: string;
         };
+        GetStaffAttendanceInput: {
+            month: string;
+            staff_id: string;
+        };
         GetStoreInput: Record<string, never>;
         GrantSpec: {
             /** @description 权限名，见 list_permissions */
@@ -2621,6 +2823,9 @@ export interface components {
             level_id: string;
             price: string;
         };
+        ListAttendanceSummaryInput: {
+            month: string;
+        };
         ListAuditLogInput: {
             /** @description 上一页最后一条的 ID，只看比它更早的；不填为最新一页 */
             before_id?: string;
@@ -2703,6 +2908,9 @@ export interface components {
         };
         ListInput: Record<string, never>;
         ListItemsInput: Record<string, never>;
+        ListMyAttendanceInput: {
+            month: string;
+        };
         ListOpenOrdersInput: Record<string, never>;
         ListPayrollAdjustmentsInput: {
             before_id?: string;
@@ -3097,6 +3305,24 @@ export interface components {
             card_id?: string;
             order_id: string;
         };
+        Punch: {
+            /** Format: date-time */
+            at: string;
+            /** Format: date */
+            business_date: string;
+            /** Format: date-time */
+            created_at: string;
+            created_by: components["schemas"]["Ref"];
+            id: string;
+            reason: string;
+            /** @enum {string} */
+            source: "self" | "manual";
+            staff: components["schemas"]["Ref"];
+            void_reason: string | null;
+            voided: boolean;
+            voided_at: string | null;
+            voided_by: components["schemas"]["Ref"] | null;
+        };
         QuoteItemPriceInput: {
             card_type_id?: string;
             item_id: string;
@@ -3213,6 +3439,9 @@ export interface components {
             order_item_id: string;
             price: string;
             reason: string;
+        };
+        RevokeAttendanceApprovalInput: {
+            id: string;
         };
         RevokeRedPacketInput: {
             reason: string;
@@ -3406,6 +3635,11 @@ export interface components {
             position?: components["schemas"]["Ref"];
             roles: components["schemas"]["Ref"][];
         };
+        StaffAttendance: {
+            days: components["schemas"]["AttendanceDay"][];
+            month: string;
+            summary: components["schemas"]["AttendanceSummary"];
+        };
         StaffBaseSalary: {
             active: boolean;
             base_salary: components["schemas"]["BaseSalary"];
@@ -3568,6 +3802,10 @@ export interface components {
             order_id: string;
             reason: string;
         };
+        VoidPunchInput: {
+            id: string;
+            reason: string;
+        };
         VoidWindow: {
             /** Format: date-time */
             expires_at: string;
@@ -3717,6 +3955,39 @@ export interface operations {
             };
         };
     };
+    add_punch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddPunchInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Punch"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     add_safety_label: {
         parameters: {
             query?: never;
@@ -3770,6 +4041,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Card"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    approve_attendance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveAttendanceInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceApproval"];
                 };
             };
             /** @description Error */
@@ -3935,6 +4239,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    clock_in: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClockInInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Punch"];
                 };
             };
             /** @description Error */
@@ -4641,6 +4978,39 @@ export interface operations {
             };
         };
     };
+    get_staff_attendance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GetStaffAttendanceInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffAttendance"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     get_store: {
         parameters: {
             query?: never;
@@ -4727,6 +5097,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RedPacket"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_attendance_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListAttendanceSummaryInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceSummaryList"];
                 };
             };
             /** @description Error */
@@ -5321,6 +5724,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LevelList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_my_attendance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListMyAttendanceInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffAttendance"];
                 };
             };
             /** @description Error */
@@ -6357,6 +6793,39 @@ export interface operations {
             };
         };
     };
+    revoke_attendance_approval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevokeAttendanceApprovalInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceApproval"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     revoke_red_packet: {
         parameters: {
             query?: never;
@@ -7037,6 +7506,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Order"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    void_punch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoidPunchInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Punch"];
                 };
             };
             /** @description Error */
