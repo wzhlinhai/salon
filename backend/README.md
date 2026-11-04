@@ -110,7 +110,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 ## 操作日志
 
 - `audit_log` 只追加，`salon_app` 只有 SELECT 和 INSERT 权限。日志与业务操作在同一事务里写入，任何一步失败都会一起回滚。同一员工或角色的修改用行锁排队，在读取改前快照前加锁，日志的改前才接得上前一次的改后。
-- 当前记录角色的新建、修改、删除，以及员工的新建、档案修改、登录设置、停用、恢复和角色分配；保留改前改后，删除角色时还保留持有员工的 ID、姓名。`list_audit_log` 需要操作日志权限，可按目标 ID 查询。每条日志记录目标种类及其关联顾客；`list_audit_log` 按调用者的顾客查看范围过滤关联顾客的日志。底薪（`base_salary`，目标为员工 ID）、加减项（`payroll_adjustment`，目标为加减项 ID）、工资锁月（`payroll_month`，目标为提成结算 ID，均不关联顾客）、提成方案（`commission_scheme`，不关联顾客）、卡类型、开卡、充值、开单、加项目、去掉项目、换岗位员工、改价、合并单、结账已记录日志。新增关联顾客的种类（例如单）时，添加接收顾客 ID 的构造函数，并扩展迁移中的 CHECK 列表。
+- 当前记录角色的新建、修改、删除，以及员工的新建、档案修改、登录设置、停用、恢复和角色分配；保留改前改后，删除角色时还保留持有员工的 ID、姓名。`list_audit_log` 需要操作日志权限，可按目标 ID 查询。每条日志记录目标种类及其关联顾客；`list_audit_log` 按调用者的顾客查看范围过滤关联顾客的日志。班次（`shift`）、员工班次（`staff_shift`，目标为员工 ID）均不关联顾客，只需要操作日志权限即可查看；底薪（`base_salary`，目标为员工 ID）、加减项（`payroll_adjustment`，目标为加减项 ID）、工资锁月（`payroll_month`，目标为提成结算 ID，均不关联顾客）、提成方案（`commission_scheme`，不关联顾客）、卡类型、开卡、充值、开单、加项目、去掉项目、换岗位员工、改价、合并单、结账已记录日志。新增关联顾客的种类（例如单）时，添加接收顾客 ID 的构造函数，并扩展迁移中的 CHECK 列表。
 - 新操作在成功路径末尾用同一个 `env` 调用 `audit.Record`，传入不含密码或密码哈希的返回值视图；新建前、删除后传 nil。手机号字段的 JSON 键名必须是 `phone`，`audit.Record` 遇到别的键名会拒绝写入（读取时只按这个键名打码）。
 
 ## 共享修改与引用检查
@@ -211,3 +211,13 @@ list_payroll_months、get_payroll 是 Read / AIDirect，lock_payroll_month 是 W
 锁定顺序：payrollmonth.Lock（咨询锁 → Check → GetSettlement 检查未锁定 → settings.BusinessDate 检查月份已结束 → 检查前月已锁定，开店月免此项 → 插入锁定记录并返回 Settlement）→ commission.Settle 保存每笔提成结果 → 现算工资表（此时 Commissions 读刚存下的提成，工资表各列与提成明细出自同一份数据）→ 保存工资表行 → 读回锁定视图 → audit.Record。所有步骤同一事务，失败全部回滚并提示，可重试，无后台补算。锁定不可撤销；错误以后月加减项更正。加减项不复制，原表在锁后禁止增加或删除。底薪与加减项写操作在检查开店月和锁定状态前取同一咨询锁，锁定期间请求会等待，提交后再检查锁定。
 
 锁月日志 action 为 lock_payroll_month，目标 payroll_month，无关联顾客，before 为 nil，after 为返回的完整工资表；list_audit_log 额外要求 payroll.manage 才能读取。三个接口、提成查询与工资日志不输出顾客或手机号；工资接口的整店工资视图由 payroll.manage 授权，提成查询仍需 performance.view 并保留 self 范围。
+
+## 考勤
+
+`internal/attendance` 保存考勤（attendance）的班次（shift）与员工班次（staff shift）。`shifts` 保存名称、分钟精度的上班和下班时间、创建人和时刻；上班早于下班，不跨午夜。班次不能改名称、时间或删除，要改时间就新建班次并改指定。salon_app 只有 SELECT、INSERT 和列级 UPDATE (active)，没有整表 UPDATE 或 DELETE。
+
+`staff_shifts` 只追加员工、可空班次、生效日期、保存人与时刻，salon_app 仅有 SELECT、INSERT。两表都有租户 RLS、tenant_id/id 唯一键和租户组合外键。StaffShiftTimelines 一次查询加载本店全部指定及关联班次时间，批量读取姓名，返回按员工分组的 inforce.Timeline。某营业日取 effective_from 不晚于当天的最大者，同日取 saved_at 最新、再取 ID 最大者；upcoming 每个未来生效日只取最后保存的一条，按日期升序。NULL 表示从该日起无班次，也参与生效选择。停用的班次不能再指定，已有指定仍执行直到改指定；离职员工仍列出。
+
+set_staff_shift 的锁序为门店咨询锁（store_id + /staff_shift）→ settings.BusinessDate(env.Now) 检查生效日不早于今天 → staff.LockAssignable 的员工 FOR SHARE → 本店班次 FOR SHARE 并检查在用 → 读取生效日的改前视图 → 追加记录 → 日志。咨询锁使日志的 before 接上前一次 after；deactivate_shift 以 FOR NO KEY UPDATE 锁班次后检查并更新 active，与指定的共享锁互斥。
+
+create_shift、deactivate_shift、set_staff_shift 是 Write / AIDraft，list_shifts、list_staff_shifts 是 Read / AIDirect，五个操作均要求 attendance.manage。list_shifts 在用优先，再按上班时间、名称排序；list_staff_shifts 包含在职及离职员工，按编号、ID 排序。姓名与历史均按批查询。三条写路径与 audit.Record 同事务，目标分别为 shift（班次 ID）和 staff_shift（员工 ID），记录完整 before/after；首次 before 为 nil。视图与日志不含顾客或手机号，考勤日志只需操作日志权限，不附加工资或设置权限。此步没有打卡接口。
