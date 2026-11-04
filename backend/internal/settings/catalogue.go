@@ -74,6 +74,7 @@ const (
 	KeyPerformanceRatioCountGift     = "performance_ratio_count_gift"
 	KeyCardRefundBonus               = "card_refund_bonus"
 	KeyCardRefundFeePercent          = "card_refund_fee_percent"
+	KeyAttendanceGraceMinutes        = "attendance_grace_minutes"
 	KeyVoidWindowMinutes             = "void_window_minutes"
 	KeyBusinessHours                 = "business_hours"
 	KeyBusinessDayEnd                = "business_day_end"
@@ -119,6 +120,7 @@ var Catalogue = []Def{
 		Key: KeyVoidWindowMinutes, Label: "撤单授权窗口", Kind: KindInteger, Min: 0, Max: 60,
 		Hint: "开启后，撤单前要本人重新输入登录密码开一个窗口，窗口内只有本人能撤，过期要重开；单位分钟，0 为关闭", Default: 0,
 	},
+	{Key: KeyAttendanceGraceMinutes, Label: "考勤宽限分钟", Kind: KindInteger, Min: 0, Max: 60, Default: 0, Hint: "上班晚于、下班早于班次时间多少分钟以内不算迟到、早退"},
 	{
 		Key: KeyBusinessHours, Label: "营业时段", Kind: KindTimeRange,
 		Hint:    "每天开门和关门的时间，预约等按它限制",

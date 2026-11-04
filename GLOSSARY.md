@@ -509,3 +509,43 @@ _Avoid_: 排班 — 排班指按天指定，本项目 P0 不做按天排班。
 **员工班次**:
 员工从某个营业日起执行的班次，每次指定追加记录，旧记录不改不删。空班次表示从该日起没有班次；同日以最后保存的指定为准。
 _English_: staff shift（StaffShift）
+
+**打卡**:
+员工登录自己的账号记录时刻，按营业日归属；首张为上班，末张为下班，中间仅记录。
+_English_: punch（Punch；操作 clock_in）
+
+**补卡**:
+店长为员工补记的打卡，必须写原因，可写原因作废；历史保留。
+_English_: manual punch（source manual）
+
+**宽限分钟数**:
+班次上、下班时间允许的分钟偏差，只决定是否计迟到、早退，不从异常分钟数中扣除。
+_English_: grace minutes
+
+**迟到**:
+上班卡的分钟晚于执行班次上班时间加宽限分钟数。
+_English_: late
+
+**早退**:
+下班卡的分钟早于执行班次下班时间减宽限分钟数。
+_English_: early leave
+
+**缺卡**:
+已经过完的营业日恰好只有一张有效打卡；当天和无卡日不算。
+_English_: missing punch
+
+**核准**:
+店长写原因核准某员工某营业日全部异常，核准后异常不计入统计，可以撤销；补卡不撤销已有核准。
+_English_: approval（AttendanceApproval）
+
+**出勤天数**:
+月内至少有一张有效打卡的营业日数，不判断缺勤。
+_English_: attendance days
+
+**考勤统计**:
+按员工列出月内出勤天数、迟到与早退次数和分钟数、缺卡次数和已核准次数。
+_English_: attendance summary（AttendanceSummary）
+
+**考勤明细**:
+某营业日全部打卡、执行班次和原始异常，已作废卡也保留展示。
+_English_: attendance day（AttendanceDay）

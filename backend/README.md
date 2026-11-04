@@ -70,11 +70,12 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 ## 门店设置（ADR-0002）
 
 - 设置值支持 time（时刻）、time_range（时段）、choice（Options 中的字符串）和 integer（Min/Max 内的非负整数）。`member_price_rule` 默认会员价优先，也可取较低价；`points_per_recharge_yuan` 为每积一分所需充值本金元数，默认 0（不积分），范围 0–100000。开卡、充值和升级补差价按当日规则积分，赠送金、转余额和调整余额不积分。`guest_count_split` 默认将客次记给第一个岗位的员工，也可选择单上员工均分，当天可生效。`performance_split` 默认按岗位比例分多人业绩，也可选择均分，项目没设岗位比例时均分；`performance_ratio_*` 为八种支付方式各自的 0–100 业绩比例，本金、现金、银联、微信、支付宝和挂账默认 100%，赠送金和红包默认 0%；购买次数、赠送次数的耗卡业绩比例默认分别为 100%、0%，均可当天生效。退卡赠送金 `card_refund_bonus` 默认不退、作废，可选择扣回未被撤单退回的消费赠送金；`card_refund_fee_percent` 为 0–100 的退款手续费百分比，默认 0，当天可生效。撤单授权窗口 `void_window_minutes` 为 0（默认关闭）或 1–60 分钟，当天可生效。
+- 考勤宽限分钟 `attendance_grace_minutes` 默认 0，范围 0–60，当天可生效，仅决定迟到、早退是否计异常。
 - 设置项在 `internal/settings` 的 `Catalogue` 里声明：名称、值的形式、系统默认做法和校验。新的业务规则（例如各项业务的做法选择）在这里加一项，再给 `Rules` 加一个读取它的方法。
 - 每次修改都在 `setting_changes` 追加一行：改前、改后、生效日期、修改人、修改时间。`salon_app` 只有 SELECT 和 INSERT 权限。某个营业日执行的值，取生效日期不晚于这一天的最大者，同一生效日期取最后保存的一次（修改时间，再按 ID）；没有修改，或者改成了"恢复默认"，就用系统当前的默认做法。这条选法只在 `internal/inforce` 写一份，门店设置、提成方案版本和底薪共用，各类历史提供自己的保存顺序（提成方案按版本号；设置和底薪按保存时间、ID），SQL 只按门店读出历史；设置的"恢复默认"只在 settings 的 `resolve` 换成目录默认值。生效日期不能早于今天；划分营业日的设置（`fromTomorrow`，例如营业日结束时间）最早明天生效。同一项设置的修改用咨询锁排队，改前值才接得上前一次的改后值。
 - 业务模块不直接查设置表：
   - `settings.BusinessDate` 算一个时刻属于哪个营业日，营业日 D 在第二天"营业日结束时间"截止，结束时间取 D 那天执行的设置；
-  - `settings.Effective` 取某个营业日执行的设置；
+  - `settings.Effective` 取某个营业日执行的设置；`settings.EffectiveDays` 一次加载设置历史，按输入顺序返回各营业日同规则选择的设置；
   - 单据下单时调用 `settings.TakeSnapshot`，把返回的 `Snapshot.ID` 存进单据，开单直接使用同时返回的 `BusinessDate` 和 `Rules`，之后计算用 `settings.LoadSnapshot` 读回的规则，这样以后改设置不会影响已下的单；撤单授权窗口是例外，按调用时的营业日用 `settings.Effective` 读取。内容相同的快照共用一行。
 
 ## 卡
@@ -110,7 +111,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 ## 操作日志
 
 - `audit_log` 只追加，`salon_app` 只有 SELECT 和 INSERT 权限。日志与业务操作在同一事务里写入，任何一步失败都会一起回滚。同一员工或角色的修改用行锁排队，在读取改前快照前加锁，日志的改前才接得上前一次的改后。
-- 当前记录角色的新建、修改、删除，以及员工的新建、档案修改、登录设置、停用、恢复和角色分配；保留改前改后，删除角色时还保留持有员工的 ID、姓名。`list_audit_log` 需要操作日志权限，可按目标 ID 查询。每条日志记录目标种类及其关联顾客；`list_audit_log` 按调用者的顾客查看范围过滤关联顾客的日志。班次（`shift`）、员工班次（`staff_shift`，目标为员工 ID）均不关联顾客，只需要操作日志权限即可查看；底薪（`base_salary`，目标为员工 ID）、加减项（`payroll_adjustment`，目标为加减项 ID）、工资锁月（`payroll_month`，目标为提成结算 ID，均不关联顾客）、提成方案（`commission_scheme`，不关联顾客）、卡类型、开卡、充值、开单、加项目、去掉项目、换岗位员工、改价、合并单、结账已记录日志。新增关联顾客的种类（例如单）时，添加接收顾客 ID 的构造函数，并扩展迁移中的 CHECK 列表。
+- 当前记录角色的新建、修改、删除，以及员工的新建、档案修改、登录设置、停用、恢复和角色分配；保留改前改后，删除角色时还保留持有员工的 ID、姓名。`list_audit_log` 需要操作日志权限，可按目标 ID 查询。每条日志记录目标种类及其关联顾客；`list_audit_log` 按调用者的顾客查看范围过滤关联顾客的日志。班次（`shift`）、员工班次（`staff_shift`，目标为员工 ID）、补卡与作废补卡（`punch`，目标为打卡 ID）、考勤核准与撤销（`attendance_approval`，目标为核准 ID）均不关联顾客，只需要操作日志权限即可查看；底薪（`base_salary`，目标为员工 ID）、加减项（`payroll_adjustment`，目标为加减项 ID）、工资锁月（`payroll_month`，目标为提成结算 ID，均不关联顾客）、提成方案（`commission_scheme`，不关联顾客）、卡类型、开卡、充值、开单、加项目、去掉项目、换岗位员工、改价、合并单、结账已记录日志。员工本人打卡（`clock_in`）不写操作日志，打卡行本身即记录。新增关联顾客的种类（例如单）时，添加接收顾客 ID 的构造函数，并扩展迁移中的 CHECK 列表。
 - 新操作在成功路径末尾用同一个 `env` 调用 `audit.Record`，传入不含密码或密码哈希的返回值视图；新建前、删除后传 nil。手机号字段的 JSON 键名必须是 `phone`，`audit.Record` 遇到别的键名会拒绝写入（读取时只按这个键名打码）。
 
 ## 共享修改与引用检查
@@ -197,7 +198,6 @@ set_base_salary、add_payroll_adjustment、delete_payroll_adjustment 是 Write /
 
 两表有租户 RLS、tenant_id/id 唯一约束，以及门店、员工、保存人或创建人的租户组合外键。salon_app 对 staff_base_salaries 仅有 SELECT、INSERT，对 payroll_adjustments 仅有 SELECT、INSERT、DELETE，没有 UPDATE。月份在数据库约束为月首；计薪方式、金额、名称、备注也有 CHECK。
 
-
 `commission_settlements` 每店每月唯一，月份 CHECK 为月首，记录 settled_by / settled_at。`settled_commissions` 保存每笔提成的金额、冲回标识、解释和排序时刻 unit_created_at；月份与营业日所在月有 CHECK，同一店的提成 ID 唯一，结算通过 (tenant_id, store_id, settlement_id, month) → commission_settlements (tenant_id, store_id, id, month) 的组合外键同时绑定租户、门店与月份；payroll_lines 通过 (tenant_id, store_id, settlement_id) → commission_settlements (tenant_id, store_id, id) 绑定结算所属门店。父表只保留这两组供引用的组合唯一键，去掉不含门店的旧组合唯一键。两表与 `payroll_lines` 均有租户 RLS、门店与员工的租户组合外键，仅授予 salon_app SELECT、INSERT，不允许 UPDATE 或 DELETE。
 
 Commissions 通过一条 commission_settlements LEFT JOIN settled_commissions 语句同时读取范围内的结算月份与已保存明细，以同一 READ COMMITTED 语句快照构造锁定月份集合、替换对应月的现算结果，避免锁定事务在两个查询之间提交时重复拼入现算与存储明细。空结算月仍返回月份标记，员工过滤置于 JOIN 条件中，即使该员工没有保存明细也不丢失锁定标记。未锁定月仍现算。恢复 explanation 和 unit_created_at，统一按原日期范围过滤、按营业日 / createdAt / ID 倒序排序，再批量解析员工、岗位与项目的当前名称。金额、方案版本、计算解释固定；名字可更新。list_commissions 的来源筛选、合计、分页及本人范围继续在同一输出路径执行，锁定不会扩大数据范围。
@@ -220,4 +220,23 @@ list_payroll_months、get_payroll 是 Read / AIDirect，lock_payroll_month 是 W
 
 set_staff_shift 的锁序为门店咨询锁（store_id + /staff_shift）→ settings.BusinessDate(env.Now) 检查生效日不早于今天 → staff.LockAssignable 的员工 FOR SHARE → 本店班次 FOR SHARE 并检查在用 → 读取生效日的改前视图 → 追加记录 → 日志。咨询锁使日志的 before 接上前一次 after；deactivate_shift 以 FOR NO KEY UPDATE 锁班次后检查并更新 active，与指定的共享锁互斥。
 
-create_shift、deactivate_shift、set_staff_shift 是 Write / AIDraft，list_shifts、list_staff_shifts 是 Read / AIDirect，五个操作均要求 attendance.manage。list_shifts 在用优先，再按上班时间、名称排序；list_staff_shifts 包含在职及离职员工，按编号、ID 排序。姓名与历史均按批查询。三条写路径与 audit.Record 同事务，目标分别为 shift（班次 ID）和 staff_shift（员工 ID），记录完整 before/after；首次 before 为 nil。视图与日志不含顾客或手机号，考勤日志只需操作日志权限，不附加工资或设置权限。此步没有打卡接口。
+create_shift、deactivate_shift、set_staff_shift 是 Write / AIDraft，list_shifts、list_staff_shifts 是 Read / AIDirect，五个操作均要求 attendance.manage。list_shifts 在用优先，再按上班时间、名称排序；list_staff_shifts 包含在职及离职员工，按编号、ID 排序。姓名与历史均按批查询。三条写路径与 audit.Record 同事务，目标分别为 shift（班次 ID）和 staff_shift（员工 ID），记录完整 before/after；首次 before 为 nil。视图与日志不含顾客或手机号，考勤日志只需操作日志权限，不附加工资或设置权限。
+
+`punches` 保存打卡时刻、按 settings.BusinessDate(at) 归属的营业日、来源 self/manual、原因、创建人与可空的作废信息。self 必须无原因且创建人为本人；manual 原因非空且不超过 100 字。作废三列必须同空或同非空，只能作废 manual，作废原因也须非空且不超过 100 字。`attendance_approvals` 保存员工营业日的核准原因、核准人与时刻，撤销人和时刻必须同空或同非空；部分唯一索引保证每人每天最多一个有效核准。两表有租户 RLS、tenant_id/id 唯一键、门店和员工的租户组合外键。salon_app 只有 SELECT、INSERT，punches 仅可 UPDATE (voided_by, voided_at, void_reason)，attendance_approvals 仅可 UPDATE (revoked_by, revoked_at)，均无 DELETE。
+
+所有打卡与核准写入先拿每员工咨询锁 LockStaffAttendance（store_id + /attendance/ + staff_id）。clock_in 锁后查最新有效打卡，距 env.Now 不足 60 秒返回原记录，正好 60 秒可再打。本人打卡不写操作日志，打卡行本身即记录。add_punch 锁后拒绝未来时刻，再用 staff.LockReferences 对本店员工 FOR SHARE（允许离职），插入时按时刻计算营业日。void_punch/revoke_attendance_approval 先按本店 ID 无锁读取获知员工，再拿咨询锁，再 FOR NO KEY UPDATE 锁记录、检查状态、更新。approve_attendance 先咨询锁，再员工 FOR SHARE，再检查没有有效核准且当天当前有异常，最后插入。原因均 trim，补卡、作废、核准必填原因；撤销核准无需原因。员工自己打的卡不能作废，作废补卡仍保留并返回。经理写入与日志同事务，audit targets 为 punch、attendance_approval，不关联顾客，不附加工资或设置日志过滤。
+
+统计每次读取现算，不存结果，不检查开店月下限或工资锁月。按 business_date 所在 YYYY-MM 用 payrollmonth.Month 取月首末。月份打卡（包括已作废）、核准历史、StaffShiftTimelines、settings.EffectiveDays、员工姓名均批量查询，查询数不随员工、天数或打卡数增长。出勤为至少一张有效卡；营业日首张有效卡为上班，至少两张时末张为下班，中间仅记录。比较在 settings.Location 下截去秒；迟到为上班分钟晚于班次上班加宽限，分钟数从班次上班算；早退为下班分钟早于班次下班减宽限，分钟数到班次下班算。宽限仅决定是否计异常。过去营业日恰一张有效卡算缺卡，并仍检查迟到、没有下班卡因此不算早退；今天尚未结束不缺卡，无卡不算缺卡，不判断缺勤。无执行班次也能打卡、计出勤，不算迟到早退。明细按营业日升序，含有任何打卡（包括仅作废卡）或有效核准的日子；当天打卡按时刻、ID 排序。有效核准覆盖当天全部异常，明细仍显示原始异常，统计排除迟到、早退、缺卡次数及分钟，已核准次数按有效核准的营业日计。补卡或作废后重新计算，已有核准保留。统计员工按编号、ID 排序，包含在职员工及月内有任何打卡或核准历史的离职员工。
+
+| 操作 | 权限 | AI |
+| --- | --- | --- |
+| clock_in | attendance.clock | AINone |
+| add_punch | attendance.manage | AIDraft |
+| void_punch | attendance.manage | AIDraft |
+| approve_attendance | attendance.manage | AIDraft |
+| revoke_attendance_approval | attendance.manage | AIDraft |
+| list_my_attendance | attendance.clock | AIDirect |
+| get_staff_attendance | attendance.manage | AIDirect |
+| list_attendance_summary | attendance.manage | AIDirect |
+
+list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本店在职及离职员工；list_attendance_summary 返回本店月度统计。写操作返回的员工引用及日志均只含姓名与标识，不含手机号。已离职账号由登录鉴权拒绝本人打卡，历史查询与店长补卡仍可用。P0 不校验位置或 Wi-Fi。

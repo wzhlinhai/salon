@@ -287,3 +287,11 @@ func ShiftTarget(id uuid.UUID) Target { return Target{kind: "shift", id: id} }
 
 // StaffShiftTarget 创建以员工标识为目标的员工班次日志目标。
 func StaffShiftTarget(staffID uuid.UUID) Target { return Target{kind: "staff_shift", id: staffID} }
+
+// PunchTarget 创建不关联顾客的打卡日志目标。
+func PunchTarget(id uuid.UUID) Target { return Target{kind: "punch", id: id} }
+
+// AttendanceApprovalTarget 创建不关联顾客的考勤核准日志目标。
+func AttendanceApprovalTarget(id uuid.UUID) Target {
+	return Target{kind: "attendance_approval", id: id}
+}

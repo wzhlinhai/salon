@@ -6,6 +6,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
+
 	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 

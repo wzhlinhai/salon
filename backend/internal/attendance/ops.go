@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/wzhlinhai/salon/backend/internal/audit"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
@@ -19,8 +20,9 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 
-// Register 声明班次与员工班次的五个管理操作。
+// Register 声明班次、打卡、核准及考勤查询操作。
 func Register(r *ops.Registry) {
+	registerPunches(r)
 	ops.Register(r, ops.Operation[CreateShiftInput, Shift]{Name: "create_shift", Summary: "新建班次", Kind: ops.Write, Permission: perm.AttendanceManage, AI: ops.AIDraft, Handle: createShift})
 	ops.Register(r, ops.Operation[DeactivateShiftInput, Shift]{Name: "deactivate_shift", Summary: "停用班次", Kind: ops.Write, Permission: perm.AttendanceManage, AI: ops.AIDraft, Handle: deactivateShift})
 	ops.Register(r, ops.Operation[ListShiftsInput, ShiftList]{Name: "list_shifts", Summary: "列出本店全部班次", Kind: ops.Read, Permission: perm.AttendanceManage, AI: ops.AIDirect, Handle: listShifts})

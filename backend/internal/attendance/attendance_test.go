@@ -3,7 +3,14 @@ package attendance_test
 import (
 	"encoding/json"
 	"errors"
+	"net/http/httptest"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/google/uuid"
+
 	"github.com/wzhlinhai/salon/backend/internal/attendance"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
@@ -11,11 +18,6 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/optest"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
-	"net/http/httptest"
-	"reflect"
-	"strings"
-	"testing"
-	"time"
 )
 
 func reject(t *testing.T, r optest.Result, status int, detail string) {
@@ -32,6 +34,7 @@ func entries(t *testing.T, r optest.Result) []any {
 	}
 	return r.Body["entries"].([]any)
 }
+
 func auditEntry(t *testing.T, s *optest.Shop, kind, action string, id uuid.UUID, before, after any) {
 	t.Helper()
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
@@ -59,10 +62,12 @@ func clock(s *optest.Shop) time.Time {
 	s.SetNow(now)
 	return settings.Date(now)
 }
+
 func create(t *testing.T, s *optest.Shop, name, start, end string) map[string]any {
 	t.Helper()
 	return s.Call(t, s.Owner, "create_shift", map[string]any{"name": name, "start_time": start, "end_time": end}, 200).Body
 }
+
 func assign(t *testing.T, s *optest.Shop, id uuid.UUID, shift any, day time.Time) map[string]any {
 	t.Helper()
 	args := map[string]any{"staff_id": id, "effective_from": day.Format(settings.DateLayout)}
@@ -71,6 +76,7 @@ func assign(t *testing.T, s *optest.Shop, id uuid.UUID, shift any, day time.Time
 	}
 	return s.Call(t, s.Owner, "set_staff_shift", args, 200).Body
 }
+
 func view(t *testing.T, s *optest.Shop, day time.Time) []map[string]any {
 	t.Helper()
 	var out []map[string]any
