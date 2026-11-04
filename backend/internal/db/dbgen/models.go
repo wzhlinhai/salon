@@ -598,6 +598,18 @@ type SettledCommission struct {
 	UnitCreatedAt pgtype.Timestamptz
 }
 
+type Shift struct {
+	TenantID  uuid.UUID
+	StoreID   uuid.UUID
+	ID        uuid.UUID
+	Name      string
+	StartTime pgtype.Time
+	EndTime   pgtype.Time
+	Active    bool
+	CreatedBy uuid.UUID
+	CreatedAt pgtype.Timestamptz
+}
+
 type Staff struct {
 	ID            uuid.UUID
 	TenantID      uuid.UUID
@@ -633,6 +645,17 @@ type StaffRole struct {
 	StoreID  uuid.UUID
 	StaffID  uuid.UUID
 	RoleID   uuid.UUID
+}
+
+type StaffShift struct {
+	TenantID      uuid.UUID
+	StoreID       uuid.UUID
+	ID            uuid.UUID
+	StaffID       uuid.UUID
+	ShiftID       *uuid.UUID
+	EffectiveFrom pgtype.Date
+	SavedBy       uuid.UUID
+	SavedAt       pgtype.Timestamptz
 }
 
 type Store struct {

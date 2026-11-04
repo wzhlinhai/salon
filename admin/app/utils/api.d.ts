@@ -327,6 +327,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/create_shift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 新建班次 */
+        post: operations["create_shift"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/create_staff": {
         parameters: {
             query?: never;
@@ -338,6 +355,23 @@ export interface paths {
         put?: never;
         /** 新建员工档案 */
         post: operations["create_staff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/deactivate_shift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 停用班次 */
+        post: operations["deactivate_shift"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1041,6 +1075,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_shifts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 列出本店全部班次 */
+        post: operations["list_shifts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_staff": {
         parameters: {
             query?: never;
@@ -1069,6 +1120,23 @@ export interface paths {
         put?: never;
         /** 列出本店员工名称和在职状态，用于选择负责人 */
         post: operations["list_staff_options"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_staff_shifts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看营业日每位员工执行的班次 */
+        post: operations["list_staff_shifts"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1494,6 +1562,23 @@ export interface paths {
         put?: never;
         /** 设置员工的角色 */
         post: operations["set_staff_roles"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/set_staff_shift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 从营业日起指定员工班次 */
+        post: operations["set_staff_shift"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2255,6 +2340,11 @@ export interface components {
             name: string;
             permissions: components["schemas"]["GrantSpec"][];
         };
+        CreateShiftInput: {
+            end_time: string;
+            name: string;
+            start_time: string;
+        };
         CreateStaffInput: {
             /** @description 级别，见 list_levels */
             level_id?: string;
@@ -2316,6 +2406,9 @@ export interface components {
         };
         CustomerSourceList: {
             items: components["schemas"]["CustomerSource"][];
+        };
+        DeactivateShiftInput: {
+            id: string;
         };
         Debt: {
             amount: string;
@@ -2648,7 +2741,12 @@ export interface components {
             /** Format: int32 */
             limit?: number;
         };
+        ListShiftsInput: Record<string, never>;
         ListStaffInput: Record<string, never>;
+        ListStaffShiftsInput: {
+            /** Format: date */
+            date: string;
+        };
         LogList: {
             entries: components["schemas"]["Entry"][];
         };
@@ -3214,6 +3312,15 @@ export interface components {
             role_ids: string[];
             staff_id: string;
         };
+        SetStaffShiftInput: {
+            /**
+             * Format: date
+             * @description 从哪一个营业日开始执行，不能早于今天
+             */
+            effective_from: string;
+            shift_id?: string | null;
+            staff_id: string;
+        };
         Setting: {
             /** @description 系统默认做法 */
             default: unknown;
@@ -3268,6 +3375,19 @@ export interface components {
             business_date: string;
             settings: components["schemas"]["Setting"][];
         };
+        Shift: {
+            active: boolean;
+            /** Format: date-time */
+            created_at: string;
+            created_by: components["schemas"]["Ref"];
+            end_time: string;
+            id: string;
+            name: string;
+            start_time: string;
+        };
+        ShiftList: {
+            entries: components["schemas"]["Shift"][];
+        };
         Staff: {
             /** @description 是否在职 */
             active: boolean;
@@ -3304,6 +3424,24 @@ export interface components {
         };
         StaffOptionList: {
             staff: components["schemas"]["StaffOption"][];
+        };
+        StaffShift: {
+            /** Format: date */
+            effective_from: string;
+            /** Format: date-time */
+            saved_at: string;
+            saved_by: components["schemas"]["Ref"];
+            shift: components["schemas"]["Shift"] | null;
+            staff: components["schemas"]["Ref"];
+        };
+        StaffShiftEntry: {
+            active: boolean;
+            current: components["schemas"]["StaffShift"] | null;
+            staff: components["schemas"]["Ref"];
+            upcoming: components["schemas"]["StaffShift"][];
+        };
+        StaffShiftList: {
+            entries: components["schemas"]["StaffShiftEntry"][];
         };
         Store: {
             /** Format: date-time */
@@ -4074,6 +4212,39 @@ export interface operations {
             };
         };
     };
+    create_shift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateShiftInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Shift"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     create_staff: {
         parameters: {
             query?: never;
@@ -4094,6 +4265,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Staff"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    deactivate_shift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeactivateShiftInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Shift"];
                 };
             };
             /** @description Error */
@@ -5460,6 +5664,39 @@ export interface operations {
             };
         };
     };
+    list_shifts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListShiftsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     list_staff: {
         parameters: {
             query?: never;
@@ -5513,6 +5750,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffOptionList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_staff_shifts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListStaffShiftsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffShiftList"];
                 };
             };
             /** @description Error */
@@ -6338,6 +6608,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Staff"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    set_staff_shift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetStaffShiftInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffShift"];
                 };
             };
             /** @description Error */

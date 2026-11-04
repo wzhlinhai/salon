@@ -281,3 +281,9 @@ func PayrollAdjustmentTarget(id uuid.UUID) Target { return Target{kind: "payroll
 
 // PayrollMonthTarget 创建不关联顾客的工资锁月日志目标。
 func PayrollMonthTarget(id uuid.UUID) Target { return Target{kind: "payroll_month", id: id} }
+
+// ShiftTarget 创建不关联顾客的班次日志目标。
+func ShiftTarget(id uuid.UUID) Target { return Target{kind: "shift", id: id} }
+
+// StaffShiftTarget 创建以员工标识为目标的员工班次日志目标。
+func StaffShiftTarget(staffID uuid.UUID) Target { return Target{kind: "staff_shift", id: staffID} }
