@@ -214,3 +214,7 @@ sql:
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money
               type: Change
+          - column: collections.amount
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount

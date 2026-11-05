@@ -88,6 +88,12 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 结账、撤单的支付效果统一经过 `internal/payments`。
 
+`internal/collections` 管理统一收款对象。通道在启动时通过 `RegisterChannel` 注册，实现 `Channel` 的 Initiate、Query、Cancel、Refund、Reconcile；注册同时生成默认 on 的 `collection_channel_<code>` choice 设置（on/off）。现金和银联登记是同步登记通道，不调用支付机构；银联小票号通过结账支付的 `external_ref` 留存。结账按注册的 PaymentMethod 路由，每笔现金、银联支付在同一事务内生成一笔 succeeded 收款，以唯一的 order_payment_id 关联原支付；其余支付沿用原流程。停用只限制新发起，读取收款时营业日生效设置，不使用开单快照；已有收款仍可查询、撤销或退款。
+
+收款状态由一张转换表校验：pending → processing/succeeded/failed/cancelled，processing → succeeded/failed/cancelled，succeeded → refunded/cancelled，failed/cancelled/refunded 为终态。撤销和退款先按本店锁收款（FOR NO KEY UPDATE），再检查状态、调用通道、更新并追加事件和 collection 审计；退款原因不能为空。撤单在原有支付冲回后按登记顺序锁收款并撤销，任一步失败则整单回滚；已进入终态的收款会拒绝再次撤销。list_collections、get_collection 为 Read/AIDirect，cancel_collection、refund_collection 为 Write/AIDraft，均需要 payment.collect；视图和日志不关联顾客、不含顾客资料。
+
+Reconcile 按收款创建时刻的营业日、通道和当前状态汇总金额与笔数，营业日由 settings.BusinessDates 批量换算；它是查询当时的收款汇总，供日结保存快照，不是按退款发生日统计的资金流水。collections 仅可更新 status、updated_at、external_ref；collection_events 与 order_payments 都只追加。
+
 开单必须选择男客或女客、指定或非指定；未提供顾客时自动创建未识别顾客，由开单权限覆盖。开单保存规则快照和营业日，后续加项目读取快照规则。项目行保留添加时的项目名称，并复制项目岗位，允许必填岗位暂空；级别价来自第一个岗位的员工，没有员工或级别价时取标准价。多人贡献只在项目行记录一次价格，应收按项目行求和。
 
 锁按顾客 → 单 → 项目 → 按 UUID 排序的员工取得：已有顾客、项目和员工只检查状态，用 FOR SHARE；加项目在读改前视图前用 FOR NO KEY UPDATE 锁单。单仅授予 customer_id、status、merged_into、checkout_id 列的 UPDATE，顾客合并仍可改挂 customer_id。项目行和岗位保留原记录：项目行仅授予 order_id、价格、来源、级别、改价原因及去掉标记列的 UPDATE，岗位仅授予 staff_id 的 UPDATE；三张表都不允许 DELETE。

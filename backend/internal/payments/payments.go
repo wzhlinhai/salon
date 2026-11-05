@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wzhlinhai/salon/backend/internal/cards"
+	"github.com/wzhlinhai/salon/backend/internal/collections"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
@@ -15,6 +16,7 @@ import (
 
 // Input 是一笔计划支付及其支付方式所需字段。
 type Input struct {
+	ExternalRef                      *string
 	RedPacketID, OrderItemID, CardID *uuid.UUID
 	Method                           string
 	Amount                           money.Amount
@@ -131,6 +133,11 @@ func (p *Checkout) Record(ctx context.Context, checkoutID uuid.UUID, order dbgen
 				return err
 			}
 		}
+		if code, ok := collections.ForPayment(payment.Method); ok {
+			if _, err := collections.Initiate(ctx, env, code, order.ID, &paymentID, payment.Amount, payment.ExternalRef); err != nil {
+				return err
+			}
+		}
 		if payment.Method == "debt" {
 			if err := recordDebt(ctx, env, order, paymentID, payment, day); err != nil {
 				return err
@@ -182,6 +189,9 @@ func Reverse(ctx context.Context, env ops.Env, orderID, voidID uuid.UUID, day ti
 		if err := reverseRedPacket(ctx, env, packets[id], day); err != nil {
 			return err
 		}
+	}
+	if err := collections.CancelOrder(ctx, env, orderID); err != nil {
+		return err
 	}
 	return cards.Audit(ctx, env, "void_order", used)
 }

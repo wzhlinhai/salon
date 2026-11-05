@@ -18,6 +18,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/auth"
 	"github.com/wzhlinhai/salon/backend/internal/cards"
 	"github.com/wzhlinhai/salon/backend/internal/catalog"
+	"github.com/wzhlinhai/salon/backend/internal/collections"
 	"github.com/wzhlinhai/salon/backend/internal/commission"
 	"github.com/wzhlinhai/salon/backend/internal/customers"
 	"github.com/wzhlinhai/salon/backend/internal/debts"
@@ -79,6 +80,7 @@ func New(pool *pgxpool.Pool, cfg Config) (*echo.Echo, *ops.Registry) {
 	staff.Register(reg)
 	catalog.Register(reg)
 	orders.Register(reg)
+	collections.Register(reg)
 	performance.Register(reg)
 	commission.Register(reg)
 	payroll.Register(reg)

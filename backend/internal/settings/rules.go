@@ -298,3 +298,10 @@ func EffectiveDays(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, day
 	}
 	return out, nil
 }
+
+// CollectionChannelEnabled 返回该收款通道是否启用。
+func (r Rules) CollectionChannelEnabled(code string) bool {
+	var value string
+	r.decode("collection_channel_"+code, &value)
+	return value == "on"
+}
