@@ -2,7 +2,6 @@ package attendance_test
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http/httptest"
 	"reflect"
 	"strings"
@@ -303,9 +302,7 @@ func TestAttendancePermissionsAndAI(t *testing.T) {
 	before := dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "shifts", "staff_shifts", "audit_log")
 	for _, op := range []string{"create_shift", "deactivate_shift", "set_staff_shift"} {
 		r := s.AI(t, caller, op, inputs[op])
-		if !errors.Is(r.Err, ops.ErrDraftRequired) {
-			t.Fatal(r)
-		}
+		optest.RequireDraftCreated(t, r, dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "shifts", "staff_shifts", "audit_log") == before)
 	}
 	if got := dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "shifts", "staff_shifts", "audit_log"); got != before {
 		t.Fatal("AI changed data")

@@ -47,8 +47,8 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
   - AI：`Registry.Tools(caller)` 给出该员工能用的工具，参数 schema 取自同一份 OpenAPI 请求体；`Registry.CallTool` 用同一份 schema 校验参数。
 - `Env.Now` 是本次调用的时刻，由 Registry 的时钟在每次调用时读取一次，整个操作只用这一个时刻。
 - 权限检查只在 `ops` 里做：HTTP 和 AI 调用都经过同一条路径，先检查权限，再在调用者租户的事务里执行。操作处理函数里不再检查权限。
-- 写操作只能声明为 `AIDraft`（AI 调用只产生草稿）或 `AINone`（不向 AI 开放），声明为 AI 可直接执行时启动即失败。草稿（P0-29）实现之前，AI 调用写操作一律被拒绝。
-- 测试用 `optest` 对 HTTP 和 AI 两条路径跑同一组用例。草稿（P0-29）实现之前，写操作在 AI 路径上走不到业务规则（草稿类返回"需要草稿"，`AINone` 对 AI 不存在），所以写操作的业务规则只在 HTTP 路径上测，另用一个测试确认 AI 路径对这些写操作全部拒绝且数据不变。
+- 写操作只能声明为 `AIDraft`（AI 调用只产生草稿）或 `AINone`（不向 AI 开放），声明为 AI 可直接执行时启动即失败。AI 调用 `AIDraft` 时校验参数与本人权限，只创建待确认草稿，不执行业务写入。
+- 测试用 `optest` 对 HTTP 和 AI 两条路径跑同一组用例。写操作的业务规则在 HTTP 路径上测，另测 AI 路径对 `AIDraft` 创建草稿且业务数据不变，对 `AINone` 仍拒绝。
 
 ## 登录与权限（ADR-0009）
 
@@ -263,3 +263,13 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 已有 pending/unknown 必须先 Query，明确 unused 才用同键 Redeem；不确定结果保存 unknown 并返回 409。
 撤销先 Query 以恢复上次未知结果，调用平台的键为 revoke: 加原键；抖音超过平台核销时刻一小时拒绝。
 所有进程并发和崩溃恢复最终依赖 Provider 对同键动作的幂等保证；事务不跨外部调用持锁。
+
+## AI 草稿
+
+`internal/drafts` 保存草稿和只追加的事件。工具的可选 `summary`、`utterance` 为草稿元数据，从业务参数中分离后仍按原 schema 校验；也可用 `create_draft` 显式提供 operation、params、utterance、summary。原始参数不可改，修改记录保留前后参数。
+
+`list_drafts`、`get_draft` 仅返回本人发起或当前有目标操作权限的草稿；修改、拒绝采用相同范围。读、确认时惰性过期，期限用 `settings.BusinessDayDeadline` 按创建营业日的结束设置计算。确认锁草稿后重读状态、检查期限、通过 ops 统一路径重新检查确认人的权限及参数，再以确认人身份执行原 Handle；成功后与状态、事件一并提交。业务失败保留 pending。
+
+`draft_dual_confirm` 为 off/on，默认 off，可当天生效；on 时 adjust_card、void_order、refund_card、reprice_order_item 须另一人确认。`audit.Record` 自动把 `Env.DraftID` 写入 audit_log，日志输出 draft_id，get_draft 返回 audit_log_ids。
+
+草稿控制的 create/update/reject 声明为专用 `AIManageDraft`，仅这三个操作允许使用；它们只写草稿。`confirm_draft` 为 AINone，只允许人通过 HTTP 确认，AI 无法自行确认业务写入。

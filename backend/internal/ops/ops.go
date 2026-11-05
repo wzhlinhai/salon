@@ -36,6 +36,8 @@ const (
 	AIDraft
 	// AINone：不向 AI 开放，例如团购核销（ADR-0004）。
 	AINone
+	// AIManageDraft 仅修改草稿元数据，不执行业务写入。
+	AIManageDraft
 )
 
 // Channel 是调用来自哪里。
@@ -177,6 +179,9 @@ type Env struct {
 	Q     *dbgen.Queries
 	// Transact 为分阶段操作开启一个独立租户事务，回调之外不持有事务。
 	Transact func(context.Context, func(*dbgen.Queries) error) error
+
+	// DraftID 是本次确认执行关联的草稿。
+	DraftID *uuid.UUID
 }
 
 // Operation 声明一个业务操作。I 是参数，O 是返回值，二者都是普通的 JSON 结构体，

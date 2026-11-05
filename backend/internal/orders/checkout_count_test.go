@@ -2,7 +2,6 @@ package orders_test
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -260,9 +259,7 @@ func TestCountCheckoutAI(t *testing.T) {
 	o := s.customerOrder(line)
 	before := s.cardSnapshot()
 	r := s.AI(t, s.MustCaller(s.Owner), "checkout_orders", checkoutInput(checkoutOrder(o, countPayment(c, firstLine(o), "100"))))
-	if r.Status != 409 || !errors.Is(r.Err, ops.ErrDraftRequired) || before != s.cardSnapshot() {
-		t.Fatal(r)
-	}
+	optest.RequireDraftCreated(t, r, before == s.cardSnapshot())
 }
 func TestCountConsumeBusinessDate(t *testing.T) {
 	s := open(t)

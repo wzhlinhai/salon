@@ -76,12 +76,14 @@ const (
 	KeyCardRefundFeePercent          = "card_refund_fee_percent"
 	KeyAttendanceGraceMinutes        = "attendance_grace_minutes"
 	KeyVoidWindowMinutes             = "void_window_minutes"
+	KeyDraftDualConfirm              = "draft_dual_confirm"
 	KeyBusinessHours                 = "business_hours"
 	KeyBusinessDayEnd                = "business_day_end"
 )
 
 // Catalogue 是全部门店设置，顺序即设置页面的显示顺序。后续模块的业务规则在这里添加。
 var Catalogue = []Def{
+	{Key: KeyDraftDualConfirm, Label: "金额草稿双人确认", Kind: KindChoice, Default: "off", Options: []ChoiceOption{{Value: "off", Label: "不强制"}, {Value: "on", Label: "必须另一人确认"}}},
 	{
 		Key: KeyMemberPriceRule, Label: "会员价取价", Kind: KindChoice,
 		Hint: "持卡顾客做有级别价的项目时，会员价和级别价取哪个", Default: "member_first",

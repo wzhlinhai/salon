@@ -16,7 +16,7 @@ type Tool struct {
 	Description string
 	// Parameters 是参数的 JSON Schema，取自同一操作 HTTP 请求体的 OpenAPI schema，引用已展开。
 	Parameters map[string]any
-	// Draft 为 true 时是写操作，AI 只能起草，由人确认后执行（ADR-0004）。草稿实现前调用会被拒绝。
+	// Draft 为 true 时是写操作，AI 只能起草，由人确认后执行（ADR-0004）。调用只创建草稿。
 	Draft bool
 }
 
@@ -34,13 +34,13 @@ func (r *Registry) Tools(caller Caller) []Tool {
 		}
 		desc := e.summary
 		if e.ai == AIDraft {
-			// 草稿（P0-29）实现前，调用会被拒绝。如实告诉模型，让它请员工到页面上操作。
-			desc += "（这是写操作，目前还不能由 AI 执行：调用会被拒绝，请让员工在页面上完成）"
+			// 工具调用只创建草稿。
+			desc += "（只创建草稿，须由人确认后执行）"
 		}
 		tools = append(tools, Tool{
 			Name:        e.name,
 			Description: desc,
-			Parameters:  r.parametersSchema(e),
+			Parameters:  r.toolSchema(e),
 			Draft:       e.ai == AIDraft,
 		})
 	}
@@ -59,10 +59,35 @@ func (r *Registry) CallTool(ctx context.Context, caller Caller, name string, arg
 	if len(args) == 0 {
 		args = json.RawMessage("{}")
 	}
+	utterance, summary := "", e.summary
+	if e.ai == AIDraft {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(args, &fields); err != nil {
+			return nil, &ToolError{Messages: []string{"arguments must be an object"}}
+		}
+		for key, dst := range map[string]*string{"utterance": &utterance, "summary": &summary} {
+			if raw, ok := fields[key]; ok {
+				if string(raw) == "null" {
+					return nil, &ToolError{Messages: []string{key + " must be a string"}}
+				}
+				if err := json.Unmarshal(raw, dst); err != nil {
+					return nil, &ToolError{Messages: []string{key + " must be a string"}}
+				}
+				delete(fields, key)
+			}
+		}
+		args, _ = json.Marshal(fields)
+	}
 	if err := r.validateArgs(e, args); err != nil {
 		return nil, err
 	}
 	out, err := r.invoke(ctx, caller, e, func(ctx context.Context, env Env) (any, error) {
+		if e.ai == AIDraft {
+			if r.draftCreator == nil {
+				return nil, ErrDraftRequired
+			}
+			return r.draftCreator(ctx, env, name, args, utterance, summary)
+		}
 		return e.call(ctx, env, args)
 	})
 	if err != nil {
@@ -140,4 +165,14 @@ func (r *Registry) deref(v any, visiting map[string]bool) any {
 		return out
 	}
 	return v
+}
+
+func (r *Registry) toolSchema(e *entry) map[string]any {
+	schema := r.parametersSchema(e)
+	if e.ai == AIDraft {
+		props := schema["properties"].(map[string]any)
+		props["summary"] = map[string]any{"type": "string", "description": "面向人的草稿摘要"}
+		props["utterance"] = map[string]any{"type": "string", "description": "员工原始口述"}
+	}
+	return schema
 }

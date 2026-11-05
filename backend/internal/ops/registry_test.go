@@ -150,3 +150,45 @@ func assertPanics(t *testing.T, want string, f func()) {
 	}()
 	f()
 }
+
+func TestDraftControlModeIsReserved(t *testing.T) {
+	op := valid()
+	op.AI = ops.AIManageDraft
+	assertPanics(t, "draft control mode is reserved", func() { ops.Register(newRegistry(t), op) })
+	op.Name = "create_draft"
+	assertPanics(t, "draft control mode is reserved", func() { ops.Register(newRegistry(t), op) })
+	op.Kind = ops.Write
+	ops.Register(newRegistry(t), op)
+}
+
+func TestDraftToolSchemaAndValidation(t *testing.T) {
+	r := newRegistry(t)
+	ops.Register(r, ops.Operation[struct {
+		Name string `json:"name" minLength:"1"`
+	}, out]{Name: "new_thing", Summary: "创建", Kind: ops.Write, Permission: "thing.edit", AI: ops.AIDraft, Handle: func(context.Context, ops.Env, *struct {
+		Name string `json:"name" minLength:"1"`
+	}) (*out, error) {
+		t.Fatal("business handler called by AI")
+		return nil, nil
+	}})
+	c := ops.Caller{Permissions: map[ops.Permission]ops.Grant{"thing.edit": {}}}
+	tools := r.Tools(c)
+	if len(tools) != 1 || !tools[0].Draft || !strings.Contains(tools[0].Description, "只创建草稿") {
+		t.Fatal(tools)
+	}
+	props := tools[0].Parameters["properties"].(map[string]any)
+	for _, key := range []string{"name", "summary", "utterance"} {
+		if props[key] == nil {
+			t.Fatal(key, props)
+		}
+	}
+	// 无数据库也必须先返回 schema 错误，不能进入事务。
+	_, err := r.CallTool(context.Background(), c, "new_thing", []byte(`{"summary":"草稿"}`))
+	if ops.StatusOf(err) != 422 || !strings.Contains(err.Error(), "name") {
+		t.Fatal(err)
+	}
+	_, err = r.CallTool(context.Background(), c, "new_thing", []byte(`{"name":"a","utterance":3}`))
+	if ops.StatusOf(err) != 422 || !strings.Contains(err.Error(), "utterance must be a string") {
+		t.Fatal(err)
+	}
+}

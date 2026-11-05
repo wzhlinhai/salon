@@ -1,7 +1,6 @@
 package orders_test
 
 import (
-	"errors"
 	"reflect"
 	"slices"
 	"strings"
@@ -46,9 +45,7 @@ func TestSelectionRules(t *testing.T) {
 	s.paid(auto, payment("card", "100"))
 	before := s.cardSnapshot()
 	r := s.AI(t, s.MustCaller(s.Owner), "checkout_orders", checkoutInput(checkoutOrder(o, payment("card", "100"))))
-	if r.Status != 409 || !errors.Is(r.Err, ops.ErrDraftRequired) || before != s.cardSnapshot() {
-		t.Fatal(r)
-	}
+	optest.RequireDraftCreated(t, r, before == s.cardSnapshot())
 }
 
 func TestSelectionBalance(t *testing.T) {

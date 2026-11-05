@@ -417,12 +417,7 @@ func TestCountWritesPermissionAndAI(t *testing.T) {
 		if r := s.HTTP(t, &caller, tc.op, tc.in); r.Status != 403 || r.Detail() != "permission denied" {
 			t.Fatal(r)
 		}
-		if r := s.AI(t, s.MustCaller(s.Owner), tc.op, tc.in); r.Status == 200 || r.Detail() != "operation requires a draft confirmed by a person" {
-			t.Fatal(r)
-		}
-	}
-	if countSnapshot(t, s) != before {
-		t.Fatal("refused writes changed data")
+		optest.RequireDraftCreated(t, s.AI(t, s.MustCaller(s.Owner), tc.op, tc.in), countSnapshot(t, s) == before)
 	}
 	caller := s.MustCaller(s.Owner)
 	caller.Permissions = perm.All()

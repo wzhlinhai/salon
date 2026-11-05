@@ -388,10 +388,7 @@ func TestCustomerWritePermissionsAndAI(t *testing.T) {
 			}
 			assertEqual(t, snapshot(t, s), before)
 			r = s.AI(t, owner, tc.op, tc.args)
-			if r.Status == 200 || !strings.Contains(fmt.Sprint(r.Err), "draft") {
-				t.Fatalf("AI write = %+v", r)
-			}
-			assertEqual(t, snapshot(t, s), before)
+			optest.RequireDraftCreated(t, r, snapshot(t, s) == before)
 		})
 	}
 }

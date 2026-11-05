@@ -2,7 +2,6 @@ package orders_test
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -391,9 +390,7 @@ func TestCardCheckoutAIRefused(t *testing.T) {
 	o := s.customerOrder(s.checkoutLine())
 	before := s.cardSnapshot()
 	r := s.AI(t, s.MustCaller(s.Owner), "checkout_orders", checkoutInput(checkoutOrder(o, cardPayment(c, "100"))))
-	if r.Status != 409 || !errors.Is(r.Err, ops.ErrDraftRequired) || before != s.cardSnapshot() {
-		t.Fatal(r)
-	}
+	optest.RequireDraftCreated(t, r, before == s.cardSnapshot())
 }
 
 func TestCardCheckoutRecordedPriceAndLowest(t *testing.T) {

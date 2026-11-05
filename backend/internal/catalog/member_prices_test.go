@@ -255,12 +255,7 @@ func TestMemberPriceWritePermissionsAndAI(t *testing.T) {
 		if r := s.HTTPWithToken(t, token, tc.op, tc.args); r.Status != 403 || r.Detail() != "permission denied" {
 			t.Fatal(r)
 		}
-		if r := s.AI(t, s.MustCaller(s.Owner), tc.op, tc.args); r.Status != 409 || r.Detail() != "operation requires a draft confirmed by a person" {
-			t.Fatal(r)
-		}
-		if after := s.call("list_items", map[string]any{}, 200); !reflect.DeepEqual(before, after) {
-			t.Fatal("denied write changed member prices")
-		}
+		optest.RequireDraftCreated(t, s.AI(t, s.MustCaller(s.Owner), tc.op, tc.args), reflect.DeepEqual(before, s.call("list_items", map[string]any{}, 200)))
 	}
 }
 

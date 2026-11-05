@@ -3,7 +3,6 @@ package payroll_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -309,12 +308,7 @@ func TestPayrollPermissionsAndAI(t *testing.T) {
 	before := dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "staff_base_salaries", "payroll_adjustments", "audit_log")
 	for _, op := range []string{"set_base_salary", "add_payroll_adjustment", "delete_payroll_adjustment"} {
 		r := s.AI(t, caller, op, inputs[op])
-		if !errors.Is(r.Err, ops.ErrDraftRequired) {
-			t.Fatal(r)
-		}
-	}
-	if got := dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "staff_base_salaries", "payroll_adjustments", "audit_log"); got != before {
-		t.Fatal("AI changed data")
+		optest.RequireDraftCreated(t, r, dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "staff_base_salaries", "payroll_adjustments", "audit_log") == before)
 	}
 	for _, ch := range s.Channels() {
 		rows := entries(t, ch.Call(t, caller, "list_audit_log", map[string]any{}))

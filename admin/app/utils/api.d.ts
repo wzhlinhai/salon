@@ -259,6 +259,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/confirm_draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 由人复检权限并确认执行草稿 */
+        post: operations["confirm_draft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/create_card_type": {
         parameters: {
             query?: never;
@@ -321,6 +338,23 @@ export interface paths {
         put?: never;
         /** 新建顾客来源 */
         post: operations["create_customer_source"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/create_draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 创建待确认草稿 */
+        post: operations["create_draft"];
         delete?: never;
         options?: never;
         head?: never;
@@ -559,6 +593,23 @@ export interface paths {
         put?: never;
         /** 查看顾客档案和安全提醒 */
         post: operations["get_customer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/get_draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看草稿与留痕 */
+        post: operations["get_draft"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1001,6 +1052,23 @@ export interface paths {
         put?: never;
         /** 列出本门店的顾客来源 */
         post: operations["list_customer_sources"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看可见草稿 */
+        post: operations["list_drafts"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1568,6 +1636,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/reject_draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 拒绝草稿并保存原因 */
+        post: operations["reject_draft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/remove_order_item": {
         parameters: {
             query?: never;
@@ -1902,6 +1987,23 @@ export interface paths {
         put?: never;
         /** 修改或停用顾客来源 */
         post: operations["update_customer_source"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/update_draft_params": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 修改待确认草稿参数 */
+        post: operations["update_draft_params"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2682,6 +2784,14 @@ export interface components {
         CreateCustomerSourceInput: {
             name: string;
         };
+        CreateInput: {
+            operation: string;
+            params: {
+                [key: string]: unknown;
+            };
+            summary: string;
+            utterance: string;
+        };
         CreateItemInput: {
             discountable: boolean;
             /**
@@ -2806,6 +2916,46 @@ export interface components {
         DeletePayrollAdjustmentInput: {
             id: string;
         };
+        Detail: {
+            audit_log_ids: string[];
+            business_date: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            decided_at: string | null;
+            decided_by: string;
+            events: components["schemas"]["Event"][];
+            /** Format: date-time */
+            expires_at: string;
+            id: string;
+            initiator: string;
+            operation: string;
+            original_params: unknown;
+            params: unknown;
+            reject_reason: string | null;
+            status: string;
+            summary: string;
+            utterance: string;
+        };
+        Draft: {
+            business_date: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            decided_at: string | null;
+            decided_by: string;
+            /** Format: date-time */
+            expires_at: string;
+            id: string;
+            initiator: string;
+            operation: string;
+            original_params: unknown;
+            params: unknown;
+            reject_reason: string | null;
+            status: string;
+            summary: string;
+            utterance: string;
+        };
         Entry: {
             action: string;
             actor: components["schemas"]["Actor"];
@@ -2813,6 +2963,7 @@ export interface components {
             /** Format: date-time */
             at: string;
             before: unknown;
+            draft_id: string;
             id: string;
             target_id: string;
             target_kind: string;
@@ -2857,6 +3008,15 @@ export interface components {
              * @example https://example.com/errors/example
              */
             type: string;
+        };
+        Event: {
+            actor_id: string;
+            after_params: unknown;
+            /** Format: date-time */
+            at: string;
+            before_params: unknown;
+            id: string;
+            kind: string;
         };
         GetCollectionInput: {
             id: string;
@@ -2928,6 +3088,9 @@ export interface components {
             from_staff_id: string;
             to_staff_id: string;
         };
+        IDInput: {
+            id: string;
+        };
         IssueRedPacketInput: {
             customer_id: string;
             /** Format: date */
@@ -2995,6 +3158,9 @@ export interface components {
         LevelPrice: {
             level_id: string;
             price: string;
+        };
+        List: {
+            drafts: components["schemas"]["Draft"][];
         };
         ListAttendanceSummaryInput: {
             month: string;
@@ -3131,6 +3297,7 @@ export interface components {
             /** Format: date */
             date: string;
         };
+        List_draftsRequest: Record<string, never>;
         LogList: {
             entries: components["schemas"]["Entry"][];
         };
@@ -3595,6 +3762,10 @@ export interface components {
             incurred_on: string;
             note?: string;
         };
+        RejectInput: {
+            id: string;
+            reason: string;
+        };
         RemainingCounts: {
             /** Format: int32 */
             gift_remaining: number;
@@ -3940,6 +4111,12 @@ export interface components {
             active: boolean;
             id: string;
             name: string;
+        };
+        UpdateInput: {
+            id: string;
+            params: {
+                [key: string]: unknown;
+            };
         };
         UpdateItemInput: {
             active: boolean;
@@ -4513,6 +4690,39 @@ export interface operations {
             };
         };
     };
+    confirm_draft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IDInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Draft"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     create_card_type: {
         parameters: {
             query?: never;
@@ -4632,6 +4842,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CustomerSource"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    create_draft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Draft"];
                 };
             };
             /** @description Error */
@@ -5094,6 +5337,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Customer"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    get_draft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IDInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
                 };
             };
             /** @description Error */
@@ -5952,6 +6228,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CustomerSourceList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_drafts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["List_draftsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List"];
                 };
             };
             /** @description Error */
@@ -7054,6 +7363,39 @@ export interface operations {
             };
         };
     };
+    reject_draft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Draft"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     remove_order_item: {
         parameters: {
             query?: never;
@@ -7701,6 +8043,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CustomerSource"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    update_draft_params: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Draft"];
                 };
             };
             /** @description Error */

@@ -3,6 +3,8 @@ package catalog_test
 import (
 	"reflect"
 	"testing"
+
+	"github.com/wzhlinhai/salon/backend/internal/optest"
 )
 
 func TestPositionShares(t *testing.T) {
@@ -58,11 +60,6 @@ func TestPositionShares(t *testing.T) {
 		}
 		before := s.call("list_items", map[string]any{}, 200)
 		r := s.AI(t, s.MustCaller(s.Owner), op, args)
-		if r.Status != 409 || r.Detail() != "operation requires a draft confirmed by a person" {
-			t.Fatal(r)
-		}
-		if !reflect.DeepEqual(before, s.call("list_items", map[string]any{}, 200)) {
-			t.Fatal("AI changed data")
-		}
+		optest.RequireDraftCreated(t, r, reflect.DeepEqual(before, s.call("list_items", map[string]any{}, 200)))
 	}
 }

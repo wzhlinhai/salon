@@ -2,6 +2,7 @@ package optest
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
@@ -9,6 +10,22 @@ import (
 
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 )
+
+// RequireDraftCreated 断言 AI 对写操作的调用创建了一条 pending 草稿，而不是执行写操作。
+// unchanged 表示调用前后业务数据快照相同；草稿本身不在业务数据快照里。
+func RequireDraftCreated(t testing.TB, r Result, unchanged bool) map[string]any {
+	t.Helper()
+	if r.Status != http.StatusOK || r.Err != nil {
+		t.Fatalf("AI write should create a pending draft: status=%d body=%v err=%v", r.Status, r.Body, r.Err)
+	}
+	if r.Body["id"] == nil || r.Body["status"] != "pending" {
+		t.Fatalf("AI write should create a pending draft: %v", r.Body)
+	}
+	if !unchanged {
+		t.Fatal("AI write changed business data")
+	}
+	return r.Body
+}
 
 // Call 用凭证通过 HTTP 调用操作，want 为零时由调用方自行断言状态。
 func (a *App) Call(t testing.TB, token, op string, args any, want int) Result {

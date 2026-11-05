@@ -305,3 +305,24 @@ func (r Rules) CollectionChannelEnabled(code string) bool {
 	r.decode("collection_channel_"+code, &value)
 	return value == "on"
 }
+
+// DraftDualConfirm 返回金额草稿是否需要另一人确认。
+func (r Rules) DraftDualConfirm() bool {
+	var v string
+	r.decode(KeyDraftDualConfirm, &v)
+	return v == "on"
+}
+
+// BusinessDayDeadline 返回营业日 day 在次日的结束时刻，使用该营业日执行的设置。
+func BusinessDayDeadline(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, day time.Time) (time.Time, error) {
+	rules, err := Effective(ctx, q, storeID, day)
+	if err != nil {
+		return time.Time{}, err
+	}
+	clock, err := time.Parse("15:04", rules.BusinessDayEnd())
+	if err != nil {
+		return time.Time{}, err
+	}
+	next := day.AddDate(0, 0, 1)
+	return time.Date(next.Year(), next.Month(), next.Day(), clock.Hour(), clock.Minute(), 0, 0, Location), nil
+}

@@ -10,6 +10,38 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/money"
 )
 
+type AiDraft struct {
+	ID             uuid.UUID
+	TenantID       uuid.UUID
+	StoreID        uuid.UUID
+	Initiator      uuid.UUID
+	Operation      string
+	Utterance      string
+	Params         []byte
+	OriginalParams []byte
+	Summary        string
+	Status         string
+	BusinessDate   pgtype.Date
+	ExpiresAt      pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	DecidedAt      pgtype.Timestamptz
+	DecidedBy      *uuid.UUID
+	RejectReason   *string
+}
+
+type AiDraftEvent struct {
+	ID           uuid.UUID
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	DraftID      uuid.UUID
+	Ordinal      *int64
+	Kind         string
+	BeforeParams []byte
+	AfterParams  []byte
+	ActorID      uuid.UUID
+	At           pgtype.Timestamptz
+}
+
 type AttendanceApproval struct {
 	TenantID     uuid.UUID
 	StoreID      uuid.UUID
@@ -35,6 +67,7 @@ type AuditLog struct {
 	At         pgtype.Timestamptz
 	TargetKind string
 	CustomerID *uuid.UUID
+	DraftID    *uuid.UUID
 }
 
 type Card struct {

@@ -2,7 +2,6 @@ package cards_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -192,12 +191,7 @@ func TestCardSaleAI(t *testing.T) {
 		in any
 	}{{"open_card", s.opening()}, {"recharge_card", s.recharge(card["id"])}, {"upgrade_card", upgrade(card["id"], target["id"])}} {
 		r := s.AI(t, s.MustCaller(s.Owner), tc.op, tc.in)
-		if r.Status != 409 || !errors.Is(r.Err, ops.ErrDraftRequired) {
-			t.Fatal(r)
-		}
-		if dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "performance_entries", "cards", "card_ledger", "card_upgrades") != before {
-			t.Fatal("AI wrote sale")
-		}
+		optest.RequireDraftCreated(t, r, dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "performance_entries", "cards", "card_ledger", "card_upgrades") == before)
 	}
 }
 

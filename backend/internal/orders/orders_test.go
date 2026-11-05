@@ -436,9 +436,7 @@ func TestAIWritesRefused(t *testing.T) {
 		in any
 	}{{"merge_orders", mergeInput(o, merged)}, {"open_order", s.opening(s.line())}, {"add_order_item", orders.AddOrderItemInput{OrderID: id(o["id"]), Item: s.line()}}, {"remove_order_item", editInput(o)}, {"set_order_item_staff", editInput(o)}, {"reprice_order_item", editInput(o)}} {
 		r := s.AI(t, s.MustCaller(s.Owner), tc.op, editArgs(tc.op, tc.in))
-		if r.Status != 409 || !errors.Is(r.Err, ops.ErrDraftRequired) || r.Err.Error() != "operation requires a draft confirmed by a person" || before != s.snapshot() {
-			t.Fatal(tc.op, r, "expected AI draft refusal and unchanged data")
-		}
+		optest.RequireDraftCreated(t, r, before == s.snapshot())
 	}
 }
 

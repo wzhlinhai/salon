@@ -211,12 +211,7 @@ func TestAdjustmentAIRefused(t *testing.T) {
 	s := open(t)
 	card := s.call("open_card", s.opening(), 200)
 	before := snapshot(t, s)
-	if r := s.AI(t, s.MustCaller(s.Owner), "adjust_card", adjustment(card["id"])); r.Status == 200 || r.Detail() != "operation requires a draft confirmed by a person" {
-		t.Fatal(r)
-	}
-	if snapshot(t, s) != before {
-		t.Fatal("AI changed rows")
-	}
+	optest.RequireDraftCreated(t, s.AI(t, s.MustCaller(s.Owner), "adjust_card", adjustment(card["id"])), snapshot(t, s) == before)
 	adjustmentCount(t, s, card["id"], 0)
 }
 func TestAdjustmentScope(t *testing.T) {

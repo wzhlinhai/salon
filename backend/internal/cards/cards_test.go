@@ -231,12 +231,7 @@ func TestAIWritesRefused(t *testing.T) {
 		in any
 	}{{"open_card", s.opening()}, {"recharge_card", s.recharge(card["id"])}, {"create_card_type", typeInput("新卡")}, {"update_card_type", map[string]any{"id": s.cardType, "name": "改名", "kind": "stored_value", "validity_kind": "none", "active": false}}} {
 		r := s.AI(t, s.MustCaller(s.Owner), tc.op, tc.in)
-		if r.Status == 200 || r.Detail() != "operation requires a draft confirmed by a person" {
-			t.Fatal(r)
-		}
-		if after := snapshot(t, s); after != before {
-			t.Fatal("AI changed rows", after)
-		}
+		optest.RequireDraftCreated(t, r, snapshot(t, s) == before)
 	}
 }
 func TestScope(t *testing.T) {

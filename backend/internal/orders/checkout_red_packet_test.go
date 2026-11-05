@@ -2,7 +2,6 @@ package orders_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -127,9 +126,7 @@ func TestCheckoutRedPacketRules(t *testing.T) {
 	s.packetRefused(c, checkoutInput(checkoutOrder(b, packetPayment(map[string]any{"id": packetID.String()}, "100"))), 404, "")
 	before := s.packetSnapshot()
 	r := s.AI(t, c, "checkout_orders", checkoutInput(checkoutOrder(b, packetPayment(used, "100"))))
-	if r.Status != 409 || !errors.Is(r.Err, ops.ErrDraftRequired) || s.packetSnapshot() != before {
-		t.Fatal(r)
-	}
+	optest.RequireDraftCreated(t, r, s.packetSnapshot() == before)
 }
 func TestCheckoutRedPacketBusinessDate(t *testing.T) {
 	s := open(t)

@@ -311,9 +311,7 @@ func TestCheckoutPermissionsAndAI(t *testing.T) {
 		}
 	}
 	r := s.AI(t, s.MustCaller(s.Owner), "checkout_orders", in)
-	if r.Status != 409 || !errors.Is(r.Err, ops.ErrDraftRequired) || before != s.checkoutSnapshot() {
-		t.Fatal(r)
-	}
+	optest.RequireDraftCreated(t, r, before == s.checkoutSnapshot())
 }
 
 func TestCheckoutWaitsForOrder(t *testing.T) {
