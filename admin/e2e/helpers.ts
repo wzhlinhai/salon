@@ -31,7 +31,7 @@ export function uniqueSuffix(): string {
 }
 
 // 由老板建一名有登录账号的员工。账号带时间戳，测试可以对同一个库反复运行。
-export async function hire(roleName: string): Promise<{ account: string, password: string }> {
+export async function hire(roleName: string): Promise<{ id: string, name: string, account: string, password: string }> {
   const token = await apiLogin(owner.account, owner.password)
   const { roles } = await api<{ roles: { id: string, name: string }[] }>(token, 'list_role_options', {})
   const role = roles.find(r => r.name === roleName)
@@ -41,7 +41,7 @@ export async function hire(roleName: string): Promise<{ account: string, passwor
   const account = `e2e-${suffix}`
   const password = `password-${suffix}`
   await api(token, 'set_staff_login', { staff_id: staff.id, login_account: account, password })
-  return { account, password }
+  return { id: staff.id, name: staff.name, account, password }
 }
 
 export async function login(page: Page, account: string, password: string) {

@@ -9,5 +9,6 @@ export const navItems = [
   { label: '卡类型', icon: 'i-lucide-credit-card', to: '/card-types', permission: 'settings.manage' },
   { label: '提成规则', icon: 'i-lucide-percent', to: '/commission', permission: 'settings.manage' },
   { label: '工资表', icon: 'i-lucide-wallet', to: '/payroll', permission: 'payroll.manage' },
+  { label: '考勤', icon: 'i-lucide-clock', to: '/attendance', permission: 'attendance.manage' },
   { label: '门店设置', icon: 'i-lucide-settings', to: '/settings', permission: '' }
 ]
