@@ -616,6 +616,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/get_redemption": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查询本店团购核销记录 */
+        post: operations["get_redemption"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/get_settings": {
         parameters: {
             query?: never;
@@ -1483,6 +1500,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/redeem_coupon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 人工核销团购券 */
+        post: operations["redeem_coupon"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/refund_card": {
         parameters: {
             query?: never;
@@ -1613,6 +1647,23 @@ export interface paths {
         put?: never;
         /** 撤销考勤核准 */
         post: operations["revoke_attendance_approval"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/revoke_coupon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 撤销团购核销 */
+        post: operations["revoke_coupon"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1953,6 +2004,23 @@ export interface paths {
         put?: never;
         /** 补差价升级储值卡 */
         post: operations["upgrade_card"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/verify_coupon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 验团购券 */
+        post: operations["verify_coupon"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2568,6 +2636,18 @@ export interface components {
             /** Format: int32 */
             version: number;
         };
+        CouponRequest: {
+            coupon_code: string;
+            key: string;
+            platform: string;
+        };
+        CouponResult: {
+            platform: string;
+            /** Format: date-time */
+            redeemed_at: string | null;
+            /** @enum {string} */
+            status: "unused" | "redeemed" | "revoked" | "invalid";
+        };
         CreateCardTypeInput: {
             discount_percent?: string | null;
             items?: components["schemas"]["CardTypeItemInput"][];
@@ -3062,6 +3142,9 @@ export interface components {
             /** @description 登录凭证，放在 Authorization: Bearer 头里 */
             token: string;
         };
+        LookupInput: {
+            key: string;
+        };
         Me: {
             is_owner: boolean;
             /** @description 有效权限：各角色权限的并集，限制取最宽 */
@@ -3480,6 +3563,20 @@ export interface components {
         RedPacketSalesStaff: {
             id: string;
             name: string;
+        };
+        Redemption: {
+            coupon_code: string;
+            /** Format: date-time */
+            created_at: string;
+            id: string;
+            key: string;
+            platform: string;
+            /** Format: date-time */
+            redeemed_at: string | null;
+            redeemed_by: string;
+            /** Format: date-time */
+            revoked_at: string | null;
+            status: string;
         };
         Ref: {
             id: string;
@@ -5096,6 +5193,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Payroll"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    get_redemption: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LookupInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Redemption"];
                 };
             };
             /** @description Error */
@@ -6792,6 +6922,39 @@ export interface operations {
             };
         };
     };
+    redeem_coupon: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CouponRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Redemption"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     refund_card: {
         parameters: {
             query?: never;
@@ -7043,6 +7206,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AttendanceApproval"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    revoke_coupon: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LookupInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Redemption"];
                 };
             };
             /** @description Error */
@@ -7703,6 +7899,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Card"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    verify_coupon: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CouponRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CouponResult"];
                 };
             };
             /** @description Error */

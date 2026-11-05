@@ -22,6 +22,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/commission"
 	"github.com/wzhlinhai/salon/backend/internal/customers"
 	"github.com/wzhlinhai/salon/backend/internal/debts"
+	"github.com/wzhlinhai/salon/backend/internal/groupbuy"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/orders"
 	"github.com/wzhlinhai/salon/backend/internal/payroll"
@@ -40,6 +41,8 @@ type LoginFunc func(ctx context.Context, account, password string) (string, erro
 
 // Config 是组装 HTTP 接口所需的依赖。
 type Config struct {
+	// Groupbuy 保存已配置的平台实现；未配置的平台拒绝操作。
+	Groupbuy *groupbuy.Providers
 	// Now 提供每次业务调用的时刻，nil 时使用真实时钟。
 	Now          func() time.Time
 	Authenticate Authenticator
@@ -76,6 +79,7 @@ func New(pool *pgxpool.Pool, cfg Config) (*echo.Echo, *ops.Registry) {
 		cfg.Now = time.Now
 	}
 	reg := ops.NewRegistry(pool, api, cfg.Now)
+	groupbuy.Register(reg, cfg.Groupbuy)
 	stores.Register(reg)
 	staff.Register(reg)
 	catalog.Register(reg)

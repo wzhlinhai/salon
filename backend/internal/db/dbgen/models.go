@@ -286,6 +286,21 @@ type CommissionSettlement struct {
 	SettledAt pgtype.Timestamptz
 }
 
+type CouponRedemption struct {
+	ID             uuid.UUID
+	TenantID       uuid.UUID
+	StoreID        uuid.UUID
+	Platform       string
+	CouponCode     string
+	IdempotencyKey string
+	Status         string
+	RedeemedAt     pgtype.Timestamptz
+	RedeemedBy     uuid.UUID
+	RevokedAt      pgtype.Timestamptz
+	OrderID        *uuid.UUID
+	CreatedAt      pgtype.Timestamptz
+}
+
 type Customer struct {
 	ID                 uuid.UUID
 	TenantID           uuid.UUID
