@@ -37,10 +37,11 @@ type entry struct {
 
 // Registry 保存所有已声明的操作。
 type Registry struct {
-	pool *pgxpool.Pool
-	now  func() time.Time
-	api  huma.API
-	ops  map[string]*entry
+	pool         *pgxpool.Pool
+	now          func() time.Time
+	api          huma.API
+	ops          map[string]*entry
+	draftCreator func(context.Context, Env, string, json.RawMessage, string, string) (any, error)
 }
 
 // NewRegistry 返回一个空的 Registry。注册的操作会挂到 api 上。
@@ -109,10 +110,12 @@ func validate(name string, kind Kind, perm Permission, ai AIMode, hasHandler boo
 		return errors.New("kind must be Read or Write")
 	case perm == "":
 		return errors.New("permission is required")
-	case ai != AIDirect && ai != AIDraft && ai != AINone:
+	case ai != AIDirect && ai != AIDraft && ai != AINone && ai != AIManageDraft:
 		return errors.New("AI mode is required")
 	case kind == Write && ai == AIDirect:
 		return errors.New("write operations cannot be executed by AI directly; use AIDraft or AINone (ADR-0004)")
+	case ai == AIManageDraft && (kind != Write || (name != "create_draft" && name != "update_draft_params" && name != "reject_draft")):
+		return errors.New("draft control mode is reserved for draft metadata operations")
 	case !hasHandler:
 		return errors.New("handler is required")
 	}
@@ -160,12 +163,8 @@ func (r *Registry) invoke(ctx context.Context, caller Caller, e *entry, run func
 	if caller.Channel == ChannelAI && e.ai == AINone {
 		return nil, ErrUnknownOperation
 	}
-	if !caller.Has(e.permission) {
-		return nil, ErrForbidden
-	}
-	if caller.Channel == ChannelAI && e.ai == AIDraft {
-		// 草稿（ADR-0008）实现前，AI 对写操作的调用一律拒绝。
-		return nil, ErrDraftRequired
+	if err := checkPermission(caller, e.permission); err != nil {
+		return nil, err
 	}
 	now := r.now()
 	if e.phased {
@@ -243,6 +242,8 @@ func aiModeName(m AIMode) string {
 		return "direct"
 	case AIDraft:
 		return "draft"
+	case AIManageDraft:
+		return "draft_control"
 	}
 	return "none"
 }

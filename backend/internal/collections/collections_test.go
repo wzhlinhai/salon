@@ -223,9 +223,7 @@ func TestAccess(t *testing.T) {
 			}
 			if ch.Name == "ai" && (tc.op == "cancel_collection" || tc.op == "refund_collection") {
 				r = ch.Call(t, owner, tc.op, tc.in)
-				if !errors.Is(r.Err, ops.ErrDraftRequired) {
-					t.Fatal(tc.op, r)
-				}
+				optest.RequireDraftCreated(t, r, snapshot(t, s) == before)
 			}
 		}
 		caller := s.MustCaller(s.Owner)

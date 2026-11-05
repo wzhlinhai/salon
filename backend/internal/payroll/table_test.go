@@ -2,7 +2,6 @@ package payroll_test
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -317,9 +316,7 @@ func TestPayrollLockPermissionAI(t *testing.T) {
 	caller := s.MustCaller(s.Owner)
 	before := dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "commission_settlements", "settled_commissions", "payroll_lines", "audit_log")
 	r := s.AI(t, caller, "lock_payroll_month", args)
-	if !errors.Is(r.Err, ops.ErrDraftRequired) {
-		t.Fatal(r)
-	}
+	optest.RequireDraftCreated(t, r, dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "commission_settlements", "settled_commissions", "payroll_lines", "audit_log") == before)
 	caller.Permissions = map[ops.Permission]ops.Grant{}
 	for _, ch := range s.Channels() {
 		for _, op := range []string{"get_payroll", "list_payroll_months", "lock_payroll_month"} {

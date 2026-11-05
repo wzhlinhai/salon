@@ -464,8 +464,8 @@ func TestRoleListsRequirePermission(t *testing.T) {
 	}
 }
 
-// 员工和角色的写操作在 AI 路径上走不到业务规则：草稿类在草稿功能（P0-29）实现前一律拒绝，
-// 不开放的操作对 AI 不存在。即使发起人是老板也一样，数据不变。
+// 员工和角色的草稿类写操作在 AI 路径上只创建待确认草稿，不开放的操作对 AI 不存在。
+// 即使发起人是老板也一样，业务数据不变。
 func TestAICannotExecuteStaffAndRoleWrites(t *testing.T) {
 	s := open(t)
 	id, _ := s.Hire("小李", "002", "xiaoli")
@@ -490,7 +490,13 @@ func TestAICannotExecuteStaffAndRoleWrites(t *testing.T) {
 	rolesBefore := s.call(s.Owner, "list_roles", map[string]any{}, http.StatusOK).Body
 	auditBefore := s.call(s.Owner, "list_audit_log", map[string]any{}, http.StatusOK).Body
 	for _, c := range cases {
-		if r := s.ai(s.Owner, c.op, c.args); r.Status != c.want || c.want == http.StatusConflict && r.Detail() != "operation requires a draft confirmed by a person" {
+		r := s.ai(s.Owner, c.op, c.args)
+		if c.want == http.StatusConflict {
+			unchanged := reflect.DeepEqual(before, s.call(s.Owner, "list_staff", map[string]any{}, http.StatusOK).Body) &&
+				reflect.DeepEqual(rolesBefore, s.call(s.Owner, "list_roles", map[string]any{}, http.StatusOK).Body) &&
+				reflect.DeepEqual(auditBefore, s.call(s.Owner, "list_audit_log", map[string]any{}, http.StatusOK).Body)
+			optest.RequireDraftCreated(t, r, unchanged)
+		} else if r.Status != c.want {
 			t.Errorf("ai %s = %d (%v), want %d", c.op, r.Status, r.Err, c.want)
 		}
 	}

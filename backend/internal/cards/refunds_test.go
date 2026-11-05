@@ -145,12 +145,7 @@ func TestRefundAccess(t *testing.T) {
 			}
 		}
 	}
-	if r := s.AI(t, s.MustCaller(s.Owner), "refund_card", in); r.Status != 409 || r.Detail() != "operation requires a draft confirmed by a person" {
-		t.Fatal(r)
-	}
-	if before != s.refundSnapshot() {
-		t.Fatal("denied refund changed data")
-	}
+	optest.RequireDraftCreated(t, s.AI(t, s.MustCaller(s.Owner), "refund_card", in), before == s.refundSnapshot())
 }
 func TestRefundAudit(t *testing.T) {
 	s := open(t)

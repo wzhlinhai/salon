@@ -32,12 +32,22 @@ func setup(t *testing.T) env {
 	t.Helper()
 	pool := dbtest.NewPool(t)
 	tenant, store := dbtest.NewTenant(t, pool, "本店")
+	newStaff := func() uuid.UUID {
+		t.Helper()
+		tx := dbtest.AppTx(t, pool, tenant)
+		s, err := dbgen.New(tx).CreateStaff(context.Background(), dbgen.CreateStaffParams{TenantID: tenant, StoreID: store, Name: "员工", Number: uuid.NewString()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		dbtest.Commit(t, tx)
+		return s.ID
+	}
 	caller := func(perms ...ops.Permission) ops.Caller {
 		m := map[ops.Permission]ops.Grant{}
 		for _, p := range perms {
 			m[p] = ops.Grant{}
 		}
-		return ops.Caller{TenantID: tenant, StoreID: store, StaffID: uuid.New(), Permissions: m}
+		return ops.Caller{TenantID: tenant, StoreID: store, StaffID: newStaff(), Permissions: m}
 	}
 	return env{
 		app:   optest.New(t, pool),
@@ -117,9 +127,7 @@ func TestRenameStoreRunsOverHTTP(t *testing.T) {
 func TestDraftOperationCannotBeExecutedByAI(t *testing.T) {
 	e := setup(t)
 	r := e.app.AI(t, e.manager, "rename_store", map[string]any{"name": "AI 改的名字"})
-	if r.Status != http.StatusConflict || r.Detail() != "operation requires a draft confirmed by a person" {
-		t.Fatalf("got %d %v %v, want draft required", r.Status, r.Body, r.Err)
-	}
+	optest.RequireDraftCreated(t, r, e.storeName() == "本店门店")
 	if got := e.storeName(); got != "本店门店" {
 		t.Fatalf("store name = %q after AI call, want unchanged", got)
 	}
@@ -216,13 +224,25 @@ func TestToolParametersMatchHTTPRequestSchema(t *testing.T) {
 	if tool == nil {
 		t.Fatal("rename_store tool missing")
 	}
-	if !reflect.DeepEqual(tool.Parameters, httpSchema) {
+	withoutDraftFields := map[string]any{"type": tool.Parameters["type"], "required": tool.Parameters["required"], "additionalProperties": tool.Parameters["additionalProperties"]}
+	props := map[string]any{}
+	for k, v := range tool.Parameters["properties"].(map[string]any) {
+		if k != "summary" && k != "utterance" {
+			props[k] = v
+		}
+	}
+	withoutDraftFields["properties"] = props
+	if !reflect.DeepEqual(withoutDraftFields, httpSchema) {
 		t.Fatalf("tool parameters differ from HTTP request schema\n tool: %v\n http: %v", tool.Parameters, httpSchema)
 	}
-	props := tool.Parameters["properties"].(map[string]any)
 	name := props["name"].(map[string]any)
 	if name["minLength"] != 1.0 || name["description"] != "新的门店名称" {
 		t.Fatalf("name schema = %v, want minLength 1 and the field doc", name)
+	}
+	for _, key := range []string{"summary", "utterance"} {
+		if field, ok := tool.Parameters["properties"].(map[string]any)[key].(map[string]any); !ok || field["type"] != "string" {
+			t.Fatalf("draft field %s = %v, want optional string", key, tool.Parameters["properties"].(map[string]any)[key])
+		}
 	}
 }
 

@@ -3,7 +3,6 @@ package orders_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"maps"
 	"reflect"
 	"strings"
@@ -128,9 +127,7 @@ func TestVoidPermissionAndAI(t *testing.T) {
 	}
 	before := s.voidSnapshot()
 	r := s.AI(t, s.MustCaller(s.Owner), "void_order", voidInput(o))
-	if r.Status != 409 || !errors.Is(r.Err, ops.ErrDraftRequired) || before != s.voidSnapshot() {
-		t.Fatal(r)
-	}
+	optest.RequireDraftCreated(t, r, before == s.voidSnapshot())
 }
 func TestVoidBalance(t *testing.T) {
 	for _, mode := range []string{"split", "same", "two", "other", "expired", "member"} {

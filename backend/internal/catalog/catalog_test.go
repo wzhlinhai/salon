@@ -254,12 +254,7 @@ func TestPermissionsAndAIDraft(t *testing.T) {
 		}
 		before := s.call("list_items", map[string]any{}, 200)
 		r = s.AI(t, s.MustCaller(s.Owner), tc.op, tc.args)
-		if r.Status == 200 || r.Detail() != "operation requires a draft confirmed by a person" {
-			t.Fatal(r)
-		}
-		if after := s.call("list_items", map[string]any{}, 200); !reflect.DeepEqual(before, after) {
-			t.Fatal("AI changed data", before, after)
-		}
+		optest.RequireDraftCreated(t, r, reflect.DeepEqual(before, s.call("list_items", map[string]any{}, 200)))
 	}
 	for _, ch := range s.Channels() {
 		for _, tc := range []struct {

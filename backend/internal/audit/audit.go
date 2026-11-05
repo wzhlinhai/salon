@@ -64,7 +64,7 @@ func Record(ctx context.Context, env ops.Env, action string, target Target, befo
 	}
 	return env.Q.AddAuditLog(ctx, dbgen.AddAuditLogParams{
 		TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID,
-		Action: action, TargetID: target.id, TargetKind: target.kind, CustomerID: target.customerID, Before: oldJSON, After: newJSON, ActorID: env.Caller.StaffID,
+		DraftID: env.DraftID, Action: action, TargetID: target.id, TargetKind: target.kind, CustomerID: target.customerID, Before: oldJSON, After: newJSON, ActorID: env.Caller.StaffID,
 	})
 }
 
@@ -151,6 +151,7 @@ type Actor struct {
 
 // Entry 是一次操作的记录，改前改后按调用者权限打码手机号。
 type Entry struct {
+	DraftID    *uuid.UUID      `json:"draft_id"`
 	ID         uuid.UUID       `json:"id"`
 	Action     string          `json:"action"`
 	TargetID   uuid.UUID       `json:"target_id"`
@@ -204,7 +205,7 @@ func Register(r *ops.Registry) {
 						return nil, err
 					}
 				}
-				out.Entries = append(out.Entries, Entry{ID: a.ID, Action: a.Action, TargetID: a.TargetID, TargetKind: a.TargetKind, Before: a.Before, After: a.After, Actor: Actor{ID: a.ActorID, Name: row.ActorName}, At: a.At.Time})
+				out.Entries = append(out.Entries, Entry{DraftID: a.DraftID, ID: a.ID, Action: a.Action, TargetID: a.TargetID, TargetKind: a.TargetKind, Before: a.Before, After: a.After, Actor: Actor{ID: a.ActorID, Name: row.ActorName}, At: a.At.Time})
 			}
 			return out, nil
 		},
@@ -301,3 +302,6 @@ func CollectionTarget(id uuid.UUID) Target { return Target{kind: "collection", i
 
 // CouponRedemptionTarget 创建不关联顾客的团购核销日志目标。
 func CouponRedemptionTarget(id uuid.UUID) Target { return Target{kind: "coupon_redemption", id: id} }
+
+// MaskPhones 对其他审计视图复用相同的 JSON 手机号打码规则。
+func MaskPhones(raw json.RawMessage) (json.RawMessage, error) { return maskPhones(raw) }

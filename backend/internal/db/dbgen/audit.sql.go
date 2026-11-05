@@ -12,8 +12,8 @@ import (
 )
 
 const addAuditLog = `-- name: AddAuditLog :exec
-INSERT INTO audit_log (tenant_id, store_id, action, target_id, before, after, actor_id, target_kind, customer_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO audit_log (tenant_id, store_id, action, target_id, before, after, actor_id, target_kind, customer_id, draft_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 `
 
 type AddAuditLogParams struct {
@@ -26,6 +26,7 @@ type AddAuditLogParams struct {
 	ActorID    uuid.UUID
 	TargetKind string
 	CustomerID *uuid.UUID
+	DraftID    *uuid.UUID
 }
 
 func (q *Queries) AddAuditLog(ctx context.Context, arg AddAuditLogParams) error {
@@ -39,12 +40,13 @@ func (q *Queries) AddAuditLog(ctx context.Context, arg AddAuditLogParams) error 
 		arg.ActorID,
 		arg.TargetKind,
 		arg.CustomerID,
+		arg.DraftID,
 	)
 	return err
 }
 
 const listAuditLog = `-- name: ListAuditLog :many
-SELECT a.id, a.tenant_id, a.store_id, a.action, a.target_id, a.before, a.after, a.actor_id, a.at, a.target_kind, a.customer_id, s.name AS actor_name
+SELECT a.id, a.tenant_id, a.store_id, a.action, a.target_id, a.before, a.after, a.actor_id, a.at, a.target_kind, a.customer_id, a.draft_id, s.name AS actor_name
 FROM audit_log a JOIN staff s ON s.id = a.actor_id
 LEFT JOIN customers c ON c.id = a.customer_id
 WHERE a.store_id = $1 AND ($2::uuid IS NULL OR a.target_id = $2)
@@ -102,6 +104,7 @@ func (q *Queries) ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]L
 			&i.AuditLog.At,
 			&i.AuditLog.TargetKind,
 			&i.AuditLog.CustomerID,
+			&i.AuditLog.DraftID,
 			&i.ActorName,
 		); err != nil {
 			return nil, err

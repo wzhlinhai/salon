@@ -291,12 +291,7 @@ func TestUpgradeTransferPermissionsAndAI(t *testing.T) {
 			if got := s.HTTP(t, &caller, tc.op, tc.in); got.Status != 403 || got.Detail() != "permission denied" {
 				t.Fatal(got)
 			}
-			if got := s.AI(t, s.MustCaller(s.Owner), tc.op, tc.in); got.Status == 200 || got.Detail() != "operation requires a draft confirmed by a person" {
-				t.Fatal(got)
-			}
-			if upgradeSnapshot(t, s) != before {
-				t.Fatal("refused operation changed rows")
-			}
+			optest.RequireDraftCreated(t, s.AI(t, s.MustCaller(s.Owner), tc.op, tc.in), upgradeSnapshot(t, s) == before)
 		})
 	}
 	for _, ch := range s.Channels() {

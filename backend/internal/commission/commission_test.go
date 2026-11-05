@@ -160,12 +160,7 @@ func TestCommissionPermissionsAndAI(t *testing.T) {
 	args := map[string]any{"effective_from": d.Format(time.DateOnly), "scheme": emptyScheme()}
 	before := dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "commission_scheme_versions", "audit_log")
 	r := s.AI(t, owner, "save_commission_scheme", args)
-	if !errors.Is(r.Err, ops.ErrDraftRequired) {
-		t.Fatal(r)
-	}
-	if got := dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "commission_scheme_versions", "audit_log"); got != before {
-		t.Fatal("AI changed data")
-	}
+	optest.RequireDraftCreated(t, r, dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "commission_scheme_versions", "audit_log") == before)
 	caller := owner
 	caller.Permissions = map[ops.Permission]ops.Grant{}
 	for _, ch := range s.Channels() {

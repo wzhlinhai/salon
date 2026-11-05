@@ -1,6 +1,6 @@
 -- name: AddAuditLog :exec
-INSERT INTO audit_log (tenant_id, store_id, action, target_id, before, after, actor_id, target_kind, customer_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
+INSERT INTO audit_log (tenant_id, store_id, action, target_id, before, after, actor_id, target_kind, customer_id, draft_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
 
 -- name: ListAuditLog :many
 SELECT sqlc.embed(a), s.name AS actor_name

@@ -2,13 +2,12 @@ package redpackets_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
-	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/optest"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
@@ -52,10 +51,5 @@ func TestRedPacketSaleAI(t *testing.T) {
 	s := open(t)
 	before := dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "performance_entries", "red_packets")
 	r := s.AI(t, s.MustCaller(s.Owner), "issue_red_packet", s.input("sold"))
-	if r.Status != 409 || !errors.Is(r.Err, ops.ErrDraftRequired) {
-		t.Fatal(r)
-	}
-	if dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "performance_entries", "red_packets") != before {
-		t.Fatal("AI wrote sale")
-	}
+	optest.RequireDraftCreated(t, r, dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "performance_entries", "red_packets") == before)
 }

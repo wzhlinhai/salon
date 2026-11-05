@@ -3,7 +3,6 @@ package redpackets_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -295,9 +294,7 @@ func TestRedPacketPermissionsAndAI(t *testing.T) {
 		if tc.op != "list_customer_red_packets" {
 			before := s.snapshot()
 			r := s.AI(t, s.MustCaller(s.Owner), tc.op, tc.in)
-			if r.Status != 409 || !errors.Is(r.Err, ops.ErrDraftRequired) || s.snapshot() != before {
-				t.Fatal(r)
-			}
+			optest.RequireDraftCreated(t, r, before == s.snapshot())
 		}
 	}
 }

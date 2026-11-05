@@ -22,6 +22,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/commission"
 	"github.com/wzhlinhai/salon/backend/internal/customers"
 	"github.com/wzhlinhai/salon/backend/internal/debts"
+	"github.com/wzhlinhai/salon/backend/internal/drafts"
 	"github.com/wzhlinhai/salon/backend/internal/groupbuy"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/orders"
@@ -95,6 +96,7 @@ func New(pool *pgxpool.Pool, cfg Config) (*echo.Echo, *ops.Registry) {
 	customers.Register(reg)
 	settings.Register(reg)
 	audit.Register(reg)
+	drafts.Register(reg)
 	return e, reg
 }
 

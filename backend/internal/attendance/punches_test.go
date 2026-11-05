@@ -238,9 +238,8 @@ func TestPunchPermissionsAI(t *testing.T) {
 	}
 	before := dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "punches", "attendance_approvals", "audit_log")
 	for _, op := range []string{"add_punch", "void_punch", "approve_attendance", "revoke_attendance_approval"} {
-		if r := s.AI(t, s.MustCaller(s.Owner), op, inputs[op]); !errors.Is(r.Err, ops.ErrDraftRequired) {
-			t.Fatal(r)
-		}
+		r := s.AI(t, s.MustCaller(s.Owner), op, inputs[op])
+		optest.RequireDraftCreated(t, r, dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "punches", "attendance_approvals", "audit_log") == before)
 	}
 	if after := dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "punches", "attendance_approvals", "audit_log"); before != after {
 		t.Fatal("AI wrote data")

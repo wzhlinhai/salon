@@ -341,12 +341,7 @@ func TestPermissionDeniedOnBothChannels(t *testing.T) {
 func TestAICannotChangeSettingsDirectly(t *testing.T) {
 	s := open(t)
 	r := s.AI(t, s.owner, "change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": day(1)})
-	if r.Status != http.StatusConflict || r.Detail() != "operation requires a draft confirmed by a person" {
-		t.Fatalf("got %d %v %v, want draft required", r.Status, r.Body, r.Err)
-	}
-	if n := s.changeCount(); n != 0 {
-		t.Fatalf("%d changes recorded after AI call, want 0", n)
-	}
+	optest.RequireDraftCreated(t, r, s.changeCount() == 0)
 }
 
 func TestChangesAndSnapshotsCannotBeAlteredOrDeleted(t *testing.T) {

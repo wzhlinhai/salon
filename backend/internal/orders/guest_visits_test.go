@@ -2,7 +2,6 @@ package orders_test
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/optest"
 	"github.com/wzhlinhai/salon/backend/internal/orders"
 	"github.com/wzhlinhai/salon/backend/internal/performance"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
@@ -178,12 +178,7 @@ func TestGuestVisitAIWritesRefused(t *testing.T) {
 		in any
 	}{{"checkout_orders", checkoutInput(checkoutOrder(open, payment("cash", "100")))}, {"void_order", voidInput(paid)}} {
 		r := s.AI(t, s.MustCaller(s.Owner), tc.op, tc.in)
-		if r.Status != 409 || !errors.Is(r.Err, ops.ErrDraftRequired) {
-			t.Fatal(r)
-		}
-		if before != dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "guest_visits") {
-			t.Fatal("AI wrote guest visits")
-		}
+		optest.RequireDraftCreated(t, r, before == dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "guest_visits"))
 	}
 }
 

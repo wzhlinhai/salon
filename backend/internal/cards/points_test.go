@@ -280,12 +280,7 @@ func TestPointsWritesPermissionsAndAI(t *testing.T) {
 		if r := s.HTTP(t, &denied, tc.op, tc.in); r.Status != 403 || r.Detail() != "permission denied" {
 			t.Fatal(r)
 		}
-		if r := s.AI(t, caller, tc.op, tc.in); r.Status != 409 || r.Detail() != "operation requires a draft confirmed by a person" {
-			t.Fatal(r)
-		}
-		if after := snapshot(t, s); after != before {
-			t.Fatal("denied write changed rows")
-		}
+		optest.RequireDraftCreated(t, s.AI(t, caller, tc.op, tc.in), snapshot(t, s) == before)
 	}
 }
 
