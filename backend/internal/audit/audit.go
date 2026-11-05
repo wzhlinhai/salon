@@ -298,3 +298,6 @@ func AttendanceApprovalTarget(id uuid.UUID) Target {
 
 // CollectionTarget 创建不关联顾客的收款日志目标。
 func CollectionTarget(id uuid.UUID) Target { return Target{kind: "collection", id: id} }
+
+// CouponRedemptionTarget 创建不关联顾客的团购核销日志目标。
+func CouponRedemptionTarget(id uuid.UUID) Target { return Target{kind: "coupon_redemption", id: id} }

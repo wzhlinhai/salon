@@ -1,0 +1,258 @@
+package groupbuy
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/wzhlinhai/salon/backend/internal/audit"
+	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
+	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/perm"
+)
+
+// Redemption 是本店核销记录，不包含顾客或订单写入。
+type Redemption struct {
+	ID         uuid.UUID  `json:"id"`
+	Platform   string     `json:"platform"`
+	CouponCode string     `json:"coupon_code"`
+	Key        string     `json:"key"`
+	Status     string     `json:"status"`
+	RedeemedAt *time.Time `json:"redeemed_at"`
+	RevokedAt  *time.Time `json:"revoked_at"`
+	RedeemedBy uuid.UUID  `json:"redeemed_by"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+// LookupInput 是本店核销记录的幂等键。
+type LookupInput struct {
+	Key string `json:"key" minLength:"1" maxLength:"200"`
+}
+
+func view(row dbgen.CouponRedemption) *Redemption {
+	out := &Redemption{ID: row.ID, Platform: row.Platform, CouponCode: row.CouponCode, Key: row.IdempotencyKey, Status: row.Status, RedeemedBy: row.RedeemedBy, CreatedAt: row.CreatedAt.Time}
+	if row.RedeemedAt.Valid {
+		out.RedeemedAt = &row.RedeemedAt.Time
+	}
+	if row.RevokedAt.Valid {
+		out.RevokedAt = &row.RevokedAt.Time
+	}
+	return out
+}
+
+// Register 声明仅员工可发起的平台动作和 AI 可读的本店记录查询。
+func Register(r *ops.Registry, providers *Providers) {
+	ops.Register(r, ops.Operation[CouponRequest, CouponResult]{Name: "verify_coupon", Summary: "验团购券", Kind: ops.Read, Permission: perm.GroupBuyRedeem, AI: ops.AINone, Phased: true,
+		Handle: func(ctx context.Context, env ops.Env, in *CouponRequest) (*CouponResult, error) {
+			in.TenantID = env.Caller.TenantID
+			in.StoreID = env.Caller.StoreID
+			p := providers.Get(in.Platform)
+			if p == nil {
+				return nil, ops.Rule("团购平台未配置")
+			}
+			result, err := p.Verify(ctx, *in)
+			if err != nil {
+				return nil, platformError(err)
+			}
+			err = env.Transact(ctx, func(q *dbgen.Queries) error {
+				env.Q = q
+				return audit.Record(ctx, env, "verify_coupon", audit.CouponRedemptionTarget(uuid.New()), nil, result)
+			})
+			return &result, err
+		}})
+	ops.Register(r, ops.Operation[CouponRequest, Redemption]{Name: "redeem_coupon", Summary: "人工核销团购券", Kind: ops.Write, Permission: perm.GroupBuyRedeem, AI: ops.AINone, Phased: true,
+		Handle: func(ctx context.Context, env ops.Env, in *CouponRequest) (*Redemption, error) {
+			return redeem(ctx, env, *in, providers)
+		}})
+	ops.Register(r, ops.Operation[LookupInput, Redemption]{Name: "revoke_coupon", Summary: "撤销团购核销", Kind: ops.Write, Permission: perm.GroupBuyRedeem, AI: ops.AINone, Phased: true,
+		Handle: func(ctx context.Context, env ops.Env, in *LookupInput) (*Redemption, error) {
+			return revoke(ctx, env, *in, providers)
+		}})
+	ops.Register(r, ops.Operation[LookupInput, Redemption]{Name: "get_redemption", Summary: "查询本店团购核销记录", Kind: ops.Read, Permission: perm.GroupBuyRedeem, AI: ops.AIDirect,
+		Handle: func(ctx context.Context, env ops.Env, in *LookupInput) (*Redemption, error) {
+			row, err := env.Q.GetRedemption(ctx, dbgen.GetRedemptionParams{StoreID: env.Caller.StoreID, IdempotencyKey: in.Key})
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, ops.ErrNotFound
+			}
+			if err != nil {
+				return nil, err
+			}
+			out := view(row)
+			return out, audit.Record(ctx, env, "get_redemption", audit.CouponRedemptionTarget(row.ID), nil, out)
+		}})
+}
+
+func platformError(err error) error {
+	if errors.Is(err, ErrUnknown) {
+		return ops.Rule("结果未知，请稍后查询")
+	}
+	return ops.Rule("团购平台操作失败")
+}
+
+func redeem(ctx context.Context, env ops.Env, in CouponRequest, providers *Providers) (*Redemption, error) {
+	in.TenantID = env.Caller.TenantID
+	in.StoreID = env.Caller.StoreID
+	var row dbgen.CouponRedemption
+	var fresh bool
+	err := env.Transact(ctx, func(q *dbgen.Queries) error {
+		n, err := q.CreateRedemption(ctx, dbgen.CreateRedemptionParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Platform: in.Platform, CouponCode: in.CouponCode, IdempotencyKey: in.Key, RedeemedBy: env.Caller.StaffID, CreatedAt: pgtype.Timestamptz{Time: env.Now, Valid: true}})
+		if err != nil {
+			return err
+		}
+		fresh = n == 1
+		row, err = q.LockRedemption(ctx, dbgen.LockRedemptionParams{StoreID: env.Caller.StoreID, IdempotencyKey: in.Key})
+		if err != nil {
+			return err
+		}
+		if row.Platform != in.Platform || row.CouponCode != in.CouponCode {
+			return ops.Rule("幂等键已用于其他券")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if row.Status == "redeemed" {
+		return recordExisting(ctx, env, row, "redeem_coupon")
+	}
+	if row.Status == "revoked" || row.Status == "failed" {
+		return nil, ops.Rule("当前状态不可核销")
+	}
+	p := providers.Get(in.Platform)
+	if p == nil {
+		return nil, ops.Rule("团购平台未配置")
+	}
+	var result CouponResult
+	if !fresh {
+		result, err = p.Query(ctx, in)
+		if err != nil {
+			return finish(ctx, env, in.Key, "redeem_coupon", CouponResult{}, ErrUnknown)
+		}
+		if result.Status != "unused" || result.Platform != in.Platform {
+			return finish(ctx, env, in.Key, "redeem_coupon", result, nil)
+		}
+	}
+	result, err = p.Redeem(ctx, in)
+	return finish(ctx, env, in.Key, "redeem_coupon", result, err)
+}
+
+func revoke(ctx context.Context, env ops.Env, in LookupInput, providers *Providers) (*Redemption, error) {
+	var row dbgen.CouponRedemption
+	err := env.Transact(ctx, func(q *dbgen.Queries) error {
+		var err error
+		row, err = q.LockRedemption(ctx, dbgen.LockRedemptionParams{StoreID: env.Caller.StoreID, IdempotencyKey: in.Key})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ops.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if row.Status == "revoked" {
+			return nil
+		}
+		if row.Status != "redeemed" {
+			return ops.Rule("只允许撤销已核销的券")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if row.Status == "revoked" {
+		return recordExisting(ctx, env, row, "revoke_coupon")
+	}
+	p := providers.Get(row.Platform)
+	if p == nil {
+		return nil, ops.Rule("团购平台未配置")
+	}
+	request := CouponRequest{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Platform: row.Platform, CouponCode: row.CouponCode, Key: "revoke:" + in.Key}
+	result, err := p.Query(ctx, request)
+	if err != nil {
+		return finish(ctx, env, in.Key, "revoke_coupon", CouponResult{}, ErrUnknown)
+	}
+	if result.Platform != row.Platform {
+		return finish(ctx, env, in.Key, "revoke_coupon", CouponResult{}, ErrUnknown)
+	}
+	if result.Status == "redeemed" {
+		if row.Platform == "douyin" && env.Now.Sub(row.RedeemedAt.Time) > time.Hour {
+			return nil, ops.Rule("抖音核销超过一小时不可撤销")
+		}
+		result, err = p.Revoke(ctx, request)
+	}
+	return finish(ctx, env, in.Key, "revoke_coupon", result, err)
+}
+
+func recordExisting(ctx context.Context, env ops.Env, row dbgen.CouponRedemption, action string) (*Redemption, error) {
+	var out *Redemption
+	err := env.Transact(ctx, func(q *dbgen.Queries) error {
+		current, err := q.LockRedemption(ctx, dbgen.LockRedemptionParams{StoreID: env.Caller.StoreID, IdempotencyKey: row.IdempotencyKey})
+		if err != nil {
+			return err
+		}
+		out = view(current)
+		env.Q = q
+		return audit.Record(ctx, env, action, audit.CouponRedemptionTarget(current.ID), out, out)
+	})
+	return out, err
+}
+
+// finish 在新事务中重读并锁住记录，晚到的响应不得倒退已完成的状态。
+func finish(ctx context.Context, env ops.Env, key, action string, result CouponResult, platformErr error) (*Redemption, error) {
+	var out *Redemption
+	var outcome error
+	err := env.Transact(ctx, func(q *dbgen.Queries) error {
+		row, err := q.LockRedemption(ctx, dbgen.LockRedemptionParams{StoreID: env.Caller.StoreID, IdempotencyKey: key})
+		if err != nil {
+			return err
+		}
+		before := view(row)
+		mutable := row.Status == "pending" || row.Status == "unknown"
+		if action == "revoke_coupon" {
+			mutable = row.Status == "redeemed"
+		}
+		if mutable {
+			if platformErr != nil {
+				outcome = platformError(platformErr)
+				if action == "redeem_coupon" {
+					row.Status = "failed"
+					if errors.Is(platformErr, ErrUnknown) {
+						row.Status = "unknown"
+					}
+				}
+			} else if result.Platform != row.Platform || (result.Status == "redeemed" && (result.RedeemedAt == nil || result.RedeemedAt.IsZero())) {
+				outcome = platformError(ErrUnknown)
+				if action == "redeem_coupon" {
+					row.Status = "unknown"
+				}
+			} else if action == "redeem_coupon" && result.Status == "redeemed" {
+				row.Status = "redeemed"
+				row.RedeemedAt = pgtype.Timestamptz{Time: *result.RedeemedAt, Valid: true}
+			} else if result.Status == "revoked" {
+				row.Status = "revoked"
+				row.RevokedAt = pgtype.Timestamptz{Time: env.Now, Valid: true}
+			} else {
+				outcome = ops.Rule("平台券状态不允许此操作")
+				if action == "redeem_coupon" {
+					row.Status = "failed"
+				}
+			}
+			row, err = q.UpdateRedemption(ctx, dbgen.UpdateRedemptionParams{StoreID: env.Caller.StoreID, IdempotencyKey: key, Status: row.Status, RedeemedAt: row.RedeemedAt, RevokedAt: row.RevokedAt})
+			if err != nil {
+				return err
+			}
+		}
+		out = view(row)
+		if outcome != nil {
+			return nil
+		}
+		env.Q = q
+		return audit.Record(ctx, env, action, audit.CouponRedemptionTarget(row.ID), before, out)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, outcome
+}

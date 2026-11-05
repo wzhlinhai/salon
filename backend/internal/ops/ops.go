@@ -167,7 +167,7 @@ func Rule(msg string) error { return &RuleError{Message: msg} }
 // CommitRule 返回保留事务写入的业务规则错误。
 func CommitRule(msg string) error { return &RuleError{Message: msg, commit: true} }
 
-// Env 是操作执行时可用的环境。Q 已处于调用者租户的事务中。
+// Env 是操作执行时可用的环境。普通操作的 Q 已处于租户事务中，分阶段操作使用 Transact。
 type Env struct {
 	// Now 是本次调用的时刻，整个操作只用这一个。
 	Now    time.Time
@@ -175,6 +175,8 @@ type Env struct {
 	// Grant 是调用者在该操作所需权限上的限制。有数据范围或时间窗口的操作要按它过滤。
 	Grant Grant
 	Q     *dbgen.Queries
+	// Transact 为分阶段操作开启一个独立租户事务，回调之外不持有事务。
+	Transact func(context.Context, func(*dbgen.Queries) error) error
 }
 
 // Operation 声明一个业务操作。I 是参数，O 是返回值，二者都是普通的 JSON 结构体，
@@ -182,6 +184,8 @@ type Env struct {
 type Operation[I, O any] struct {
 	// Name 是操作名，也是 HTTP 路径的最后一段和 AI 工具名。只用小写字母、数字和下划线。
 	Name string
+	// Phased 在事务外执行 Handle，由 Env.Transact 包住各个数据库阶段。
+	Phased bool
 	// Summary 是面向人和 AI 的一句话说明。
 	Summary    string
 	Kind       Kind

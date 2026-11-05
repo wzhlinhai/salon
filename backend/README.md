@@ -246,3 +246,20 @@ create_shift、deactivate_shift、set_staff_shift 是 Write / AIDraft，list_shi
 | list_attendance_summary | attendance.manage | AIDirect |
 
 list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本店在职及离职员工；list_attendance_summary 返回本店月度统计。写操作返回的员工引用及日志均只含姓名与标识，不含手机号。已离职账号由登录鉴权拒绝本人打卡，历史查询与店长补卡仍可用。P0 不校验位置或 Wi-Fi。
+
+## 团购适配层
+
+`internal/groupbuy.Provider` 统一验券、核销、撤销、查状态，四个动作均带幂等键。
+`httpapi.Config.Groupbuy` 注入按 platform 注册的 `Providers`；未配置的平台拒绝执行。
+本任务没有服务商协议文档，因此不提供无限聚核 HTTP 实现，也不在生产注册测试适配器。
+
+`verify_coupon`、`redeem_coupon`、`revoke_coupon` 均为 AINone；`get_redemption` 为 AIDirect。
+四者均要求 `groupbuy.redeem`，记录无关联顾客的 coupon_redemption 审计。
+`coupon_redemptions` 不写订单，`order_id` 预留给 P0-24。
+
+团购使用 `ops.Operation.Phased`：处理函数在事务外执行，每段数据库操作由 `env.Transact`
+开启独立的租户事务，调用者和 `env.Now` 保持不变；普通操作仍在原来的单事务中执行。
+核销先提交 pending 再调平台，更新前用 FOR NO KEY UPDATE 重读。
+已有 pending/unknown 必须先 Query，明确 unused 才用同键 Redeem；不确定结果保存 unknown 并返回 409。
+撤销先 Query 以恢复上次未知结果，调用平台的键为 revoke: 加原键；抖音超过平台核销时刻一小时拒绝。
+所有进程并发和崩溃恢复最终依赖 Provider 对同键动作的幂等保证；事务不跨外部调用持锁。

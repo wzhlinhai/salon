@@ -30,6 +30,7 @@ type entry struct {
 	kind       Kind
 	permission Permission
 	ai         AIMode
+	phased     bool
 	// call 把 JSON 参数解码为 I 并执行操作，返回 *O。
 	call func(ctx context.Context, env Env, args []byte) (any, error)
 }
@@ -64,6 +65,7 @@ func Register[I, O any](r *Registry, op Operation[I, O]) {
 		kind:       op.Kind,
 		permission: op.Permission,
 		ai:         op.AI,
+		phased:     op.Phased,
 		call: func(ctx context.Context, env Env, args []byte) (any, error) {
 			in := new(I)
 			if err := json.Unmarshal(args, in); err != nil {
@@ -153,7 +155,7 @@ func validateInputDefaults(input reflect.Type) error {
 	return walk(input, "")
 }
 
-// invoke 是所有调用的共同路径：渠道检查、权限检查、在调用者租户的事务中执行。
+// invoke 是所有调用的共同路径：渠道、权限检查后按操作声明提供租户事务。
 func (r *Registry) invoke(ctx context.Context, caller Caller, e *entry, run func(context.Context, Env) (any, error)) (any, error) {
 	if caller.Channel == ChannelAI && e.ai == AINone {
 		return nil, ErrUnknownOperation
@@ -166,6 +168,11 @@ func (r *Registry) invoke(ctx context.Context, caller Caller, e *entry, run func
 		return nil, ErrDraftRequired
 	}
 	now := r.now()
+	if e.phased {
+		return run(ctx, Env{Now: now, Caller: caller, Grant: caller.Grant(e.permission), Transact: func(ctx context.Context, fn func(*dbgen.Queries) error) error {
+			return db.InTenant(ctx, r.pool, caller.TenantID, fn)
+		}})
+	}
 	var out any
 	var committedRule error
 	err := db.InTenant(ctx, r.pool, caller.TenantID, func(q *dbgen.Queries) error {

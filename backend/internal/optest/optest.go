@@ -16,12 +16,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/wzhlinhai/salon/backend/internal/auth"
+	"github.com/wzhlinhai/salon/backend/internal/groupbuy"
 	"github.com/wzhlinhai/salon/backend/internal/httpapi"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 )
 
 // App 是一个完整的后端实例。调用者可以用真实的账号密码登录，也可以由测试直接指定。
 type App struct {
+	// Groupbuy 是测试可替换的平台注册表。
+	Groupbuy *groupbuy.Providers
 	Handler  http.Handler
 	Registry *ops.Registry
 	Auth     *auth.Service
@@ -38,8 +41,8 @@ func New(t testing.TB, pool *pgxpool.Pool) *App {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := &App{Auth: svc, callers: map[string]ops.Caller{}}
-	a.Handler, a.Registry = httpapi.New(pool, httpapi.Config{Authenticate: a.authenticate, Login: svc.Login, Now: a.Now})
+	a := &App{Groupbuy: &groupbuy.Providers{}, Auth: svc, callers: map[string]ops.Caller{}}
+	a.Handler, a.Registry = httpapi.New(pool, httpapi.Config{Groupbuy: a.Groupbuy, Authenticate: a.authenticate, Login: svc.Login, Now: a.Now})
 	return a
 }
 
