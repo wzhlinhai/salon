@@ -138,6 +138,7 @@ type OrderPayment struct {
 
 // PaymentInput 是支付方式和登记金额。
 type PaymentInput struct {
+	ExternalRef *string      `json:"external_ref,omitempty" doc:"银联登记小票号"`
 	RedPacketID *uuid.UUID   `json:"red_packet_id,omitempty"`
 	OrderItemID *uuid.UUID   `json:"order_item_id,omitempty"`
 	CardID      *uuid.UUID   `json:"card_id,omitempty"`

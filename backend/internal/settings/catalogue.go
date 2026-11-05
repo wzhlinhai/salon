@@ -199,3 +199,11 @@ func (d Def) validate(raw json.RawMessage) error {
 		return d.check(raw)
 	}
 }
+
+// Declare 在启动时声明模块注册表生成的设置项。
+func Declare(def Def) {
+	if _, exists := Lookup(def.Key); exists {
+		panic("settings: duplicate key " + def.Key)
+	}
+	Catalogue = append(Catalogue, def)
+}

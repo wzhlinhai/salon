@@ -295,3 +295,6 @@ func PunchTarget(id uuid.UUID) Target { return Target{kind: "punch", id: id} }
 func AttendanceApprovalTarget(id uuid.UUID) Target {
 	return Target{kind: "attendance_approval", id: id}
 }
+
+// CollectionTarget 创建不关联顾客的收款日志目标。
+func CollectionTarget(id uuid.UUID) Target { return Target{kind: "collection", id: id} }

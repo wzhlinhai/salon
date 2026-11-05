@@ -239,6 +239,33 @@ type Checkout struct {
 	At           pgtype.Timestamptz
 }
 
+type Collection struct {
+	TenantID       uuid.UUID
+	StoreID        uuid.UUID
+	ID             uuid.UUID
+	OrderID        uuid.UUID
+	OrderPaymentID *uuid.UUID
+	Channel        string
+	Amount         money.Amount
+	Status         string
+	ExternalRef    *string
+	CreatedBy      uuid.UUID
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type CollectionEvent struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	ID           uuid.UUID
+	CollectionID uuid.UUID
+	FromStatus   string
+	ToStatus     string
+	ActorID      uuid.UUID
+	At           pgtype.Timestamptz
+	Reason       string
+}
+
 type CommissionSchemeVersion struct {
 	TenantID      uuid.UUID
 	StoreID       uuid.UUID

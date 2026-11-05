@@ -157,6 +157,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/cancel_collection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 登记撤销收款 */
+        post: operations["cancel_collection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/change_customer_phone": {
         parameters: {
             query?: never;
@@ -497,6 +514,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/get_collection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看一笔收款 */
+        post: operations["get_collection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/get_commission_scheme": {
         parameters: {
             query?: never;
@@ -831,6 +865,23 @@ export interface paths {
         put?: never;
         /** 查看升级记录 */
         post: operations["list_card_upgrades"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看单据收款 */
+        post: operations["list_collections"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1443,6 +1494,23 @@ export interface paths {
         put?: never;
         /** 登记整卡退款 */
         post: operations["refund_card"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/refund_collection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 登记收款退款 */
+        post: operations["refund_collection"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2287,6 +2355,10 @@ export interface components {
             position_id?: string;
             tiers?: components["schemas"]["Tiers"];
         };
+        ChangeCollectionInput: {
+            id: string;
+            reason?: string;
+        };
         ChangeMyPasswordInput: {
             new_password: string;
             old_password: string;
@@ -2314,6 +2386,24 @@ export interface components {
             value: string;
         };
         ClockInInput: Record<string, never>;
+        Collection: {
+            amount: string;
+            channel: string;
+            /** Format: date-time */
+            created_at: string;
+            created_by: string;
+            external_ref: string | null;
+            id: string;
+            order_id: string;
+            order_payment_id: string | null;
+            /** @enum {string} */
+            status: "pending" | "processing" | "succeeded" | "failed" | "cancelled" | "refunded";
+            /** Format: date-time */
+            updated_at: string;
+        };
+        CollectionList: {
+            items: components["schemas"]["Collection"][];
+        };
         Commission: {
             amount: string;
             /** Format: date */
@@ -2688,6 +2778,9 @@ export interface components {
              */
             type: string;
         };
+        GetCollectionInput: {
+            id: string;
+        };
         GetCommissionSchemeInput: {
             /** Format: date */
             date?: string;
@@ -2866,6 +2959,9 @@ export interface components {
             card_id: string;
             /** Format: int32 */
             limit?: number;
+        };
+        ListCollectionsInput: {
+            order_id: string;
         };
         ListCommissionSchemeVersionsInput: {
             /** Format: int32 */
@@ -3125,6 +3221,8 @@ export interface components {
         PaymentInput: {
             amount: string;
             card_id?: string;
+            /** @description 银联登记小票号 */
+            external_ref?: string;
             /** @enum {string} */
             method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "card" | "count" | "red_packet";
             order_item_id?: string;
@@ -4120,6 +4218,39 @@ export interface operations {
             };
         };
     };
+    cancel_collection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeCollectionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     change_customer_phone: {
         parameters: {
             query?: never;
@@ -4780,6 +4911,39 @@ export interface operations {
             };
         };
     };
+    get_collection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GetCollectionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     get_commission_scheme: {
         parameters: {
             query?: never;
@@ -5427,6 +5591,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardUpgradeList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_collections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListCollectionsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionList"];
                 };
             };
             /** @description Error */
@@ -6615,6 +6812,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardRefund"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    refund_collection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeCollectionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Collection"];
                 };
             };
             /** @description Error */
