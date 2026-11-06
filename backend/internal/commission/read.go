@@ -2,9 +2,11 @@ package commission
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/wzhlinhai/salon/backend/internal/daterange"
+	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
@@ -33,8 +35,14 @@ type CommissionList struct {
 	Totals  []CommissionSourceTotal `json:"totals"`
 }
 
+// ExplainCommissionInput 是按提成 ID 查看一笔提成来源的参数。
+type ExplainCommissionInput struct {
+	ID uuid.UUID `json:"id"`
+}
+
 func registerCommissions(r *ops.Registry) {
 	ops.Register(r, ops.Operation[ListCommissionsInput, CommissionList]{Name: "list_commissions", Summary: "按营业日查询提成与解释", Kind: ops.Read, Permission: perm.PerformanceView, AI: ops.AIDirect, Handle: listCommissions})
+	ops.Register(r, ops.Operation[ExplainCommissionInput, Commission]{Name: "explain_commission", Summary: "按 ID 查看一笔提成的来源、基数、命中规则和方案版本", Kind: ops.Read, Permission: perm.PerformanceView, AI: ops.AIDirect, Handle: explainCommission})
 }
 
 func listCommissions(ctx context.Context, env ops.Env, in *ListCommissionsInput) (*CommissionList, error) {
@@ -50,6 +58,35 @@ func listCommissions(ctx context.Context, env ops.Env, in *ListCommissionsInput)
 		return nil, err
 	}
 	return Page(rows, in.Source, q.Limit, in.BeforeID), nil
+}
+
+// explainCommission 复用 list_commissions 的计算结果，按一笔提成的 ID 返回同一份结构化来源。
+func explainCommission(ctx context.Context, env ops.Env, in *ExplainCommissionInput) (*Commission, error) {
+	rows, err := env.Q.PerformanceOriginalEntries(ctx, dbgen.PerformanceOriginalEntriesParams{StoreID: env.Caller.StoreID, Ids: []uuid.UUID{in.ID}})
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("没有这笔提成：%w", ops.ErrNotFound)
+	}
+	row := rows[0]
+	if _, self := env.Caller.ScopeFilter(perm.PerformanceView); self != nil && (row.StaffID == nil || *row.StaffID != *self) {
+		return nil, fmt.Errorf("没有这笔提成：%w", ops.ErrNotFound)
+	}
+	if row.StaffID == nil {
+		return nil, fmt.Errorf("没有这笔提成：%w", ops.ErrNotFound)
+	}
+	day := row.BusinessDate.Time
+	commissions, err := Commissions(ctx, env.Q, env.Caller.StoreID, day, day, row.StaffID)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range commissions {
+		if c.ID == in.ID {
+			return &c, nil
+		}
+	}
+	return nil, fmt.Errorf("没有这笔提成：%w", ops.ErrNotFound)
 }
 
 // Page 对提成按来源筛选、汇总，并按游标分页。

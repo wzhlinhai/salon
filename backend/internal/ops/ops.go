@@ -100,6 +100,9 @@ type Caller struct {
 	TenantID uuid.UUID
 	StoreID  uuid.UUID
 	StaffID  uuid.UUID
+	// Name 和 Roles 只用于面向 AI 的系统提示，不参与权限判断。
+	Name  string
+	Roles []string
 	// Owner：调用者有老板角色。只有老板能授予或去掉老板角色（ADR-0009）。
 	Owner       bool
 	Permissions map[Permission]Grant

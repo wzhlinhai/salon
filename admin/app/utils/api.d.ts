@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/ai/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** AI 对话：按本人权限查询营业数据、会员余额和提成 */
+        post: operations["ai_chat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -542,6 +559,23 @@ export interface paths {
         put?: never;
         /** 删除角色；拥有该角色的员工失去这个角色 */
         post: operations["delete_role"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/explain_commission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按 ID 查看一笔提成的来源、基数、命中规则和方案版本 */
+        post: operations["explain_commission"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2209,6 +2243,10 @@ export interface components {
             principal?: string;
             reason: string;
         };
+        Answer: {
+            reply: string;
+            sources: components["schemas"]["Source"][];
+        };
         ApproveAttendanceInput: {
             /** Format: date */
             business_date: string;
@@ -2543,6 +2581,19 @@ export interface components {
             key: string;
             /** @description 新的值，形式见 get_settings 的 kind；null 表示恢复系统默认做法 */
             value: unknown;
+        };
+        ChatInputBody: {
+            /** @description 对话历史，最多 20 条 */
+            messages: components["schemas"]["ChatMessage"][];
+        };
+        ChatMessage: {
+            /** @description 消息内容，最多 4000 字 */
+            content: string;
+            /**
+             * @description user 或 assistant
+             * @enum {string}
+             */
+            role: "user" | "assistant";
         };
         CheckoutOrderInput: {
             order_id: string;
@@ -3017,6 +3068,9 @@ export interface components {
             before_params: unknown;
             id: string;
             kind: string;
+        };
+        ExplainCommissionInput: {
+            id: string;
         };
         GetCollectionInput: {
             id: string;
@@ -3983,6 +4037,14 @@ export interface components {
         ShiftList: {
             entries: components["schemas"]["Shift"][];
         };
+        Source: {
+            arguments: {
+                [key: string]: unknown;
+            };
+            error?: string;
+            ok: boolean;
+            tool: string;
+        };
         Staff: {
             /** @description 是否在职 */
             active: boolean;
@@ -4195,6 +4257,39 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    ai_chat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Answer"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     login: {
         parameters: {
             query?: never;
@@ -5238,6 +5333,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OK"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    explain_commission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExplainCommissionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Commission"];
                 };
             };
             /** @description Error */

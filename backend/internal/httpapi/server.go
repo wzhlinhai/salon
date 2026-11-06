@@ -13,6 +13,7 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 
+	"github.com/wzhlinhai/salon/backend/internal/ai"
 	"github.com/wzhlinhai/salon/backend/internal/attendance"
 	"github.com/wzhlinhai/salon/backend/internal/audit"
 	"github.com/wzhlinhai/salon/backend/internal/auth"
@@ -21,6 +22,8 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/collections"
 	"github.com/wzhlinhai/salon/backend/internal/commission"
 	"github.com/wzhlinhai/salon/backend/internal/customers"
+	"github.com/wzhlinhai/salon/backend/internal/db"
+	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/debts"
 	"github.com/wzhlinhai/salon/backend/internal/drafts"
 	"github.com/wzhlinhai/salon/backend/internal/groupbuy"
@@ -48,6 +51,8 @@ type Config struct {
 	Now          func() time.Time
 	Authenticate Authenticator
 	Login        LoginFunc
+	// AIModel 返回 AI 对话使用的模型；返回 nil 时 /api/ai/chat 返回 503。
+	AIModel func() ai.Model
 }
 
 func init() {
@@ -80,6 +85,19 @@ func New(pool *pgxpool.Pool, cfg Config) (*echo.Echo, *ops.Registry) {
 		cfg.Now = time.Now
 	}
 	reg := ops.NewRegistry(pool, api, cfg.Now)
+	model := cfg.AIModel
+	if model == nil {
+		model = func() ai.Model { return nil }
+	}
+	registerChat(api, ai.NewChat(reg, model, cfg.Now, func(ctx context.Context, caller ops.Caller, now time.Time) (time.Time, error) {
+		var day time.Time
+		err := db.InTenant(ctx, pool, caller.TenantID, func(q *dbgen.Queries) error {
+			var err error
+			day, err = settings.BusinessDate(ctx, q, caller.StoreID, now)
+			return err
+		})
+		return day, err
+	}))
 	groupbuy.Register(reg, cfg.Groupbuy)
 	stores.Register(reg)
 	staff.Register(reg)
