@@ -731,6 +731,70 @@ type RolePermission struct {
 	WindowDays *int32
 }
 
+type RotationEvent struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	ID           uuid.UUID
+	QueueID      uuid.UUID
+	BusinessDate pgtype.Date
+	StaffID      *uuid.UUID
+	Kind         string
+	Reason       *string
+	Note         *string
+	FromPosition *int32
+	ToPosition   *int32
+	Minutes      *int32
+	OrderID      *uuid.UUID
+	Designated   *bool
+	ActorStaffID uuid.UUID
+	CreatedAt    pgtype.Timestamptz
+}
+
+type RotationHalfItem struct {
+	TenantID  uuid.UUID
+	StoreID   uuid.UUID
+	ID        uuid.UUID
+	ItemID    uuid.UUID
+	CreatedAt pgtype.Timestamptz
+}
+
+type RotationMember struct {
+	TenantID  uuid.UUID
+	StoreID   uuid.UUID
+	ID        uuid.UUID
+	QueueID   uuid.UUID
+	StaffID   uuid.UUID
+	SortOrder int32
+	CreatedAt pgtype.Timestamptz
+}
+
+type RotationQueue struct {
+	TenantID  uuid.UUID
+	StoreID   uuid.UUID
+	ID        uuid.UUID
+	Name      string
+	Active    bool
+	CreatedBy uuid.UUID
+	CreatedAt pgtype.Timestamptz
+}
+
+type RotationTurn struct {
+	TenantID          uuid.UUID
+	StoreID           uuid.UUID
+	ID                uuid.UUID
+	QueueID           uuid.UUID
+	BusinessDate      pgtype.Date
+	StaffID           uuid.UUID
+	Position          int32
+	Status            string
+	HalfPending       bool
+	RestUntil         pgtype.Timestamptz
+	ServingOrderID    *uuid.UUID
+	ServingDesignated bool
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
 type SettingChange struct {
 	ID            uuid.UUID
 	TenantID      uuid.UUID

@@ -157,6 +157,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/assign_turn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 轮牌自动取下一人，或点客指定员工，开始服务 */
+        post: operations["assign_turn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/cancel_collection": {
         parameters: {
             query?: never;
@@ -287,6 +304,23 @@ export interface paths {
         put?: never;
         /** 由人复检权限并确认执行草稿 */
         post: operations["confirm_draft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/cover_turn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 盖牌：保留位置但暂不接客 */
+        post: operations["cover_turn"];
         delete?: never;
         options?: never;
         head?: never;
@@ -446,6 +480,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/create_rotation_queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 新建轮牌队列，例如剪发牌、助理牌 */
+        post: operations["create_rotation_queue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/create_shift": {
         parameters: {
             query?: never;
@@ -559,6 +610,23 @@ export interface paths {
         put?: never;
         /** 删除角色；拥有该角色的员工失去这个角色 */
         post: operations["delete_role"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/drag_turn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 手动拖动员工到指定位置并记录原因 */
+        post: operations["drag_turn"];
         delete?: never;
         options?: never;
         head?: never;
@@ -718,6 +786,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/get_rotation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看一个轮牌队列在某个营业日的有序名单 */
+        post: operations["get_rotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/get_rotation_stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按员工统计点客和轮牌接客数 */
+        post: operations["get_rotation_stats"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/get_settings": {
         parameters: {
             query?: never;
@@ -797,6 +899,40 @@ export interface paths {
         put?: never;
         /** 卖或送红包给顾客 */
         post: operations["issue_red_packet"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/join_rotation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 员工到岗加入轮牌，保留预排的位置 */
+        post: operations["join_rotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/leave_rotation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 员工离岗，保留当天位置但不再接客 */
+        post: operations["leave_rotation"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1347,6 +1483,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_rotation_events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按日期范围查看轮牌跳过、拖动、接客和推进记录 */
+        post: operations["list_rotation_events"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_rotation_queues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 列出本店轮牌队列和成员 */
+        post: operations["list_rotation_queues"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_setting_changes": {
         parameters: {
             query?: never;
@@ -1704,6 +1874,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/release_turn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 撤销这次接客，不消耗轮牌 */
+        post: operations["release_turn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/remove_order_item": {
         parameters: {
             query?: never;
@@ -1766,6 +1953,23 @@ export interface paths {
         put?: never;
         /** 改价并记录原因 */
         post: operations["reprice_order_item"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/rest_staff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 临时休息指定分钟数，到点自动恢复等待 */
+        post: operations["rest_staff"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1891,6 +2095,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/set_half_turn_items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 设置按项目记半轮的项目清单 */
+        post: operations["set_half_turn_items"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/set_order_item_staff": {
         parameters: {
             query?: never;
@@ -1902,6 +2123,23 @@ export interface paths {
         put?: never;
         /** 更换项目岗位员工 */
         post: operations["set_order_item_staff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/set_queue_members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 替换轮牌队列成员及其默认顺序 */
+        post: operations["set_queue_members"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1959,6 +2197,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/skip_staff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 跳过员工并记录原因，按设置排到队尾或保留原位 */
+        post: operations["skip_staff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/transfer_card_balance": {
         parameters: {
             query?: never;
@@ -1970,6 +2225,23 @@ export interface paths {
         put?: never;
         /** 在两张卡之间转余额并记录原因 */
         post: operations["transfer_card_balance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/uncover_turn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 取消盖牌，恢复等待 */
+        post: operations["uncover_turn"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2146,6 +2418,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/update_rotation_queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 轮牌队列改名或停用 */
+        post: operations["update_rotation_queue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/update_staff": {
         parameters: {
             query?: never;
@@ -2285,6 +2574,15 @@ export interface components {
         };
         AssignCustomerResponsibleInput: {
             customer_ids: string[];
+            staff_id?: string;
+        };
+        AssignTurnInput: {
+            /** @description 点客为 true，轮牌为 false */
+            designated?: boolean;
+            /** @description 正在服务的单，收银结账后据此推进轮牌 */
+            order_id?: string;
+            queue_id: string;
+            /** @description 点客时指定员工；不填为轮牌自动取第一个等待的员工 */
             staff_id?: string;
         };
         AttendanceApproval: {
@@ -2821,6 +3119,10 @@ export interface components {
             /** @enum {string} */
             status: "unused" | "redeemed" | "revoked" | "invalid";
         };
+        CoverTurnInput: {
+            queue_id: string;
+            staff_id: string;
+        };
         CreateCardTypeInput: {
             discount_percent?: string | null;
             items?: components["schemas"]["CardTypeItemInput"][];
@@ -2888,6 +3190,9 @@ export interface components {
             /** @description 角色名称 */
             name: string;
             permissions: components["schemas"]["GrantSpec"][];
+        };
+        CreateRotationQueueInput: {
+            name: string;
         };
         CreateShiftInput: {
             end_time: string;
@@ -3027,6 +3332,13 @@ export interface components {
             summary: string;
             utterance: string;
         };
+        DragTurnInput: {
+            queue_id: string;
+            reason: string;
+            staff_id: string;
+            /** Format: int64 */
+            to_position: number;
+        };
         Entry: {
             action: string;
             actor: components["schemas"]["Actor"];
@@ -3105,6 +3417,20 @@ export interface components {
         GetOrderInput: {
             id: string;
         };
+        GetRotationInput: {
+            /**
+             * Format: date
+             * @description 不填为今天
+             */
+            date?: string;
+            queue_id: string;
+        };
+        GetRotationStatsInput: {
+            /** Format: date */
+            from: string;
+            /** Format: date */
+            to: string;
+        };
         GetSettingsInput: {
             /**
              * Format: date
@@ -3157,6 +3483,13 @@ export interface components {
             male: string;
             not_designated: string;
             total: string;
+        };
+        HalfTurnItem: {
+            item_id: string;
+            name: string;
+        };
+        HalfTurnItemList: {
+            entries: components["schemas"]["HalfTurnItem"][];
         };
         HandOverCustomersInput: {
             from_staff_id: string;
@@ -3306,6 +3639,14 @@ export interface components {
             /** @enum {string} */
             source: "standard" | "level" | "member";
         };
+        JoinRotationInput: {
+            queue_id: string;
+            staff_id: string;
+        };
+        LeaveRotationInput: {
+            queue_id: string;
+            staff_id: string;
+        };
         Level: {
             active: boolean;
             id: string;
@@ -3443,6 +3784,14 @@ export interface components {
             limit?: number;
             staff_id?: string;
         };
+        ListRotationEventsInput: {
+            /** Format: date */
+            from: string;
+            queue_id?: string;
+            /** Format: date */
+            to: string;
+        };
+        ListRotationQueuesInput: Record<string, never>;
         ListSettingChangesInput: {
             /** @description 上一页最后一条的 ID，只看比它更早的；不填为最新一页 */
             before_id?: string;
@@ -3477,6 +3826,11 @@ export interface components {
             /** @description 有效权限：各角色权限的并集，限制取最宽 */
             permissions: components["schemas"]["GrantSpec"][];
             staff: components["schemas"]["Staff"];
+        };
+        Member: {
+            /** Format: int64 */
+            sort_order: number;
+            staff: components["schemas"]["Ref"];
         };
         MemberPrice: {
             card_type_id: string;
@@ -3831,6 +4185,18 @@ export interface components {
             voided_at: string | null;
             voided_by: components["schemas"]["Ref"] | null;
         };
+        Queue: {
+            active: boolean;
+            /** Format: date-time */
+            created_at: string;
+            created_by: components["schemas"]["Ref"];
+            id: string;
+            members: components["schemas"]["Member"][];
+            name: string;
+        };
+        QueueList: {
+            entries: components["schemas"]["Queue"][];
+        };
         QuoteItemPriceInput: {
             card_type_id?: string;
             item_id: string;
@@ -3926,6 +4292,10 @@ export interface components {
             id: string;
             reason: string;
         };
+        ReleaseTurnInput: {
+            queue_id: string;
+            staff_id: string;
+        };
         RemainingCounts: {
             /** Format: int32 */
             gift_remaining: number;
@@ -3966,6 +4336,12 @@ export interface components {
             price: string;
             reason: string;
         };
+        RestStaffInput: {
+            /** Format: int64 */
+            minutes: number;
+            queue_id: string;
+            staff_id: string;
+        };
         RevokeAttendanceApprovalInput: {
             id: string;
         };
@@ -3997,6 +4373,50 @@ export interface components {
         };
         RoleOptionList: {
             roles: components["schemas"]["RoleOption"][];
+        };
+        Rotation: {
+            /** Format: date */
+            business_date: string;
+            entries: components["schemas"]["Turn"][];
+            queue: components["schemas"]["Queue"];
+        };
+        RotationEvent: {
+            actor: components["schemas"]["Ref"];
+            /** Format: date */
+            business_date: string;
+            /** Format: date-time */
+            created_at: string;
+            designated: boolean | null;
+            /** Format: int64 */
+            from_position: number | null;
+            id: string;
+            /** @enum {string} */
+            kind: "join" | "leave" | "assign" | "release" | "skip" | "auto_skip" | "cover" | "uncover" | "rest" | "rest_end" | "drag" | "advance_whole" | "advance_half" | "advance_designated_no_turn";
+            /** Format: int64 */
+            minutes: number | null;
+            note: string | null;
+            order_id: string | null;
+            queue_id: string;
+            reason: string | null;
+            staff: components["schemas"]["Ref"];
+            /** Format: int64 */
+            to_position: number | null;
+        };
+        RotationEventList: {
+            entries: components["schemas"]["RotationEvent"][];
+        };
+        RotationStats: {
+            /** Format: int64 */
+            designated: number;
+            entries: components["schemas"]["StaffRotationStat"][];
+            /** Format: date */
+            from: string;
+            /** Format: int64 */
+            rotation: number;
+            /** Format: date */
+            to: string;
+            /** Format: int64 */
+            total: number;
         };
         Rule: {
             /** @enum {string} */
@@ -4050,10 +4470,17 @@ export interface components {
             month: string;
             staff_id: string;
         };
+        SetHalfTurnItemsInput: {
+            item_ids: string[];
+        };
         SetOrderItemStaffInput: {
             order_id: string;
             order_item_id: string;
             staff: components["schemas"]["OrderItemStaffInput"][];
+        };
+        SetQueueMembersInput: {
+            queue_id: string;
+            staff_ids: string[];
         };
         SetStaffLoginInput: {
             /** @description 登录账号，全系统唯一 */
@@ -4143,6 +4570,14 @@ export interface components {
         ShiftList: {
             entries: components["schemas"]["Shift"][];
         };
+        SkipStaffInput: {
+            /** @description 原因为其他时的说明 */
+            note?: string;
+            queue_id: string;
+            /** @enum {string} */
+            reason: "服务中" | "休息" | "迟到" | "顾客指定他人" | "其他";
+            staff_id: string;
+        };
         Staff: {
             /** @description 是否在职 */
             active: boolean;
@@ -4184,6 +4619,21 @@ export interface components {
         };
         StaffOptionList: {
             staff: components["schemas"]["StaffOption"][];
+        };
+        StaffRotationStat: {
+            /**
+             * Format: int64
+             * @description 点客接客数
+             */
+            designated: number;
+            /**
+             * Format: int64
+             * @description 轮牌接客数
+             */
+            rotation: number;
+            staff: components["schemas"]["Ref"];
+            /** Format: int64 */
+            total: number;
         };
         StaffShift: {
             /** Format: date */
@@ -4239,6 +4689,28 @@ export interface components {
             principal: string;
             reason: string;
             to_card_id: string;
+        };
+        Turn: {
+            /** @description 已经记过一次半轮，下一次半轮排到队尾 */
+            half_pending: boolean;
+            /** Format: int64 */
+            position: number;
+            /**
+             * Format: date-time
+             * @description 临时休息结束时刻
+             */
+            rest_until: string | null;
+            /** @description 正在服务的是点客 */
+            serving_designated: boolean;
+            /** @description 正在服务的单 */
+            serving_order_id: string | null;
+            staff: components["schemas"]["Ref"];
+            /** @enum {string} */
+            status: "off" | "waiting" | "serving" | "resting" | "covered";
+        };
+        UncoverTurnInput: {
+            queue_id: string;
+            staff_id: string;
         };
         UndoImportInput: {
             batch_id: string;
@@ -4314,6 +4786,11 @@ export interface components {
             /** @description 角色的全部权限，替换原有权限 */
             permissions: components["schemas"]["GrantSpec"][];
             role_id: string;
+        };
+        UpdateRotationQueueInput: {
+            active?: boolean;
+            id: string;
+            name?: string;
         };
         UpdateStaffInput: {
             /** @description 级别，不填为不设 */
@@ -4655,6 +5132,39 @@ export interface operations {
             };
         };
     };
+    assign_turn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignTurnInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Rotation"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     cancel_collection: {
         parameters: {
             query?: never;
@@ -4906,6 +5416,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Draft"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    cover_turn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoverTurnInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Rotation"];
                 };
             };
             /** @description Error */
@@ -5216,6 +5759,39 @@ export interface operations {
             };
         };
     };
+    create_rotation_queue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRotationQueueInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Queue"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     create_shift: {
         parameters: {
             query?: never;
@@ -5434,6 +6010,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OK"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    drag_turn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DragTurnInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Rotation"];
                 };
             };
             /** @description Error */
@@ -5744,6 +6353,72 @@ export interface operations {
             };
         };
     };
+    get_rotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GetRotationInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Rotation"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    get_rotation_stats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GetRotationStatsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RotationStats"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     get_settings: {
         parameters: {
             query?: never;
@@ -5896,6 +6571,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RedPacket"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    join_rotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinRotationInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Rotation"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    leave_rotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveRotationInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Rotation"];
                 };
             };
             /** @description Error */
@@ -6965,6 +7706,72 @@ export interface operations {
             };
         };
     };
+    list_rotation_events: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListRotationEventsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RotationEventList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_rotation_queues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListRotationQueuesInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     list_setting_changes: {
         parameters: {
             query?: never;
@@ -7658,6 +8465,39 @@ export interface operations {
             };
         };
     };
+    release_turn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReleaseTurnInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Rotation"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     remove_order_item: {
         parameters: {
             query?: never;
@@ -7777,6 +8617,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Order"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    rest_staff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestStaffInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Rotation"];
                 };
             };
             /** @description Error */
@@ -8021,6 +8894,39 @@ export interface operations {
             };
         };
     };
+    set_half_turn_items: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetHalfTurnItemsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HalfTurnItemList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     set_order_item_staff: {
         parameters: {
             query?: never;
@@ -8041,6 +8947,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Order"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    set_queue_members: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetQueueMembersInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Queue"];
                 };
             };
             /** @description Error */
@@ -8153,6 +9092,39 @@ export interface operations {
             };
         };
     };
+    skip_staff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkipStaffInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Rotation"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     transfer_card_balance: {
         parameters: {
             query?: never;
@@ -8173,6 +9145,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardTransferResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    uncover_turn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UncoverTurnInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Rotation"];
                 };
             };
             /** @description Error */
@@ -8503,6 +9508,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Role"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    update_rotation_queue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateRotationQueueInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Queue"];
                 };
             };
             /** @description Error */

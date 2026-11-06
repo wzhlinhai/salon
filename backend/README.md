@@ -71,6 +71,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 - 设置值支持 time（时刻）、time_range（时段）、choice（Options 中的字符串）和 integer（Min/Max 内的非负整数）。`member_price_rule` 默认会员价优先，也可取较低价；`points_per_recharge_yuan` 为每积一分所需充值本金元数，默认 0（不积分），范围 0–100000。开卡、充值和升级补差价按当日规则积分，赠送金、转余额和调整余额不积分。`guest_count_split` 默认将客次记给第一个岗位的员工，也可选择单上员工均分，当天可生效。`performance_split` 默认按岗位比例分多人业绩，也可选择均分，项目没设岗位比例时均分；`performance_ratio_*` 为八种支付方式各自的 0–100 业绩比例，本金、现金、银联、微信、支付宝和挂账默认 100%，赠送金和红包默认 0%；购买次数、赠送次数的耗卡业绩比例默认分别为 100%、0%，均可当天生效。退卡赠送金 `card_refund_bonus` 默认不退、作废，可选择扣回未被撤单退回的消费赠送金；`card_refund_fee_percent` 为 0–100 的退款手续费百分比，默认 0，当天可生效。撤单授权窗口 `void_window_minutes` 为 0（默认关闭）或 1–60 分钟，当天可生效。
 - 考勤宽限分钟 `attendance_grace_minutes` 默认 0，范围 0–60，当天可生效，仅决定迟到、早退是否计异常。
+- 轮牌设置：`rotation_order_rule` 新一天队列的初始顺序（先到先排、接昨天顺序、每晚按成员默认顺序重置，默认先到先排）；`rotation_designated_takes_turn` 点客结账后是否占轮排到队尾（默认占轮）；`rotation_skip_when_serving_designated` 队首正在服务点客时是否自动跳过并记录（默认跳过）；`rotation_skip_policy` 被跳过时排到队尾还是保留原位（默认排到队尾）；`rotation_half_rule` 半轮规则（不记、按价格、按项目，默认不记）；`rotation_half_price_below` 按价格记半轮的实收上限（元，默认 0 表示不按价格）。规则按营业日生效，收银推进和每次轮牌操作都读取调用时刻执行的设置。
 - 设置项在 `internal/settings` 的 `Catalogue` 里声明：名称、值的形式、系统默认做法和校验。新的业务规则（例如各项业务的做法选择）在这里加一项，再给 `Rules` 加一个读取它的方法。
 - 每次修改都在 `setting_changes` 追加一行：改前、改后、生效日期、修改人、修改时间。`salon_app` 只有 SELECT 和 INSERT 权限。某个营业日执行的值，取生效日期不晚于这一天的最大者，同一生效日期取最后保存的一次（修改时间，再按 ID）；没有修改，或者改成了"恢复默认"，就用系统当前的默认做法。这条选法只在 `internal/inforce` 写一份，门店设置、提成方案版本和底薪共用，各类历史提供自己的保存顺序（提成方案按版本号；设置和底薪按保存时间、ID），SQL 只按门店读出历史；设置的"恢复默认"只在 settings 的 `resolve` 换成目录默认值。生效日期不能早于今天；划分营业日的设置（`fromTomorrow`，例如营业日结束时间）最早明天生效。同一项设置的修改用咨询锁排队，改前值才接得上前一次的改后值。
 - 业务模块不直接查设置表：
@@ -293,6 +294,46 @@ create_shift、deactivate_shift、set_staff_shift 是 Write / AIDraft，list_shi
 | list_attendance_summary | attendance.manage | AIDirect |
 
 list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本店在职及离职员工；list_attendance_summary 返回本店月度统计。写操作返回的员工引用及日志均只含姓名与标识，不含手机号。已离职账号由登录鉴权拒绝本人打卡，历史查询与店长补卡仍可用。P0 不校验位置或 Wi-Fi。
+
+## 轮牌
+
+`internal/rotation` 管理电子轮牌。`rotation_queues` 是门店的队列（例如剪发牌、助理牌），名称在门店内唯一，可停用；`rotation_members` 记录队列成员和默认顺序，一名员工可以在多个队列。`rotation_turns` 是某个队列某个营业日的有序名单，首次访问当天时按设置建立，状态为 off（未到岗）、waiting（等待）、serving（服务中）、resting（临时休息）或 covered（盖牌）；每行记位置、半轮标记、休息结束时刻和正在服务的单。唯一键保证同一员工每天在一个队列只有一行、位置在队列内唯一。`rotation_events` 只追加、不修改不删除，记录每次加入、离岗、接客、释放、跳过、自动跳过、盖牌、取消盖牌、休息、休息结束、拖动和结账推进，跳过与拖动必须带原因。`rotation_half_items` 保存按项目记半轮的项目。
+
+所有表都有租户 RLS、`tenant_id`/`store_id`、引用门店和其他业务表的组合外键。`salon_app` 对队列和轮牌行有 SELECT、INSERT、UPDATE，对成员和半轮项目另有 DELETE，对事件只有 SELECT、INSERT，因此事件永远只追加。
+
+顺序规则在第一次访问某个营业日时生效：先到先排的当天名单为空，员工到岗时依次排到队尾；接昨天顺序按前一个营业日结束后各员工的位置预排，新成员按默认顺序排在队尾；每晚重置按成员的默认顺序预排。预排的员工都是 off，到岗后变成 waiting 并保留位置。到岗、离岗都留事件；离岗保留当天位置但不再接客，服务中的员工不能离岗。
+
+`assign_turn` 不带员工时取位置最靠前的 waiting；serving、resting、covered、off 都不接客。队首正在服务点客且 `rotation_skip_when_serving_designated` 为 yes 时，记录一条原因为“点客服务中”的 auto_skip，并按 `rotation_skip_policy` 排到队尾或保留原位。带员工时是点客，员工必须是 waiting，标记 serving 和是否指定。`release_turn` 撤销接客、不消耗轮牌。`skip_staff` 必须从固定原因中选择，选“其他”还要写说明；`cover_turn` 盖牌后保留位置但不能接客，`uncover_turn` 恢复等待；`rest_staff` 休息 1–240 分钟，到点后在读取或下一次操作时自动恢复 waiting 并记 rest_end；`drag_turn` 把等待员工拖到指定位置并必须写原因。
+
+停用的队列仍可查看和释放正在服务的员工；`update_rotation_queue` 可以改名并重新启用，`join_rotation`、`assign_turn` 等新的接客操作仍拒绝停用队列。自动选人和点名都只接受当前队列成员且仍在职的员工，成员被移除或员工停用后，当天仍是 waiting 的行不会再被分配。
+
+每次改位置都在同一事务里先锁队列行，再按位置和员工 ID 稳定顺序 `FOR UPDATE` 锁住当天全部轮牌行；写回时先把位置整体加一个偏移量，再写成 1..n 的连续位置，避免唯一约束瞬时冲突。并发 `assign_turn` 因此不会把同一名员工分给两位顾客。
+
+结账成功后，`orders` 在同一事务里调用 `rotation.AdvanceAfterCheckout`。它找出这张单上的服务员工，按队列 ID 顺序锁住队列和各行所属营业日的轮牌行；只推进 `serving_order_id` 指向这张单的行，跨营业日也按行自己的营业日推进，规则仍取结账时刻的营业日。点客与否取轮牌行记录的 `serving_designated`，不看单据上的指定标记。点客且 `rotation_designated_takes_turn=no` 时只恢复 waiting、不改变位置，记 advance_designated_no_turn；否则按 `rotation_half_rule` 判断整轮或半轮：整轮直接排到队尾并清除半轮标记；半轮第一次只标记 half_pending、不动位置，第二次才排到队尾并清除标记。事件写入 order_id 和 designated。单上没有正在服务的员工时不做任何事；撤单不反向推进轮牌（不在本任务范围）。
+
+`get_rotation_stats` 从 advance_whole、advance_half 和 advance_designated_no_turn 事件按员工统计点客与轮牌接客数，两者分开合计；同一员工在两个队列服务同一张单只记一次，按员工和单去重。`list_rotation_events` 按日期范围和可选队列返回全部只追加记录；日期范围和统计都不得晚于今天的营业日。`get_rotation` 的轮牌行按批读取，查询数不随队列人数增长。
+
+| 操作 | 权限 | AI |
+| --- | --- | --- |
+| create_rotation_queue | queue.operate | AIDraft |
+| update_rotation_queue | queue.operate | AIDraft |
+| set_queue_members | queue.operate | AIDraft |
+| list_rotation_queues | queue.view | AIDirect |
+| get_rotation | queue.view | AIDirect |
+| join_rotation | queue.operate | AIDraft |
+| leave_rotation | queue.operate | AIDraft |
+| assign_turn | queue.operate | AIDraft |
+| release_turn | queue.operate | AIDraft |
+| skip_staff | queue.operate | AIDraft |
+| cover_turn | queue.operate | AIDraft |
+| uncover_turn | queue.operate | AIDraft |
+| rest_staff | queue.operate | AIDraft |
+| drag_turn | queue.operate | AIDraft |
+| set_half_turn_items | queue.operate | AIDraft |
+| list_rotation_events | queue.view | AIDirect |
+| get_rotation_stats | queue.view | AIDirect |
+
+老板拥有全部权限；店长和前台可以操作轮牌，发型师和助理只能查看。队列、成员和半轮项目配置写入 `audit_log`，目标为 `rotation_queue`（半轮项目清单以门店 ID 为目标）；轮牌事件本身仍是只追加的操作记录，不写 `audit_log`。
 
 ## 团购适配层
 

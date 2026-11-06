@@ -54,31 +54,37 @@ type Def struct {
 
 // 设置项的 Key。
 const (
-	KeyCardDeductionOrder            = "card_deduction_order"
-	KeyCardCountOrder                = "card_count_order"
-	KeyCardSelection                 = "card_selection"
-	KeyOthersCardPayment             = "others_card_payment"
-	KeyMemberPriceRule               = "member_price_rule"
-	KeyPointsPerRechargeYuan         = "points_per_recharge_yuan"
-	KeyGuestCountSplit               = "guest_count_split"
-	KeyPerformanceSplit              = "performance_split"
-	KeyPerformanceRatioCash          = "performance_ratio_cash"
-	KeyPerformanceRatioUnionpay      = "performance_ratio_unionpay"
-	KeyPerformanceRatioWechat        = "performance_ratio_wechat"
-	KeyPerformanceRatioAlipay        = "performance_ratio_alipay"
-	KeyPerformanceRatioDebt          = "performance_ratio_debt"
-	KeyPerformanceRatioCardPrincipal = "performance_ratio_card_principal"
-	KeyPerformanceRatioCardBonus     = "performance_ratio_card_bonus"
-	KeyPerformanceRatioRedPacket     = "performance_ratio_red_packet"
-	KeyPerformanceRatioCountPaid     = "performance_ratio_count_paid"
-	KeyPerformanceRatioCountGift     = "performance_ratio_count_gift"
-	KeyCardRefundBonus               = "card_refund_bonus"
-	KeyCardRefundFeePercent          = "card_refund_fee_percent"
-	KeyAttendanceGraceMinutes        = "attendance_grace_minutes"
-	KeyVoidWindowMinutes             = "void_window_minutes"
-	KeyDraftDualConfirm              = "draft_dual_confirm"
-	KeyBusinessHours                 = "business_hours"
-	KeyBusinessDayEnd                = "business_day_end"
+	KeyCardDeductionOrder                = "card_deduction_order"
+	KeyCardCountOrder                    = "card_count_order"
+	KeyCardSelection                     = "card_selection"
+	KeyOthersCardPayment                 = "others_card_payment"
+	KeyMemberPriceRule                   = "member_price_rule"
+	KeyPointsPerRechargeYuan             = "points_per_recharge_yuan"
+	KeyGuestCountSplit                   = "guest_count_split"
+	KeyPerformanceSplit                  = "performance_split"
+	KeyPerformanceRatioCash              = "performance_ratio_cash"
+	KeyPerformanceRatioUnionpay          = "performance_ratio_unionpay"
+	KeyPerformanceRatioWechat            = "performance_ratio_wechat"
+	KeyPerformanceRatioAlipay            = "performance_ratio_alipay"
+	KeyPerformanceRatioDebt              = "performance_ratio_debt"
+	KeyPerformanceRatioCardPrincipal     = "performance_ratio_card_principal"
+	KeyPerformanceRatioCardBonus         = "performance_ratio_card_bonus"
+	KeyPerformanceRatioRedPacket         = "performance_ratio_red_packet"
+	KeyPerformanceRatioCountPaid         = "performance_ratio_count_paid"
+	KeyPerformanceRatioCountGift         = "performance_ratio_count_gift"
+	KeyCardRefundBonus                   = "card_refund_bonus"
+	KeyCardRefundFeePercent              = "card_refund_fee_percent"
+	KeyAttendanceGraceMinutes            = "attendance_grace_minutes"
+	KeyRotationOrderRule                 = "rotation_order_rule"
+	KeyRotationDesignatedTakesTurn       = "rotation_designated_takes_turn"
+	KeyRotationSkipWhenServingDesignated = "rotation_skip_when_serving_designated"
+	KeyRotationSkipPolicy                = "rotation_skip_policy"
+	KeyRotationHalfRule                  = "rotation_half_rule"
+	KeyRotationHalfPriceBelow            = "rotation_half_price_below"
+	KeyVoidWindowMinutes                 = "void_window_minutes"
+	KeyDraftDualConfirm                  = "draft_dual_confirm"
+	KeyBusinessHours                     = "business_hours"
+	KeyBusinessDayEnd                    = "business_day_end"
 )
 
 // Catalogue 是全部门店设置，顺序即设置页面的显示顺序。后续模块的业务规则在这里添加。
@@ -123,6 +129,12 @@ var Catalogue = []Def{
 		Hint: "开启后，撤单前要本人重新输入登录密码开一个窗口，窗口内只有本人能撤，过期要重开；单位分钟，0 为关闭", Default: 0,
 	},
 	{Key: KeyAttendanceGraceMinutes, Label: "考勤宽限分钟", Kind: KindInteger, Min: 0, Max: 60, Default: 0, Hint: "上班晚于、下班早于班次时间多少分钟以内不算迟到、早退"},
+	{Key: KeyRotationOrderRule, Label: "轮牌顺序规则", Hint: "每天轮牌队列的顺序从哪里来", Kind: KindChoice, Default: "first_come", Options: []ChoiceOption{{Value: "first_come", Label: "先到先排"}, {Value: "continue_yesterday", Label: "接昨天顺序"}, {Value: "reset_nightly", Label: "每晚按成员顺序重置"}}},
+	{Key: KeyRotationDesignatedTakesTurn, Label: "点客占轮", Hint: "点客服务结账后，这名员工是否排到队尾", Kind: KindChoice, Default: "yes", Options: []ChoiceOption{{Value: "yes", Label: "占轮，排到队尾"}, {Value: "no", Label: "不占轮，顺序不变"}}},
+	{Key: KeyRotationSkipWhenServingDesignated, Label: "点牌跳牌", Hint: "队首员工正在服务点客时，是否自动跳过并记录", Kind: KindChoice, Default: "yes", Options: []ChoiceOption{{Value: "yes", Label: "自动跳过"}, {Value: "no", Label: "不自动跳过"}}},
+	{Key: KeyRotationSkipPolicy, Label: "轮牌跳牌", Hint: "员工被跳过时排到队尾还是保留原位下次优先", Kind: KindChoice, Default: "to_tail", Options: []ChoiceOption{{Value: "to_tail", Label: "排到队尾算一轮"}, {Value: "keep_position", Label: "保留原位下次优先"}}},
+	{Key: KeyRotationHalfRule, Label: "半轮规则", Hint: "按价格或项目判断一次服务是否只算半轮", Kind: KindChoice, Default: "none", Options: []ChoiceOption{{Value: "none", Label: "不记半轮"}, {Value: "by_price", Label: "按价格"}, {Value: "by_item", Label: "按项目"}}},
+	{Key: KeyRotationHalfPriceBelow, Label: "半轮价格线", Hint: "按价格记半轮时，实收低于多少元算半轮；0 表示不按价格记半轮", Kind: KindInteger, Min: 0, Max: 1000000, Default: 0},
 	{
 		Key: KeyBusinessHours, Label: "营业时段", Kind: KindTimeRange,
 		Hint:    "每天开门和关门的时间，预约等按它限制",
