@@ -78,6 +78,14 @@ sql:
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money
               type: Amount
+          - column: import_batch_rows.principal
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: import_batch_rows.bonus
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
           - column: card_items.unit_price
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money
@@ -214,6 +222,18 @@ sql:
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money
               type: Change
+          - column: import_batches.declared_principal
+            go_type: string
+          - column: import_batches.declared_bonus
+            go_type: string
+          - column: import_batches.file_principal
+            go_type: string
+          - column: import_batches.file_bonus
+            go_type: string
+          - column: import_batches.written_principal
+            go_type: string
+          - column: import_batches.written_bonus
+            go_type: string
           - column: collections.amount
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money
