@@ -21,6 +21,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/collections"
 	"github.com/wzhlinhai/salon/backend/internal/commission"
 	"github.com/wzhlinhai/salon/backend/internal/customers"
+	"github.com/wzhlinhai/salon/backend/internal/dataio"
 	"github.com/wzhlinhai/salon/backend/internal/debts"
 	"github.com/wzhlinhai/salon/backend/internal/drafts"
 	"github.com/wzhlinhai/salon/backend/internal/groupbuy"
@@ -94,9 +95,11 @@ func New(pool *pgxpool.Pool, cfg Config) (*echo.Echo, *ops.Registry) {
 	redpackets.Register(reg)
 	cards.Register(reg)
 	customers.Register(reg)
+	dataio.Register(reg)
 	settings.Register(reg)
 	audit.Register(reg)
 	drafts.Register(reg)
+	dataio.RegisterHTTP(e, pool, cfg.Now)
 	return e, reg
 }
 

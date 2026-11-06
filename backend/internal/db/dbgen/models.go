@@ -415,6 +415,73 @@ type GuestVisit struct {
 	CreatedAt          pgtype.Timestamptz
 }
 
+type ImportBatch struct {
+	ID                  uuid.UUID
+	TenantID            uuid.UUID
+	StoreID             uuid.UUID
+	Status              string
+	FileName            string
+	DeclaredCustomers   int32
+	DeclaredStoredCards int32
+	DeclaredPrincipal   string
+	DeclaredBonus       string
+	DeclaredCountCards  int32
+	FileCustomers       int32
+	FileStoredCards     int32
+	FilePrincipal       string
+	FileBonus           string
+	FileCountCards      int32
+	WrittenCustomers    int32
+	WrittenStoredCards  int32
+	WrittenPrincipal    string
+	WrittenBonus        string
+	WrittenCountCards   int32
+	CreatedBy           uuid.UUID
+	CreatedAt           pgtype.Timestamptz
+	CommittedBy         *uuid.UUID
+	CommittedAt         pgtype.Timestamptz
+	UndoneBy            *uuid.UUID
+	UndoneAt            pgtype.Timestamptz
+}
+
+type ImportBatchRecord struct {
+	TenantID  uuid.UUID
+	StoreID   uuid.UUID
+	BatchID   uuid.UUID
+	Kind      string
+	EntityID  uuid.UUID
+	SourceKey string
+	Created   bool
+}
+
+type ImportBatchRow struct {
+	ID                uuid.UUID
+	TenantID          uuid.UUID
+	StoreID           uuid.UUID
+	BatchID           uuid.UUID
+	Sheet             string
+	RowNumber         int32
+	Kind              string
+	SourceKey         string
+	CustomerSourceKey *string
+	Name              *string
+	Phone             *string
+	Gender            *string
+	CardTypeName      *string
+	CardTypeID        *uuid.UUID
+	ItemName          *string
+	ItemID            *uuid.UUID
+	Principal         money.Amount
+	Bonus             money.Amount
+	Points            *int32
+	PaidCount         *int32
+	GiftCount         *int32
+	ExpiresOn         pgtype.Date
+	Error             *string
+	Action            *string
+	EntityID          *uuid.UUID
+}
+
 type Item struct {
 	ID              uuid.UUID
 	TenantID        uuid.UUID
