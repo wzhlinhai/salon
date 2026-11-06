@@ -259,6 +259,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/commit_import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提交预览通过的导入批次 */
+        post: operations["commit_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/confirm_draft": {
         parameters: {
             query?: never;
@@ -610,6 +627,23 @@ export interface paths {
         put?: never;
         /** 查看草稿与留痕 */
         post: operations["get_draft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/get_import_batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看一批导入的行结果与核对差额 */
+        post: operations["get_import_batch"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1086,6 +1120,23 @@ export interface paths {
         put?: never;
         /** 按营业日查询客数及冲回记录 */
         post: operations["list_guest_visits"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_import_batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 列出导入批次及核对差额 */
+        post: operations["list_import_batches"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1925,6 +1976,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/undo_import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 撤销一批已提交的导入 */
+        post: operations["undo_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/update_card_type": {
         parameters: {
             query?: never;
@@ -2738,6 +2806,9 @@ export interface components {
             /** Format: int32 */
             version: number;
         };
+        CommitImportInput: {
+            batch_id: string;
+        };
         CouponRequest: {
             coupon_code: string;
             key: string;
@@ -3027,6 +3098,9 @@ export interface components {
             /** Format: int32 */
             version?: number;
         };
+        GetImportBatchInput: {
+            batch_id: string;
+        };
         GetMeInput: Record<string, never>;
         GetOrderInput: {
             id: string;
@@ -3090,6 +3164,91 @@ export interface components {
         };
         IDInput: {
             id: string;
+        };
+        ImportBatch: {
+            /** Format: date-time */
+            committed_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+            declared: components["schemas"]["ImportTotals"];
+            differences: components["schemas"]["ImportDifferences"];
+            /** Format: int32 */
+            error_rows: number;
+            file: components["schemas"]["ImportTotals"];
+            file_name: string;
+            id: string;
+            /** Format: int32 */
+            row_count: number;
+            /** @enum {string} */
+            status: "previewed" | "committed" | "undone";
+            /** Format: date-time */
+            undone_at: string | null;
+            written: components["schemas"]["ImportTotals"];
+        };
+        ImportBatchDetail: {
+            /** Format: date-time */
+            committed_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+            declared: components["schemas"]["ImportTotals"];
+            differences: components["schemas"]["ImportDifferences"];
+            /** Format: int32 */
+            error_rows: number;
+            file: components["schemas"]["ImportTotals"];
+            file_name: string;
+            id: string;
+            /** Format: int32 */
+            row_count: number;
+            rows: components["schemas"]["ImportBatchRow"][];
+            /** @enum {string} */
+            status: "previewed" | "committed" | "undone";
+            /** Format: date-time */
+            undone_at: string | null;
+            written: components["schemas"]["ImportTotals"];
+        };
+        ImportBatchList: {
+            items: components["schemas"]["ImportBatch"][];
+        };
+        ImportBatchRow: {
+            /** @enum {string|null} */
+            action: "created" | "linked" | null;
+            bonus: string | null;
+            card_type_name: string | null;
+            entity_id: string | null;
+            error: string | null;
+            expires_on: string | null;
+            /** Format: int32 */
+            gift_count: number | null;
+            id: string;
+            item_name: string | null;
+            /** @enum {string} */
+            kind: "customer" | "stored_value" | "count_package";
+            name: string | null;
+            /** Format: int32 */
+            paid_count: number | null;
+            phone: string | null;
+            /** Format: int32 */
+            points: number | null;
+            principal: string | null;
+            /** Format: int32 */
+            row_number: number;
+            /** @enum {string} */
+            sheet: "顾客" | "储值卡" | "次卡套餐";
+            source_key: string;
+        };
+        ImportDifferences: {
+            declared_minus_file: components["schemas"]["ImportTotals"];
+            declared_minus_written: components["schemas"]["ImportTotals"];
+        };
+        ImportTotals: {
+            bonus: string;
+            /** Format: int32 */
+            count_package_cards: number;
+            /** Format: int32 */
+            customers: number;
+            principal: string;
+            /** Format: int32 */
+            stored_value_cards: number;
         };
         IssueRedPacketInput: {
             customer_id: string;
@@ -3248,6 +3407,7 @@ export interface components {
             limit?: number;
             staff_id?: string;
         };
+        ListImportBatchesInput: Record<string, never>;
         ListInput: Record<string, never>;
         ListItemsInput: Record<string, never>;
         ListMyAttendanceInput: {
@@ -4080,6 +4240,9 @@ export interface components {
             reason: string;
             to_card_id: string;
         };
+        UndoImportInput: {
+            batch_id: string;
+        };
         UpdateCardTypeInput: {
             active: boolean;
             discount_percent?: string | null;
@@ -4677,6 +4840,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Punch"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    commit_import: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommitImportInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchDetail"];
                 };
             };
             /** @description Error */
@@ -5370,6 +5566,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    get_import_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GetImportBatchInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchDetail"];
                 };
             };
             /** @description Error */
@@ -6294,6 +6523,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GuestVisitList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_import_batches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListImportBatchesInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchList"];
                 };
             };
             /** @description Error */
@@ -7911,6 +8173,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardTransferResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    undo_import: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UndoImportInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchDetail"];
                 };
             };
             /** @description Error */

@@ -37,6 +37,8 @@ const (
 	RoleManage          ops.Permission = "role.manage"
 	SettingsManage      ops.Permission = "settings.manage"
 	DataImportExport    ops.Permission = "data.import_export"
+	DataImport          ops.Permission = "data.import"
+	DataExport          ops.Permission = "data.export"
 )
 
 // Def 描述一项权限。
@@ -81,6 +83,8 @@ var Catalogue = []Def{
 	{RoleManage, "角色权限管理", false, false},
 	{SettingsManage, "门店设置（提成、卡、价格等规则）", false, false},
 	{DataImportExport, "导入导出", false, false},
+	{DataImport, "数据导入", false, false},
+	{DataExport, "数据导出", false, false},
 }
 
 // Lookup 返回权限 p 的定义。
