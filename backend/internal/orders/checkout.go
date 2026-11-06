@@ -13,6 +13,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/payments"
 	"github.com/wzhlinhai/salon/backend/internal/performance"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
+	"github.com/wzhlinhai/salon/backend/internal/rotation"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
@@ -192,6 +193,9 @@ func checkoutOrders(ctx context.Context, env ops.Env, in *CheckoutOrdersInput) (
 			}
 
 			if err := env.Q.MarkOrderPaid(ctx, dbgen.MarkOrderPaidParams{StoreID: env.Caller.StoreID, ID: rows[i].ID, CheckoutID: &checkout.ID}); err != nil {
+				return err
+			}
+			if err := rotation.AdvanceAfterCheckout(ctx, env, rows[i].ID); err != nil {
 				return err
 			}
 			rows[i].Status = "paid"
