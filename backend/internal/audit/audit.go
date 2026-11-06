@@ -303,5 +303,14 @@ func CollectionTarget(id uuid.UUID) Target { return Target{kind: "collection", i
 // CouponRedemptionTarget 创建不关联顾客的团购核销日志目标。
 func CouponRedemptionTarget(id uuid.UUID) Target { return Target{kind: "coupon_redemption", id: id} }
 
+// RotationQueueTarget 创建不关联顾客的轮牌队列或轮牌配置日志目标。
+func RotationQueueTarget(id uuid.UUID) Target { return Target{kind: "rotation_queue", id: id} }
+
+// ImportBatchTarget 创建不关联顾客的导入批次日志目标。
+func ImportBatchTarget(id uuid.UUID) Target { return Target{kind: "import_batch", id: id} }
+
+// DataExportTarget 创建不关联顾客的数据导出日志目标。
+func DataExportTarget(id uuid.UUID) Target { return Target{kind: "data_export", id: id} }
+
 // MaskPhones 对其他审计视图复用相同的 JSON 手机号打码规则。
 func MaskPhones(raw json.RawMessage) (json.RawMessage, error) { return maskPhones(raw) }

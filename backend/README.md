@@ -71,6 +71,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 - 设置值支持 time（时刻）、time_range（时段）、choice（Options 中的字符串）和 integer（Min/Max 内的非负整数）。`member_price_rule` 默认会员价优先，也可取较低价；`points_per_recharge_yuan` 为每积一分所需充值本金元数，默认 0（不积分），范围 0–100000。开卡、充值和升级补差价按当日规则积分，赠送金、转余额和调整余额不积分。`guest_count_split` 默认将客次记给第一个岗位的员工，也可选择单上员工均分，当天可生效。`performance_split` 默认按岗位比例分多人业绩，也可选择均分，项目没设岗位比例时均分；`performance_ratio_*` 为八种支付方式各自的 0–100 业绩比例，本金、现金、银联、微信、支付宝和挂账默认 100%，赠送金和红包默认 0%；购买次数、赠送次数的耗卡业绩比例默认分别为 100%、0%，均可当天生效。退卡赠送金 `card_refund_bonus` 默认不退、作废，可选择扣回未被撤单退回的消费赠送金；`card_refund_fee_percent` 为 0–100 的退款手续费百分比，默认 0，当天可生效。撤单授权窗口 `void_window_minutes` 为 0（默认关闭）或 1–60 分钟，当天可生效。
 - 考勤宽限分钟 `attendance_grace_minutes` 默认 0，范围 0–60，当天可生效，仅决定迟到、早退是否计异常。
+- 轮牌设置：`rotation_order_rule` 新一天队列的初始顺序（先到先排、接昨天顺序、每晚按成员默认顺序重置，默认先到先排）；`rotation_designated_takes_turn` 点客结账后是否占轮排到队尾（默认占轮）；`rotation_skip_when_serving_designated` 队首正在服务点客时是否自动跳过并记录（默认跳过）；`rotation_skip_policy` 被跳过时排到队尾还是保留原位（默认排到队尾）；`rotation_half_rule` 半轮规则（不记、按价格、按项目，默认不记）；`rotation_half_price_below` 按价格记半轮的实收上限（元，默认 0 表示不按价格）。规则按营业日生效，收银推进和每次轮牌操作都读取调用时刻执行的设置。
 - 设置项在 `internal/settings` 的 `Catalogue` 里声明：名称、值的形式、系统默认做法和校验。新的业务规则（例如各项业务的做法选择）在这里加一项，再给 `Rules` 加一个读取它的方法。
 - 每次修改都在 `setting_changes` 追加一行：改前、改后、生效日期、修改人、修改时间。`salon_app` 只有 SELECT 和 INSERT 权限。某个营业日执行的值，取生效日期不晚于这一天的最大者，同一生效日期取最后保存的一次（修改时间，再按 ID）；没有修改，或者改成了"恢复默认"，就用系统当前的默认做法。这条选法只在 `internal/inforce` 写一份，门店设置、提成方案版本和底薪共用，各类历史提供自己的保存顺序（提成方案按版本号；设置和底薪按保存时间、ID），SQL 只按门店读出历史；设置的"恢复默认"只在 settings 的 `resolve` 换成目录默认值。生效日期不能早于今天；划分营业日的设置（`fromTomorrow`，例如营业日结束时间）最早明天生效。同一项设置的修改用咨询锁排队，改前值才接得上前一次的改后值。
 - 业务模块不直接查设置表：
@@ -113,6 +114,53 @@ Reconcile 按收款创建时刻的营业日、通道和当前状态汇总金额�
 选卡规则 card_selection 从单的规则快照读取，默认 manual（手动选卡）要求每笔卡余额支付指定 card_id。by_discount（按折扣率）或 by_balance（按余额）允许每张单至多一笔未指定卡的卡余额支付。候选只列本店发行且属于单上顾客的卡，排除同单任意支付已指定的卡；与显式卡一起按 UUID 锁定后重新检查归属、营业日有效期、非次卡和本金加赠送金余额大于零。按折扣率逐张用其类型计价，按这张单实收从低到高；按余额按当前合计余额从少到多。同序先到期日（不限最后），再开卡时间，再 UUID。未指定支付按排序逐卡扣款，一张不够接着扣，每张使用的卡在原支付位置各追加一笔支付和消费流水；一起结账时按输入顺序逐单处理，每单在前面各单扣款后重新按当前余额过滤、排序并选计价卡，再计价、校验和写入；已扣空的卡不再参与后续单的计价。合计不足整次回滚。只给实际扣款或扣次的卡写日志。第一笔卡余额支付为未指定时，排序第一张是计价卡；其他卡只扣钱。扣次仍须指定卡，不参与选卡。preview_checkout 可传 auto_card 按同一快照规则只读选取计价卡，与 card_id 互斥；输出保留单据字段并返回 pricing_card_id（不传卡为空），不检查支付余额是否足够。
 
 结账锁顺序为按 UUID 排序的单 → 卡（FOR NO KEY UPDATE）→ 红包（按 UUID，FOR NO KEY UPDATE）→ 计价卡及候选卡类型（FOR SHARE）→ 有计价卡的单上的有效项目（FOR SHARE）。没有计价卡的单不加载计价数据、不锁项目。每张单第一笔卡余额支付的卡是计价卡；按该卡类型和单的规则快照读取会员价，与行上已记录价格比较，不重取标准价和级别价。改过价的行保持原价；不打折项目行既不取会员价，也不享受持卡折扣，按行上已记录价格扣卡；取会员价的行不打折，其余可打折行按卡类型 discount_percent 逐行四舍五入算持卡折扣。结账将新价格、来源、卡类型和折扣写回变动的有效行，去掉的行不改。preview_checkout 需要 payment.collect，HTTP 和 AI 均可直接试算同一套计价规则；它使用只读事务，不加业务行锁、不检查必填岗位或支付、不写任何数据。
+
+## 数据导入导出
+
+`internal/dataio` 从美管加中间 Excel 导入历史顾客、储值卡余额、次卡套餐次数和积分，并导出本店全量数据。历史水单、支付、提成和员工不导入。写操作 `commit_import`、`undo_import` 为 AINone；`list_import_batches`、`get_import_batch` 为 AIDirect。四个操作都需要 `data.import`。上传预览 `POST /api/import/preview`（multipart 字段 `file`）和全量导出 `GET /api/export/all.xlsx` 是普通 Echo 接口，分别需要 `data.import`、`data.export`。两个权限默认只有老板拥有，店长等角色可由老板在角色设置里授予。单文件上限 8 MiB，解压后总大小最多 64 MiB、单表 XML 最多 16 MiB；每张业务表最多 20000 行数据，`汇总` 最多 1000 行。读取使用 excelize 的流式 `Rows`，边读边数，超限或 XML 损坏返回 422 文件错误。
+
+### 中间 Excel 契约
+
+工作簿必须有四张表，首行表头逐字如下；多出的列或空表头会被拒绝。行列从 1 开始，表头在第 1 行。
+
+- `顾客`：`来源顾客ID` | `姓名` | `手机号(可空)` | `性别(男/女/空)`
+- `储值卡`：`来源卡号` | `来源顾客ID` | `卡种` | `本金` | `赠送金` | `到期日(YYYY-MM-DD,可空)` | `积分(整数,可空)`
+- `次卡套餐`：`来源卡号` | `来源顾客ID` | `卡种` | `项目` | `剩余购买次数` | `剩余赠送次数` | `到期日(可空)`
+- `汇总`：`顾客数` | `储值卡数` | `本金合计` | `赠送金合计` | `次卡套餐卡数`
+
+示例：
+
+```text
+顾客:      C001 | 张三 | 13800131234 | 男
+           C002 | 李四 |             | 女
+储值卡:    K001 | C001 | 储值卡A | 1000.50 | 200 | 2029-12-31 | 50
+次卡套餐:  K002 | C002 | 剪发十次 | 剪发 | 8 | 2 | 2030-01-31
+汇总:      2 | 1 | 1000.50 | 200 | 1
+```
+
+- 金额按十进制文本或数字读取，最多两位小数；负数、科学计数法、精确到分以外的浮点或超过单笔上限都按该行错误。
+- 手机号按数据库现有格式 `^1[0-9]{10}$`；去空白后不合法是该行错误。手机号相同的顾客链接到已有未合并顾客，文件内重复手机号链接到第一次出现的目标；没有手机号的顾客每次都新建（ADR-0010）。
+- `来源顾客ID`、`来源卡号` 在同一文件内标识来源记录。卡行引用的顾客必须来自顾客表且该行没有错误。
+- 卡种必须已经在本店配置：储值卡用 `stored_value`；次卡套餐用 `count` 或 `package`，且项目必须属于该卡种的 `card_type_items`。缺失或种类不符时该行错误 `卡种未配置: <卡种>`，不自动建卡种。
+- 同一 `来源卡号` 的次卡套餐可以有多行（一个套餐多个项目），但顾客、卡种、到期日必须一致，项目不能重复。
+- 已由另一批 `committed` 批次导入过的 `来源卡号` 再次出现时，该行错误 `已导入`，防止重复累加余额。
+- 行错误只跳过该行，不中止整批；错误按工作表、行号和原因返回。`汇总` 只用于核对，不阻止提交。
+
+### 预览、提交、撤销与核对
+
+1. 上传后只写 `import_batches`、`import_batch_rows`，批次状态 `previewed`；顾客、卡、流水都不写。
+2. `commit_import` 锁住批次并按来源卡号加门店级咨询锁，在一个事务里写新顾客、卡、卡项目、`import` 卡流水、`import` 次数流水和 `import` 积分流水；任何一步失败整批回滚。状态改为 `committed`。
+3. `undo_import` 只接受 `committed` 批次，删除本批 `import_batch_records` 中标记为 `created` 的顾客、卡、卡项目、流水和积分。链接到的已有顾客以及任何不是本批创建的数据都不动。有外部引用（单据、欠款、红包、安全标签、其他卡、其他流水、调整、升级、退款、转余额、合并、修改等）时返回 409，并列出不能撤销的原因，不删除任何行。
+4. 撤销后来源手机号和来源卡号释放，同一文件可重新导入并提交。重新导入已撤销批次的卡不会触发 `已导入`，因为只检查 `committed` 批次。
+5. `get_import_batch` 同时返回 `汇总` 声明值、文件有效行合计和实际写入值，以及 `declared_minus_file`、`declared_minus_written` 差额；差额非零只提示，不阻止提交。
+
+撤销由迁移中的 `undo_import_batch(batch_id, store_id)` SECURITY DEFINER 函数执行，函数先校验 `app.tenant_id` 和门店，再检查引用，最后只删除本批记录的行。`salon_app` 仍没有顾客和卡相关表的 DELETE 权限。
+
+导入不会产生开卡、充值或调整流水，`import` 不是销售来源，因此不计入业绩、提成、营业收入或开卡报表。每个批次、提交、撤销和导出都写 `audit_log`，目标种类为 `import_batch` / `data_export`。
+
+### 全量导出
+
+`GET /api/export/all.xlsx` 用 excelize StreamWriter 输出九张表：`顾客`、`储值卡`、`次卡套餐`、`卡流水`、`单据`、`支付`、`员工`、`项目`、`卡种`。只包含当前门店的数据，金额一律为两位小数文本。`顾客`、`储值卡`、`次卡套餐` 使用与导入契约完全相同的列，来源 ID 为顾客或卡的 UUID，因此可以重新导入另一套系统；没有 `customer.full_phone` 的调用者看到打码手机号；`单据` 一张单的项目行各占一行，没有项目行的单也保留一行。导出文件可被 excelize 读回。
 
 ## 操作日志
 
@@ -248,6 +296,46 @@ create_shift、deactivate_shift、set_staff_shift 是 Write / AIDraft，list_shi
 | list_attendance_summary | attendance.manage | AIDirect |
 
 list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本店在职及离职员工；list_attendance_summary 返回本店月度统计。写操作返回的员工引用及日志均只含姓名与标识，不含手机号。已离职账号由登录鉴权拒绝本人打卡，历史查询与店长补卡仍可用。P0 不校验位置或 Wi-Fi。
+
+## 轮牌
+
+`internal/rotation` 管理电子轮牌。`rotation_queues` 是门店的队列（例如剪发牌、助理牌），名称在门店内唯一，可停用；`rotation_members` 记录队列成员和默认顺序，一名员工可以在多个队列。`rotation_turns` 是某个队列某个营业日的有序名单，首次访问当天时按设置建立，状态为 off（未到岗）、waiting（等待）、serving（服务中）、resting（临时休息）或 covered（盖牌）；每行记位置、半轮标记、休息结束时刻和正在服务的单。唯一键保证同一员工每天在一个队列只有一行、位置在队列内唯一。`rotation_events` 只追加、不修改不删除，记录每次加入、离岗、接客、释放、跳过、自动跳过、盖牌、取消盖牌、休息、休息结束、拖动和结账推进，跳过与拖动必须带原因。`rotation_half_items` 保存按项目记半轮的项目。
+
+所有表都有租户 RLS、`tenant_id`/`store_id`、引用门店和其他业务表的组合外键。`salon_app` 对队列和轮牌行有 SELECT、INSERT、UPDATE，对成员和半轮项目另有 DELETE，对事件只有 SELECT、INSERT，因此事件永远只追加。
+
+顺序规则在第一次访问某个营业日时生效：先到先排的当天名单为空，员工到岗时依次排到队尾；接昨天顺序按前一个营业日结束后各员工的位置预排，新成员按默认顺序排在队尾；每晚重置按成员的默认顺序预排。预排的员工都是 off，到岗后变成 waiting 并保留位置。到岗、离岗都留事件；离岗保留当天位置但不再接客，服务中的员工不能离岗。
+
+`assign_turn` 不带员工时取位置最靠前的 waiting；serving、resting、covered、off 都不接客。队首正在服务点客且 `rotation_skip_when_serving_designated` 为 yes 时，记录一条原因为“点客服务中”的 auto_skip，并按 `rotation_skip_policy` 排到队尾或保留原位。带员工时是点客，员工必须是 waiting，标记 serving 和是否指定。`release_turn` 撤销接客、不消耗轮牌。`skip_staff` 必须从固定原因中选择，选“其他”还要写说明；`cover_turn` 盖牌后保留位置但不能接客，`uncover_turn` 恢复等待；`rest_staff` 休息 1–240 分钟，到点后在读取或下一次操作时自动恢复 waiting 并记 rest_end；`drag_turn` 把等待员工拖到指定位置并必须写原因。
+
+停用的队列仍可查看和释放正在服务的员工；`update_rotation_queue` 可以改名并重新启用，`join_rotation`、`assign_turn` 等新的接客操作仍拒绝停用队列。自动选人和点名都只接受当前队列成员且仍在职的员工，成员被移除或员工停用后，当天仍是 waiting 的行不会再被分配。
+
+每次改位置都在同一事务里先锁队列行，再按位置和员工 ID 稳定顺序 `FOR UPDATE` 锁住当天全部轮牌行；写回时先把位置整体加一个偏移量，再写成 1..n 的连续位置，避免唯一约束瞬时冲突。并发 `assign_turn` 因此不会把同一名员工分给两位顾客。
+
+结账成功后，`orders` 在同一事务里调用 `rotation.AdvanceAfterCheckout`。它找出这张单上的服务员工，按队列 ID 顺序锁住队列和各行所属营业日的轮牌行；只推进 `serving_order_id` 指向这张单的行，跨营业日也按行自己的营业日推进，规则仍取结账时刻的营业日。点客与否取轮牌行记录的 `serving_designated`，不看单据上的指定标记。点客且 `rotation_designated_takes_turn=no` 时只恢复 waiting、不改变位置，记 advance_designated_no_turn；否则按 `rotation_half_rule` 判断整轮或半轮：整轮直接排到队尾并清除半轮标记；半轮第一次只标记 half_pending、不动位置，第二次才排到队尾并清除标记。事件写入 order_id 和 designated。单上没有正在服务的员工时不做任何事；撤单不反向推进轮牌（不在本任务范围）。
+
+`get_rotation_stats` 从 advance_whole、advance_half 和 advance_designated_no_turn 事件按员工统计点客与轮牌接客数，两者分开合计；同一员工在两个队列服务同一张单只记一次，按员工和单去重。`list_rotation_events` 按日期范围和可选队列返回全部只追加记录；日期范围和统计都不得晚于今天的营业日。`get_rotation` 的轮牌行按批读取，查询数不随队列人数增长。
+
+| 操作 | 权限 | AI |
+| --- | --- | --- |
+| create_rotation_queue | queue.operate | AIDraft |
+| update_rotation_queue | queue.operate | AIDraft |
+| set_queue_members | queue.operate | AIDraft |
+| list_rotation_queues | queue.view | AIDirect |
+| get_rotation | queue.view | AIDirect |
+| join_rotation | queue.operate | AIDraft |
+| leave_rotation | queue.operate | AIDraft |
+| assign_turn | queue.operate | AIDraft |
+| release_turn | queue.operate | AIDraft |
+| skip_staff | queue.operate | AIDraft |
+| cover_turn | queue.operate | AIDraft |
+| uncover_turn | queue.operate | AIDraft |
+| rest_staff | queue.operate | AIDraft |
+| drag_turn | queue.operate | AIDraft |
+| set_half_turn_items | queue.operate | AIDraft |
+| list_rotation_events | queue.view | AIDirect |
+| get_rotation_stats | queue.view | AIDirect |
+
+老板拥有全部权限；店长和前台可以操作轮牌，发型师和助理只能查看。队列、成员和半轮项目配置写入 `audit_log`，目标为 `rotation_queue`（半轮项目清单以门店 ID 为目标）；轮牌事件本身仍是只追加的操作记录，不写 `audit_log`。
 
 ## 团购适配层
 

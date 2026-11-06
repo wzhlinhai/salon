@@ -22,6 +22,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/collections"
 	"github.com/wzhlinhai/salon/backend/internal/commission"
 	"github.com/wzhlinhai/salon/backend/internal/customers"
+	"github.com/wzhlinhai/salon/backend/internal/dataio"
 	"github.com/wzhlinhai/salon/backend/internal/db"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/debts"
@@ -32,6 +33,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/payroll"
 	"github.com/wzhlinhai/salon/backend/internal/performance"
 	"github.com/wzhlinhai/salon/backend/internal/redpackets"
+	"github.com/wzhlinhai/salon/backend/internal/rotation"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
 	"github.com/wzhlinhai/salon/backend/internal/stores"
@@ -108,13 +110,16 @@ func New(pool *pgxpool.Pool, cfg Config) (*echo.Echo, *ops.Registry) {
 	commission.Register(reg)
 	payroll.Register(reg)
 	attendance.Register(reg)
+	rotation.Register(reg)
 	debts.Register(reg)
 	redpackets.Register(reg)
 	cards.Register(reg)
 	customers.Register(reg)
+	dataio.Register(reg)
 	settings.Register(reg)
 	audit.Register(reg)
 	drafts.Register(reg)
+	dataio.RegisterHTTP(e, pool, cfg.Now)
 	return e, reg
 }
 

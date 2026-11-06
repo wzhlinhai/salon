@@ -186,6 +186,48 @@ func Date(t time.Time) time.Time {
 
 func pgDate(d time.Time) pgtype.Date { return pgtype.Date{Time: d, Valid: true} }
 
+// RotationOrderRule 返回每日轮牌队列的初始顺序规则。
+func (r Rules) RotationOrderRule() string {
+	var v string
+	r.decode(KeyRotationOrderRule, &v)
+	return v
+}
+
+// RotationDesignatedTakesTurn 返回点客服务结账后是否排到队尾。
+func (r Rules) RotationDesignatedTakesTurn() string {
+	var v string
+	r.decode(KeyRotationDesignatedTakesTurn, &v)
+	return v
+}
+
+// RotationSkipWhenServingDesignated 返回队首正在服务点客时是否自动跳过。
+func (r Rules) RotationSkipWhenServingDesignated() string {
+	var v string
+	r.decode(KeyRotationSkipWhenServingDesignated, &v)
+	return v
+}
+
+// RotationSkipPolicy 返回被跳过的员工排到队尾还是保留原位。
+func (r Rules) RotationSkipPolicy() string {
+	var v string
+	r.decode(KeyRotationSkipPolicy, &v)
+	return v
+}
+
+// RotationHalfRule 返回半轮规则：none、by_price 或 by_item。
+func (r Rules) RotationHalfRule() string {
+	var v string
+	r.decode(KeyRotationHalfRule, &v)
+	return v
+}
+
+// RotationHalfPriceBelow 返回按价格记半轮的实收上限（元），0 表示不按价格判断。
+func (r Rules) RotationHalfPriceBelow() int {
+	var v int
+	r.decode(KeyRotationHalfPriceBelow, &v)
+	return v
+}
+
 // CardDeductionOrder 返回卡余额支付先扣本金还是赠送金。
 func (r Rules) CardDeductionOrder() string {
 	var v string

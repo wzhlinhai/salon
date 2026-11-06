@@ -415,6 +415,73 @@ type GuestVisit struct {
 	CreatedAt          pgtype.Timestamptz
 }
 
+type ImportBatch struct {
+	ID                  uuid.UUID
+	TenantID            uuid.UUID
+	StoreID             uuid.UUID
+	Status              string
+	FileName            string
+	DeclaredCustomers   int32
+	DeclaredStoredCards int32
+	DeclaredPrincipal   string
+	DeclaredBonus       string
+	DeclaredCountCards  int32
+	FileCustomers       int32
+	FileStoredCards     int32
+	FilePrincipal       string
+	FileBonus           string
+	FileCountCards      int32
+	WrittenCustomers    int32
+	WrittenStoredCards  int32
+	WrittenPrincipal    string
+	WrittenBonus        string
+	WrittenCountCards   int32
+	CreatedBy           uuid.UUID
+	CreatedAt           pgtype.Timestamptz
+	CommittedBy         *uuid.UUID
+	CommittedAt         pgtype.Timestamptz
+	UndoneBy            *uuid.UUID
+	UndoneAt            pgtype.Timestamptz
+}
+
+type ImportBatchRecord struct {
+	TenantID  uuid.UUID
+	StoreID   uuid.UUID
+	BatchID   uuid.UUID
+	Kind      string
+	EntityID  uuid.UUID
+	SourceKey string
+	Created   bool
+}
+
+type ImportBatchRow struct {
+	ID                uuid.UUID
+	TenantID          uuid.UUID
+	StoreID           uuid.UUID
+	BatchID           uuid.UUID
+	Sheet             string
+	RowNumber         int32
+	Kind              string
+	SourceKey         string
+	CustomerSourceKey *string
+	Name              *string
+	Phone             *string
+	Gender            *string
+	CardTypeName      *string
+	CardTypeID        *uuid.UUID
+	ItemName          *string
+	ItemID            *uuid.UUID
+	Principal         money.Amount
+	Bonus             money.Amount
+	Points            *int32
+	PaidCount         *int32
+	GiftCount         *int32
+	ExpiresOn         pgtype.Date
+	Error             *string
+	Action            *string
+	EntityID          *uuid.UUID
+}
+
 type Item struct {
 	ID              uuid.UUID
 	TenantID        uuid.UUID
@@ -662,6 +729,70 @@ type RolePermission struct {
 	Permission string
 	Scope      *string
 	WindowDays *int32
+}
+
+type RotationEvent struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	ID           uuid.UUID
+	QueueID      uuid.UUID
+	BusinessDate pgtype.Date
+	StaffID      *uuid.UUID
+	Kind         string
+	Reason       *string
+	Note         *string
+	FromPosition *int32
+	ToPosition   *int32
+	Minutes      *int32
+	OrderID      *uuid.UUID
+	Designated   *bool
+	ActorStaffID uuid.UUID
+	CreatedAt    pgtype.Timestamptz
+}
+
+type RotationHalfItem struct {
+	TenantID  uuid.UUID
+	StoreID   uuid.UUID
+	ID        uuid.UUID
+	ItemID    uuid.UUID
+	CreatedAt pgtype.Timestamptz
+}
+
+type RotationMember struct {
+	TenantID  uuid.UUID
+	StoreID   uuid.UUID
+	ID        uuid.UUID
+	QueueID   uuid.UUID
+	StaffID   uuid.UUID
+	SortOrder int32
+	CreatedAt pgtype.Timestamptz
+}
+
+type RotationQueue struct {
+	TenantID  uuid.UUID
+	StoreID   uuid.UUID
+	ID        uuid.UUID
+	Name      string
+	Active    bool
+	CreatedBy uuid.UUID
+	CreatedAt pgtype.Timestamptz
+}
+
+type RotationTurn struct {
+	TenantID          uuid.UUID
+	StoreID           uuid.UUID
+	ID                uuid.UUID
+	QueueID           uuid.UUID
+	BusinessDate      pgtype.Date
+	StaffID           uuid.UUID
+	Position          int32
+	Status            string
+	HalfPending       bool
+	RestUntil         pgtype.Timestamptz
+	ServingOrderID    *uuid.UUID
+	ServingDesignated bool
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
 }
 
 type SettingChange struct {
