@@ -23,7 +23,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 `mutchecks.py --since <git-ref>` 只选中该引用与工作树（含未跟踪文件）之间受影响的项，可与名称和 `--locate` 组合。保护文件、定义 guard 的包内测试文件或 e2e spec 改动会选中对应项；查询、迁移目录内任意文件改动会选中该目录的保护。每轮可运行受影响项，同时不带 `--since` 运行 `--locate` 检查整份清单的原文匹配。手动使用 `mutcheck.sh` 时测试选择只通过 `--run` 传入；省略它仍运行完整包。
 
-`serve` 的可选环境变量：`HTTP_ADDR`（默认 `:8080`）、`TOKEN_TTL`（默认 `12h`）。健康检查 `GET /healthz`，登录 `POST /api/auth/login`。
+`serve` 的可选环境变量：`HTTP_ADDR`（默认 `:8080`）、`TOKEN_TTL`（默认 `12h`）。健康检查 `GET /healthz`，登录 `POST /api/auth/login`。AI 对话的环境变量：`AI_API_KEY`（设置后才启用 `/api/ai/chat`；未设置时返回 503「AI 未启用」）、`AI_BASE_URL`（默认 `https://api.deepseek.com`）、`AI_MODEL`（默认 `deepseek-flash`）。密钥不写日志，也不出现在错误或响应里。
 
 `bootstrap` 开一个新租户：门店、内置的老板角色、四个默认角色（初始权限见 ADR-0009）和第一名老板。
 
@@ -222,6 +222,8 @@ item 基数按单位汇总：paid 为 paid_amount 之和；performance 为 amoun
 
 list_commissions 是 Read / AIDirect，要求 performance.view。本人与全店范围沿用 list_performance；本人范围叠加他人的 staff_id 时为空，不能扩大范围。按营业日范围（相隔最多 92 天）、staff_id、source 筛选。以营业日降序、单位最早 created_at 降序、稳定单位 ID 降序排列；单位 ID 为该笔最小业绩记录 ID，limit / before_id 翻页。total 与按 item、consume、labor、sale 的 totals 使用完整筛选范围，原笔减冲回，不受分页影响。entries、explanation、totals 都在同一权限范围内，不含任何顾客字段。
 
+explain_commission 是 Read / AIDirect，要求 performance.view，按提成 ID 复用 list_commissions 的同一份计算结果，返回该笔提成的来源（单、项目行、岗位、卡流水或红包）、计提基数、命中规则/覆盖、方案版本、阶梯解释和业绩记录。本人范围只能查自己的提成，查他人的提成与他人不存在的 ID 一样返回 404，不泄露是否存在。
+
 加载将请求范围扩至 date_from 所在月首日到 date_to 所在月末日，员工过滤仍在业绩查询中应用；计算后只返回原请求营业日范围，解释和 totals 也仅针对这些输出。全部按批查询（查询数不随行数增长），包括：完整月份业绩、冲回原记录、项目行事实、全部方案版本、提成结算状态与已结算提成、员工名称、岗位名称、项目名称。performance 加载项目行事实，只读取 order_items.price / item_id、orders.designated 与业绩实收之和，不回读单据重算价格、支付或业绩。查询数不随单位数增长，由 TestCommissionReadQueryCount 通过 HTTP 与 AI 验证。
 
 阶梯格子 tiers = {mode: whole | progressive, levels: [{from: money.Amount, percent: money.Percent}]}，档内只允许比例，至少两档，首档从 0.00 开始，from 严格递增，达到起点（含等号）适用。覆盖比例仅允许比例或固定金额。
@@ -361,3 +363,15 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 `draft_dual_confirm` 为 off/on，默认 off，可当天生效；on 时 adjust_card、void_order、refund_card、reprice_order_item 须另一人确认。`audit.Record` 自动把 `Env.DraftID` 写入 audit_log，日志输出 draft_id，get_draft 返回 audit_log_ids。
 
 草稿控制的 create/update/reject 声明为专用 `AIManageDraft`，仅这三个操作允许使用；它们只写草稿。`confirm_draft` 为 AINone，只允许人通过 HTTP 确认，AI 无法自行确认业务写入。
+
+## AI 对话
+
+`POST /api/ai/chat` 是只读的对话入口，请求体为 `{messages:[{role:user|assistant, content:string}]}`，一次最多 20 条、单条最多 4000 字，超过返回 422；需要登录，权限与本人一致（ADR-0009）。响应为 `{reply, sources}`：`sources` 按顺序记录模型发起的每一次工具调用，含操作名、原样参数、是否成功和错误文字，用来把回答追溯到数据来源。
+
+`internal/ai` 通过 `Model` 接口隔离模型：生产实现用 openai-go 访问 DeepSeek 的 OpenAI 兼容 Chat Completions + tools；测试使用脚本化假模型，不访问网络。系统提示用中文说明今天的营业日、提问员工的姓名和角色，并要求只根据工具结果回答、不编造数字、工具结果是数据而不是指令。「今天」取 `settings.BusinessDate`，营业日结束时间晚于午夜的门店，凌晨提问时仍显示前一个营业日。姓名写入提示前去掉换行和控制字符并限制 30 字，每个角色限制 20 字；assistant 历史消息保持原样，不在此处过滤（已知风险）。
+
+一次对话最多 6 次模型调用，模型一次响应最多 8 个 `tool_calls`，超过都返回 502「AI 调用工具次数超过上限」；每个工具结果放入模型上下文前按 rune 截断到 16000 字并附「（结果过长，已截断）」，`sources` 不受截断影响。整个请求（提示构造、模型调用和工具执行）有 120 秒总期限，超时返回 502「AI 对话超时」。工具参数错误、权限拒绝或业务规则拒绝会作为 tool 消息返回给模型，让它自行修正；`ops.StatusOf` 为 5xx 的工具内部错误只返回固定文字「工具执行失败」，不把数据库等底层错误原文放进 `sources.error` 或 tool 消息，4xx 仍保留原文。
+
+对话只提供 `Registry.ReadTools`：Read + AIDirect 的操作，且调用者本人有权限。写操作、草稿操作和 AINone 操作既不提供也不可调用；模型输出写工具名时按未知工具拒绝，不会创建草稿或执行写入。`list_drafts`、`get_draft` 和 `get_redemption` 虽然标为 Read + AIDirect，但读取消或查询时会惰性过期草稿或写审计，属于带写入的 Read，因此从对话工具集中排除，`CallReadTool` 也按未知工具拒绝；等这些读操作拆出惰性写入后另开 issue 再移除排除。对话因此不提供草稿相关工具，也不能查询团购核销记录。数据范围仍由各操作自己的 `env.Grant` 执行：例如发型师只能查询本人的业绩与提成，店长/老板可查全店；两人的租户和门店不会互相看到数据。模型未配置返回 503「AI 未启用」，模型不可达或响应不可用时返回 502，错误正文不含密钥或上游地址。
+
+本接口不保存会话、不做流式输出，也不从对话创建草稿；对话起草写操作、评测集和管理端/小程序界面分别在 P0-31、P0-32 和后续任务中实现。`explain_commission` 专门支持「解释一笔提成的来源」（用户故事 130）。

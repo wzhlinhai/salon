@@ -221,17 +221,19 @@ func loadCaller(ctx context.Context, q *dbgen.Queries, st dbgen.Staff) (ops.Call
 	if !st.Active {
 		return ops.Caller{}, false, nil
 	}
-	caller := ops.Caller{TenantID: st.TenantID, StoreID: st.StoreID, StaffID: st.ID}
+	caller := ops.Caller{TenantID: st.TenantID, StoreID: st.StoreID, StaffID: st.ID, Name: st.Name}
 	roles, err := q.ListStaffRoles(ctx, st.ID)
 	if err != nil {
 		return ops.Caller{}, false, err
 	}
 	ids := make([]uuid.UUID, 0, len(roles))
+	caller.Roles = make([]string, 0, len(roles))
 	for _, r := range roles {
 		if r.IsOwner {
 			caller.Owner = true
 		}
 		ids = append(ids, r.ID)
+		caller.Roles = append(caller.Roles, r.Name)
 	}
 	if caller.Owner {
 		caller.Permissions = perm.All()

@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/wzhlinhai/salon/backend/internal/ai"
 	"github.com/wzhlinhai/salon/backend/internal/auth"
 	"github.com/wzhlinhai/salon/backend/internal/groupbuy"
 	"github.com/wzhlinhai/salon/backend/internal/httpapi"
@@ -32,6 +33,7 @@ type App struct {
 	mu      sync.Mutex
 	callers map[string]ops.Caller
 	instant *time.Time
+	aiModel ai.Model
 }
 
 // New 用 pool 组装后端。
@@ -42,9 +44,25 @@ func New(t testing.TB, pool *pgxpool.Pool) *App {
 		t.Fatal(err)
 	}
 	a := &App{Groupbuy: &groupbuy.Providers{}, Auth: svc, callers: map[string]ops.Caller{}}
-	a.Handler, a.Registry = httpapi.New(pool, httpapi.Config{Groupbuy: a.Groupbuy, Authenticate: a.authenticate, Login: svc.Login, Now: a.Now})
+	a.Handler, a.Registry = httpapi.New(pool, httpapi.Config{Groupbuy: a.Groupbuy, Authenticate: a.authenticate, Login: svc.Login, Now: a.Now, AIModel: a.currentAIModel})
 	return a
 }
+
+// SetAIModel 替换 /api/ai/chat 使用的模型；测试用脚本化假模型，不访问网络。
+func (a *App) SetAIModel(model ai.Model) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.aiModel = model
+}
+
+// AIModel 返回当前 AI 对话使用的模型。
+func (a *App) AIModel() ai.Model {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.aiModel
+}
+
+func (a *App) currentAIModel() ai.Model { return a.AIModel() }
 
 // authenticate 先认测试直接指定的调用者，再走真实的登录凭证。
 func (a *App) authenticate(r *http.Request) (ops.Caller, bool) {

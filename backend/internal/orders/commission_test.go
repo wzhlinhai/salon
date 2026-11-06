@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
@@ -155,6 +156,68 @@ func TestCommissionReadScopePaging(t *testing.T) {
 		})
 	}
 }
+
+func TestExplainCommission(t *testing.T) {
+	s := open(t)
+	s.commissionScheme("10")
+	mine, token := s.Hire("本人", "098", "explain-commission", s.Role("发型师"))
+	ownLine := s.performanceLine(100)
+	ownLine.Staff[0].StaffID = mine
+	s.paid(s.customerOrder(ownLine), payment("cash", "100"))
+	other := s.paid(s.customerOrder(s.performanceLine(100)), payment("cash", "100"))
+	list := s.call("list_commissions", commissionArgs(s.Now()), 200)
+	var ownID, otherID string
+	for _, raw := range list["entries"].([]any) {
+		entry := raw.(map[string]any)
+		staff := entry["staff"].(map[string]any)["id"]
+		if staff == mine.String() {
+			ownID = entry["id"].(string)
+		} else {
+			otherID = entry["id"].(string)
+		}
+	}
+	if ownID == "" || otherID == "" {
+		t.Fatal(list)
+	}
+	owner, self := s.MustCaller(s.Owner), s.MustCaller(token)
+	denied := self
+	denied.Permissions = map[ops.Permission]ops.Grant{}
+	for _, ch := range s.Channels() {
+		t.Run(ch.Name, func(t *testing.T) {
+			got := ch.Call(t, owner, "explain_commission", map[string]any{"id": otherID})
+			if got.Status != 200 || got.Body["id"] != otherID {
+				t.Fatal(got)
+			}
+			origin := got.Body["explanation"].(map[string]any)["origin"].(map[string]any)
+			if origin["order_id"] != other["id"] || origin["order_item_id"] != firstLine(other)["id"] || got.Body["source"] != "item" {
+				t.Fatal(got)
+			}
+			raw, err := json.Marshal(got.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(raw), "customer") || strings.Contains(string(raw), "phone") {
+				t.Fatal(string(raw))
+			}
+			ownGot := ch.Call(t, self, "explain_commission", map[string]any{"id": ownID})
+			if ownGot.Status != 200 || ownGot.Body["id"] != ownID {
+				t.Fatal(ownGot)
+			}
+			refused := ch.Call(t, self, "explain_commission", map[string]any{"id": otherID})
+			if refused.Status != 404 || !strings.Contains(refused.Detail(), "没有这笔提成") {
+				t.Fatal(refused)
+			}
+			forbidden := ch.Call(t, denied, "explain_commission", map[string]any{"id": ownID})
+			if forbidden.Status != 403 || forbidden.Detail() != "permission denied" {
+				t.Fatal(forbidden)
+			}
+			missing := ch.Call(t, owner, "explain_commission", map[string]any{"id": uuid.NewString()})
+			if missing.Status != 404 || !strings.Contains(missing.Detail(), "没有这笔提成") {
+				t.Fatal(missing)
+			}
+		})
+	}
+}
 func TestCommissionReadReversal(t *testing.T) {
 	s := open(t)
 	s.commissionScheme("10")
@@ -220,6 +283,83 @@ func TestCommissionReadQueryCount(t *testing.T) {
 		}
 		if counts[0] != counts[1] {
 			t.Fatal(ch.Name, counts)
+		}
+	}
+}
+
+func TestExplainCommissionQueryCount(t *testing.T) {
+	s := open(t)
+	s.commissionScheme("10")
+	s.paid(s.customerOrder(s.performanceLine(100)), payment("cash", "100"))
+	list := s.call("list_commissions", commissionArgs(s.Now()), 200)
+	first := list["entries"].([]any)[0].(map[string]any)
+	commissionID := first["id"].(string)
+
+	counter := &paymentQueryCounter{}
+	config := s.Pool.Config().Copy()
+	config.ConnConfig.Tracer = counter
+	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	if err := pool.Ping(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	app := optest.New(t, pool)
+	caller := s.MustCaller(s.Owner)
+	for _, ch := range app.Channels() {
+		var counts []int64
+		for i := range 2 {
+			if i == 1 {
+				s.paid(s.customerOrder(s.performanceLine(70, 30), s.performanceLine(70, 30)), payment("cash", "200"))
+			}
+			counter.all.Store(0)
+			got := ch.Call(t, caller, "explain_commission", map[string]any{"id": commissionID})
+			if got.Status != 200 || got.Body["id"] != commissionID {
+				t.Fatal(ch.Name, got)
+			}
+			counts = append(counts, counter.all.Load())
+		}
+		if counts[0] != counts[1] {
+			t.Fatal(ch.Name, "SQL query count grew with commission rows", counts)
+		}
+	}
+}
+
+func TestExplainCommissionSettledMonth(t *testing.T) {
+	s := open(t)
+	day := settings.Date(time.Now())
+	month := time.Date(day.Year(), day.Month()-2, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := s.Pool.Exec(t.Context(), "UPDATE stores SET created_at=$1", month.AddDate(0, 0, 15)); err != nil {
+		t.Fatal(err)
+	}
+	businessDay := month.AddDate(0, 0, 14)
+	s.SetNow(time.Date(businessDay.Year(), businessDay.Month(), businessDay.Day(), 12, 0, 0, 0, settings.Location))
+	s.call("save_commission_scheme", map[string]any{"effective_from": businessDay.Format(time.DateOnly), "scheme": map[string]any{
+		"rules":     []any{map[string]any{"source": "item", "base": "paid", "by_position": false, "by_designated": false, "by_member": false, "cells": []any{map[string]any{"percent": "10"}}}},
+		"overrides": []any{}, "excluded_staff": []any{},
+	}}, 200)
+	order := s.paid(s.customerOrder(s.performanceLine(100)), payment("cash", "100"))
+	args := map[string]any{"date_from": businessDay.Format(time.DateOnly), "date_to": businessDay.Format(time.DateOnly)}
+	list := s.call("list_commissions", args, 200)
+	first := list["entries"].([]any)[0].(map[string]any)
+	commissionID, amount := first["id"].(string), first["amount"].(string)
+	if amount != "10.00" {
+		t.Fatalf("commission = %v", first)
+	}
+
+	s.SetNow(time.Now())
+	s.call("lock_payroll_month", map[string]any{"month": month.Format("2006-01")}, 200)
+	// 结算后让现算结果变成 20.00；解释仍应读取锁定时保存的 10.00。
+	if _, err := s.Pool.Exec(t.Context(), "UPDATE performance_entries SET paid_amount=200, amount=200 WHERE order_id=$1", order["id"]); err != nil {
+		t.Fatal(err)
+	}
+	s.SetNow(time.Time{})
+	for _, ch := range s.Channels() {
+		got := ch.Call(t, s.MustCaller(s.Owner), "explain_commission", map[string]any{"id": commissionID})
+		if got.Status != 200 || got.Body["id"] != commissionID || got.Body["amount"] != amount {
+			t.Fatal(ch.Name, got)
 		}
 	}
 }

@@ -10,6 +10,8 @@
 //
 // 环境变量：DATABASE_URL（必填）；serve 还需要 JWT_SECRET（至少 32 字节），
 // 可选 HTTP_ADDR（默认 :8080）、TOKEN_TTL（默认 12h）。
+// AI 对话可选 AI_API_KEY（设置后启用）、AI_BASE_URL（默认 https://api.deepseek.com）、
+// AI_MODEL（默认 deepseek-flash）。
 package main
 
 import (
@@ -28,6 +30,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
 
+	"github.com/wzhlinhai/salon/backend/internal/ai"
 	"github.com/wzhlinhai/salon/backend/internal/auth"
 	"github.com/wzhlinhai/salon/backend/internal/db"
 	"github.com/wzhlinhai/salon/backend/internal/httpapi"
@@ -103,7 +106,17 @@ func serve(ctx context.Context, pool *pgxpool.Pool) error {
 	if addr == "" {
 		addr = ":8080"
 	}
-	e, _ := httpapi.New(pool, httpapi.Config{Authenticate: authn.Authenticate, Login: authn.Login})
+	var model func() ai.Model
+	if key := os.Getenv("AI_API_KEY"); key != "" {
+		m := ai.NewOpenAIModel(ai.OpenAIConfig{
+			BaseURL:    os.Getenv("AI_BASE_URL"),
+			APIKey:     key,
+			Model:      os.Getenv("AI_MODEL"),
+			HTTPClient: &http.Client{Timeout: 60 * time.Second},
+		})
+		model = func() ai.Model { return m }
+	}
+	e, _ := httpapi.New(pool, httpapi.Config{Authenticate: authn.Authenticate, Login: authn.Login, AIModel: model})
 	sc := echo.StartConfig{Address: addr, HideBanner: true}
 	return sc.Start(ctx, e)
 }

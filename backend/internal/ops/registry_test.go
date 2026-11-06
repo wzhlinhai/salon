@@ -123,6 +123,49 @@ func TestOperationsClosedToAIAreNotTools(t *testing.T) {
 	}
 }
 
+func TestReadToolsExcludeWritesAndDrafts(t *testing.T) {
+	r := newRegistry(t)
+	read := valid()
+	read.Name = "read_thing"
+	ops.Register(r, read)
+	draft := valid()
+	draft.Name, draft.Kind, draft.AI = "draft_thing", ops.Write, ops.AIDraft
+	ops.Register(r, draft)
+	control := valid()
+	control.Name, control.Kind, control.AI = "create_draft", ops.Write, ops.AIManageDraft
+	ops.Register(r, control)
+
+	caller := ops.Caller{Permissions: map[ops.Permission]ops.Grant{"thing.view": {}}}
+	tools := r.ReadTools(caller)
+	if len(tools) != 1 || tools[0].Name != "read_thing" {
+		t.Fatalf("ReadTools = %v, want only read_thing", tools)
+	}
+	for _, name := range []string{"draft_thing", "create_draft", "no_such_tool"} {
+		if _, err := r.CallReadTool(context.Background(), caller, name, nil); !errors.Is(err, ops.ErrUnknownOperation) {
+			t.Fatalf("CallReadTool(%q) err = %v, want ErrUnknownOperation", name, err)
+		}
+	}
+}
+
+func TestReadToolsExcludeLazyWriteReads(t *testing.T) {
+	r := newRegistry(t)
+	for _, name := range []string{"read_thing", ops.ReadToolListDrafts, ops.ReadToolGetDraft, ops.ReadToolGetRedemption} {
+		op := valid()
+		op.Name = name
+		ops.Register(r, op)
+	}
+	caller := ops.Caller{Permissions: map[ops.Permission]ops.Grant{"thing.view": {}}}
+	tools := r.ReadTools(caller)
+	if len(tools) != 1 || tools[0].Name != "read_thing" {
+		t.Fatalf("ReadTools = %v, want only read_thing", tools)
+	}
+	for _, name := range []string{ops.ReadToolListDrafts, ops.ReadToolGetDraft, ops.ReadToolGetRedemption} {
+		if _, err := r.CallReadTool(context.Background(), caller, name, nil); !errors.Is(err, ops.ErrUnknownOperation) {
+			t.Fatalf("CallReadTool(%q) err = %v, want ErrUnknownOperation", name, err)
+		}
+	}
+}
+
 func TestPermissionsListsDeclaredPermissions(t *testing.T) {
 	r := newRegistry(t)
 	for _, d := range []struct{ name, perm string }{{"b_op", "b.view"}, {"a_op", "a.view"}, {"a_op2", "a.view"}} {
