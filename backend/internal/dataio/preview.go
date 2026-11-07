@@ -201,6 +201,9 @@ func Preview(ctx context.Context, pool *pgxpool.Pool, caller ops.Caller, now tim
 				CustomerSourceKey: ptr(c.CustomerKey), Principal: money.Amount{}, Bonus: money.Amount{},
 			}
 			message := c.Err
+			if storedKeys[c.SourceKey] && message == "" {
+				message = "来源卡号与储值卡重复"
+			}
 			itemKey := c.SourceKey + "\x00" + c.ItemName
 			if seenCountItems[itemKey] && message == "" {
 				message = "同一来源卡号的项目重复"

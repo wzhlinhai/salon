@@ -10,6 +10,9 @@ type CustomerCard = components['schemas']['Card']
 const cardCards = ref<CustomerCard[]>([])
 const cardLoading = ref(false)
 const cardListGuard = useRequestGuard()
+// 弹窗关闭不代表顾客面板已失效；成功写入后仍需刷新当前顾客。
+const customerGuard = useRequestGuard()
+watch(() => props.id, () => customerGuard.invalidate(), { flush: 'sync' })
 
 async function cardLoad() {
   const id = props.id
@@ -61,13 +64,21 @@ async function cardEdit(card: CustomerCard | null) {
 
 async function cardSave() {
   const id = props.id
+  const customerCurrent = customerGuard.hold()
+  const isRecharge = !!cardTarget.value
   const countsOnly = !cardTarget.value && openingType.value?.kind === 'count'
   const body = { principal: countsOnly ? '0.00' : cardPrincipal.value, bonus: countsOnly ? '0.00' : cardBonus.value, sales_staff_ids: [...cardSales.value] }
   await cardForm.save(async (current) => {
     const { data, error } = cardTarget.value
       ? await api.POST('/api/ops/recharge_card', { body: { ...body, card_id: cardTarget.value.id } })
       : await api.POST('/api/ops/open_card', { body: { ...body, customer_id: id, card_type_id: cardCardType.value } })
-    if (!current()) return
+    if (!current()) {
+      if (data && customerCurrent()) {
+        toast.add({ title: isRecharge ? '充值成功' : '开卡成功', color: 'success' })
+        await refreshCards()
+      }
+      return
+    }
     if (data) {
       const upgradedTo = (data as components['schemas']['RechargeResult']).upgraded_to
       if (upgradedTo) toast.add({ title: `充值成功，已自动升级为 ${upgradedTo.name}`, color: 'success' })
@@ -161,6 +172,7 @@ async function editAdjustment(card: CustomerCard) {
 async function saveAdjustment() {
   const card = adjustTarget.value
   if (!card) return
+  const customerCurrent = customerGuard.hold()
   const body: components['schemas']['AdjustCardInput'] = { card_id: card.id, reason: adjustReason.value.trim() }
   const changedCounts = adjustCounts.value.filter((x) => {
     const old = card.items.find(i => i.item_id === x.item_id)!
@@ -175,7 +187,10 @@ async function saveAdjustment() {
   if (adjustType.value !== card.card_type_id) body.card_type_id = adjustType.value
   await adjustForm.save(async (current) => {
     const { data, error } = await api.POST('/api/ops/adjust_card', { body })
-    if (!current()) return
+    if (!current()) {
+      if (data && customerCurrent()) await refreshCards()
+      return
+    }
     if (data) {
       adjustModal.value = false
       await refreshCards()
@@ -238,12 +253,16 @@ async function editBalance(card: CustomerCard, mode: 'upgrade' | 'transfer') {
 async function saveBalance() {
   const card = balanceCard.value
   if (!card) return
+  const customerCurrent = customerGuard.hold()
   const amounts = { principal: balancePrincipal.value, bonus: balanceBonus.value }
   await balanceForm.save(async (current) => {
     const { data, error } = balanceMode.value === 'upgrade'
       ? await api.POST('/api/ops/upgrade_card', { body: { ...amounts, card_id: card.id, to_type_id: balanceTo.value, sales_staff_ids: hasDifference.value ? [...balanceSales.value] : [] } })
       : await api.POST('/api/ops/transfer_card_balance', { body: { ...amounts, from_card_id: card.id, to_card_id: balanceTo.value, reason: balanceReason.value.trim() } })
-    if (!current()) return
+    if (!current()) {
+      if (data && customerCurrent()) await refreshCards()
+      return
+    }
     if (data) {
       balanceOpen.value = false
       await refreshCards()
@@ -276,9 +295,13 @@ async function saveRefund() {
   const quote = refundQuote.value
   const method = refundMethod.value
   if (!quote || !method) return
+  const customerCurrent = customerGuard.hold()
   await refundForm.save(async (current) => {
     const { data, error, response } = await api.POST('/api/ops/refund_card', { body: { card_id: quote.card_id, amount: quote.amount, method } })
-    if (!current()) return
+    if (!current()) {
+      if (data && customerCurrent()) await refreshCards()
+      return
+    }
     if (data) {
       refundOpen.value = false
       await refreshCards()

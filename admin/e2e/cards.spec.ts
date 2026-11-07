@@ -10,6 +10,42 @@ async function seed() {
   return { token, suffix, customer, staff, second }
 }
 
+test('充值成功后即使弹窗已关闭也刷新余额', async ({ page }) => {
+  const { token, suffix, customer, staff } = await seed()
+  const type = await api(token, 'create_card_type', { name: `刷新卡${suffix}`, kind: 'stored_value', validity_kind: 'none' })
+  const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: type.id, principal: '100.00', bonus: '0.00', sales_staff_ids: [staff.id] })
+  await login(page, owner.account, owner.password)
+  await page.goto(`/customers?id=${customer.id}`)
+  const shown = page.locator(`[data-card="${card.id}"]`)
+  await expect(shown).toContainText('本金 100.00')
+  let release!: () => void
+  let started!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const pending = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  await page.route('**/api/ops/recharge_card', async (route) => {
+    const response = await route.fetch()
+    started()
+    await blocked
+    await route.fulfill({ response })
+  })
+  await shown.getByRole('button', { name: '充值', exact: true }).click()
+  const modal = page.getByRole('dialog', { name: '充值', exact: true })
+  await modal.getByLabel('本金', { exact: true }).fill('10.00')
+  await modal.getByRole('combobox', { name: '业绩归属人', exact: true }).click()
+  await page.getByRole('option', { name: staff.name, exact: true }).click()
+  await page.keyboard.press('Escape')
+  await modal.getByRole('button', { name: '保存', exact: true }).click()
+  await pending
+  await page.keyboard.press('Escape')
+  await expect(modal).not.toBeVisible()
+  release()
+  await expect(shown).toContainText('本金 110.00')
+})
+
 test('卡类型有效期、两名业绩归属人开卡、充值及流水', async ({ page }) => {
   const { suffix, customer, staff, second } = await seed()
   await login(page, owner.account, owner.password)

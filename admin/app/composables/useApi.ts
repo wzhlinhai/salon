@@ -26,8 +26,10 @@ const auth: Middleware = {
       headers: { 'Content-Type': 'application/problem+json' }
     })
   },
-  async onResponse({ response }) {
-    if (response.status === 401 && !response.url.endsWith('/api/auth/login')) {
+  async onResponse({ request, response }) {
+    const token = getToken()
+    const authorization = token ? `Bearer ${token}` : null
+    if (response.status === 401 && !response.url.endsWith('/api/auth/login') && request.headers.get('Authorization') === authorization) {
       setToken(null)
       useState('me').value = null
       await navigateTo('/login')

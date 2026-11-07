@@ -2,6 +2,37 @@ import { expect, test } from '@playwright/test'
 import { env } from './env'
 import { api, apiLogin, hire, login, owner } from './helpers'
 
+test('旧请求的 401 不会清除新登录凭证', async ({ page }) => {
+  const employee = await hire('前台')
+  const newToken = await apiLogin(employee.account, employee.password)
+  await login(page, owner.account, owner.password)
+  let release!: () => void
+  let started!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const pending = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  await page.route('**/api/ops/get_store', async (route) => {
+    started()
+    await blocked
+    await route.fulfill({ status: 401, contentType: 'application/json', body: '{"detail":"unauthenticated"}' })
+  })
+  const oldRequest = page.evaluate(async () => {
+    const modulePath = '/_nuxt/composables/useApi.ts'
+    const { useApi } = await import(modulePath)
+    const app = (window as unknown as { useNuxtApp: () => { runWithContext: <T>(fn: () => T) => T } }).useNuxtApp()
+    await app.runWithContext(() => useApi().POST('/api/ops/get_store', { body: {} }))
+  })
+  await pending
+  await page.evaluate(token => localStorage.setItem('salon_token', token), newToken)
+  release()
+  await oldRequest
+  expect(await page.evaluate(() => localStorage.getItem('salon_token'))).toBe(newToken)
+  await expect(page).not.toHaveURL(/\/login$/)
+})
+
 test('修改密码后清除登录状态并重新登录', async ({ page }) => {
   const employee = await hire('前台')
   await login(page, employee.account, employee.password)

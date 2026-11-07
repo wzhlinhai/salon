@@ -73,7 +73,7 @@ func TestUnknown(t *testing.T) {
 			r := s.HTTP(t, &c, "redeem_coupon", in)
 			if applied {
 				success(t, r, "redeemed")
-				auditCount(t, s, "redeem_coupon", 1)
+				auditCount(t, s, "redeem_coupon", 2)
 			} else {
 				rejection(t, r, 409, "结果未知，请稍后查询")
 			}
@@ -96,6 +96,111 @@ func TestUnknown(t *testing.T) {
 			}
 			auditCount(t, s, "get_redemption", 2)
 		})
+	}
+}
+
+func TestDifferentKeysCannotRedeemSameCoupon(t *testing.T) {
+	s, f, c := setup(t)
+	in := request("same coupon")
+	entered, release := make(chan struct{}), make(chan struct{})
+	f.Before = func(action string, _ groupbuy.CouponRequest) {
+		if action == "redeem" {
+			close(entered)
+			<-release
+		}
+	}
+	done := make(chan optest.Result, 1)
+	go func() { done <- s.HTTP(t, &c, "redeem_coupon", in) }()
+	<-entered
+	other := in
+	other.Key = "another key"
+	rejection(t, s.HTTP(t, &c, "redeem_coupon", other), 409, "这张券已有核销记录，请使用原幂等键查询或重试")
+	close(release)
+	success(t, <-done, "redeemed")
+	rejection(t, s.HTTP(t, &c, "redeem_coupon", other), 409, "这张券已有核销记录，请使用原幂等键查询或重试")
+	if f.Count("redeem") != 1 {
+		t.Fatalf("redeem calls = %d, want 1", f.Count("redeem"))
+	}
+}
+
+func TestCouponIdentityLock(t *testing.T) {
+	s, _, c := setup(t)
+	in := request("locked coupon")
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	q := dbgen.New(tx)
+	if err := q.LockCouponIdentity(context.Background(), dbgen.LockCouponIdentityParams{StoreID: c.StoreID, Platform: in.Platform, CouponCode: in.CouponCode}); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan optest.Result, 1)
+	go func() { done <- s.HTTP(t, &c, "redeem_coupon", in) }()
+	optest.AssertWaiting(t, s.Pool, done, 1)
+	dbtest.Commit(t, tx)
+	success(t, optest.WaitResult(t, done, 200), "redeemed")
+}
+
+func TestUnknownBlocksDifferentKeyButFailedAllowsIt(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		err   error
+		block bool
+	}{
+		{"unknown", groupbuy.ErrUnknown, true},
+		{"failed", errors.New("provider refused"), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, f, c := setup(t)
+			in := request("coupon " + tc.name)
+			f.Replies["redeem"] = []fakeprovider.Reply{{Err: tc.err}}
+			detail := "团购平台操作失败"
+			if tc.block {
+				detail = "结果未知，请稍后查询"
+			}
+			rejection(t, s.HTTP(t, &c, "redeem_coupon", in), 409, detail)
+			in.Key = "new key"
+			if tc.block {
+				rejection(t, s.HTTP(t, &c, "redeem_coupon", in), 409, "这张券已有核销记录，请使用原幂等键查询或重试")
+			} else {
+				success(t, s.HTTP(t, &c, "redeem_coupon", in), "redeemed")
+			}
+		})
+	}
+}
+
+func TestFailedRedemptionIsAudited(t *testing.T) {
+	for _, tc := range []struct {
+		name, status, detail string
+		err                  error
+	}{
+		{"unknown", "unknown", "结果未知，请稍后查询", groupbuy.ErrUnknown},
+		{"failed", "failed", "团购平台操作失败", errors.New("sensitive provider error")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, f, c := setup(t)
+			in := request(tc.name)
+			f.Replies["redeem"] = []fakeprovider.Reply{{Err: tc.err}}
+			rejection(t, s.HTTP(t, &c, "redeem_coupon", in), 409, tc.detail)
+			auditCount(t, s, "redeem_coupon", 1)
+			tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+			var after string
+			if err := tx.QueryRow(context.Background(), "SELECT after::text FROM audit_log WHERE action='redeem_coupon'").Scan(&after); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(after, tc.status) || !strings.Contains(after, tc.detail) || strings.Contains(after, "sensitive provider error") {
+				t.Fatalf("unexpected audit after: %s", after)
+			}
+		})
+	}
+}
+
+func TestFailedRevokeIsAudited(t *testing.T) {
+	s, f, c := setup(t)
+	in := request("failed revoke")
+	success(t, s.HTTP(t, &c, "redeem_coupon", in), "redeemed")
+	f.Replies["revoke"] = []fakeprovider.Reply{{Err: groupbuy.ErrUnknown}}
+	rejection(t, s.HTTP(t, &c, "revoke_coupon", groupbuy.LookupInput{Key: in.Key}), 409, "结果未知，请稍后查询")
+	auditCount(t, s, "revoke_coupon", 1)
+	for _, ch := range s.Channels() {
+		success(t, ch.Call(t, c, "get_redemption", groupbuy.LookupInput{Key: in.Key}), "redeemed")
 	}
 }
 
