@@ -13,22 +13,23 @@ import (
 )
 
 const createOrderPayment = `-- name: CreateOrderPayment :one
-INSERT INTO order_payments (tenant_id,store_id,checkout_id,order_id,method,amount,card_id,card_ledger_id,order_item_id,card_count_ledger_id,red_packet_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id
+INSERT INTO order_payments (tenant_id,store_id,checkout_id,order_id,method,amount,card_id,card_ledger_id,order_item_id,card_count_ledger_id,red_packet_id,coupon_redemption_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id
 `
 
 type CreateOrderPaymentParams struct {
-	TenantID          uuid.UUID
-	StoreID           uuid.UUID
-	CheckoutID        uuid.UUID
-	OrderID           uuid.UUID
-	Method            string
-	Amount            money.Amount
-	CardID            *uuid.UUID
-	CardLedgerID      *uuid.UUID
-	OrderItemID       *uuid.UUID
-	CardCountLedgerID *uuid.UUID
-	RedPacketID       *uuid.UUID
+	TenantID           uuid.UUID
+	StoreID            uuid.UUID
+	CheckoutID         uuid.UUID
+	OrderID            uuid.UUID
+	Method             string
+	Amount             money.Amount
+	CardID             *uuid.UUID
+	CardLedgerID       *uuid.UUID
+	OrderItemID        *uuid.UUID
+	CardCountLedgerID  *uuid.UUID
+	RedPacketID        *uuid.UUID
+	CouponRedemptionID *uuid.UUID
 }
 
 func (q *Queries) CreateOrderPayment(ctx context.Context, arg CreateOrderPaymentParams) (uuid.UUID, error) {
@@ -44,6 +45,7 @@ func (q *Queries) CreateOrderPayment(ctx context.Context, arg CreateOrderPayment
 		arg.OrderItemID,
 		arg.CardCountLedgerID,
 		arg.RedPacketID,
+		arg.CouponRedemptionID,
 	)
 	var id uuid.UUID
 	err := row.Scan(&id)

@@ -429,6 +429,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/create_groupbuy_deal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 登记团购平台商品、平台购买价和门店项目 */
+        post: operations["create_groupbuy_deal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/create_item": {
         parameters: {
             query?: never;
@@ -735,6 +752,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/get_groupbuy_month": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按平台和结算月查看团购核销分类、平台购买价合计、结算额和差额 */
+        post: operations["get_groupbuy_month"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/get_import_batch": {
         parameters: {
             query?: never;
@@ -967,6 +1001,23 @@ export interface paths {
         put?: never;
         /** 员工离岗，保留当天位置但不再接客 */
         post: operations["leave_rotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/link_coupon_order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 把已核销的团购券关联到挂单，记录平台购买价和门店标价 */
+        post: operations["link_coupon_order"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1273,6 +1324,23 @@ export interface paths {
         put?: never;
         /** 查看可见草稿 */
         post: operations["list_drafts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_groupbuy_deals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 列出本店团购商品及对应项目和平台购买价 */
+        post: operations["list_groupbuy_deals"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1823,6 +1891,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/record_groupbuy_settlement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 手工录入团购平台某月结算额 */
+        post: operations["record_groupbuy_settlement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/redeem_coupon": {
         parameters: {
             query?: never;
@@ -2299,6 +2384,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/unlink_coupon_order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 取消团购券与挂单的关联 */
+        post: operations["unlink_coupon_order"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/update_card_type": {
         parameters: {
             query?: never;
@@ -2378,6 +2480,23 @@ export interface paths {
         put?: never;
         /** 修改待确认草稿参数 */
         post: operations["update_draft_params"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/update_groupbuy_deal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 修改团购商品名称、平台购买价、项目或停用 */
+        post: operations["update_groupbuy_deal"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2963,6 +3082,7 @@ export interface components {
         };
         CheckoutOrderInput: {
             order_id: string;
+            /** @description 现场补差等支付；团购支付由系统按关联的团购券生成，不在此填写 */
             payments: components["schemas"]["PaymentInput"][];
         };
         CheckoutOrdersInput: {
@@ -3208,6 +3328,12 @@ export interface components {
         CreateCustomerSourceInput: {
             name: string;
         };
+        CreateDealInput: {
+            item_id: string;
+            name: string;
+            platform: string;
+            purchase_price: string;
+        };
         CreateInput: {
             operation: string;
             params: {
@@ -3314,6 +3440,22 @@ export interface components {
         };
         DeactivateShiftInput: {
             id: string;
+        };
+        Deal: {
+            active: boolean;
+            /** Format: date-time */
+            created_at: string;
+            created_by: string;
+            created_by_name: string;
+            id: string;
+            item_id: string;
+            item_name: string;
+            name: string;
+            platform: string;
+            purchase_price: string;
+        };
+        DealList: {
+            items: components["schemas"]["Deal"][];
         };
         Debt: {
             amount: string;
@@ -3510,6 +3652,30 @@ export interface components {
              * @description 只能处理多少天内的单：0 为当天，不填为不限。只对支持时间窗口的权限有效
              */
             window_days?: number;
+        };
+        GroupbuyMonth: {
+            difference: string | null;
+            history: components["schemas"]["Settlement"][];
+            linked_open: components["schemas"]["GroupbuyMonthCount"];
+            linked_paid: components["schemas"]["GroupbuyMonthCount"];
+            month: string;
+            platform: string;
+            purchase_total: string;
+            /** Format: int64 */
+            redeemed_count: number;
+            settlement: components["schemas"]["Settlement"] | null;
+            unlinked: components["schemas"]["GroupbuyMonthCount"];
+            /** Format: int64 */
+            unlinked_no_deal: number;
+        };
+        GroupbuyMonthCount: {
+            /** Format: int64 */
+            count: number;
+            purchase_total: string;
+        };
+        GroupbuyMonthInput: {
+            month: string;
+            platform: string;
         };
         GuestVisit: {
             /** Format: date */
@@ -3713,6 +3879,11 @@ export interface components {
             level_id: string;
             price: string;
         };
+        LinkCouponOrderInput: {
+            deal_id: string;
+            order_id: string;
+            redemption_id: string;
+        };
         List: {
             drafts: components["schemas"]["Draft"][];
         };
@@ -3792,6 +3963,7 @@ export interface components {
             customer_id: string;
         };
         ListCustomerSourcesInput: Record<string, never>;
+        ListDealsInput: Record<string, never>;
         ListGuestVisitsInput: {
             before_id?: string;
             /** Format: date */
@@ -3934,6 +4106,7 @@ export interface components {
             discount: string;
             /** @enum {string} */
             gender: "male" | "female";
+            groupbuy: components["schemas"]["OrderGroupbuy"][];
             id: string;
             items: components["schemas"]["OrderItem"][];
             merged_into: string | null;
@@ -3946,6 +4119,16 @@ export interface components {
             /** @enum {string} */
             status: "open" | "merged" | "paid" | "voided";
             void: components["schemas"]["OrderVoid"] | null;
+        };
+        OrderGroupbuy: {
+            /** @description 这笔团购支付实际抵扣的金额 */
+            amount: string;
+            deal_id: string;
+            deal_name: string;
+            platform: string;
+            purchase_price: string;
+            redemption_id: string;
+            store_price: string;
         };
         OrderItem: {
             /** Format: date-time */
@@ -3999,10 +4182,11 @@ export interface components {
             amount: string;
             card: components["schemas"]["OrderPaymentCard"] | null;
             count: components["schemas"]["OrderPaymentCount"] | null;
+            coupon_redemption_id: string | null;
             debt_id: string | null;
             id: string;
             /** @enum {string} */
-            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "card" | "count" | "red_packet";
+            method: "cash" | "unionpay" | "wechat" | "alipay" | "groupbuy" | "debt" | "card" | "count" | "red_packet";
             red_packet_id: string | null;
         };
         OrderPaymentCard: {
@@ -4124,7 +4308,7 @@ export interface components {
             kind: "item" | "consume" | "labor" | "sale";
             member: boolean | null;
             /** @enum {string} */
-            method: "cash" | "unionpay" | "wechat" | "alipay" | "debt" | "red_packet" | "card_principal" | "card_bonus" | "count_paid" | "count_gift" | "labor" | "card_open" | "card_recharge" | "card_upgrade" | "red_packet_sold";
+            method: "cash" | "unionpay" | "wechat" | "alipay" | "groupbuy" | "debt" | "red_packet" | "card_principal" | "card_bonus" | "count_paid" | "count_gift" | "labor" | "card_open" | "card_recharge" | "card_upgrade" | "red_packet_sold";
             /** @description 结账来源，销售业绩为空 */
             order_id: string | null;
             /** @description 结账来源，销售业绩为空 */
@@ -4202,6 +4386,7 @@ export interface components {
             discount: string;
             /** @enum {string} */
             gender: "male" | "female";
+            groupbuy: components["schemas"]["OrderGroupbuy"][];
             id: string;
             items: components["schemas"]["OrderItem"][];
             merged_into: string | null;
@@ -4281,6 +4466,12 @@ export interface components {
             status: "active" | "refunded";
             upgraded_to?: components["schemas"]["CardUpgradeType"];
         };
+        RecordSettlementInput: {
+            amount: string;
+            month: string;
+            note?: string;
+            platform: string;
+        };
         RedPacket: {
             /** Format: date-time */
             at: string;
@@ -4315,15 +4506,22 @@ export interface components {
             coupon_code: string;
             /** Format: date-time */
             created_at: string;
+            deal_id: string | null;
             id: string;
             key: string;
+            /** Format: date-time */
+            linked_at: string | null;
+            order_id: string | null;
+            order_payment_id: string | null;
             platform: string;
+            purchase_price: string | null;
             /** Format: date-time */
             redeemed_at: string | null;
             redeemed_by: string;
             /** Format: date-time */
             revoked_at: string | null;
             status: string;
+            store_price: string | null;
         };
         Ref: {
             id: string;
@@ -4611,6 +4809,17 @@ export interface components {
             business_date: string;
             settings: components["schemas"]["Setting"][];
         };
+        Settlement: {
+            amount: string;
+            /** Format: date-time */
+            created_at: string;
+            entered_by: string;
+            entered_by_name: string;
+            id: string;
+            month: string;
+            note: string;
+            platform: string;
+        };
         Shift: {
             active: boolean;
             /** Format: date-time */
@@ -4777,6 +4986,9 @@ export interface components {
         UndoImportInput: {
             batch_id: string;
         };
+        UnlinkCouponOrderInput: {
+            redemption_id: string;
+        };
         UpdateCardTypeInput: {
             active: boolean;
             discount_percent?: string | null;
@@ -4808,6 +5020,13 @@ export interface components {
             active: boolean;
             id: string;
             name: string;
+        };
+        UpdateDealInput: {
+            active: boolean;
+            id: string;
+            item_id: string;
+            name: string;
+            purchase_price: string;
         };
         UpdateInput: {
             id: string;
@@ -5722,6 +5941,39 @@ export interface operations {
             };
         };
     };
+    create_groupbuy_deal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDealInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Deal"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     create_item: {
         parameters: {
             query?: never;
@@ -6316,6 +6568,39 @@ export interface operations {
             };
         };
     };
+    get_groupbuy_month: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupbuyMonthInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupbuyMonth"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     get_import_batch: {
         parameters: {
             query?: never;
@@ -6765,6 +7050,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Rotation"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    link_coupon_order: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkCouponOrderInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Redemption"];
                 };
             };
             /** @description Error */
@@ -7359,6 +7677,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["List"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_groupbuy_deals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListDealsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealList"];
                 };
             };
             /** @description Error */
@@ -8428,6 +8779,39 @@ export interface operations {
             };
         };
     };
+    record_groupbuy_settlement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordSettlementInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settlement"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     redeem_coupon: {
         parameters: {
             query?: never;
@@ -9352,6 +9736,39 @@ export interface operations {
             };
         };
     };
+    unlink_coupon_order: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnlinkCouponOrderInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Redemption"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     update_card_type: {
         parameters: {
             query?: never;
@@ -9504,6 +9921,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Draft"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    update_groupbuy_deal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDealInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Deal"];
                 };
             };
             /** @description Error */

@@ -332,6 +332,11 @@ type CouponRedemption struct {
 	RevokedAt      pgtype.Timestamptz
 	OrderID        *uuid.UUID
 	CreatedAt      pgtype.Timestamptz
+	DealID         *uuid.UUID
+	PurchasePrice  *money.Amount
+	StorePrice     *money.Amount
+	LinkedAt       pgtype.Timestamptz
+	OrderPaymentID *uuid.UUID
 }
 
 type Customer struct {
@@ -396,6 +401,31 @@ type DebtRepayment struct {
 	BusinessDate pgtype.Date
 	RepaidBy     uuid.UUID
 	At           pgtype.Timestamptz
+}
+
+type GroupbuyDeal struct {
+	TenantID      uuid.UUID
+	StoreID       uuid.UUID
+	ID            uuid.UUID
+	Platform      string
+	Name          string
+	PurchasePrice money.Amount
+	ItemID        uuid.UUID
+	Active        bool
+	CreatedBy     uuid.UUID
+	CreatedAt     pgtype.Timestamptz
+}
+
+type GroupbuySettlement struct {
+	TenantID  uuid.UUID
+	StoreID   uuid.UUID
+	ID        uuid.UUID
+	Platform  string
+	Month     string
+	Amount    money.Amount
+	Note      string
+	EnteredBy uuid.UUID
+	CreatedAt pgtype.Timestamptz
 }
 
 type GuestVisit struct {
@@ -581,18 +611,19 @@ type OrderItemPosition struct {
 }
 
 type OrderPayment struct {
-	TenantID          uuid.UUID
-	StoreID           uuid.UUID
-	ID                uuid.UUID
-	CheckoutID        uuid.UUID
-	OrderID           uuid.UUID
-	Method            string
-	Amount            money.Amount
-	CardID            *uuid.UUID
-	CardLedgerID      *uuid.UUID
-	OrderItemID       *uuid.UUID
-	CardCountLedgerID *uuid.UUID
-	RedPacketID       *uuid.UUID
+	TenantID           uuid.UUID
+	StoreID            uuid.UUID
+	ID                 uuid.UUID
+	CheckoutID         uuid.UUID
+	OrderID            uuid.UUID
+	Method             string
+	Amount             money.Amount
+	CardID             *uuid.UUID
+	CardLedgerID       *uuid.UUID
+	OrderItemID        *uuid.UUID
+	CardCountLedgerID  *uuid.UUID
+	RedPacketID        *uuid.UUID
+	CouponRedemptionID *uuid.UUID
 }
 
 type OrderVoid struct {

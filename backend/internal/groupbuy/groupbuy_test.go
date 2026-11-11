@@ -506,15 +506,15 @@ func TestFakeIdempotency(t *testing.T) {
 func TestSchema(t *testing.T) {
 	s, _, _ := setup(t)
 	ctx := context.Background()
-	for _, tc := range []struct{ name, field, value, code string }{
-		{"status", "status", "nonsense", "23514"},
-		{"staff FK", "redeemed_by", "00000000-0000-0000-0000-000000000000", "23503"},
-		{"order FK", "order_id", "00000000-0000-0000-0000-000000000000", "23503"},
-		{"store FK", "store_id", "00000000-0000-0000-0000-000000000000", "23503"},
+	for _, tc := range []struct{ name, update, code string }{
+		{"status", "status='nonsense'", "23514"},
+		{"staff FK", "redeemed_by='00000000-0000-0000-0000-000000000000'", "23503"},
+		{"order FK", "order_id='00000000-0000-0000-0000-000000000000',deal_id='00000000-0000-0000-0000-000000000000',purchase_price=1,store_price=1,linked_at=clock_timestamp()", "23503"},
+		{"store FK", "store_id='00000000-0000-0000-0000-000000000000'", "23503"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-			_, err := tx.Exec(ctx, "INSERT INTO coupon_redemptions (tenant_id,store_id,platform,coupon_code,idempotency_key,status,redeemed_by,created_at) VALUES ($1,$2,'douyin','schema','schema','pending',$3,$4)", s.Res.TenantID, s.Res.StoreID, s.Res.OwnerID, instant)
+			_, err := tx.Exec(ctx, "INSERT INTO coupon_redemptions (tenant_id,store_id,platform,coupon_code,idempotency_key,status,redeemed_by,created_at) VALUES ($1,$2,'douyin','schema',$5,'pending',$3,$4)", s.Res.TenantID, s.Res.StoreID, s.Res.OwnerID, instant, tc.name)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -522,7 +522,7 @@ func TestSchema(t *testing.T) {
 			if err := tx.Commit(ctx); err != nil {
 				t.Fatal(err)
 			}
-			_, err = s.Pool.Exec(ctx, "UPDATE coupon_redemptions SET "+tc.field+"=$1", tc.value)
+			_, err = s.Pool.Exec(ctx, "UPDATE coupon_redemptions SET "+tc.update)
 			var pgErr *pgconn.PgError
 			if !errors.As(err, &pgErr) || pgErr.Code != tc.code {
 				t.Fatalf("%s: %v", tc.name, err)
@@ -570,7 +570,7 @@ func TestTenantPolicyAndColumnGrants(t *testing.T) {
 		t.Fatalf("tenant write policy: %v", err)
 	}
 	_ = tx.Rollback(ctx)
-	for _, sql := range []string{"UPDATE coupon_redemptions SET coupon_code='changed'", "UPDATE coupon_redemptions SET order_id=NULL", "UPDATE coupon_redemptions SET idempotency_key='changed'", "DELETE FROM coupon_redemptions"} {
+	for _, sql := range []string{"UPDATE coupon_redemptions SET coupon_code='changed'", "UPDATE coupon_redemptions SET created_at=clock_timestamp()", "UPDATE coupon_redemptions SET idempotency_key='changed'", "DELETE FROM coupon_redemptions"} {
 		tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 		_, err := tx.Exec(ctx, sql)
 		if !errors.As(err, &pgErr) || pgErr.Code != "42501" {
@@ -578,6 +578,12 @@ func TestTenantPolicyAndColumnGrants(t *testing.T) {
 		}
 		_ = tx.Rollback(ctx)
 	}
+	tx = dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	var dealGrants bool
+	if err := tx.QueryRow(ctx, `SELECT has_column_privilege('salon_app','groupbuy_deals','name','UPDATE') AND has_column_privilege('salon_app','groupbuy_deals','purchase_price','UPDATE') AND has_column_privilege('salon_app','groupbuy_deals','item_id','UPDATE') AND has_column_privilege('salon_app','groupbuy_deals','active','UPDATE') AND NOT has_column_privilege('salon_app','groupbuy_deals','platform','UPDATE') AND NOT has_column_privilege('salon_app','groupbuy_deals','created_by','UPDATE') AND NOT has_table_privilege('salon_app','groupbuy_deals','UPDATE')`).Scan(&dealGrants); err != nil || !dealGrants {
+		t.Fatal("groupbuy deal column grants", dealGrants, err)
+	}
+	_ = tx.Rollback(ctx)
 }
 
 func TestFakeScope(t *testing.T) {

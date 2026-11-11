@@ -24,7 +24,16 @@ type checkoutOrder struct {
 	order      Order
 	rules      checkoutRules
 	candidates []uuid.UUID
+	groupbuy   []checkoutGroupbuy
 	payments   []PaymentInput
+}
+
+type checkoutGroupbuy struct {
+	RedemptionID  uuid.UUID
+	DealName      string
+	Platform      string
+	PurchasePrice money.Amount
+	StorePrice    money.Amount
 }
 type checkoutLine struct {
 	ID                  uuid.UUID
@@ -96,10 +105,15 @@ func planCheckout(state checkoutState, orders []checkoutOrder) ([]checkoutPlan, 
 		if err := checkCountPayments(priced, input.payments); err != nil {
 			return nil, err
 		}
-		if err := checkCheckout(priced, input.payments); err != nil {
+		var net money.Amount
+		if err := net.Scan(priced.Net); err != nil {
 			return nil, err
 		}
-		plan := checkoutPlan{pricingTypeID: typeID, order: priced, changedLines: changedCheckoutLines(input.order, priced), payments: []PaymentInput{}}
+		groupbuy, groupbuyTotal := groupbuyPayments(input.groupbuy, net)
+		if err := checkCheckout(priced, input.payments, groupbuyTotal); err != nil {
+			return nil, err
+		}
+		plan := checkoutPlan{pricingTypeID: typeID, order: priced, changedLines: changedCheckoutLines(input.order, priced), payments: groupbuy}
 		for _, payment := range input.payments {
 			payments := []PaymentInput{payment}
 			if payment.Method == "card" && payment.CardID == nil {
@@ -298,7 +312,7 @@ func selectionPayments(payment PaymentInput, candidates []uuid.UUID, used map[uu
 	return out, nil
 }
 
-func checkCheckout(order Order, payments []PaymentInput) error {
+func checkCheckout(order Order, payments []PaymentInput, groupbuy money.Amount) error {
 	active := 0
 	net := money.Total{}
 	missing := false
@@ -328,10 +342,45 @@ func checkCheckout(order Order, payments []PaymentInput) error {
 		}
 		total = total.AddProduct(payment.Amount, 1)
 	}
-	if total.CmpTotal(net) != 0 {
+	if total.CmpTotal(net.Deduct(groupbuy)) != 0 {
 		return ops.Rule("支付合计须等于实收")
 	}
 	return nil
+}
+
+// groupbuyPayments 按关联顺序生成团购支付；团购总额超过实收时从最后一笔往前减到实收，不找零、不退款。
+func groupbuyPayments(redemptions []checkoutGroupbuy, net money.Amount) ([]PaymentInput, money.Amount) {
+	amounts := make([]int64, len(redemptions))
+	var total int64
+	for i, redemption := range redemptions {
+		amounts[i] = redemption.StorePrice.Fen()
+		total += amounts[i]
+	}
+	excess := total - net.Fen()
+	for i := len(amounts) - 1; i >= 0 && excess > 0; i-- {
+		take := min(amounts[i], excess)
+		amounts[i] -= take
+		excess -= take
+	}
+	out := make([]PaymentInput, 0, len(redemptions))
+	var groupbuyTotal int64
+	for i, redemption := range redemptions {
+		if amounts[i] == 0 {
+			continue
+		}
+		amount, err := money.FromFen(amounts[i])
+		if err != nil {
+			panic(err)
+		}
+		id := redemption.RedemptionID
+		out = append(out, PaymentInput{Method: "groupbuy", Amount: amount, CouponRedemptionID: &id})
+		groupbuyTotal += amounts[i]
+	}
+	groupbuy, err := money.FromFen(groupbuyTotal)
+	if err != nil {
+		panic(err)
+	}
+	return out, groupbuy
 }
 
 func checkCountPayments(order Order, payments []PaymentInput) error {

@@ -92,5 +92,25 @@ func previewCheckout(ctx context.Context, env ops.Env, in *PreviewCheckoutInput)
 	if err != nil {
 		return nil, err
 	}
+	redemptions, err := env.Q.ListOrderRedemptions(ctx, dbgen.ListOrderRedemptionsParams{StoreID: env.Caller.StoreID, OrderIds: []uuid.UUID{row.ID}})
+	if err != nil {
+		return nil, err
+	}
+	groupbuyLines := make([]checkoutGroupbuy, 0, len(redemptions))
+	for _, redemption := range redemptions {
+		if redemption.PurchasePrice == nil || redemption.StorePrice == nil {
+			continue
+		}
+		groupbuyLines = append(groupbuyLines, checkoutGroupbuy{RedemptionID: redemption.ID, DealName: redemption.DealName, Platform: redemption.Platform, PurchasePrice: *redemption.PurchasePrice, StorePrice: *redemption.StorePrice})
+	}
+	var net money.Amount
+	if err := net.Scan(out.Net); err != nil {
+		return nil, err
+	}
+	paid, _ := groupbuyPayments(groupbuyLines, net)
+	out.Payments = make([]OrderPayment, 0, len(paid))
+	for _, payment := range paid {
+		out.Payments = append(out.Payments, OrderPayment{Method: payment.Method, Amount: payment.Amount, CouponRedemptionID: payment.CouponRedemptionID})
+	}
 	return &PreviewCheckout{Order: out, PricingCardID: pricingCardID}, nil
 }
