@@ -138,6 +138,24 @@ sql:
               import: github.com/wzhlinhai/salon/backend/internal/money
               type: Amount
               pointer: true
+          - column: groupbuy_deals.purchase_price
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: coupon_redemptions.purchase_price
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+              pointer: true
+          - column: coupon_redemptions.store_price
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+              pointer: true
+          - column: groupbuy_settlements.amount
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
           - column: card_refunds.principal
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money

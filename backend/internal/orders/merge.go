@@ -2,9 +2,12 @@ package orders
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/wzhlinhai/salon/backend/internal/audit"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
+	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
 )
@@ -39,6 +42,21 @@ func mergeOrders(ctx context.Context, env ops.Env, in *MergeOrdersInput) (*Order
 		if err := env.Q.MoveMergedOrderItems(ctx, dbgen.MoveMergedOrderItemsParams{StoreID: env.Caller.StoreID, OrderID: kept.ID, MergedOrderIds: in.MergedOrderIDs}); err != nil {
 			return err
 		}
+		redemptions, err := env.Q.LockOrderRedemptions(ctx, dbgen.LockOrderRedemptionsParams{StoreID: env.Caller.StoreID, OrderIds: in.MergedOrderIDs})
+		if err != nil {
+			return err
+		}
+		if err := env.Q.MoveOrderRedemptions(ctx, dbgen.MoveOrderRedemptionsParams{StoreID: env.Caller.StoreID, OrderID: &kept.ID, MergedOrderIds: in.MergedOrderIDs}); err != nil {
+			return err
+		}
+		for _, row := range redemptions {
+			before := mergeRedemptionView(row)
+			row.OrderID = &kept.ID
+			after := mergeRedemptionView(row)
+			if err := audit.Record(ctx, env, "merge_orders", audit.CouponRedemptionTarget(row.ID), before, after); err != nil {
+				return err
+			}
+		}
 		for i := range rows {
 			if rows[i].ID == kept.ID {
 				continue
@@ -55,4 +73,25 @@ func mergeOrders(ctx context.Context, env ops.Env, in *MergeOrdersInput) (*Order
 		return nil, err
 	}
 	return &after[0], nil
+}
+
+type mergeRedemptionAudit struct {
+	ID             uuid.UUID     `json:"id"`
+	Platform       string        `json:"platform"`
+	CouponCode     string        `json:"coupon_code"`
+	Status         string        `json:"status"`
+	OrderID        *uuid.UUID    `json:"order_id" nullable:"true"`
+	DealID         *uuid.UUID    `json:"deal_id" nullable:"true"`
+	PurchasePrice  *money.Amount `json:"purchase_price" nullable:"true"`
+	StorePrice     *money.Amount `json:"store_price" nullable:"true"`
+	LinkedAt       *time.Time    `json:"linked_at" nullable:"true"`
+	OrderPaymentID *uuid.UUID    `json:"order_payment_id" nullable:"true"`
+}
+
+func mergeRedemptionView(row dbgen.LockOrderRedemptionsRow) mergeRedemptionAudit {
+	out := mergeRedemptionAudit{ID: row.ID, Platform: row.Platform, CouponCode: row.CouponCode, Status: row.Status, OrderID: row.OrderID, DealID: row.DealID, PurchasePrice: row.PurchasePrice, StorePrice: row.StorePrice, OrderPaymentID: row.OrderPaymentID}
+	if row.LinkedAt.Valid {
+		out.LinkedAt = &row.LinkedAt.Time
+	}
+	return out
 }

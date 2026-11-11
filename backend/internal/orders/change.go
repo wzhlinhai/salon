@@ -99,6 +99,11 @@ func changeOne(ctx context.Context, env ops.Env, action string, id uuid.UUID, ed
 	return &after[0], nil
 }
 
+// ChangeOpenOrder 在单锁和调用者的开单权限限制下修改一张挂单，供团购关联与取消关联复用。
+func ChangeOpenOrder(ctx context.Context, env ops.Env, action string, id uuid.UUID, edit func(*dbgen.Order) error) (*Order, error) {
+	return changeOne(ctx, env, action, id, edit)
+}
+
 // changeItem 在单锁和权限检查之后读取项目行，拒绝修改已去掉的行。
 func changeItem(ctx context.Context, env ops.Env, action string, orderID, itemID uuid.UUID, edit func(dbgen.Order, dbgen.OrderItem) error) (*Order, error) {
 	return changeOne(ctx, env, action, orderID, func(row *dbgen.Order) error {

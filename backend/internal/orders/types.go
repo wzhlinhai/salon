@@ -12,22 +12,34 @@ import (
 
 // Order 是单据视图，只引用顾客 ID，不包含顾客姓名或手机号。
 type Order struct {
-	Void         *OrderVoid     `json:"void"`
-	CheckoutID   *uuid.UUID     `json:"checkout_id" nullable:"true"`
-	Payments     []OrderPayment `json:"payments"`
-	ID           uuid.UUID      `json:"id"`
-	CustomerID   uuid.UUID      `json:"customer_id"`
-	Gender       string         `json:"gender" enum:"male,female"`
-	Designated   bool           `json:"designated"`
-	Status       string         `json:"status" enum:"open,merged,paid,voided"`
-	MergedInto   *uuid.UUID     `json:"merged_into" nullable:"true"`
-	BusinessDate string         `json:"business_date" format:"date"`
-	OpenedBy     uuid.UUID      `json:"opened_by"`
-	OpenedAt     time.Time      `json:"opened_at"`
-	Items        []OrderItem    `json:"items"`
-	Discount     string         `json:"discount"`
-	Net          string         `json:"net"`
-	Receivable   string         `json:"receivable"`
+	Void         *OrderVoid      `json:"void"`
+	CheckoutID   *uuid.UUID      `json:"checkout_id" nullable:"true"`
+	Payments     []OrderPayment  `json:"payments"`
+	Groupbuy     []OrderGroupbuy `json:"groupbuy"`
+	ID           uuid.UUID       `json:"id"`
+	CustomerID   uuid.UUID       `json:"customer_id"`
+	Gender       string          `json:"gender" enum:"male,female"`
+	Designated   bool            `json:"designated"`
+	Status       string          `json:"status" enum:"open,merged,paid,voided"`
+	MergedInto   *uuid.UUID      `json:"merged_into" nullable:"true"`
+	BusinessDate string          `json:"business_date" format:"date"`
+	OpenedBy     uuid.UUID       `json:"opened_by"`
+	OpenedAt     time.Time       `json:"opened_at"`
+	Items        []OrderItem     `json:"items"`
+	Discount     string          `json:"discount"`
+	Net          string          `json:"net"`
+	Receivable   string          `json:"receivable"`
+}
+
+// OrderGroupbuy 是一张单上关联的团购券及其平台购买价、门店标价和抵扣金额。
+type OrderGroupbuy struct {
+	RedemptionID  uuid.UUID    `json:"redemption_id"`
+	DealID        uuid.UUID    `json:"deal_id"`
+	DealName      string       `json:"deal_name"`
+	Platform      string       `json:"platform"`
+	PurchasePrice money.Amount `json:"purchase_price"`
+	StorePrice    money.Amount `json:"store_price"`
+	Amount        money.Amount `json:"amount" doc:"这笔团购支付实际抵扣的金额"`
 }
 
 // OrderItem 是只记录一次价格的项目行。
@@ -127,29 +139,31 @@ type MergeOrdersInput struct {
 
 // OrderPayment 是单上的一笔支付，按登记顺序返回。
 type OrderPayment struct {
-	RedPacketID *uuid.UUID         `json:"red_packet_id" nullable:"true"`
-	DebtID      *uuid.UUID         `json:"debt_id" nullable:"true"`
-	Count       *OrderPaymentCount `json:"count"`
-	Card        *OrderPaymentCard  `json:"card"`
-	ID          uuid.UUID          `json:"id"`
-	Method      string             `json:"method" enum:"cash,unionpay,wechat,alipay,debt,card,count,red_packet"`
-	Amount      money.Amount       `json:"amount"`
+	RedPacketID        *uuid.UUID         `json:"red_packet_id" nullable:"true"`
+	DebtID             *uuid.UUID         `json:"debt_id" nullable:"true"`
+	CouponRedemptionID *uuid.UUID         `json:"coupon_redemption_id" nullable:"true"`
+	Count              *OrderPaymentCount `json:"count"`
+	Card               *OrderPaymentCard  `json:"card"`
+	ID                 uuid.UUID          `json:"id"`
+	Method             string             `json:"method" enum:"cash,unionpay,wechat,alipay,groupbuy,debt,card,count,red_packet"`
+	Amount             money.Amount       `json:"amount"`
 }
 
 // PaymentInput 是支付方式和登记金额。
 type PaymentInput struct {
-	ExternalRef *string      `json:"external_ref,omitempty" doc:"银联登记小票号"`
-	RedPacketID *uuid.UUID   `json:"red_packet_id,omitempty"`
-	OrderItemID *uuid.UUID   `json:"order_item_id,omitempty"`
-	CardID      *uuid.UUID   `json:"card_id,omitempty"`
-	Method      string       `json:"method" enum:"cash,unionpay,wechat,alipay,debt,card,count,red_packet"`
-	Amount      money.Amount `json:"amount"`
+	ExternalRef        *string      `json:"external_ref,omitempty" doc:"银联登记小票号"`
+	RedPacketID        *uuid.UUID   `json:"red_packet_id,omitempty"`
+	OrderItemID        *uuid.UUID   `json:"order_item_id,omitempty"`
+	CardID             *uuid.UUID   `json:"card_id,omitempty"`
+	CouponRedemptionID *uuid.UUID   `json:"-" doc:"-"`
+	Method             string       `json:"method" enum:"cash,unionpay,wechat,alipay,debt,card,count,red_packet"`
+	Amount             money.Amount `json:"amount"`
 }
 
 // CheckoutOrderInput 是一张挂单及其支付。
 type CheckoutOrderInput struct {
 	OrderID  uuid.UUID      `json:"order_id"`
-	Payments []PaymentInput `json:"payments" minItems:"1" maxItems:"10"`
+	Payments []PaymentInput `json:"payments" maxItems:"10" doc:"现场补差等支付；团购支付由系统按关联的团购券生成，不在此填写"`
 }
 
 // CheckoutOrdersInput 是一起结账的挂单，各单分别登记支付。

@@ -26,6 +26,9 @@ func payment(method, amount string) orders.PaymentInput {
 	return orders.PaymentInput{Method: method, Amount: a}
 }
 func checkoutOrder(o map[string]any, payments ...orders.PaymentInput) orders.CheckoutOrderInput {
+	if payments == nil {
+		payments = []orders.PaymentInput{}
+	}
 	return orders.CheckoutOrderInput{OrderID: id(o["id"]), Payments: payments}
 }
 func checkoutInput(o ...orders.CheckoutOrderInput) orders.CheckoutOrdersInput {
@@ -232,12 +235,14 @@ func TestCheckoutValidation(t *testing.T) {
 			os[i] = valid
 		}
 		s.assertCheckoutRefused(checkoutInput(os...), 422, "")
-		ps := make([]orders.PaymentInput, n)
-		for i := range ps {
-			ps[i] = payment("cash", "10")
-		}
-		s.assertCheckoutRefused(checkoutInput(checkoutOrder(o, ps...)), 422, "")
 	}
+	// 团购券可能覆盖全部实收，现场支付可以为零；没有团购券时零支付仍须等于实收。
+	s.assertCheckoutRefused(checkoutInput(checkoutOrder(o)), 409, "支付合计须等于实收")
+	ps := make([]orders.PaymentInput, 11)
+	for i := range ps {
+		ps[i] = payment("cash", "10")
+	}
+	s.assertCheckoutRefused(checkoutInput(checkoutOrder(o, ps...)), 422, "")
 	bad := checkoutOrder(o, payment("unknown", "100"))
 	s.assertCheckoutRefused(checkoutInput(bad), 422, "")
 	a, b := s.customerOrder(s.line()), s.customerOrder(s.line())

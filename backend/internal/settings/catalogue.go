@@ -66,6 +66,7 @@ const (
 	KeyPerformanceRatioUnionpay          = "performance_ratio_unionpay"
 	KeyPerformanceRatioWechat            = "performance_ratio_wechat"
 	KeyPerformanceRatioAlipay            = "performance_ratio_alipay"
+	KeyPerformanceRatioGroupbuy          = "performance_ratio_groupbuy"
 	KeyPerformanceRatioDebt              = "performance_ratio_debt"
 	KeyPerformanceRatioCardPrincipal     = "performance_ratio_card_principal"
 	KeyPerformanceRatioCardBonus         = "performance_ratio_card_bonus"
@@ -109,6 +110,7 @@ var Catalogue = []Def{
 	{Key: KeyPerformanceRatioUnionpay, Label: "银联业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
 	{Key: KeyPerformanceRatioWechat, Label: "微信业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
 	{Key: KeyPerformanceRatioAlipay, Label: "支付宝业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
+	{Key: KeyPerformanceRatioGroupbuy, Label: "团购业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
 	{Key: KeyPerformanceRatioDebt, Label: "挂账业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
 	{Key: KeyPerformanceRatioCardPrincipal, Label: "卡余额本金业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
 	{Key: KeyPerformanceRatioCardBonus, Label: "卡余额赠送金业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 0, Hint: "这种支付方式付的钱按百分之几计入业绩"},

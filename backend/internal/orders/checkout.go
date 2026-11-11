@@ -105,10 +105,21 @@ func checkoutOrders(ctx context.Context, env ops.Env, in *CheckoutOrdersInput) (
 		if err != nil {
 			return err
 		}
+		redemptions, err := env.Q.LockOrderRedemptions(ctx, dbgen.LockOrderRedemptionsParams{StoreID: env.Caller.StoreID, OrderIds: ids})
+		if err != nil {
+			return err
+		}
+		groupbuy := map[uuid.UUID][]checkoutGroupbuy{}
+		for _, row := range redemptions {
+			if row.OrderID == nil || row.PurchasePrice == nil || row.StorePrice == nil {
+				continue
+			}
+			groupbuy[*row.OrderID] = append(groupbuy[*row.OrderID], checkoutGroupbuy{RedemptionID: row.ID, DealName: row.DealName, Platform: row.Platform, PurchasePrice: *row.PurchasePrice, StorePrice: *row.StorePrice})
+		}
 		snapshots := pay.Snapshots()
 		inputs := make([]checkoutOrder, len(orders))
 		for i, order := range orders {
-			inputs[i] = checkoutOrder{order: order, rules: checkoutRules{rules[i].CardSelection(), rules[i].MemberPriceRule(), rules[i].OthersCardPayment()}, candidates: candidates[i], payments: in.Orders[i].Payments}
+			inputs[i] = checkoutOrder{order: order, rules: checkoutRules{rules[i].CardSelection(), rules[i].MemberPriceRule(), rules[i].OthersCardPayment()}, candidates: candidates[i], groupbuy: groupbuy[order.ID], payments: in.Orders[i].Payments}
 		}
 		if err := checkExplicitCards(snapshots, inputs); err != nil {
 			return err
