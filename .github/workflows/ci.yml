@@ -86,8 +86,44 @@ jobs:
           cache-dependency-path: admin/package-lock.json
       - run: npm ci
         working-directory: admin
-      - run: npx playwright install --with-deps chromium
+      - name: Resolve Playwright version
+        id: playwright-version
         working-directory: admin
+        run: |
+          version="$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
+      - name: Install Playwright browsers and dependencies
+        working-directory: admin
+        run: |
+          # apt 源偶发解析失败，浏览器和系统依赖安装最多重试三次。
+          set -euo pipefail
+
+          for attempt in 1 2 3; do
+            echo "Playwright install attempt ${attempt}/3"
+            sudo apt-get update || echo "apt-get update failed; continuing to install attempt"
+
+            if npx playwright install-deps chromium && npx playwright install chromium; then
+              exit 0
+            fi
+
+            if [ "${attempt}" -eq 3 ]; then
+              echo "::error::Playwright install failed after 3 attempts"
+              exit 1
+            fi
+
+            if [ "${attempt}" -eq 1 ]; then
+              delay=30
+            else
+              delay=60
+            fi
+            echo "Playwright install failed; retrying in ${delay}s..."
+            sleep "${delay}"
+          done
       - run: scripts/dev.sh up
         env:
           # CI 上 nuxt dev 首次编译较慢。
