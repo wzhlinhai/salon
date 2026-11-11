@@ -97,22 +97,20 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
-      - name: Install Playwright browsers and dependencies
+      - name: Install Playwright browser
         working-directory: admin
         run: |
-          # apt 源偶发解析失败，浏览器和系统依赖安装最多重试三次。
+          # runner 镜像已带 Chromium 所需系统库；apt 镜像不可达曾导致 CI 失败，故只下载浏览器。
           set -euo pipefail
 
           for attempt in 1 2 3; do
-            echo "Playwright install attempt ${attempt}/3"
-            sudo apt-get update || echo "apt-get update failed; continuing to install attempt"
-
-            if npx playwright install-deps chromium && npx playwright install chromium; then
+            echo "Playwright browser install attempt ${attempt}/3"
+            if npx playwright install chromium; then
               exit 0
             fi
 
             if [ "${attempt}" -eq 3 ]; then
-              echo "::error::Playwright install failed after 3 attempts"
+              echo "::error::Playwright browser install failed after 3 attempts"
               exit 1
             fi
 
@@ -121,7 +119,7 @@ jobs:
             else
               delay=60
             fi
-            echo "Playwright install failed; retrying in ${delay}s..."
+            echo "Playwright browser install failed; retrying in ${delay}s..."
             sleep "${delay}"
           done
       - run: scripts/dev.sh up
