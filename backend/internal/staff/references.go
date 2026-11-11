@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
@@ -16,20 +15,24 @@ import (
 // ErrNotAssignable 表示员工不存在、不在本店或已离职，不能用于新的指派。
 var ErrNotAssignable = errors.New("员工必须是本店在职员工")
 
-// LockReferences 按 UUID 共享锁住本店员工；允许离职员工用于交接来源等历史引用。
+// LockReferences 用一条语句按 UUID 顺序共享锁住本店员工；允许离职员工用于交接来源等历史引用。
 func LockReferences(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, ids ...uuid.UUID) (map[uuid.UUID]dbgen.Staff, error) {
 	ordered := slices.Clone(ids)
 	slices.SortFunc(ordered, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
-	out := make(map[uuid.UUID]dbgen.Staff, len(ids))
-	for _, id := range slices.Compact(ordered) {
-		row, err := q.ShareStaff(ctx, id)
-		if errors.Is(err, pgx.ErrNoRows) || err == nil && row.StoreID != storeID {
+	ordered = slices.Compact(ordered)
+	rows, err := q.ShareStaffMany(ctx, ordered)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) != len(ordered) {
+		return nil, ops.ErrNotFound
+	}
+	out := make(map[uuid.UUID]dbgen.Staff, len(rows))
+	for _, row := range rows {
+		if row.StoreID != storeID {
 			return nil, ops.ErrNotFound
 		}
-		if err != nil {
-			return nil, err
-		}
-		out[id] = row
+		out[row.ID] = row
 	}
 	return out, nil
 }

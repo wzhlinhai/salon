@@ -42,6 +42,50 @@ type AiDraftEvent struct {
 	At           pgtype.Timestamptz
 }
 
+type Appointment struct {
+	TenantID   uuid.UUID
+	StoreID    uuid.UUID
+	ID         uuid.UUID
+	StaffID    uuid.UUID
+	CustomerID *uuid.UUID
+	Kind       string
+	StartsAt   pgtype.Timestamptz
+	EndsAt     pgtype.Timestamptz
+	Status     string
+	Note       *string
+	OrderID    *uuid.UUID
+	CreatedBy  uuid.UUID
+	CreatedAt  pgtype.Timestamptz
+}
+
+type AppointmentEvent struct {
+	TenantID      uuid.UUID
+	StoreID       uuid.UUID
+	ID            uuid.UUID
+	AppointmentID uuid.UUID
+	Kind          string
+	FromStartsAt  pgtype.Timestamptz
+	FromEndsAt    pgtype.Timestamptz
+	ToStartsAt    pgtype.Timestamptz
+	ToEndsAt      pgtype.Timestamptz
+	FromStaffID   *uuid.UUID
+	ToStaffID     uuid.UUID
+	Reason        *string
+	Note          *string
+	ActorStaffID  uuid.UUID
+	CreatedAt     pgtype.Timestamptz
+}
+
+type AppointmentItem struct {
+	TenantID      uuid.UUID
+	StoreID       uuid.UUID
+	ID            uuid.UUID
+	AppointmentID uuid.UUID
+	ItemID        uuid.UUID
+	Position      int32
+	CreatedAt     pgtype.Timestamptz
+}
+
 type AttendanceApproval struct {
 	TenantID     uuid.UUID
 	StoreID      uuid.UUID
@@ -524,6 +568,8 @@ type Item struct {
 	Active          bool
 	CreatedAt       pgtype.Timestamptz
 	Kind            string
+	DurationMinutes int32
+	Bookable        bool
 }
 
 type ItemLevelPrice struct {

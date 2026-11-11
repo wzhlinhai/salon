@@ -320,5 +320,13 @@ func ImportBatchTarget(id uuid.UUID) Target { return Target{kind: "import_batch"
 // DataExportTarget 创建不关联顾客的数据导出日志目标。
 func DataExportTarget(id uuid.UUID) Target { return Target{kind: "data_export", id: id} }
 
+// AppointmentTarget 创建关联顾客的预约日志目标。
+func AppointmentTarget(id, customerID uuid.UUID) Target {
+	return Target{kind: "appointment", id: id, customerID: &customerID}
+}
+
+// AppointmentBlockTarget 创建不关联顾客的私约占位日志目标。
+func AppointmentBlockTarget(id uuid.UUID) Target { return Target{kind: "appointment_block", id: id} }
+
 // MaskPhones 对其他审计视图复用相同的 JSON 手机号打码规则。
 func MaskPhones(raw json.RawMessage) (json.RawMessage, error) { return maskPhones(raw) }

@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/wzhlinhai/salon/backend/internal/booking"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
@@ -168,6 +169,7 @@ func assignTurn(ctx context.Context, env ops.Env, in *AssignTurnInput) (*Rotatio
 		return nil, err
 	}
 	var chosen *turnState
+	renumberTurns := false
 	if in.StaffID != nil {
 		if err := requireMember(ctx, env, queue.ID, *in.StaffID); err != nil {
 			return nil, err
@@ -191,9 +193,27 @@ func assignTurn(ctx context.Context, env ops.Env, in *AssignTurnInput) (*Rotatio
 		if err != nil {
 			return nil, err
 		}
+		waiting := make([]uuid.UUID, 0, len(turns))
+		for i := range turns {
+			if turns[i].turn.Status == StatusWaiting && activeMembers[turns[i].turn.StaffID] {
+				waiting = append(waiting, turns[i].turn.StaffID)
+			}
+		}
+		occupied, err := booking.OccupiedStaff(ctx, env.Q, env.Caller.StoreID, waiting, env.Now)
+		if err != nil {
+			return nil, err
+		}
 		candidate := -1
 		for i := range turns {
 			if turns[i].turn.Status == StatusWaiting && activeMembers[turns[i].turn.StaffID] {
+				if occupied[turns[i].turn.StaffID] {
+					reason := BookingOccupiedReason
+					pos := position(turns[i].turn.Position)
+					if err := recordEvent(ctx, env, queue.ID, day, &turns[i].turn.StaffID, "auto_skip", &reason, nil, pos, pos, nil, nil, nil); err != nil {
+						return nil, err
+					}
+					continue
+				}
 				candidate = i
 				break
 			}
@@ -216,6 +236,7 @@ func assignTurn(ctx context.Context, env ops.Env, in *AssignTurnInput) (*Rotatio
 			to := from
 			if rules.RotationSkipPolicy() == "to_tail" {
 				from, to, _ = moveToTail(turns, staffID)
+				renumberTurns = true
 			}
 			reason := AutoSkipReason
 			if err := recordEvent(ctx, env, queue.ID, day, &staffID, "auto_skip", &reason, nil, position(from), position(to), nil, nil, nil); err != nil {
@@ -231,7 +252,7 @@ func assignTurn(ctx context.Context, env ops.Env, in *AssignTurnInput) (*Rotatio
 	if err := recordEvent(ctx, env, queue.ID, day, &chosen.turn.StaffID, "assign", nil, nil, position(chosen.turn.Position), position(chosen.turn.Position), nil, in.OrderID, &chosen.turn.ServingDesignated); err != nil {
 		return nil, err
 	}
-	if err := persistTurns(ctx, env, queue.ID, day, turns, true); err != nil {
+	if err := persistTurns(ctx, env, queue.ID, day, turns, renumberTurns); err != nil {
 		return nil, err
 	}
 	return finish(ctx, env, queue, day, turns)

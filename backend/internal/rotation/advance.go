@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/wzhlinhai/salon/backend/internal/booking"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
@@ -40,7 +41,14 @@ func AdvanceAfterCheckout(ctx context.Context, env ops.Env, orderID uuid.UUID) e
 	if err != nil {
 		return err
 	}
-	half, err := halfTurn(items, rules)
+	byAppointment := false
+	if rules.RotationHalfRule() == "by_appointment" {
+		byAppointment, err = booking.OrderHasCompletedAppointment(ctx, env.Q, env.Caller.StoreID, orderID)
+		if err != nil {
+			return err
+		}
+	}
+	half, err := halfTurn(items, rules, byAppointment)
 	if err != nil {
 		return err
 	}
@@ -133,7 +141,7 @@ func AdvanceAfterCheckout(ctx context.Context, env ops.Env, orderID uuid.UUID) e
 	return nil
 }
 
-func halfTurn(items []dbgen.OrderServiceItemsRow, rules settings.Rules) (bool, error) {
+func halfTurn(items []dbgen.OrderServiceItemsRow, rules settings.Rules, byAppointment bool) (bool, error) {
 	switch rules.RotationHalfRule() {
 	case "by_price":
 		threshold := rules.RotationHalfPriceBelow()
@@ -165,6 +173,8 @@ func halfTurn(items []dbgen.OrderServiceItemsRow, rules settings.Rules) (bool, e
 			}
 		}
 		return true, nil
+	case "by_appointment":
+		return byAppointment, nil
 	default:
 		return false, nil
 	}

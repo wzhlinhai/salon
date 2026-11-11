@@ -324,6 +324,27 @@ func (r Rules) AttendanceGraceMinutes() int {
 	return v
 }
 
+// BookingMinLeadMinutes 返回顾客自助预约至少提前的分钟数，0 表示不限制。
+func (r Rules) BookingMinLeadMinutes() int {
+	var v int
+	r.decode(KeyBookingMinLeadMinutes, &v)
+	return v
+}
+
+// BookingMaxDaysAhead 返回从今天起最多可以预约的天数，0 表示只能约今天。
+func (r Rules) BookingMaxDaysAhead() int {
+	var v int
+	r.decode(KeyBookingMaxDaysAhead, &v)
+	return v
+}
+
+// BookingDefaultMinutes 返回没有选择项目时预约默认占用的分钟数。
+func (r Rules) BookingDefaultMinutes() int {
+	var v int
+	r.decode(KeyBookingDefaultMinutes, &v)
+	return v
+}
+
 // EffectiveDays 一次加载设置历史，按输入顺序返回各营业日执行的设置。
 func EffectiveDays(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, days []time.Time) ([]Rules, error) {
 	h, err := loadHistory(ctx, q, storeID, nil)

@@ -35,6 +35,8 @@ const (
 	SkipReasonOther = "其他"
 	// AutoSkipReason 是点牌跳牌自动跳过时的原因。
 	AutoSkipReason = "点客服务中"
+	// BookingOccupiedReason 是员工被预约或私约占位占住时自动跳过的原因。
+	BookingOccupiedReason = "预约/私约占位中"
 )
 
 // Turn 是某个营业日队列中的一名员工。
