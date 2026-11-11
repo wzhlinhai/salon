@@ -71,7 +71,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 - 设置值支持 time（时刻）、time_range（时段）、choice（Options 中的字符串）和 integer（Min/Max 内的非负整数）。`member_price_rule` 默认会员价优先，也可取较低价；`points_per_recharge_yuan` 为每积一分所需充值本金元数，默认 0（不积分），范围 0–100000。开卡、充值和升级补差价按当日规则积分，赠送金、转余额和调整余额不积分。`guest_count_split` 默认将客次记给第一个岗位的员工，也可选择单上员工均分，当天可生效。`performance_split` 默认按岗位比例分多人业绩，也可选择均分，项目没设岗位比例时均分；`performance_ratio_*` 为九种支付方式各自的 0–100 业绩比例，本金、现金、银联、微信、支付宝、团购和挂账默认 100%，赠送金和红包默认 0%；购买次数、赠送次数的耗卡业绩比例默认分别为 100%、0%，均可当天生效。退卡赠送金 `card_refund_bonus` 默认不退、作废，可选择扣回未被撤单退回的消费赠送金；`card_refund_fee_percent` 为 0–100 的退款手续费百分比，默认 0，当天可生效。撤单授权窗口 `void_window_minutes` 为 0（默认关闭）或 1–60 分钟，当天可生效。
 - 考勤宽限分钟 `attendance_grace_minutes` 默认 0，范围 0–60，当天可生效，仅决定迟到、早退是否计异常。
-- 轮牌设置：`rotation_order_rule` 新一天队列的初始顺序（先到先排、接昨天顺序、每晚按成员默认顺序重置，默认先到先排）；`rotation_designated_takes_turn` 点客结账后是否占轮排到队尾（默认占轮）；`rotation_skip_when_serving_designated` 队首正在服务点客时是否自动跳过并记录（默认跳过）；`rotation_skip_policy` 被跳过时排到队尾还是保留原位（默认排到队尾）；`rotation_half_rule` 半轮规则（不记、按价格、按项目，默认不记）；`rotation_half_price_below` 按价格记半轮的实收上限（元，默认 0 表示不按价格）。规则按营业日生效，收银推进和每次轮牌操作都读取调用时刻执行的设置。
+- 轮牌设置：`rotation_order_rule` 新一天队列的初始顺序（先到先排、接昨天顺序、每晚按成员默认顺序重置，默认先到先排）；`rotation_designated_takes_turn` 点客结账后是否占轮排到队尾（默认占轮）；`rotation_skip_when_serving_designated` 队首正在服务点客时是否自动跳过并记录（默认跳过）；`rotation_skip_policy` 被跳过时排到队尾还是保留原位（默认排到队尾）；`rotation_half_rule` 半轮规则（不记、按价格、按项目、按预约，默认不记）；`rotation_half_price_below` 按价格记半轮的实收上限（元，默认 0 表示不按价格）。预约设置：`booking_min_lead_minutes` 顾客自助预约至少提前的分钟数（默认 0，前台代约不检查）；`booking_max_days_ahead` 从今天起最多可约的天数（默认 30）；`booking_default_minutes` 未选项目时的默认服务时长（默认 60）。营业时段复用 `business_hours`，预约必须完整落在开门到关门之间，关门须晚于开门，不支持跨天。规则按营业日生效，收银推进和每次轮牌操作都读取调用时刻执行的设置。
 - 设置项在 `internal/settings` 的 `Catalogue` 里声明：名称、值的形式、系统默认做法和校验。新的业务规则（例如各项业务的做法选择）在这里加一项，再给 `Rules` 加一个读取它的方法。
 - 每次修改都在 `setting_changes` 追加一行：改前、改后、生效日期、修改人、修改时间。`salon_app` 只有 SELECT 和 INSERT 权限。某个营业日执行的值，取生效日期不晚于这一天的最大者，同一生效日期取最后保存的一次（修改时间，再按 ID）；没有修改，或者改成了"恢复默认"，就用系统当前的默认做法。这条选法只在 `internal/inforce` 写一份，门店设置、提成方案版本和底薪共用，各类历史提供自己的保存顺序（提成方案按版本号；设置和底薪按保存时间、ID），SQL 只按门店读出历史；设置的"恢复默认"只在 settings 的 `resolve` 换成目录默认值。生效日期不能早于今天；划分营业日的设置（`fromTomorrow`，例如营业日结束时间）最早明天生效。同一项设置的修改用咨询锁排队，改前值才接得上前一次的改后值。
 - 业务模块不直接查设置表：
@@ -167,7 +167,7 @@ Reconcile 按收款创建时刻的营业日、通道和当前状态汇总金额�
 ## 操作日志
 
 - `audit_log` 只追加，`salon_app` 只有 SELECT 和 INSERT 权限。日志与业务操作在同一事务里写入，任何一步失败都会一起回滚。同一员工或角色的修改用行锁排队，在读取改前快照前加锁，日志的改前才接得上前一次的改后。
-- 当前记录角色的新建、修改、删除，以及员工的新建、档案修改、登录设置、停用、恢复和角色分配；保留改前改后，删除角色时还保留持有员工的 ID、姓名。`list_audit_log` 需要操作日志权限，可按目标 ID 查询。每条日志记录目标种类及其关联顾客；`list_audit_log` 按调用者的顾客查看范围过滤关联顾客的日志。班次（`shift`）、员工班次（`staff_shift`，目标为员工 ID）、补卡与作废补卡（`punch`，目标为打卡 ID）、考勤核准与撤销（`attendance_approval`，目标为核准 ID）均不关联顾客，只需要操作日志权限即可查看；底薪（`base_salary`，目标为员工 ID）、加减项（`payroll_adjustment`，目标为加减项 ID）、工资锁月（`payroll_month`，目标为提成结算 ID，均不关联顾客）、提成方案（`commission_scheme`，不关联顾客）、团购商品（`groupbuy_deal`）、团购月结算（`groupbuy_settlement`）、卡类型、开卡、充值、开单、加项目、去掉项目、换岗位员工、改价、合并单、结账已记录日志。员工本人打卡（`clock_in`）不写操作日志，打卡行本身即记录。新增关联顾客的种类（例如单）时，添加接收顾客 ID 的构造函数，并扩展迁移中的 CHECK 列表。
+- 当前记录角色的新建、修改、删除，以及员工的新建、档案修改、登录设置、停用、恢复和角色分配；保留改前改后，删除角色时还保留持有员工的 ID、姓名。`list_audit_log` 需要操作日志权限，可按目标 ID 查询。每条日志记录目标种类及其关联顾客；`list_audit_log` 按调用者的顾客查看范围过滤关联顾客的日志。班次（`shift`）、员工班次（`staff_shift`，目标为员工 ID）、补卡与作废补卡（`punch`，目标为打卡 ID）、考勤核准与撤销（`attendance_approval`，目标为核准 ID）均不关联顾客，只需要操作日志权限即可查看；底薪（`base_salary`，目标为员工 ID）、加减项（`payroll_adjustment`，目标为加减项 ID）、工资锁月（`payroll_month`，目标为提成结算 ID，均不关联顾客）、提成方案（`commission_scheme`，不关联顾客）、团购商品（`groupbuy_deal`）、团购月结算（`groupbuy_settlement`）、预约（`appointment`，关联顾客）和私约占位（`appointment_block`，不关联顾客）、卡类型、开卡、充值、开单、加项目、去掉项目、换岗位员工、改价、合并单、结账已记录日志。员工本人打卡（`clock_in`）不写操作日志，打卡行本身即记录。新增关联顾客的种类（例如单）时，添加接收顾客 ID 的构造函数，并扩展迁移中的 CHECK 列表。
 - 新操作在成功路径末尾用同一个 `env` 调用 `audit.Record`，传入不含密码或密码哈希的返回值视图；新建前、删除后传 nil。手机号字段的 JSON 键名必须是 `phone`，`audit.Record` 遇到别的键名会拒绝写入（读取时只按这个键名打码）。
 
 ## 共享修改与引用检查
@@ -313,7 +313,7 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 每次改位置都在同一事务里先锁队列行，再按位置和员工 ID 稳定顺序 `FOR UPDATE` 锁住当天全部轮牌行；写回时先把位置整体加一个偏移量，再写成 1..n 的连续位置，避免唯一约束瞬时冲突。并发 `assign_turn` 因此不会把同一名员工分给两位顾客。
 
-结账成功后，`orders` 在同一事务里调用 `rotation.AdvanceAfterCheckout`。它找出这张单上的服务员工，按队列 ID 顺序锁住队列和各行所属营业日的轮牌行；只推进 `serving_order_id` 指向这张单的行，跨营业日也按行自己的营业日推进，规则仍取结账时刻的营业日。点客与否取轮牌行记录的 `serving_designated`，不看单据上的指定标记。点客且 `rotation_designated_takes_turn=no` 时只恢复 waiting、不改变位置，记 advance_designated_no_turn；否则按 `rotation_half_rule` 判断整轮或半轮：整轮直接排到队尾并清除半轮标记；半轮第一次只标记 half_pending、不动位置，第二次才排到队尾并清除标记。事件写入 order_id 和 designated。单上没有正在服务的员工时不做任何事；撤单不反向推进轮牌（不在本任务范围）。
+结账成功后，`orders` 在同一事务里调用 `rotation.AdvanceAfterCheckout`。它找出这张单上的服务员工，按队列 ID 顺序锁住队列和各行所属营业日的轮牌行；只推进 `serving_order_id` 指向这张单的行，跨营业日也按行自己的营业日推进，规则仍取结账时刻的营业日。点客与否取轮牌行记录的 `serving_designated`，不看单据上的指定标记。点客且 `rotation_designated_takes_turn=no` 时只恢复 waiting、不改变位置，记 advance_designated_no_turn；否则按 `rotation_half_rule` 判断整轮或半轮：整轮直接排到队尾并清除半轮标记；半轮第一次只标记 half_pending、不动位置，第二次才排到队尾并清除标记。按预约记半轮要求前台在结账前完成预约并把这张单关联到预约；只关联待确认或已确认的预约、或结账后才完成，都按整轮。事件写入 order_id 和 designated。单上没有正在服务的员工时不做任何事；撤单不反向推进轮牌（不在本任务范围）。
 
 `get_rotation_stats` 从 advance_whole、advance_half 和 advance_designated_no_turn 事件按员工统计点客与轮牌接客数，两者分开合计；同一员工在两个队列服务同一张单只记一次，按员工和单去重。`list_rotation_events` 按日期范围和可选队列返回全部只追加记录；日期范围和统计都不得晚于今天的营业日。`get_rotation` 的轮牌行按批读取，查询数不随队列人数增长。
 
@@ -338,6 +338,31 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 | get_rotation_stats | queue.view | AIDirect |
 
 老板拥有全部权限；店长和前台可以操作轮牌，发型师和助理只能查看。队列、成员和半轮项目配置写入 `audit_log`，目标为 `rotation_queue`（半轮项目清单以门店 ID 为目标）；轮牌事件本身仍是只追加的操作记录，不写 `audit_log`。
+
+## 预约与占位
+
+`internal/booking` 管理预约和私约占位。`appointments` 同时保存两种记录：`kind=appointment` 是员工代顾客登记的预约，必须有顾客；`kind=block` 是员工自己登记的私约占位，不关联顾客。状态为 pending、confirmed、completed、cancelled、no_show；代约和私约占位新建即 confirmed，待确认留给 P0-19 顾客自助预约。状态只能按 pending → confirmed/cancelled、confirmed → completed/cancelled/no_show 变化，私约占位只能 confirmed → cancelled。
+
+营业时段复用 `business_hours`，另有三项设置：`booking_min_lead_minutes` 提前量（前台代约不检查，导出 `booking.CheckLeadTime` 供 P0-19）、`booking_max_days_ahead` 可约天数和 `booking_default_minutes` 未选项目时的默认时长。预约必须提供顾客、顾客手机号或姓名；三者都没有时拒绝。预约开始必须在今天及以后、不早于当前时刻 5 分钟以上，结束必须晚于开始且与开始同一天、完整落在营业时段内。结束时间默认取所选项目 `duration_minutes` 之和，未选项目或项目都未设时长时取门店默认时长，前台传 `ends_at` 可手改。项目新增 `duration_minutes`（0–600，0 表示未设置）和 `bookable`（默认可以）；预约只接受启用且可约的项目。
+
+私约占位只检查同一员工的时段冲突和 `ends_at > starts_at`，最长 24 小时，结束时间必须在当前时刻之后；不检查营业时段、可约天数或是否跨天，也不要求顾客。同一员工的 pending/confirmed 记录时段不能重叠，`appointments` 用 `tstzrange` 上的 PostgreSQL EXCLUDE 约束（btree_gist）兜底并发；写入前先查冲突，以便提示里带出冲突记录 ID。相切边界允许，已取消、已完成、爽约的记录不占时段。`appointment_items` 保存项目及顺序；`appointment_events` 只追加，每次创建、改约、确认、完成、取消、爽约都记录改前改后的时间、发型师、原因、说明和操作人。取消预约必须选择顾客取消、门店取消、改约或其他，选其他要写说明；取消私约占位不需要原因。
+
+| 操作 | 权限 | AI |
+| --- | --- | --- |
+| create_appointment | booking.manage | AIDraft |
+| reschedule_appointment | booking.manage | AIDraft |
+| cancel_appointment | booking.manage | AIDraft |
+| confirm_appointment | booking.manage | AIDraft |
+| complete_appointment | booking.manage | AIDraft |
+| mark_no_show | booking.manage | AIDraft |
+| create_block | booking.manage | AIDraft |
+| cancel_block | booking.manage | AIDraft |
+| list_appointments | booking.manage | AIDirect |
+| get_appointment | booking.manage | AIDirect |
+
+发型师的 booking.manage 只有本人范围：只能查看、创建、改约、取消和登记自己的预约或占位，其他员工的记录按不存在处理；店长和前台为全店范围。完成预约可关联同一顾客的一张单；轮牌“按预约”用这条关联把已完成的预约记半轮，因此前台必须在结账前完成预约并关联这张单，否则这张单按整轮推进。`list_appointments` 按营业日范围（最多 92 天）和可选员工筛选，项目、顾客、员工名称都按批读取；`get_appointment` 同时返回项目和全部事件。预约与占位写入 `audit_log`，目标分别为 `appointment` 和 `appointment_block`。
+
+轮牌自动分配（不指定员工）时，`rotation.assign_turn` 一次询问 `booking.OccupiedStaff`：等待中的员工若在当前时刻被预约或私约占位覆盖，就跳过并记录一条原因为“预约/私约占位中”的 auto_skip，不改变其位置；点客不受影响。`rotation_half_rule=by_appointment` 时，结账的单关联了已完成的预约记半轮，否则记整轮。
 
 ## 团购适配层
 

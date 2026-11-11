@@ -275,31 +275,44 @@ func (q *Queries) SetStaffPassword(ctx context.Context, arg SetStaffPasswordPara
 	return result.RowsAffected(), nil
 }
 
-const shareStaff = `-- name: ShareStaff :one
-SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until FROM staff WHERE id=$1 FOR SHARE
+const shareStaffMany = `-- name: ShareStaffMany :many
+SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until FROM staff WHERE id = ANY($1::uuid[]) ORDER BY id FOR SHARE
 `
 
-func (q *Queries) ShareStaff(ctx context.Context, id uuid.UUID) (Staff, error) {
-	row := q.db.QueryRow(ctx, shareStaff, id)
-	var i Staff
-	err := row.Scan(
-		&i.ID,
-		&i.TenantID,
-		&i.StoreID,
-		&i.Name,
-		&i.Number,
-		&i.LevelID,
-		&i.PositionID,
-		&i.LoginAccount,
-		&i.PasswordHash,
-		&i.Active,
-		&i.DeactivatedAt,
-		&i.CreatedAt,
-		&i.TokenVersion,
-		&i.FailedLogins,
-		&i.LockedUntil,
-	)
-	return i, err
+func (q *Queries) ShareStaffMany(ctx context.Context, ids []uuid.UUID) ([]Staff, error) {
+	rows, err := q.db.Query(ctx, shareStaffMany, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Staff
+	for rows.Next() {
+		var i Staff
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.StoreID,
+			&i.Name,
+			&i.Number,
+			&i.LevelID,
+			&i.PositionID,
+			&i.LoginAccount,
+			&i.PasswordHash,
+			&i.Active,
+			&i.DeactivatedAt,
+			&i.CreatedAt,
+			&i.TokenVersion,
+			&i.FailedLogins,
+			&i.LockedUntil,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const staffNames = `-- name: StaffNames :many

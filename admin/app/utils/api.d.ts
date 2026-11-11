@@ -191,6 +191,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/cancel_appointment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 取消预约并选择原因 */
+        post: operations["cancel_appointment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/cancel_block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 取消私约占位 */
+        post: operations["cancel_block"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/cancel_collection": {
         parameters: {
             query?: never;
@@ -310,6 +344,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/complete_appointment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 完成已确认的预约，可关联同顾客的单 */
+        post: operations["complete_appointment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/confirm_appointment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 确认待确认的预约 */
+        post: operations["confirm_appointment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/confirm_draft": {
         parameters: {
             query?: never;
@@ -338,6 +406,40 @@ export interface paths {
         put?: never;
         /** 盖牌：保留位置但暂不接客 */
         post: operations["cover_turn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/create_appointment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 前台代顾客预约，直接已确认 */
+        post: operations["create_appointment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/create_block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 员工登记私约占位，该时段不参与轮牌分配 */
+        post: operations["create_block"];
         delete?: never;
         options?: never;
         head?: never;
@@ -684,6 +786,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/get_appointment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看预约或私约占位的项目与全部变化记录 */
+        post: operations["get_appointment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/get_collection": {
         parameters: {
             query?: never;
@@ -1018,6 +1137,23 @@ export interface paths {
         put?: never;
         /** 把已核销的团购券关联到挂单，记录平台购买价和门店标价 */
         post: operations["link_coupon_order"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_appointments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按营业日范围查看预约和私约占位 */
+        post: operations["list_appointments"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1721,6 +1857,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/mark_no_show": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 开始时间之后把已确认预约记为爽约 */
+        post: operations["mark_no_show"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/merge_customers": {
         parameters: {
             query?: never;
@@ -2072,6 +2225,23 @@ export interface paths {
         put?: never;
         /** 改价并记录原因 */
         post: operations["reprice_order_item"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/reschedule_appointment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 改约：修改预约时间或发型师 */
+        post: operations["reschedule_appointment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2723,6 +2893,73 @@ export interface components {
             reply: string;
             sources: components["schemas"]["Source"][];
         };
+        Appointment: {
+            /** Format: date-time */
+            created_at: string;
+            created_by: components["schemas"]["Ref"];
+            customer: components["schemas"]["AppointmentCustomer"] | null;
+            /** Format: date-time */
+            ends_at: string;
+            events: components["schemas"]["AppointmentEvent"][];
+            id: string;
+            items: components["schemas"]["AppointmentItem"][];
+            /** @enum {string} */
+            kind: "appointment" | "block";
+            note: string | null;
+            order_id: string | null;
+            staff: components["schemas"]["Ref"];
+            /** Format: date-time */
+            starts_at: string;
+            /** @enum {string} */
+            status: "pending" | "confirmed" | "completed" | "cancelled" | "no_show";
+        };
+        AppointmentCustomer: {
+            id: string;
+            name: string | null;
+            /** @description 按 customer.full_phone 权限打码 */
+            phone: string | null;
+            phone_masked: boolean;
+        };
+        AppointmentEvent: {
+            actor: components["schemas"]["Ref"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            from_ends_at: string | null;
+            from_staff: components["schemas"]["Ref"] | null;
+            /** Format: date-time */
+            from_starts_at: string | null;
+            id: string;
+            /** @enum {string} */
+            kind: "create" | "reschedule" | "confirm" | "complete" | "cancel" | "no_show";
+            note: string | null;
+            reason: string | null;
+            /** Format: date-time */
+            to_ends_at: string;
+            to_staff: components["schemas"]["Ref"];
+            /** Format: date-time */
+            to_starts_at: string;
+        };
+        AppointmentItem: {
+            /**
+             * Format: int64
+             * @description 项目服务时长，0 表示未设置
+             */
+            duration_minutes: number;
+            item_id: string;
+            name: string;
+            /** Format: int64 */
+            position: number;
+        };
+        AppointmentItemInput: {
+            item_id: string;
+        };
+        AppointmentList: {
+            entries: components["schemas"]["Appointment"][];
+        };
+        AppointmentStatusInput: {
+            id: string;
+        };
         ApproveAttendanceInput: {
             /** Format: date */
             business_date: string;
@@ -2803,6 +3040,16 @@ export interface components {
         };
         BaseSalaryList: {
             entries: components["schemas"]["StaffBaseSalary"][];
+        };
+        CancelAppointmentInput: {
+            id: string;
+            /** @description 原因为其他时的说明 */
+            note?: string;
+            /** @enum {string} */
+            reason: "顾客取消" | "门店取消" | "改约" | "其他";
+        };
+        CancelBlockInput: {
+            id: string;
         };
         Card: {
             bonus: string;
@@ -3278,6 +3525,10 @@ export interface components {
         CommitImportInput: {
             batch_id: string;
         };
+        CompleteAppointmentInput: {
+            id: string;
+            order_id?: string;
+        };
         CouponRequest: {
             coupon_code: string;
             key: string;
@@ -3293,6 +3544,29 @@ export interface components {
         CoverTurnInput: {
             queue_id: string;
             staff_id: string;
+        };
+        CreateAppointmentInput: {
+            customer_id?: string;
+            customer_name?: string;
+            customer_phone?: string;
+            /**
+             * Format: date-time
+             * @description 不填时按项目时长之和或门店默认时长计算
+             */
+            ends_at?: string;
+            items?: components["schemas"]["AppointmentItemInput"][];
+            note?: string;
+            staff_id: string;
+            /** Format: date-time */
+            starts_at: string;
+        };
+        CreateBlockInput: {
+            /** Format: date-time */
+            ends_at: string;
+            note?: string;
+            staff_id: string;
+            /** Format: date-time */
+            starts_at: string;
         };
         CreateCardTypeInput: {
             discount_percent?: string | null;
@@ -3343,7 +3617,14 @@ export interface components {
             utterance: string;
         };
         CreateItemInput: {
+            /** @description 能否被预约，新建时不填为可以 */
+            bookable?: boolean;
             discountable: boolean;
+            /**
+             * Format: int64
+             * @description 一次服务的分钟数，不填为 0（未设置）
+             */
+            duration_minutes?: number;
             /**
              * @description 项目的种类，不填时为服务
              * @enum {string}
@@ -3597,6 +3878,9 @@ export interface components {
         ExplainCommissionInput: {
             id: string;
         };
+        GetAppointmentInput: {
+            id: string;
+        };
         GetCollectionInput: {
             id: string;
         };
@@ -3815,9 +4099,16 @@ export interface components {
         };
         Item: {
             active: boolean;
+            /** @description 项目能否被预约 */
+            bookable: boolean;
             /** Format: date-time */
             created_at: string;
             discountable: boolean;
+            /**
+             * Format: int64
+             * @description 一次服务的分钟数，0 表示未设置
+             */
+            duration_minutes: number;
             id: string;
             /** @enum {string} */
             kind: "service" | "goods";
@@ -3886,6 +4177,13 @@ export interface components {
         };
         List: {
             drafts: components["schemas"]["Draft"][];
+        };
+        ListAppointmentsInput: {
+            /** Format: date */
+            from: string;
+            staff_id?: string;
+            /** Format: date */
+            to: string;
         };
         ListAttendanceSummaryInput: {
             month: string;
@@ -4588,6 +4886,22 @@ export interface components {
             price: string;
             reason: string;
         };
+        RescheduleAppointmentInput: {
+            /**
+             * Format: date-time
+             * @description 不填时保持原时长
+             */
+            ends_at?: string;
+            id: string;
+            reason?: string;
+            /** @description 不填时保持原发型师 */
+            staff_id?: string;
+            /**
+             * Format: date-time
+             * @description 不填时保持原开始时间
+             */
+            starts_at?: string;
+        };
         RestStaffInput: {
             /** Format: int64 */
             minutes: number;
@@ -5036,7 +5350,14 @@ export interface components {
         };
         UpdateItemInput: {
             active: boolean;
+            /** @description 能否被预约，新建时不填为可以 */
+            bookable?: boolean;
             discountable: boolean;
+            /**
+             * Format: int64
+             * @description 一次服务的分钟数，不填为 0（未设置）
+             */
+            duration_minutes?: number;
             id: string;
             /**
              * @description 项目的种类，不填时为服务
@@ -5479,6 +5800,72 @@ export interface operations {
             };
         };
     };
+    cancel_appointment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelAppointmentInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Appointment"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    cancel_block: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelBlockInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Appointment"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     cancel_collection: {
         parameters: {
             query?: never;
@@ -5710,6 +6097,72 @@ export interface operations {
             };
         };
     };
+    complete_appointment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteAppointmentInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Appointment"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    confirm_appointment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppointmentStatusInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Appointment"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     confirm_draft: {
         parameters: {
             query?: never;
@@ -5763,6 +6216,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Rotation"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    create_appointment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAppointmentInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Appointment"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    create_block: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBlockInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Appointment"];
                 };
             };
             /** @description Error */
@@ -6436,6 +6955,39 @@ export interface operations {
             };
         };
     };
+    get_appointment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GetAppointmentInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Appointment"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     get_collection: {
         parameters: {
             query?: never;
@@ -7083,6 +7635,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Redemption"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_appointments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListAppointmentsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppointmentList"];
                 };
             };
             /** @description Error */
@@ -8449,6 +9034,39 @@ export interface operations {
             };
         };
     };
+    mark_no_show: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppointmentStatusInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Appointment"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     merge_customers: {
         parameters: {
             query?: never;
@@ -9129,6 +9747,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Order"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    reschedule_appointment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RescheduleAppointmentInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Appointment"];
                 };
             };
             /** @description Error */

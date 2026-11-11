@@ -47,41 +47,15 @@ func registerProfiles(r *ops.Registry) {
 		Name: "create_customer", Summary: "按手机号查找或新建顾客，无手机号则建未识别顾客", Kind: ops.Write,
 		Permission: perm.CustomerEdit, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *CreateCustomerInput) (*CreateCustomerResult, error) {
-			phone, err := normalizePhone(in.Phone)
+			row, existed, err := findOrCreate(ctx, env, customerLookup{Name: in.Name, Phone: in.Phone, Gender: in.Gender, SourceID: in.SourceID, Note: in.Note})
 			if err != nil {
 				return nil, err
 			}
-			if phone != nil {
-				if err := env.Q.LockCustomerPhone(ctx, *phone); err != nil {
-					return nil, err
-				}
-				row, err := env.Q.FindCustomerByPhone(ctx, phone)
-				if err == nil {
-					if !canView(env.Caller, row) {
-						return nil, ops.Rule("这个手机号已有档案，但不在你能查看的范围内")
-					}
-					c, err := view(ctx, env, row)
-					if err != nil {
-						return nil, err
-					}
-					return &CreateCustomerResult{Customer: *mask(env, c), Existed: true}, nil
-				}
-				if !errors.Is(err, pgx.ErrNoRows) {
-					return nil, err
-				}
-			}
-			if err := checkSource(ctx, env, in.SourceID, nil); err != nil {
-				return nil, err
-			}
-			row, err := env.Q.CreateCustomer(ctx, dbgen.CreateCustomerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Name: in.Name, Phone: phone, Gender: in.Gender, SourceID: in.SourceID, Note: in.Note, CreatedBy: env.Caller.StaffID})
-			if err != nil {
-				return nil, rowError(err)
-			}
-			c, err := created(ctx, env, "create_customer", row)
+			c, err := view(ctx, env, row)
 			if err != nil {
 				return nil, err
 			}
-			return &CreateCustomerResult{Customer: *c}, nil
+			return &CreateCustomerResult{Customer: *mask(env, c), Existed: existed}, nil
 		},
 	})
 	ops.Register(r, ops.Operation[UpdateCustomerProfileInput, Customer]{
@@ -159,4 +133,53 @@ func CreateUnidentified(ctx context.Context, env ops.Env, gender string) (uuid.U
 		return uuid.Nil, err
 	}
 	return row.ID, nil
+}
+
+// customerLookup 是按手机号查找或新建顾客所需的档案字段。
+type customerLookup struct {
+	Name     *string
+	Phone    *string
+	Gender   *string
+	SourceID *uuid.UUID
+	Note     *string
+}
+
+// findOrCreate 让顾客建档与开单/预约共用同一套手机号查重、查看范围检查和新建日志。
+func findOrCreate(ctx context.Context, env ops.Env, in customerLookup) (dbgen.Customer, bool, error) {
+	phone, err := normalizePhone(in.Phone)
+	if err != nil {
+		return dbgen.Customer{}, false, err
+	}
+	if phone != nil {
+		if err := env.Q.LockCustomerPhone(ctx, *phone); err != nil {
+			return dbgen.Customer{}, false, err
+		}
+		row, err := env.Q.FindCustomerByPhone(ctx, phone)
+		if err == nil {
+			if !canView(env.Caller, row) {
+				return dbgen.Customer{}, false, ops.Rule("这个手机号已有档案，但不在你能查看的范围内")
+			}
+			return row, true, nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return dbgen.Customer{}, false, err
+		}
+	}
+	if err := checkSource(ctx, env, in.SourceID, nil); err != nil {
+		return dbgen.Customer{}, false, err
+	}
+	row, err := env.Q.CreateCustomer(ctx, dbgen.CreateCustomerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Name: in.Name, Phone: phone, Gender: in.Gender, SourceID: in.SourceID, Note: in.Note, CreatedBy: env.Caller.StaffID})
+	if err != nil {
+		return dbgen.Customer{}, false, rowError(err)
+	}
+	if _, err := created(ctx, env, "create_customer", row); err != nil {
+		return dbgen.Customer{}, false, err
+	}
+	return row, false, nil
+}
+
+// FindOrCreate 按手机号查找顾客，找不到或没有手机号时新建；新建时写建档日志。
+// 供开单、预约等需要顾客但不必具备顾客建档权限的业务复用同一套查重与查看范围检查。
+func FindOrCreate(ctx context.Context, env ops.Env, name, phone, gender *string) (dbgen.Customer, bool, error) {
+	return findOrCreate(ctx, env, customerLookup{Name: name, Phone: phone, Gender: gender})
 }

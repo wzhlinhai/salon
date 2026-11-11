@@ -449,6 +449,20 @@ func (q *Queries) LockResponsibleCustomers(ctx context.Context, responsibleStaff
 	return items, nil
 }
 
+const mergeCustomerAppointments = `-- name: MergeCustomerAppointments :exec
+UPDATE appointments SET customer_id = $1::uuid WHERE customer_id = $2::uuid
+`
+
+type MergeCustomerAppointmentsParams struct {
+	KeepID   uuid.UUID
+	MergedID uuid.UUID
+}
+
+func (q *Queries) MergeCustomerAppointments(ctx context.Context, arg MergeCustomerAppointmentsParams) error {
+	_, err := q.db.Exec(ctx, mergeCustomerAppointments, arg.KeepID, arg.MergedID)
+	return err
+}
+
 const mergeCustomerSafetyLabels = `-- name: MergeCustomerSafetyLabels :exec
 UPDATE customer_safety_labels SET customer_id = $1 WHERE customer_id = $2
 `
