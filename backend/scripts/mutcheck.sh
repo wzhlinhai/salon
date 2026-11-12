@@ -10,6 +10,8 @@
 # 原文必须在文件中恰好出现一次；替换后要测的包必须能构建；测试选择只通过 --run 传入。
 # 改的是 internal/db/queries 下的查询时，改坏后重新运行 sqlc 生成代码，结束时连生成的代码一起还原。
 # 结束时无论成功失败都还原文件。
+# 未设置 GOCACHE（单独运行或 --restore）时使用 .dev/mutcheck-gocache-standalone.* 临时缓存，
+# 退出时删除；由 mutchecks.py 启动时沿用其运行缓存。go test 均带 -trimpath。
 # 退出码：0 有测试失败（被发现）；1 测试全部通过（没被发现）；
 #         2 用法、匹配或构建错误；3 测试失败但没有 --- FAIL 行（超时、panic 等，需人工查看）；
 #         4 PostgreSQL 容器环境失败（重试一次后仍失败，不计为捕获）。
@@ -46,10 +48,32 @@ restore() {
   rmdir "$slot"
   echo "restored: $target"
 }
+# 单独运行时隔离 Go 构建缓存；退出（含信号）时删除，不碰用户的默认缓存。
+owned_cache=
+cleanup_cache() {
+  if [ -n "$owned_cache" ]; then
+    rm -rf "$owned_cache"
+  fi
+}
+setup_cache() {
+  if [ -z "${GOCACHE:-}" ]; then
+    mkdir -p "$backend/../.dev"
+    owned_cache=$(mktemp -d "$backend/../.dev/mutcheck-gocache-standalone.XXXXXX")
+    export GOCACHE=$owned_cache
+  fi
+}
 if [ "${1:-}" = --restore ] && [ $# -eq 1 ]; then
+  setup_cache
+  trap cleanup_cache EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
   restore
   exit $?
 fi
+setup_cache
+trap cleanup_cache EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 if [ -d "$slot" ] && ! discard_incomplete; then
   echo "mutcheck: backup occupied for $(cat "$slot/path" 2>/dev/null || echo unknown); restore with: $backend/scripts/mutcheck.sh --restore" >&2
   exit 2
@@ -75,7 +99,13 @@ cp "$file" "$slot/original.tmp"
 mv "$slot/original.tmp" "$slot/original"
 regen=false
 case "$file" in "$PWD"/internal/db/queries/*) regen=true ;; esac
-trap restore EXIT
+cleanup() {
+  local status=$?
+  restore || status=$?
+  cleanup_cache
+  return "$status"
+}
+trap cleanup EXIT
 
 python3 - "$file" "$old" "$new" <<'PY' || exit 2
 import sys
@@ -95,7 +125,7 @@ if $regen && ! go tool sqlc generate; then
 fi
 
 # 只编译、不运行测试，确认改坏后的代码仍能构建（例如查询的参数没变）。
-if ! build=$(go test -count=1 -run '^$' "$@" 2>&1); then
+if ! build=$(go test -count=1 -trimpath -run '^$' "$@" 2>&1); then
   echo "mutcheck: mutated code does not build:" >&2
   head -5 <<<"$build" >&2
   exit 2
@@ -103,7 +133,7 @@ fi
 
 for attempt in 1 2; do
   status=0
-  out=$(go test -count=1 "${test_selection[@]}" "$@" 2>&1) || status=$?
+  out=$(go test -count=1 -trimpath "${test_selection[@]}" "$@" 2>&1) || status=$?
   if [[ "$out" == *"启动 PostgreSQL 测试容器失败"* ]]; then
     echo "mutcheck: environment failure (attempt $attempt/2):" >&2
     if [ "$attempt" -eq 1 ]; then
