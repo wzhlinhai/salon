@@ -14,6 +14,8 @@ Single-context: one root `GLOSSARY.md` plus `docs/adr/`. See `docs/agents/domain
 
 @AGENTS.md
 
+探索代码结构、调用关系、影响范围时，优先使用 codegraph_explore 工具。
+
 ## Claude-Orchestrated Codex Workflow
 
 ### Roles
