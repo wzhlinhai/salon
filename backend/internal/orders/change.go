@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/wzhlinhai/salon/backend/internal/audit"
+	"github.com/wzhlinhai/salon/backend/internal/closingguard"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
@@ -46,6 +47,9 @@ func change(ctx context.Context, env ops.Env, action, requiredStatus string, ids
 	rows := make([]dbgen.Order, len(ids))
 	for i, id := range ids {
 		rows[i] = locked[id]
+		if err := closingguard.Guard(ctx, env.Q, env.Caller.StoreID, rows[i].BusinessDate.Time); err != nil {
+			return nil, err
+		}
 		if err := checkEdit(ctx, env, rows[i], now); err != nil {
 			return nil, err
 		}

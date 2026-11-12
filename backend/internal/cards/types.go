@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/wzhlinhai/salon/backend/internal/money"
+	"github.com/wzhlinhai/salon/backend/internal/salepayments"
 )
 
 // CardType 是门店定义的卡类型及有效期规则。
@@ -66,11 +67,12 @@ type Card struct {
 	Bonus        money.Amount      `json:"bonus"`
 }
 
-// TopUpInput 是本金、赠送金与业绩归属人。
+// TopUpInput 是本金、赠送金、业绩归属人和实际收款方式。
 type TopUpInput struct {
-	Principal     money.Amount `json:"principal"`
-	Bonus         money.Amount `json:"bonus"`
-	SalesStaffIDs []uuid.UUID  `json:"sales_staff_ids" minItems:"1" maxItems:"10" uniqueItems:"true"`
+	Principal     money.Amount           `json:"principal"`
+	Bonus         money.Amount           `json:"bonus"`
+	SalesStaffIDs []uuid.UUID            `json:"sales_staff_ids" minItems:"1" maxItems:"10" uniqueItems:"true"`
+	Payments      []salepayments.Payment `json:"payments" maxItems:"4"`
 }
 
 // OpenCardInput 是为顾客开卡及首次充值的参数。

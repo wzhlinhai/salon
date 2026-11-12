@@ -52,7 +52,7 @@ test('发放卖和送的红包、两名业绩归属人、撤回原因', async ({
 
 test('无红包发放和撤回权限隐藏按钮', async ({ page }) => {
   const { token, customer } = await seed()
-  await api(token, 'issue_red_packet', { customer_id: customer.id, kind: 'gift', face_value: '25.00', expires_on: '2999-01-01' })
+  await api(token, 'issue_red_packet', { customer_id: customer.id, kind: 'gift', face_value: '25.00', expires_on: '2999-01-01', payments: [] })
   const stylist = await hire('发型师')
   await login(page, stylist.account, stylist.password)
   await page.goto(`/customers?id=${customer.id}`)
@@ -65,7 +65,7 @@ test('无红包发放和撤回权限隐藏按钮', async ({ page }) => {
 test('切换顾客丢弃迟到的红包列表并支持切回同一顾客', async ({ page }) => {
   const { token, suffix, customer: a } = await seed()
   const b = (await api(token, 'create_customer', { name: `红包乙${suffix}` })).customer
-  const packet = await api(token, 'issue_red_packet', { customer_id: a.id, kind: 'gift', face_value: '123.45', expires_on: '2999-01-01' })
+  const packet = await api(token, 'issue_red_packet', { customer_id: a.id, kind: 'gift', face_value: '123.45', expires_on: '2999-01-01', payments: [] })
   let release!: () => void
   let started!: () => void
   const blocked = new Promise<void>((resolve) => {
@@ -160,8 +160,8 @@ test('同一顾客发放刷新丢弃首次迟到的红包列表', async ({ page 
 for (const action of ['issue', 'revoke'] as const) {
   test(`红包${action}旧保存响应不关闭后来打开的窗口`, async ({ page }) => {
     const { token, customer } = await seed()
-    const a = await api(token, 'issue_red_packet', { customer_id: customer.id, kind: 'gift', face_value: '11', expires_on: '2999-01-01' })
-    const b = await api(token, 'issue_red_packet', { customer_id: customer.id, kind: 'gift', face_value: '22', expires_on: '2999-01-01' })
+    const a = await api(token, 'issue_red_packet', { customer_id: customer.id, kind: 'gift', face_value: '11', expires_on: '2999-01-01', payments: [] })
+    const b = await api(token, 'issue_red_packet', { customer_id: customer.id, kind: 'gift', face_value: '22', expires_on: '2999-01-01', payments: [] })
     let release!: () => void
     let started!: () => void
     const blocked = new Promise<void>((resolve) => {
@@ -217,7 +217,7 @@ for (const action of ['issue', 'revoke'] as const) {
 
   test(`红包${action}保存断网后可重试`, async ({ page }) => {
     const { token, customer } = await seed()
-    const packet = await api(token, 'issue_red_packet', { customer_id: customer.id, kind: 'gift', face_value: '11', expires_on: '2999-01-01' })
+    const packet = await api(token, 'issue_red_packet', { customer_id: customer.id, kind: 'gift', face_value: '11', expires_on: '2999-01-01', payments: [] })
     const op = action === 'issue' ? 'issue_red_packet' : 'revoke_red_packet'
     let failed = false
     await page.route(`**/api/ops/${op}`, async (route) => {

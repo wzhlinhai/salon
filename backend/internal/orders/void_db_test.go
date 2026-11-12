@@ -158,7 +158,7 @@ func TestVoidExpiredPacket(t *testing.T) {
 	line := s.checkoutLine()
 	day := settings.Date(time.Now()).AddDate(0, 0, -2)
 	s.SetNow(day.Add(12 * time.Hour))
-	packet := s.call("issue_red_packet", map[string]any{"customer_id": s.customer, "kind": "gift", "face_value": "100", "expires_on": day.Format(time.DateOnly)}, 200)
+	packet := s.call("issue_red_packet", map[string]any{"customer_id": s.customer, "kind": "gift", "face_value": "100", "expires_on": day.Format(time.DateOnly), "payments": []any{}}, 200)
 	s.SetNow(time.Time{})
 	o := s.customerOrder(line)
 	s.checkoutAtForVoid(o, day, packetPayment(packet, "100"))

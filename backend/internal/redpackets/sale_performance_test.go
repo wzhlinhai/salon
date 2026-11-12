@@ -16,6 +16,7 @@ func TestRedPacketSale(t *testing.T) {
 	second, _ := s.Hire("乙", "002", "sale2")
 	in := s.input("sold")
 	in["price"], in["sales_staff_ids"] = "88", []uuid.UUID{second, s.Res.OwnerID}
+	in["payments"] = cashPayment("88")
 	p := s.call("issue_red_packet", in, 200)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	var ok bool
@@ -38,6 +39,7 @@ func TestRedPacketSaleBusinessDate(t *testing.T) {
 	s.SetNow(time.Date(2030, 1, 2, 1, 30, 0, 0, settings.Location))
 	in := s.input("sold")
 	in["face_value"], in["price"] = "88", "88"
+	in["payments"] = cashPayment("88")
 	s.call("issue_red_packet", in, 200)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	var ok bool

@@ -17,6 +17,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
+	"github.com/wzhlinhai/salon/backend/internal/salepayments"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 
@@ -55,9 +56,10 @@ type CardUpgradeRuleList struct {
 
 // TopUpDifference 是手动升级的补差价和业绩归属人。
 type TopUpDifference struct {
-	Principal     money.Amount `json:"principal"`
-	Bonus         money.Amount `json:"bonus"`
-	SalesStaffIDs []uuid.UUID  `json:"sales_staff_ids,omitempty" maxItems:"10" uniqueItems:"true"`
+	Principal     money.Amount           `json:"principal"`
+	Bonus         money.Amount           `json:"bonus"`
+	SalesStaffIDs []uuid.UUID            `json:"sales_staff_ids,omitempty" maxItems:"10" uniqueItems:"true"`
+	Payments      []salepayments.Payment `json:"payments" maxItems:"4"`
 }
 
 // UpgradeCardInput 是手动升级储值卡的参数。
@@ -233,6 +235,9 @@ func updateCardUpgradeRule(ctx context.Context, env ops.Env, in *UpdateCardUpgra
 	return &out, nil
 }
 func upgradeCard(ctx context.Context, env ops.Env, in *UpgradeCardInput) (*Card, error) {
+	if err := salepayments.Validate(in.Payments, (money.Total{}).AddProduct(in.Principal, 1)); err != nil {
+		return nil, err
+	}
 	if in.Principal.Cmp(money.Amount{}) != 0 || in.Bonus.Cmp(money.Amount{}) != 0 || len(in.SalesStaffIDs) > 0 {
 		if err := staff.LockSalesStaff(ctx, env, in.SalesStaffIDs); err != nil {
 			return nil, err
@@ -250,7 +255,7 @@ func upgradeCard(ctx context.Context, env ops.Env, in *UpgradeCardInput) (*Card,
 		if !ct.Active || ct.Kind != StoredValue || ct.ID == card.CardTypeID {
 			return ops.Rule("目标须为启用的其他储值卡类型")
 		}
-		ledger, err := appendLedger(ctx, env, card.ID, "upgrade", before.Principal, before.Bonus, TopUpInput{Principal: in.Principal, Bonus: in.Bonus, SalesStaffIDs: in.SalesStaffIDs}, day)
+		ledger, err := appendLedger(ctx, env, card.ID, "upgrade", before.Principal, before.Bonus, TopUpInput{Principal: in.Principal, Bonus: in.Bonus, SalesStaffIDs: in.SalesStaffIDs, Payments: in.Payments}, day)
 		if err != nil {
 			return err
 		}

@@ -66,6 +66,7 @@ func TestRefundAmounts(t *testing.T) {
 			s.refundSetting("card_refund_fee_percent", tc.fee)
 			in := s.opening()
 			in["principal"], in["bonus"] = tc.principal, tc.bonus
+			in["payments"] = cashPayment(tc.principal)
 			card := s.call("open_card", in, 200)
 			s.call("adjust_card", map[string]any{"card_id": card["id"], "expiry": map[string]any{"expires_on": "2000-01-01"}, "reason": "过期卡"}, 200)
 			out := s.refund(card["id"], tc.amount)
@@ -86,6 +87,7 @@ func TestRefundCounts(t *testing.T) {
 			want := "1246.90"
 			if kind == "count" {
 				in["principal"], in["bonus"] = "0", "0"
+				in["payments"] = []any{}
 				want = "12.34"
 			}
 			card := s.call("open_card", in, 200)
@@ -184,7 +186,7 @@ func TestRefundChangesRefused(t *testing.T) {
 		{"preview_card_refund", map[string]any{"card_id": card["id"]}},
 		{"recharge_card", s.recharge(card["id"])},
 		{"adjust_card", adjustment(card["id"])},
-		{"upgrade_card", map[string]any{"card_id": card["id"], "to_type_id": ct["id"], "principal": "0", "bonus": "0"}},
+		{"upgrade_card", map[string]any{"card_id": card["id"], "to_type_id": ct["id"], "principal": "0", "bonus": "0", "payments": []any{}}},
 		{"transfer_card_balance", map[string]any{"from_card_id": card["id"], "to_card_id": other["id"], "principal": "1", "bonus": "0", "reason": "转出"}},
 		{"transfer_card_balance", map[string]any{"from_card_id": other["id"], "to_card_id": card["id"], "principal": "1", "bonus": "0", "reason": "转入"}},
 	} {

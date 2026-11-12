@@ -33,6 +33,7 @@ func (s *fixture) countCard(kind string) (map[string]any, string, map[string]any
 	if kind == "count" {
 		opening["principal"] = "0.00"
 		opening["bonus"] = "0.00"
+		opening["payments"] = []any{}
 	}
 	return s.call("open_card", opening, 200), item, in
 }
@@ -194,6 +195,7 @@ func TestCountZeroPrincipal(t *testing.T) {
 	}
 	in["principal"] = "0.00"
 	in["bonus"] = "1.00"
+	in["payments"] = []any{}
 	if r := s.call("open_card", in, 409); r["detail"] != "次卡本金和赠送金必须为零" {
 		t.Fatal(r)
 	}
@@ -205,6 +207,7 @@ func TestCountRecharge(t *testing.T) {
 		in := s.recharge(card["id"])
 		if zero {
 			in["principal"], in["bonus"] = "0.00", "0.00"
+			in["payments"] = []any{}
 		}
 		out := s.call("recharge_card", in, 409)
 		if out["detail"] != "次卡不能充值" {
@@ -464,6 +467,7 @@ func TestOpenCountsWaitsForItem(t *testing.T) {
 	ct := s.call("create_card_type", countType("次卡", "count", countItem(item)), 200)
 	in := s.opening()
 	in["card_type_id"], in["principal"], in["bonus"] = ct["id"], "0.00", "0.00"
+	in["payments"] = cashPayment("123.40")
 	held := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	dbtest.Exec(t, held, "SELECT id FROM items WHERE id=$1 FOR NO KEY UPDATE", item)
 	done := make(chan optest.Result, 1)
@@ -527,6 +531,7 @@ func TestCountDatabaseLimits(t *testing.T) {
 	ct := s.call("create_card_type", countType("上限次卡", "count", in), 200)
 	opening := s.opening()
 	opening["card_type_id"], opening["principal"], opening["bonus"] = ct["id"], "0.00", "0.00"
+	opening["payments"] = []any{}
 	opened := s.call("open_card", opening, 200)
 	counts := opened["items"].([]any)[0].(map[string]any)
 	if counts["paid_remaining"] != float64(9999) || counts["gift_remaining"] != float64(9999) {

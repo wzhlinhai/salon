@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { api, apiLogin, hire, login, owner } from './helpers'
+import { api, apiLogin, cash, hire, login, owner } from './helpers'
 
 async function seed() {
   const token = await apiLogin(owner.account, owner.password)
@@ -63,7 +63,7 @@ test('切换顾客后丢弃迟到的卡列表', async ({ page }) => {
   const b = (await api(token, 'create_customer', { name: `卡乙${suffix}` })).customer
   const ct = await api(token, 'create_card_type', { name: `甲专有卡${suffix}`, kind: 'stored_value', validity_kind: 'none' })
   const me = await api(token, 'get_me', {})
-  await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '99.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
+  await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '99.00', bonus: '0.00', sales_staff_ids: [me.staff.id], payments: cash('99.00') })
   let release!: () => void
   let started!: () => void
   const blocked = new Promise<void>((resolve) => {
@@ -103,7 +103,7 @@ test('无开卡权限不显示开卡和充值按钮', async ({ page }) => {
   const { token, suffix, customer } = await seed()
   const ct = await api(token, 'create_card_type', { name: `只读卡${suffix}`, kind: 'stored_value', validity_kind: 'none' })
   const me = await api(token, 'get_me', {})
-  await api(token, 'open_card', { customer_id: customer.id, card_type_id: ct.id, principal: '1.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
+  await api(token, 'open_card', { customer_id: customer.id, card_type_id: ct.id, principal: '1.00', bonus: '0.00', sales_staff_ids: [me.staff.id], payments: cash('1.00') })
   const stylist = await hire('发型师')
   await login(page, stylist.account, stylist.password)
   await page.goto(`/customers?id=${customer.id}`)
@@ -121,7 +121,7 @@ test('切回同一顾客后丢弃第一次卡列表，保留第二次响应', as
   const b = (await api(token, 'create_customer', { name: `回切卡乙${suffix}` })).customer
   const ct = await api(token, 'create_card_type', { name: `回切卡${suffix}`, kind: 'stored_value', validity_kind: 'none' })
   const me = await api(token, 'get_me', {})
-  const card = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '99.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
+  const card = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '99.00', bonus: '0.00', sales_staff_ids: [me.staff.id], payments: cash('99.00') })
   let release!: () => void
   let started!: () => void
   const blocked = new Promise<void>((resolve) => {
@@ -153,7 +153,7 @@ test('切回同一顾客后丢弃第一次卡列表，保留第二次响应', as
     const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
     await expect(detail.locator('dd').filter({ hasText: b.name })).toBeVisible()
     await expect(detail).toContainText('暂无卡')
-    await api(token, 'recharge_card', { card_id: card.id, principal: '24.56', bonus: '0.50', sales_staff_ids: [me.staff.id] })
+    await api(token, 'recharge_card', { card_id: card.id, principal: '24.56', bonus: '0.50', sales_staff_ids: [me.staff.id], payments: cash('24.56') })
     await page.evaluate((id) => {
       window.history.pushState({}, '', `/customers?id=${id}`)
       window.dispatchEvent(new PopStateEvent('popstate'))
@@ -230,7 +230,7 @@ test('调整余额、记录原因并清除有效期', async ({ page }) => {
   const { token, suffix, customer } = await seed()
   const ct = await api(token, 'create_card_type', { name: `调整卡${suffix}`, kind: 'stored_value', validity_kind: 'fixed_date', validity_date: '2030-01-01' })
   const me = await api(token, 'get_me', {})
-  const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: ct.id, principal: '100.00', bonus: '0.50', sales_staff_ids: [me.staff.id] })
+  const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: ct.id, principal: '100.00', bonus: '0.50', sales_staff_ids: [me.staff.id], payments: cash('100.00') })
   await login(page, owner.account, owner.password)
   await page.goto(`/customers?id=${customer.id}`)
   const shown = page.locator(`[data-card="${card.id}"]`)
@@ -265,8 +265,8 @@ test('调整记录切走再切回同一卡丢弃旧响应', async ({ page }) => 
   const { token, suffix, customer: a } = await seed()
   const ct = await api(token, 'create_card_type', { name: `回切调整${suffix}`, kind: 'stored_value', validity_kind: 'none' })
   const me = await api(token, 'get_me', {})
-  const card = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '100.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
-  const b = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '100.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
+  const card = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '100.00', bonus: '0.00', sales_staff_ids: [me.staff.id], payments: cash('100.00') })
+  const b = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '100.00', bonus: '0.00', sales_staff_ids: [me.staff.id], payments: cash('100.00') })
   await api(token, 'adjust_card', { card_id: card.id, principal: '90.00', reason: '第一次更正' })
   let release!: () => void
   let started!: () => void
@@ -377,8 +377,8 @@ test('次数流水 A→B→A 丢弃旧响应', async ({ page }) => {
   const project = await api(token, 'create_item', { name: `次数项目${suffix}`, price: '12.34', discountable: true, labor_fee_amount: null, labor_fee_percent: null, positions: [], level_prices: [] })
   const ct = await api(token, 'create_card_type', { name: `回切调整${suffix}`, kind: 'count', validity_kind: 'none', items: [{ item_id: project.id, paid_count: 10, gift_count: 3, unit_price: '12.34' }] })
   const me = await api(token, 'get_me', {})
-  const card = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '0.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
-  const b = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '0.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
+  const card = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '0.00', bonus: '0.00', sales_staff_ids: [me.staff.id], payments: cash('123.40') })
+  const b = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '0.00', bonus: '0.00', sales_staff_ids: [me.staff.id], payments: cash('123.40') })
   await api(token, 'adjust_card', { card_id: card.id, counts: [{ item_id: project.id, paid: 10, gift: 2 }], reason: '第一次更正' })
   let release!: () => void
   let started!: () => void
@@ -430,8 +430,8 @@ test('升级规则累计充值、自动升级、补差价升级及转余额流�
   const { token, suffix, customer, staff } = await seed()
   const types = []
   for (const name of ['基础', '银卡', '金卡']) types.push(await api(token, 'create_card_type', { name: `${name}${suffix}`, kind: 'stored_value', validity_kind: 'none' }))
-  const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: types[0].id, principal: '100.00', bonus: '10.00', sales_staff_ids: [staff.id] })
-  const second = await api(token, 'open_card', { customer_id: customer.id, card_type_id: types[0].id, principal: '50.00', bonus: '0.00', sales_staff_ids: [staff.id] })
+  const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: types[0].id, principal: '100.00', bonus: '10.00', sales_staff_ids: [staff.id], payments: cash('100.00') })
+  const second = await api(token, 'open_card', { customer_id: customer.id, card_type_id: types[0].id, principal: '50.00', bonus: '0.00', sales_staff_ids: [staff.id], payments: cash('50.00') })
   await login(page, owner.account, owner.password)
   await page.goto('/card-types')
   await page.getByRole('button', { name: '新建升级规则', exact: true }).click()
@@ -505,9 +505,9 @@ test('升级记录 A→B→A 丢弃旧响应', async ({ page }) => {
   const types = []
   for (const name of ['基础', '银卡', '金卡']) types.push(await api(token, 'create_card_type', { name: `${name}${suffix}`, kind: 'stored_value', validity_kind: 'none' }))
   const me = await api(token, 'get_me', {})
-  const card = await api(token, 'open_card', { customer_id: a.id, card_type_id: types[0].id, principal: '100.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
-  const b = await api(token, 'open_card', { customer_id: a.id, card_type_id: types[0].id, principal: '100.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
-  await api(token, 'upgrade_card', { card_id: card.id, to_type_id: types[1].id, principal: '0.00', bonus: '0.00' })
+  const card = await api(token, 'open_card', { customer_id: a.id, card_type_id: types[0].id, principal: '100.00', bonus: '0.00', sales_staff_ids: [me.staff.id], payments: cash('100.00') })
+  const b = await api(token, 'open_card', { customer_id: a.id, card_type_id: types[0].id, principal: '100.00', bonus: '0.00', sales_staff_ids: [me.staff.id], payments: cash('100.00') })
+  await api(token, 'upgrade_card', { card_id: card.id, to_type_id: types[1].id, principal: '0.00', bonus: '0.00', payments: [] })
   let release!: () => void
   let started!: () => void
   const blocked = new Promise<void>((resolve) => {
@@ -538,7 +538,7 @@ test('升级记录 A→B→A 丢弃旧响应', async ({ page }) => {
     await other.getByRole('button', { name: '升级记录', exact: true }).click()
     await (await otherResponse).finished()
     await expect(shown.getByTestId('card-upgrade-entry')).toHaveCount(0)
-    await api(token, 'upgrade_card', { card_id: card.id, to_type_id: types[2].id, principal: '0.00', bonus: '0.00' })
+    await api(token, 'upgrade_card', { card_id: card.id, to_type_id: types[2].id, principal: '0.00', bonus: '0.00', payments: [] })
     await shown.getByRole('button', { name: '升级记录', exact: true }).click()
     await expect(shown.getByTestId('card-upgrade-entry')).toHaveCount(2)
     await expect(shown.getByTestId('card-upgrade-entry').first()).toContainText(types[2].name)
@@ -558,8 +558,8 @@ test('积分流水 A→B→A 丢弃旧响应', async ({ page }) => {
   const { token, suffix, customer: a } = await seed()
   const ct = await api(token, 'create_card_type', { name: `回切调整${suffix}`, kind: 'stored_value', validity_kind: 'none' })
   const me = await api(token, 'get_me', {})
-  const card = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '0.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
-  const b = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '0.00', bonus: '0.00', sales_staff_ids: [me.staff.id] })
+  const card = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '0.00', bonus: '0.00', sales_staff_ids: [me.staff.id], payments: [] })
+  const b = await api(token, 'open_card', { customer_id: a.id, card_type_id: ct.id, principal: '0.00', bonus: '0.00', sales_staff_ids: [me.staff.id], payments: [] })
   await api(token, 'adjust_card', { card_id: card.id, points: 90, reason: '第一次更正' })
   let release!: () => void
   let started!: () => void
@@ -613,7 +613,7 @@ test('充值积分、积分流水和调整积分', async ({ page }) => {
   await api(token, 'change_setting', { key: 'points_per_recharge_yuan', value: 10, effective_from: settings.business_date })
   try {
     const ct = await api(token, 'create_card_type', { name: `积分卡${suffix}`, kind: 'stored_value', validity_kind: 'none' })
-    const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: ct.id, principal: '100.00', bonus: '999.00', sales_staff_ids: [staff.id] })
+    const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: ct.id, principal: '100.00', bonus: '999.00', sales_staff_ids: [staff.id], payments: cash('100.00') })
     await login(page, owner.account, owner.password)
     await page.goto(`/customers?id=${customer.id}`)
     const shown = page.locator(`[data-card="${card.id}"]`)
@@ -681,7 +681,7 @@ test('顾客详情退储值卡和次卡，金额由规则计算并隐藏已退�
   const cards = []
   for (const kind of ['stored_value', 'count']) {
     const ct = await api(token, 'create_card_type', { name: `退卡${kind}${suffix}`, kind, validity_kind: 'none', items: kind === 'count' ? [{ item_id: item.id, paid_count: 3, gift_count: 2, unit_price: '12.34' }] : [] })
-    cards.push(await api(token, 'open_card', { customer_id: customer.id, card_type_id: ct.id, principal: kind === 'count' ? '0' : '100.05', bonus: kind === 'count' ? '0' : '20', sales_staff_ids: [staff.id] }))
+    cards.push(await api(token, 'open_card', { customer_id: customer.id, card_type_id: ct.id, principal: kind === 'count' ? '0' : '100.05', bonus: kind === 'count' ? '0' : '20', sales_staff_ids: [staff.id], payments: kind === 'count' ? cash('37.02') : cash('100.05') }))
   }
   await login(page, owner.account, owner.password)
   await page.goto(`/customers?id=${customer.id}`)

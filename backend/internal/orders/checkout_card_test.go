@@ -2,7 +2,9 @@ package orders_test
 
 import (
 	"context"
+	"fmt"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
@@ -22,7 +24,22 @@ func (s *fixture) paymentType(name string, discount any) map[string]any {
 	return s.call("create_card_type", map[string]any{"name": name, "kind": "stored_value", "validity_kind": "none", "discount_percent": discount}, 200)
 }
 func (s *fixture) paymentCard(ct map[string]any, principal, bonus string) map[string]any {
-	return s.call("open_card", map[string]any{"customer_id": s.customer, "card_type_id": ct["id"], "principal": principal, "bonus": bonus, "sales_staff_ids": []uuid.UUID{s.Res.OwnerID}}, 200)
+	return s.call("open_card", map[string]any{"customer_id": s.customer, "card_type_id": ct["id"], "principal": principal, "bonus": bonus, "sales_staff_ids": []uuid.UUID{s.Res.OwnerID}, "payments": testPayments(cardSaleAmount(ct, principal))}, 200)
+}
+
+func cardSaleAmount(ct map[string]any, principal string) string {
+	cents := int64(0)
+	if f, err := strconv.ParseFloat(principal, 64); err == nil {
+		cents = int64(f*100 + 0.5)
+	}
+	if items, ok := ct["items"].([]any); ok {
+		for _, raw := range items {
+			item := raw.(map[string]any)
+			price, _ := strconv.ParseFloat(item["unit_price"].(string), 64)
+			cents += int64(price*100+0.5) * int64(item["paid_count"].(float64))
+		}
+	}
+	return fmt.Sprintf("%d.%02d", cents/100, cents%100)
 }
 func cardPayment(c map[string]any, amount string) orders.PaymentInput {
 	p := payment("card", amount)
@@ -516,4 +533,11 @@ func TestCardCheckoutOutputPermissions(t *testing.T) {
 			t.Fatal(ch.Name, got)
 		}
 	}
+}
+
+func testPayments(amount string) []any {
+	if amount == "0" || amount == "0.00" {
+		return []any{}
+	}
+	return []any{map[string]any{"method": "cash", "amount": amount}}
 }

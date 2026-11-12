@@ -316,6 +316,18 @@ type Checkout struct {
 	At           pgtype.Timestamptz
 }
 
+type ClosingEvent struct {
+	TenantID        uuid.UUID
+	StoreID         uuid.UUID
+	ID              uuid.UUID
+	BusinessDate    pgtype.Date
+	PreviousThrough pgtype.Date
+	Kind            string
+	Reason          *string
+	ActorID         uuid.UUID
+	At              pgtype.Timestamptz
+}
+
 type Collection struct {
 	TenantID       uuid.UUID
 	StoreID        uuid.UUID
@@ -419,6 +431,23 @@ type CustomerSource struct {
 	StoreID  uuid.UUID
 	Name     string
 	Active   bool
+}
+
+type DayClose struct {
+	TenantID       uuid.UUID
+	StoreID        uuid.UUID
+	ID             uuid.UUID
+	BusinessDate   pgtype.Date
+	Version        int32
+	System         []byte
+	Differences    []byte
+	CashCounted    money.Amount
+	UnionpayActual money.Amount
+	WechatActual   money.Amount
+	AlipayActual   money.Amount
+	Note           *string
+	CreatedBy      uuid.UUID
+	CreatedAt      pgtype.Timestamptz
 }
 
 type Debt struct {
@@ -872,6 +901,19 @@ type RotationTurn struct {
 	UpdatedAt         pgtype.Timestamptz
 }
 
+type SalePayment struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	ID           uuid.UUID
+	CardLedgerID *uuid.UUID
+	RedPacketID  *uuid.UUID
+	Method       string
+	Amount       money.Amount
+	BusinessDate pgtype.Date
+	CreatedBy    uuid.UUID
+	CreatedAt    pgtype.Timestamptz
+}
+
 type SettingChange struct {
 	ID            uuid.UUID
 	TenantID      uuid.UUID
@@ -975,6 +1017,13 @@ type Store struct {
 	TenantID  uuid.UUID
 	Name      string
 	CreatedAt pgtype.Timestamptz
+}
+
+type StoreSealing struct {
+	TenantID      uuid.UUID
+	StoreID       uuid.UUID
+	SealedThrough pgtype.Date
+	UpdatedAt     pgtype.Timestamptz
 }
 
 type Tenant struct {

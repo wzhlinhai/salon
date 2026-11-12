@@ -61,7 +61,7 @@ func TestSelectionBalance(t *testing.T) {
 	line := s.checkoutLine()
 	s.countCard(line, "count", 1, 0)
 	other := s.call("open_order", s.opening(), 200)
-	s.call("open_card", map[string]any{"customer_id": other["customer_id"], "card_type_id": ct["id"], "principal": "2", "bonus": "0", "sales_staff_ids": []uuid.UUID{s.Res.OwnerID}}, 200)
+	s.call("open_card", map[string]any{"customer_id": other["customer_id"], "card_type_id": ct["id"], "principal": "2", "bonus": "0", "sales_staff_ids": []uuid.UUID{s.Res.OwnerID}, "payments": testPayments("2")}, 200)
 	input := s.itemInput("会员价一百", 0)
 	input["price"] = "120"
 	input["member_prices"] = []any{map[string]any{"card_type_id": ct["id"], "price": "100"}}
