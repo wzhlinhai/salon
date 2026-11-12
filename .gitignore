@@ -2,3 +2,4 @@
 .claude/worktrees/
 graphify-out/
 __pycache__/
+.codegraph/
