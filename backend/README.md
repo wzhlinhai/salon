@@ -23,6 +23,8 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 `mutchecks.py --since <git-ref>` 只选中该引用与工作树（含未跟踪文件）之间受影响的项，可与名称和 `--locate` 组合。保护文件、定义 guard 的包内测试文件或 e2e spec 改动会选中对应项；查询、迁移目录内任意文件改动会选中该目录的保护。每轮可运行受影响项，同时不带 `--since` 运行 `--locate` 检查整份清单的原文匹配。手动使用 `mutcheck.sh` 时测试选择只通过 `--run` 传入；省略它仍运行完整包。
 
+保护检查不写用户的默认 Go 构建缓存：`mutchecks.py` 每次正式运行（包括 `--jobs 1`）以及 `--since` 的 `go list` 在 `.dev/mutcheck-gocache/<run>/` 下建立独立 `GOCACHE`，并传给基线、`mutcheck.sh` 和每个副本；只有正式运行开始时清理残留运行目录，成功、失败、异常、Ctrl-C 或 SIGTERM 时删除本次缓存。`--locate` 不运行 go 命令时不创建缓存，也不清理残留目录。基线共享该缓存；每个变异副本另建缓存并硬链接基线条目（含 `xx/<hash>-d/` 可执行目录），跑完一项后删除该变异新增的条目，峰值只随并发副本数和一个变异的编译量增长。所有 `go test` 带 `-trimpath`，不同路径的副本因此共享编译结果。基线前和每项变异前检查缓存所在磁盘剩余空间，低于 20 GB 时用中文消息停止，未运行项计为 `environment` 并以非零码退出，不计为 caught；测试可用 `MUTCHECK_DISK_HEADROOM_BYTES` 调低该下限。单独运行 `mutcheck.sh`（含 `--restore`）且没有设置 `GOCACHE` 时，同样在 `.dev/` 下使用临时缓存并在退出时删除。
+
 `serve` 的可选环境变量：`HTTP_ADDR`（默认 `:8080`）、`TOKEN_TTL`（默认 `12h`）。健康检查 `GET /healthz`，登录 `POST /api/auth/login`。AI 对话的环境变量：`AI_API_KEY`（设置后才启用 `/api/ai/chat`；未设置时返回 503「AI 未启用」）、`AI_BASE_URL`（默认 `https://api.deepseek.com`）、`AI_MODEL`（默认 `deepseek-flash`）。密钥不写日志，也不出现在错误或响应里。
 
 `bootstrap` 开一个新租户：门店、内置的老板角色、四个默认角色（初始权限见 ADR-0009）和第一名老板。

@@ -39,9 +39,19 @@ PostgreSQL 容器启动签名出现时，基线按包重试一次；变异由 mu
 go 项要求 mutcheck.sh 退出 0 且命中所有 guards；e2e 项要求守护断言失败，
 还原后同一测试通过。每个副本使用自身的 .dev/mutcheck-backup/，主工作树的 go/e2e
 仍共用主槽；没有 original 的残留槽可以安全清理。中断后用 mutcheck.sh --restore 恢复已发布的备份。
+每次正式运行（包括 --jobs 1）以及 --since 的 go list 都使用仓库 .dev/mutcheck-gocache/<run>/
+下独立的 GOCACHE，绝不写入用户的默认缓存；只有正式运行在开始时清理残留运行目录，结束、失败、
+异常、Ctrl-C 或 SIGTERM 时删除本次目录。--locate 不运行 go 命令时不创建缓存，也不清理残留目录。
+基线在主工作树共享这个缓存；每个变异副本另建缓存并硬链接基线条目（含 xx/<hash>-d/ 可执行目录），
+跑完一项后只删除该变异新增的条目，峰值只与并发副本数和一个变异的编译量有关。
+所有 go test 都带 -trimpath，让不同路径的副本共享编译结果。基线前和每项变异前检查缓存所在
+磁盘的剩余空间，低于 20 GB 时用中文消息停止，未运行项计为 environment（非零退出），绝不计为 caught。
+测试可用 MUTCHECK_DISK_HEADROOM_BYTES 调低该下限。单独运行 mutcheck.sh（含 --restore）且未设置
+GOCACHE 时，使用 .dev/ 下的临时缓存并在退出时删除。
 """
 import argparse
 import ast
+from collections import deque
 import io
 import json
 import os
@@ -60,6 +70,10 @@ GENERATED = ROOT / 'backend/internal/db/dbgen'
 SLOT = ROOT / '.dev/mutcheck-backup'
 ENVIRONMENT_SIGNATURE = '启动 PostgreSQL 测试容器失败'
 ENVIRONMENT_EXIT = 4
+DISK_EXIT = 5
+DISK_HEADROOM = 20 * 1000 ** 3
+DISK_HEADROOM_ENV = 'MUTCHECK_DISK_HEADROOM_BYTES'
+CACHE_DIRNAME = 'mutcheck-gocache'
 
 def load_manifest(path):
     """Interpret literal data without executing manifest code."""
@@ -177,9 +191,135 @@ def merge_results(entries, lines):
             if line.startswith(entry['step'] + ' ' + entry['name'] + ' exit=')]
 
 
-def cleanup_workers(folder):
+def remove_tree(folder):
     if folder.exists():
         shutil.rmtree(folder)
+
+
+def cleanup_workers(folder):
+    remove_tree(folder)
+
+
+def cache_root():
+    """Return the directory holding this repository's mutcheck Go caches."""
+    return ROOT / '.dev' / CACHE_DIRNAME
+
+
+def current_cache():
+    """Return the GOCACHE inherited from the run that started this process."""
+    path = os.environ.get('GOCACHE')
+    return Path(path) if path else None
+
+
+def create_run_cache(clean_stale=True):
+    """Create a fresh run cache and export it to every child process."""
+    previous = os.environ.get('GOCACHE')
+    root = cache_root()
+    if clean_stale:
+        remove_tree(root)
+        root.mkdir(parents=True)
+    else:
+        root.mkdir(parents=True, exist_ok=True)
+    cache = Path(tempfile.mkdtemp(prefix='run-', dir=root))
+    os.environ['GOCACHE'] = str(cache)
+    return cache, previous
+
+
+def cleanup_run_cache(cache, previous):
+    """Delete the run cache and restore the caller's GOCACHE."""
+    remove_tree(cache)
+    try:
+        cache_root().rmdir()
+    except OSError:
+        pass
+    if previous is None:
+        os.environ.pop('GOCACHE', None)
+    else:
+        os.environ['GOCACHE'] = previous
+
+
+def free_space(cache=None):
+    """Return free bytes on the filesystem holding the build cache, if any."""
+    cache = cache or current_cache()
+    return shutil.disk_usage(cache).free if cache is not None else None
+
+
+def disk_message(free):
+    return (f'保护验证停止：Go 构建缓存所在磁盘剩余 {free / 1000 ** 3:.1f} GB，'
+            f'低于 {disk_headroom() / 1000 ** 3:.0f} GB 下限；未运行的项计为 environment。')
+
+
+def disk_headroom():
+    """Return the configured free-space floor; tests may lower it by env var."""
+    value = os.environ.get(DISK_HEADROOM_ENV)
+    return int(value) if value is not None else DISK_HEADROOM
+
+
+def seed_cache(source, target):
+    """Hard-link a finished cache, including cached executable directories."""
+    remove_tree(target)
+    target.mkdir(parents=True)
+    seeded_files, seeded_dirs = set(), set()
+    if not source.exists():
+        return seeded_files, seeded_dirs
+
+    def visit(src, dst, prefix):
+        for item in src.iterdir():
+            relative = prefix + item.name
+            destination = dst / item.name
+            if item.is_dir() and not item.is_symlink():
+                destination.mkdir()
+                seeded_dirs.add(relative)
+                visit(item, destination, relative + '/')
+                continue
+            try:
+                os.link(item, destination)
+            except OSError:
+                shutil.copy2(item, destination)
+            seeded_files.add(relative)
+
+    for shard in source.iterdir():
+        if not shard.is_dir() or len(shard.name) != 2:
+            continue
+        destination = target / shard.name
+        destination.mkdir()
+        seeded_dirs.add(shard.name)
+        visit(shard, destination, shard.name + '/')
+    return seeded_files, seeded_dirs
+
+
+def prune_cache(cache, seeded):
+    """Delete entries a mutation produced, keeping the seeded baseline entries."""
+    if not cache.exists():
+        return
+    seeded_files, seeded_dirs = seeded
+
+    def visit(directory, prefix):
+        for item in list(directory.iterdir()):
+            relative = prefix + item.name
+            if item.is_dir() and not item.is_symlink():
+                visit(item, relative + '/')
+                if relative not in seeded_dirs:
+                    try:
+                        item.rmdir()
+                    except OSError:
+                        pass
+            elif relative not in seeded_files:
+                item.unlink()
+
+    for shard in list(cache.iterdir()):
+        if not shard.is_dir() or len(shard.name) != 2:
+            continue
+        visit(shard, shard.name + '/')
+        if shard.name not in seeded_dirs:
+            try:
+                shard.rmdir()
+            except OSError:
+                pass
+
+
+def environment_line(entry):
+    return f"{entry['step']} {entry['name']} exit=not-run caught=- restored=True not run (environment)"
 
 
 def stop_processes(processes):
@@ -218,15 +358,28 @@ def run_queue(groups, jobs):
     lines = [[] for _ in groups]
     owners = {id(entry): index for index, group in enumerate(groups) for entry in group[0]}
     go, serial = partition_entries(selected)
+    cache = current_cache()
+    worker_caches = {}
+    reported = set()
     ready = False
 
     def interrupted(signum, frame):
         raise KeyboardInterrupt
 
+    def stop_for_disk(free):
+        print(disk_message(free), file=sys.stderr)
+        for entry in go + serial:
+            if id(entry) not in reported:
+                lines[owners[id(entry)]].append(environment_line(entry))
+        return DISK_EXIT
+
     try:
         for sig in (signal.SIGINT, signal.SIGTERM):
             previous[sig] = signal.signal(sig, interrupted)
         cleanup_workers(folder)
+        free = free_space(cache)
+        if free is not None and free < disk_headroom():
+            return stop_for_disk(free)
         # Preserve the serial baseline calling convention as well.
         clean = baseline(selected, logs, results, jobs=jobs) if jobs > 1 else baseline(selected, logs, results)
         outcomes = logs / 'baseline-outcomes.json'
@@ -244,33 +397,18 @@ def run_queue(groups, jobs):
             for filename in dict.fromkeys(e['file'] for e in selected):
                 if (ROOT / filename).read_bytes() != (path / filename).read_bytes():
                     raise ValueError(f'worker copy differs: {filename}')
+            if cache is not None:
+                seeded = cache / 'workers' / path.name
+                worker_caches[path] = (seeded, seed_cache(cache, seeded))
             locations.append(path)
         # All copies are verified before any mutation starts.
         running = {}
-        pending = iter(go)
+        pending = deque(go)
         failed = False
+        disk_stopped = False
         while True:
-            for path in locations:
-                if path in running:
-                    continue
-                entry = next(pending, None)
-                if entry is None:
-                    continue
-                owner = owners[id(entry)]
-                _, manifest, output_dir, _ = groups[owner]
-                worker_logs = output_dir / ('worker-' + path.name)
-                worker_logs.mkdir(exist_ok=True)
-                result = worker_logs / 'results.log'
-                result.unlink(missing_ok=True)
-                command = [sys.executable, str(path / 'backend/scripts/mutchecks.py'), str(manifest),
-                           '--worker-logs', str(worker_logs), entry['step'] + '/' + entry['name']]
-                with (worker_logs / 'worker.log').open('a') as output:
-                    process = subprocess.Popen(command, cwd=path, stdout=output,
-                                               stderr=subprocess.STDOUT, start_new_session=True)
-                processes.append(process)
-                running[path] = (process, entry, owner, worker_logs)
-            if not running:
-                break
+            # Reap finished workers before checking disk so their PASS results
+            # are never replaced by environment lines.
             for path, (process, entry, owner, worker_logs) in list(running.items()):
                 if process.poll() is None:
                     continue
@@ -290,18 +428,57 @@ def run_queue(groups, jobs):
                     print(diagnostic, file=sys.stderr)
                     found = [f"{entry['step']} {entry['name']} exit=worker-{process.returncode} caught=- diagnostic={diagnostic} FAIL"]
                 lines[owner].extend(found)
+                reported.add(id(entry))
+                disk_stopped |= process.returncode == DISK_EXIT
                 for suffix in ('.log', '.command.json'):
                     artifact = worker_logs / (entry['step'] + '-' + entry['name'] + suffix)
                     if artifact.exists():
                         artifact.rename(groups[owner][2] / artifact.name)
                 del running[path]
+                if path in worker_caches:
+                    prune_cache(*worker_caches[path])
+            if pending:
+                free = free_space(cache)
+                if disk_stopped or (free is not None and free < disk_headroom()):
+                    return stop_for_disk(free if free is not None else 0)
+            if not pending and not running:
+                break
+            if pending:
+                for path in locations:
+                    if path in running:
+                        continue
+                    if not pending:
+                        break
+                    entry = pending.popleft()
+                    owner = owners[id(entry)]
+                    _, manifest, output_dir, _ = groups[owner]
+                    worker_logs = output_dir / ('worker-' + path.name)
+                    worker_logs.mkdir(exist_ok=True)
+                    result = worker_logs / 'results.log'
+                    result.unlink(missing_ok=True)
+                    command = [sys.executable, str(path / 'backend/scripts/mutchecks.py'), str(manifest),
+                               '--worker-logs', str(worker_logs), entry['step'] + '/' + entry['name']]
+                    env = dict(os.environ)
+                    if path in worker_caches:
+                        env['GOCACHE'] = str(worker_caches[path][0])
+                    with (worker_logs / 'worker.log').open('a') as output:
+                        process = subprocess.Popen(command, cwd=path, env=env, stdout=output,
+                                                   stderr=subprocess.STDOUT, start_new_session=True)
+                    processes.append(process)
+                    running[path] = (process, entry, owner, worker_logs)
+            if not running:
+                break
             if running:
                 time.sleep(0.05)
         for entry in serial:
             owner = owners[id(entry)]
+            free = free_space(cache)
+            if free is not None and free < disk_headroom():
+                return stop_for_disk(free)
             buffer = io.StringIO()
             passed, restored = run_e2e(entry, groups[owner][2], buffer)
             lines[owner].extend(buffer.getvalue().splitlines())
+            reported.add(id(entry))
             failed |= not passed
             if not restored:
                 break
@@ -427,7 +604,7 @@ def baseline(entries, logs, results, jobs=1):
         if entry['kind'] == 'go':
             for package in entry['packages']:
                 packages.setdefault(package, {}).update(dict.fromkeys(entry['guards']))
-    commands = [['go', 'test', '-count=1', '-run', guard_pattern(guards), package]
+    commands = [['go', 'test', '-count=1', '-trimpath', '-run', guard_pattern(guards), package]
                 for package, guards in packages.items()]
     env = dict(os.environ)
     env.pop('GOFLAGS', None)
@@ -507,7 +684,7 @@ def baseline(entries, logs, results, jobs=1):
     return not failed
 
 
-def run_go(entry, logs, results):
+def run_go(entry, logs, results, gocache=None):
     code, caught, restored, error = 'not-run', [], True, None
     before = {}
     try:
@@ -521,6 +698,8 @@ def run_go(entry, logs, results):
         # 清除继承的 GOFLAGS，避免它悄悄过滤守护测试。
         env = dict(os.environ)
         env.pop('GOFLAGS', None)
+        if gocache is not None:
+            env['GOCACHE'] = str(gocache)
         with log.open('w') as output:
             code = subprocess.run(command, cwd=ROOT, env=env, stdout=output, stderr=subprocess.STDOUT).returncode
         content = log.read_text(errors='replace')
@@ -694,6 +873,34 @@ def main():
         return 0
     if args.jobs < 1:
         parser.error('--jobs must be positive')
+    cache, previous_gocache, handlers = None, None, {}
+    # Locate-only runs execute no Go command; --since needs go list.
+    if args.worker_logs is None and (not args.locate or args.since is not None):
+        cache, previous_gocache = create_run_cache(clean_stale=not args.locate)
+
+    def interrupted(signum, frame):
+        raise KeyboardInterrupt
+
+    try:
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            handlers[sig] = signal.signal(sig, interrupted)
+        try:
+            return execute(args, parser)
+        except KeyboardInterrupt:
+            return 130
+    finally:
+        # Do not let a second signal interrupt cache cleanup.
+        for sig in handlers:
+            signal.signal(sig, signal.SIG_IGN)
+        try:
+            if cache is not None:
+                cleanup_run_cache(cache, previous_gocache)
+        finally:
+            for sig, handler in handlers.items():
+                signal.signal(sig, handler)
+
+
+def execute(args, parser):
     if args.manifest is None:
         if args.names:
             parser.error('names are not supported without a manifest')
@@ -819,15 +1026,27 @@ def run_manifest(selected, manifest, args):
 
 def run_selected(selected, manifest, args, logs):
     failed = False
+    cache = current_cache()
+    mutation = cache / 'entry' if cache is not None and not args.worker_logs and not args.locate else None
+    seeded = set()
     with (logs / 'results.log').open('w') as results:
         if args.jobs > 1 and not args.locate:
             try:
                 return run_parallel(selected, manifest, args.jobs, logs, results)
             except KeyboardInterrupt:
                 return 130
+        if not args.locate:
+            free = free_space(cache)
+            if free is not None and free < disk_headroom():
+                print(disk_message(free), file=sys.stderr)
+                for entry in selected:
+                    result_line(environment_line(entry), results)
+                return DISK_EXIT
         if not args.locate and not args.worker_logs and not baseline(selected, logs, results):
             return 1
-        for entry in selected:
+        if mutation is not None:
+            seeded = seed_cache(cache, mutation)
+        for index, entry in enumerate(selected):
             if args.locate:
                 try:
                     locate(entry)
@@ -839,7 +1058,18 @@ def run_selected(selected, manifest, args, logs):
                 result_line(line, results)
                 restored = True
             else:
-                passed, restored = (run_go if entry['kind'] == 'go' else run_e2e)(entry, logs, results)
+                free = free_space(cache)
+                if free is not None and free < disk_headroom():
+                    print(disk_message(free), file=sys.stderr)
+                    for remaining in selected[index:]:
+                        result_line(environment_line(remaining), results)
+                    return DISK_EXIT
+                if entry['kind'] == 'go':
+                    passed, restored = run_go(entry, logs, results, mutation)
+                    if mutation is not None:
+                        prune_cache(mutation, seeded)
+                else:
+                    passed, restored = run_e2e(entry, logs, results)
             failed |= not passed
             if not restored:
                 break
