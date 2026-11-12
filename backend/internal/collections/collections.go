@@ -3,6 +3,7 @@ package collections
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/wzhlinhai/salon/backend/internal/audit"
+	"github.com/wzhlinhai/salon/backend/internal/closingguard"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
@@ -146,6 +148,13 @@ func change(ctx context.Context, env ops.Env, in *ChangeCollectionInput, to stri
 	if err != nil {
 		return nil, err
 	}
+	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, row.CreatedAt.Time)
+	if err != nil {
+		return nil, err
+	}
+	if err := closingguard.Guard(ctx, env.Q, env.Caller.StoreID, day); err != nil {
+		return nil, err
+	}
 	action := "cancel_collection"
 	effect := func() error { return r.Channel.Cancel(ctx, env, row) }
 	if to == "refunded" {
@@ -195,6 +204,24 @@ func CancelOrder(ctx context.Context, env ops.Env, orderID uuid.UUID) error {
 		}
 	}
 	return nil
+}
+
+// ReconcileAll 返回全部已注册通道在营业日 day 的对账汇总，供日结保存快照。
+func ReconcileAll(ctx context.Context, env ops.Env, day time.Time) ([]Summary, error) {
+	codes := make([]string, 0, len(registry))
+	for code := range registry {
+		codes = append(codes, code)
+	}
+	slices.Sort(codes)
+	out := make([]Summary, 0, len(codes))
+	for _, code := range codes {
+		summary, err := registry[code].Channel.Reconcile(ctx, env, day)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, summary)
+	}
+	return out, nil
 }
 
 func reconcile(ctx context.Context, env ops.Env, code string, day time.Time) (Summary, error) {

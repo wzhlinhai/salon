@@ -40,6 +40,12 @@ func CustomerSourceTarget(id uuid.UUID) Target { return Target{kind: "customer_s
 // ItemTarget 创建项目日志目标。
 func ItemTarget(id uuid.UUID) Target { return Target{kind: "item", id: id} }
 
+// DayCloseTarget 创建日结快照日志目标。
+func DayCloseTarget(id uuid.UUID) Target { return Target{kind: "day_close", id: id} }
+
+// ClosingTarget 创建封账或撤销封账事件日志目标。
+func ClosingTarget(id uuid.UUID) Target { return Target{kind: "closing", id: id} }
+
 // Record 在业务操作的同一事务中追加日志；nil 表示新建前或删除后不存在；手机号必须用键名 phone。
 func Record(ctx context.Context, env ops.Env, action string, target Target, before, after any) error {
 	if err := checkPhoneKeys(before); err != nil {

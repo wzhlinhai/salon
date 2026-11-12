@@ -62,7 +62,7 @@ func TestCommissionReadQueryCount(t *testing.T) {
 				}
 			}
 			customer := s.Call(t, s.Owner, "create_customer", map[string]any{"name": "销售顾客", "gender": "female"}, 200).Body["customer"].(map[string]any)["id"]
-			s.Call(t, s.Owner, "issue_red_packet", map[string]any{"customer_id": customer, "kind": "sold", "face_value": "100", "price": "100", "expires_on": day.AddDate(1, 0, 0).Format(time.DateOnly), "sales_staff_ids": []uuid.UUID{s.Res.OwnerID}}, 200)
+			s.Call(t, s.Owner, "issue_red_packet", map[string]any{"customer_id": customer, "kind": "sold", "face_value": "100", "price": "100", "expires_on": day.AddDate(1, 0, 0).Format(time.DateOnly), "sales_staff_ids": []uuid.UUID{s.Res.OwnerID}, "payments": []any{map[string]any{"method": "cash", "amount": "100"}}}, 200)
 		}
 		for _, ch := range app.Channels() {
 			counter.n.Store(0)

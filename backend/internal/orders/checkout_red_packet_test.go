@@ -17,7 +17,7 @@ import (
 
 func (s *fixture) redPacket(customer any, face string) map[string]any {
 	s.t.Helper()
-	return s.call("issue_red_packet", map[string]any{"customer_id": customer, "kind": "gift", "face_value": face, "expires_on": "2999-01-01"}, 200)
+	return s.call("issue_red_packet", map[string]any{"customer_id": customer, "kind": "gift", "face_value": face, "expires_on": "2999-01-01", "payments": []any{}}, 200)
 }
 func packetPayment(p map[string]any, amount string) orders.PaymentInput {
 	v := payment("red_packet", amount)
@@ -138,7 +138,7 @@ func TestCheckoutRedPacketBusinessDate(t *testing.T) {
 		o := s.customerOrder(line)
 		expiry := day.AddDate(0, 0, offset)
 		s.SetNow(expiry.Add(12 * time.Hour))
-		packet := s.call("issue_red_packet", map[string]any{"customer_id": s.customer, "kind": "gift", "face_value": "100", "expires_on": expiry.Format(time.DateOnly)}, 200)
+		packet := s.call("issue_red_packet", map[string]any{"customer_id": s.customer, "kind": "gift", "face_value": "100", "expires_on": expiry.Format(time.DateOnly), "payments": []any{}}, 200)
 		before := s.packetSnapshot()
 		s.SetNow(at)
 		r := s.HTTPWithToken(t, s.Owner, "checkout_orders", checkoutInput(checkoutOrder(o, packetPayment(packet, "100"))))

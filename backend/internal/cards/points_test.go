@@ -45,12 +45,14 @@ func TestPointsEarningRates(t *testing.T) {
 			s.pointsRate(tc.rate)
 			in := s.opening()
 			in["principal"], in["bonus"] = tc.principal, tc.bonus
+			in["payments"] = cashPayment(tc.principal)
 			card := s.call("open_card", in, 200)
 			if card["points"] != tc.want {
 				t.Fatal(card)
 			}
 			in = s.recharge(card["id"])
 			in["principal"], in["bonus"] = tc.principal, tc.bonus
+			in["payments"] = cashPayment(tc.principal)
 			out := s.call("recharge_card", in, 200)
 			if out["points"] != 2*tc.want || pointRows(t, s, card["id"]) != 2*tc.rows {
 				t.Fatal(out)
@@ -71,6 +73,7 @@ func TestPointsAdjustAndChain(t *testing.T) {
 	card := s.call("open_card", s.opening(), 200)
 	top := s.recharge(card["id"])
 	top["principal"] = "25.99"
+	top["payments"] = cashPayment("25.99")
 	if out := s.call("recharge_card", top, 200); out["points"] != float64(125) {
 		t.Fatal(out)
 	}
@@ -122,7 +125,7 @@ func TestPointsSalesOnly(t *testing.T) {
 	s.pointsRate(10)
 	card := s.call("open_card", s.opening(), 200)
 	ct := s.call("create_card_type", typeInput("升级目标"), 200)
-	out := s.call("upgrade_card", map[string]any{"card_id": card["id"], "to_type_id": ct["id"], "principal": "25.99", "bonus": "999.00", "sales_staff_ids": []any{s.Res.OwnerID}}, 200)
+	out := s.call("upgrade_card", map[string]any{"card_id": card["id"], "to_type_id": ct["id"], "principal": "25.99", "bonus": "999.00", "sales_staff_ids": []any{s.Res.OwnerID}, "payments": cashPayment("25.99")}, 200)
 	if out["points"] != float64(125) {
 		t.Fatal(out)
 	}
@@ -208,6 +211,7 @@ func TestPointsRechargeWaitsForCardLock(t *testing.T) {
 	dbtest.Exec(t, tx, "SELECT id FROM cards WHERE id=$1 FOR NO KEY UPDATE", card["id"])
 	top := s.recharge(card["id"])
 	top["principal"] = "10.00"
+	top["payments"] = cashPayment("10.00")
 	done := make(chan optest.Result, 1)
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "recharge_card", top) }()
 	dbtest.WaitForLockWait(t, s.Pool)
@@ -292,6 +296,7 @@ func TestPointsLimitAndRollback(t *testing.T) {
 	before := snapshot(t, s)
 	in := s.recharge(card["id"])
 	in["principal"] = "1.00"
+	in["payments"] = cashPayment("1.00")
 	if r := s.call("recharge_card", in, 409); r["detail"] != "积分超过上限" {
 		t.Fatal(r)
 	}
@@ -310,6 +315,7 @@ func TestPointsFutureRate(t *testing.T) {
 	}
 	top := s.recharge(card["id"])
 	top["principal"] = "25.99"
+	top["payments"] = cashPayment("25.99")
 	if out := s.call("recharge_card", top, 200); out["points"] != float64(125) {
 		t.Fatal("future rate affected recharge", out)
 	}

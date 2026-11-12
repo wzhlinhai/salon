@@ -100,7 +100,7 @@ func payPerformance(t *testing.T, s *optest.Shop, id uuid.UUID, m time.Time, rev
 	}
 	dbtest.Commit(t, tx)
 	customer := s.Call(t, s.Owner, "create_customer", map[string]any{"name": "顾客", "gender": "female"}, 200).Body["customer"].(map[string]any)["id"]
-	packet := s.Call(t, s.Owner, "issue_red_packet", map[string]any{"customer_id": customer, "kind": "sold", "face_value": "100", "price": "100", "expires_on": settings.Date(time.Now()).AddDate(1, 0, 0).Format(time.DateOnly), "sales_staff_ids": []uuid.UUID{id}}, 200).Body
+	packet := s.Call(t, s.Owner, "issue_red_packet", map[string]any{"customer_id": customer, "kind": "sold", "face_value": "100", "price": "100", "expires_on": settings.Date(time.Now()).AddDate(1, 0, 0).Format(time.DateOnly), "sales_staff_ids": []uuid.UUID{id}, "payments": []any{map[string]any{"method": "cash", "amount": "100"}}}, 200).Body
 	if _, err := s.Pool.Exec(t.Context(), "UPDATE performance_entries SET business_date=$1,created_at=$2 WHERE red_packet_id=$3", m.AddDate(0, 0, 7), m.Add(24*time.Hour), packet["id"]); err != nil {
 		t.Fatal(err)
 	}

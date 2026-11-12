@@ -20,6 +20,7 @@ func TestValidityUsesBusinessDate(t *testing.T) {
 	s.SetNow(time.Date(2030, 1, 2, 1, 30, 0, 0, settings.Location))
 	opening := s.opening()
 	opening["card_type_id"], opening["principal"], opening["bonus"] = ct["id"], "0", "0"
+	opening["payments"] = []any{}
 	out := s.call("open_card", opening, 200)
 	if out["expires_on"] != "2030-01-31" {
 		t.Fatal(out)
@@ -43,6 +44,7 @@ func TestPointsUseBusinessDateRate(t *testing.T) {
 	s.SetNow(time.Date(later.Year(), later.Month(), later.Day(), 1, 0, 0, 0, settings.Location))
 	opening := s.opening()
 	opening["principal"], opening["bonus"] = "25.99", "0"
+	opening["payments"] = cashPayment("25.99")
 	out := s.call("open_card", opening, 200)
 	if out["points"] != float64(2) {
 		t.Fatalf("01:00 opening points = %v, want 2 at previous business day's rate 10", out["points"])

@@ -662,3 +662,23 @@ _English_: attendance summary（AttendanceSummary）
 **考勤明细**:
 某营业日全部打卡、执行班次和原始异常，已作废卡也保留展示。
 _English_: attendance day（AttendanceDay）
+
+**日结**:
+店长在每个营业日结束后保存当天的系统应收、现金清点数和银联、微信、支付宝实际到账，形成可追溯的快照；同一天可以重新日结，保留每个版本。
+_English_: daily close（DayClose；操作 close_day）
+
+**三方对账**:
+把系统应收、实际到账和现金清点按收款方式逐项比较，差异为实际减系统（现金为清点减系统），用来发现少收、多收或漏记。
+_English_: reconciliation（DayClose.Differences）
+
+**封账**:
+把某个营业日及以前的所有账锁住，不能再改单、改价、合并、撤单、撤销收款或补录那天的欠款；只能逐日按顺序封，封账后要退钱走售后。
+_English_: seal（操作 seal_day；状态 sealed_through）
+
+**撤销封账**:
+老板撤销最后一个封账日，必须写原因并留记录；撤销后回到前一天封账状态，可以继续处理那天的账。
+_English_: unseal（操作 unseal_day；权限 closing.unseal）
+
+**未记方式**:
+历史开卡、充值、补差价或卖红包有本金或售价、却没有登记现金/银联/微信/支付宝收款方式的记录；日结单独列出金额和笔数，不回填。
+_English_: unrecorded payment method（日结的 Unrecorded）

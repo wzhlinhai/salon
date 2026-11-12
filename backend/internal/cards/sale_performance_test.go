@@ -14,6 +14,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/optest"
+	"github.com/wzhlinhai/salon/backend/internal/salepayments"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
@@ -55,6 +56,7 @@ func TestCardSaleSources(t *testing.T) {
 	ids := []uuid.UUID{second, s.Res.OwnerID, third}
 	in := s.opening()
 	in["principal"], in["bonus"], in["sales_staff_ids"] = "1000", "200", ids[:2]
+	in["payments"] = cashPayment("1000")
 	card := s.call("open_card", in, 200)
 	saleAmounts(t, s, card["id"], "card_open", "first", ids[:2], []string{"500.00", "500.00"})
 	next := s.call("open_card", in, 200)
@@ -63,17 +65,20 @@ func TestCardSaleSources(t *testing.T) {
 	s.call("create_card_upgrade_rule", rule(s.cardType, to["id"], "single_recharge", "500"), 200)
 	recharge := s.recharge(card["id"])
 	recharge["principal"], recharge["bonus"], recharge["sales_staff_ids"] = "500", "100", ids
+	recharge["payments"] = cashPayment("500")
 	out := s.call("recharge_card", recharge, 200)
 	if out["upgraded_to"] == nil {
 		t.Fatal(out)
 	}
 	saleAmounts(t, s, card["id"], "card_recharge", "repeat", ids, []string{"166.68", "166.66", "166.66"})
 	recharge["principal"] = "0"
+	recharge["payments"] = []any{}
 	s.call("recharge_card", recharge, 200)
 	saleAmounts(t, s, card["id"], "card_recharge", "repeat", ids, []string{"166.68", "166.66", "166.66"})
 	saleAmounts(t, s, card["id"], "card_upgrade", "repeat", ids, []string{})
 	u := upgrade(card["id"], s.cardType)
 	u["principal"], u["bonus"], u["sales_staff_ids"] = "200", "50", ids[:2]
+	u["payments"] = cashPayment("200")
 	s.call("upgrade_card", u, 200)
 	saleAmounts(t, s, card["id"], "card_upgrade", "repeat", ids[:2], []string{"100.00", "100.00"})
 	s.call("upgrade_card", upgrade(card["id"], to["id"]), 200)
@@ -91,9 +96,11 @@ func TestCardSaleCounts(t *testing.T) {
 			ct := s.call("create_card_type", typeIn, 200)
 			in := s.opening()
 			in["card_type_id"], in["principal"], in["bonus"] = ct["id"], "0", "0"
+			in["payments"] = []any{}
 			want := "500.00"
 			if kind == "package" {
 				in["principal"], in["bonus"] = "300", "200"
+				in["payments"] = cashPayment("300")
 				want = "800.00"
 			}
 			card := s.call("open_card", in, 200)
@@ -152,6 +159,7 @@ func TestCardSaleBusinessDate(t *testing.T) {
 	s.SetNow(time.Date(2030, 1, 2, 1, 30, 0, 0, settings.Location))
 	opening := s.opening()
 	opening["principal"], opening["bonus"] = "100", "0"
+	opening["payments"] = cashPayment("100")
 	out := s.call("open_card", opening, 200)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	var ok bool
@@ -169,7 +177,7 @@ func TestCardSaleConcurrentFirst(t *testing.T) {
 	if err := value.Scan("100"); err != nil {
 		t.Fatal(err)
 	}
-	_, err := cards.OpenCardForTest(context.Background(), ops.Env{Now: time.Now(), Q: dbgen.New(tx), Caller: caller}, &cards.OpenCardInput{CustomerID: uuid.MustParse(s.customer), CardTypeID: uuid.MustParse(s.cardType), TopUpInput: cards.TopUpInput{Principal: value, SalesStaffIDs: []uuid.UUID{s.Res.OwnerID}}})
+	_, err := cards.OpenCardForTest(context.Background(), ops.Env{Now: time.Now(), Q: dbgen.New(tx), Caller: caller}, &cards.OpenCardInput{CustomerID: uuid.MustParse(s.customer), CardTypeID: uuid.MustParse(s.cardType), TopUpInput: cards.TopUpInput{Principal: value, SalesStaffIDs: []uuid.UUID{s.Res.OwnerID}, Payments: []salepayments.Payment{{Method: "cash", Amount: value}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,6 +260,7 @@ func TestCardSaleZeroOpening(t *testing.T) {
 	s := open(t)
 	in := s.opening()
 	in["principal"], in["bonus"] = "0", "200"
+	in["payments"] = []any{}
 	s.call("open_card", in, 200)
 	assertSQL(t, s, `SELECT NOT EXISTS(SELECT 1 FROM performance_entries)`)
 	card := s.call("open_card", s.opening(), 200)
@@ -266,6 +275,7 @@ func TestCardSaleMultipleCounts(t *testing.T) {
 		map[string]any{"item_id": second, "paid_count": 2, "gift_count": 3, "unit_price": "40"}), 200)
 	in := s.opening()
 	in["card_type_id"], in["principal"], in["bonus"] = ct["id"], "300", "200"
+	in["payments"] = cashPayment("300")
 	card := s.call("open_card", in, 200)
 	saleAmounts(t, s, card["id"], "card_open", "first", []uuid.UUID{s.Res.OwnerID}, []string{"880.00"})
 }
@@ -279,6 +289,7 @@ func TestCardSaleLargeCounts(t *testing.T) {
 			ct := s.call("create_card_type", countType("大额次卡", "count", map[string]any{"item_id": s.item("剪发"), "paid_count": 9999, "gift_count": 0, "unit_price": "20000.00"}), 200)
 			in := s.opening()
 			in["card_type_id"], in["principal"], in["bonus"], in["sales_staff_ids"] = ct["id"], "0", "0", ids[:n]
+			in["payments"] = defaultPayments(19998000000)
 			if n == 2 {
 				card := s.call("open_card", in, 200)
 				saleAmounts(t, s, card["id"], "card_open", "first", ids, []string{"99990000.00", "99990000.00"})

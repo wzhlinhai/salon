@@ -75,7 +75,7 @@ func TestUndoReferenceBranches(t *testing.T) {
 	})
 	t.Run("other card", func(t *testing.T) {
 		f, ids := imported(t)
-		f.call("open_card", map[string]any{"customer_id": ids.customer, "card_type_id": f.storedType, "principal": "5", "bonus": "0", "sales_staff_ids": []any{f.Res.OwnerID}})
+		f.call("open_card", map[string]any{"customer_id": ids.customer, "card_type_id": f.storedType, "principal": "5", "bonus": "0", "sales_staff_ids": []any{f.Res.OwnerID}, "payments": []any{map[string]any{"method": "cash", "amount": "5"}}})
 		requireUndoBlocked(t, f, ids.batch, "还有其他卡")
 	})
 	t.Run("adjustment", func(t *testing.T) {

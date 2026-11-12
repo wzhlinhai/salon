@@ -31,6 +31,7 @@ const (
 	ReportView          ops.Permission = "report.view"
 	ClosingDaily        ops.Permission = "closing.daily"
 	ClosingSeal         ops.Permission = "closing.seal"
+	ClosingUnseal       ops.Permission = "closing.unseal"
 	PayrollManage       ops.Permission = "payroll.manage"
 	StaffManage         ops.Permission = "staff.manage"
 	AuditLogView        ops.Permission = "audit_log.view"
@@ -77,6 +78,7 @@ var Catalogue = []Def{
 	{ReportView, "营业报表", false, false},
 	{ClosingDaily, "日结", false, false},
 	{ClosingSeal, "封账", false, false},
+	{ClosingUnseal, "撤销封账", false, false},
 	{PayrollManage, "提成结算、工资表", false, false},
 	{StaffManage, "员工档案管理", false, false},
 	{AuditLogView, "操作日志", false, false},

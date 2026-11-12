@@ -6,6 +6,7 @@ const api = useApi()
 const toast = useToast()
 const { can } = useMe()
 type RedPacket = components['schemas']['RedPacket']
+type Payment = components['schemas']['Payment']
 const packets = ref<RedPacket[]>([])
 const loading = ref(false)
 const listGuard = useRequestGuard()
@@ -31,6 +32,8 @@ const faceValue = ref('')
 const price = ref('')
 const expiresOn = ref('')
 const sales = ref<string[]>([])
+const payments = ref<Payment[]>([])
+const paymentsTouched = ref(false)
 const staff = ref<components['schemas']['StaffOption'][]>([])
 
 async function editIssue() {
@@ -40,6 +43,8 @@ async function editIssue() {
     price.value = ''
     expiresOn.value = ''
     sales.value = []
+    payments.value = []
+    paymentsTouched.value = false
     staff.value = []
   })
   await issueForm.load(async (current) => {
@@ -51,10 +56,13 @@ async function editIssue() {
 }
 
 async function issue() {
-  const body: components['schemas']['IssueRedPacketInput'] = { customer_id: props.id, kind: kind.value, face_value: faceValue.value, expires_on: expiresOn.value }
+  const body: components['schemas']['IssueRedPacketInput'] = { customer_id: props.id, kind: kind.value, face_value: faceValue.value, expires_on: expiresOn.value, payments: [] }
   if (kind.value === 'sold') {
     body.price = price.value
     body.sales_staff_ids = [...sales.value]
+    body.payments = payments.value
+  } else {
+    body.payments = []
   }
   await issueForm.save(async (current) => {
     const { data, error } = await api.POST('/api/ops/issue_red_packet', { body })
@@ -122,6 +130,7 @@ onMounted(load)
         <template v-if="kind === 'sold'">
           <UFormField label="售价"><UInput v-model="price" inputmode="decimal" class="w-full" /></UFormField>
           <UFormField label="业绩归属人"><USelect v-model="sales" multiple :items="staff.map(s => ({ label: s.name, value: s.id }))" class="w-full" /></UFormField>
+          <PaymentEditor v-model="payments" v-model:touched="paymentsTouched" :expected="price" />
         </template>
       </div>
     </template>

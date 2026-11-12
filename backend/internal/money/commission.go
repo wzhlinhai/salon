@@ -22,6 +22,9 @@ func (s SignedTotal) Add(c Change) SignedTotal { return SignedTotal{value: s.val
 // Format 返回累计净额的固定两位小数显示文本。
 func (s SignedTotal) Format() string { return s.value.StringFixed(2) }
 
+// Change 返回累计净额。
+func (s SignedTotal) Change() Change { return Change(s) }
+
 // ChangeFromFen 将整数分转为精确的有符号变动，供累计与分段计算。
 func ChangeFromFen(fen int64) Change { return Change{value: decimal.NewFromInt(fen).Shift(-2)} }
 

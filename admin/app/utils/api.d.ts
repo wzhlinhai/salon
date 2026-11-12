@@ -327,6 +327,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/close_day": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 日结并保存系统快照与实际到账差异 */
+        post: operations["close_day"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/commit_import": {
         parameters: {
             query?: never;
@@ -848,6 +865,23 @@ export interface paths {
         put?: never;
         /** 查看顾客档案和安全提醒 */
         post: operations["get_customer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/get_day_close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看某天的当前日结和历史版本 */
+        post: operations["get_day_close"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1449,6 +1483,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_day_closes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按营业日范围查看日结及封账状态 */
+        post: operations["list_day_closes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_drafts": {
         parameters: {
             query?: never;
@@ -1993,6 +2044,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/preview_day_close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 预览一个营业日的系统应收和对账汇总 */
+        post: operations["preview_day_close"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/quote_item_price": {
         parameters: {
             query?: never;
@@ -2350,6 +2418,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/seal_day": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按日期顺序封账 */
+        post: operations["seal_day"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/search_customers": {
         parameters: {
             query?: never;
@@ -2565,6 +2650,23 @@ export interface paths {
         put?: never;
         /** 取消团购券与挂单的关联 */
         post: operations["unlink_coupon_order"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/unseal_day": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 撤销最后一个封账日并记录原因 */
+        post: operations["unseal_day"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3314,6 +3416,16 @@ export interface components {
             /** @description 新的值，形式见 get_settings 的 kind；null 表示恢复系统默认做法 */
             value: unknown;
         };
+        ChannelSummary: {
+            amounts: {
+                [key: string]: string;
+            };
+            business_date: string;
+            channel: string;
+            counts: {
+                [key: string]: number;
+            };
+        };
         ChatInputBody: {
             /** @description 对话历史，最多 20 条 */
             messages: components["schemas"]["ChatMessage"][];
@@ -3340,6 +3452,19 @@ export interface components {
             value: string;
         };
         ClockInInput: Record<string, never>;
+        CloseDayInput: {
+            /** @description 支付宝实际到账 */
+            alipay_actual: string;
+            /** @description 现金清点数 */
+            cash_counted: string;
+            /** Format: date */
+            date: string;
+            note?: string;
+            /** @description 银联实际到账 */
+            unionpay_actual: string;
+            /** @description 微信实际到账 */
+            wechat_actual: string;
+        };
         Collection: {
             amount: string;
             channel: string;
@@ -3719,6 +3844,51 @@ export interface components {
         CustomerSourceList: {
             items: components["schemas"]["CustomerSource"][];
         };
+        DayClose: {
+            alipay_actual: string;
+            business_date: string;
+            cash_counted: string;
+            /** Format: date-time */
+            created_at: string;
+            created_by: string;
+            differences: components["schemas"]["MethodDifference"][];
+            id: string;
+            note: string | null;
+            system: components["schemas"]["SystemFigures"];
+            unionpay_actual: string;
+            /** Format: int32 */
+            version: number;
+            wechat_actual: string;
+        };
+        DayCloseDetail: {
+            current: components["schemas"]["DayClose"];
+            versions: components["schemas"]["DayClose"][];
+        };
+        DayCloseList: {
+            items: components["schemas"]["DayCloseListItem"][];
+            sealed_through: string | null;
+        };
+        DayCloseListItem: {
+            alipay_actual: string;
+            business_date: string;
+            cash_counted: string;
+            /** Format: date-time */
+            created_at: string;
+            id: string;
+            note: string | null;
+            sealed: boolean;
+            unionpay_actual: string;
+            /** Format: int32 */
+            version: number;
+            wechat_actual: string;
+        };
+        DayInput: {
+            /**
+             * Format: date
+             * @description 营业日 YYYY-MM-DD
+             */
+            date: string;
+        };
         DeactivateShiftInput: {
             id: string;
         };
@@ -4094,6 +4264,7 @@ export interface components {
             face_value: string;
             /** @enum {string} */
             kind: "sold" | "gift";
+            payments: components["schemas"]["Payment"][];
             price?: string;
             sales_staff_ids?: string[];
         };
@@ -4261,6 +4432,12 @@ export interface components {
             customer_id: string;
         };
         ListCustomerSourcesInput: Record<string, never>;
+        ListDayClosesInput: {
+            /** Format: date */
+            date_from: string;
+            /** Format: date */
+            date_to: string;
+        };
         ListDealsInput: Record<string, never>;
         ListGuestVisitsInput: {
             before_id?: string;
@@ -4372,6 +4549,18 @@ export interface components {
             merged_order_ids: string[];
             order_id: string;
         };
+        MethodAmount: {
+            amount: string;
+            label: string;
+            method: string;
+        };
+        MethodDifference: {
+            actual: string;
+            difference: string;
+            label: string;
+            method: string;
+            system: string;
+        };
         MonthInput: {
             month: string;
         };
@@ -4382,6 +4571,7 @@ export interface components {
             bonus: string;
             card_type_id: string;
             customer_id: string;
+            payments: components["schemas"]["Payment"][];
             principal: string;
             sales_staff_ids: string[];
         };
@@ -4517,6 +4707,11 @@ export interface components {
             /** @enum {string} */
             source: "item" | "consume" | "labor" | "sale";
             staff_id?: string;
+        };
+        Payment: {
+            amount: string;
+            /** @enum {string} */
+            method: "cash" | "unionpay" | "wechat" | "alipay";
         };
         PaymentInput: {
             amount: string;
@@ -4742,6 +4937,7 @@ export interface components {
         RechargeInput: {
             bonus: string;
             card_id: string;
+            payments: components["schemas"]["Payment"][];
             principal: string;
             sales_staff_ids: string[];
         };
@@ -5020,6 +5216,12 @@ export interface components {
             is_default: boolean;
             value: unknown;
         };
+        SealResult: {
+            business_date: string;
+            event_id: string;
+            kind: string;
+            sealed_through: string | null;
+        };
         SearchCustomersInput: {
             include_unidentified?: boolean;
             /** Format: int32 */
@@ -5254,6 +5456,18 @@ export interface components {
             outstanding_count: number;
             repaid: string;
         };
+        SystemFigures: {
+            business_date: string;
+            channels: components["schemas"]["ChannelSummary"][];
+            /** Format: int64 */
+            checkout_count: number;
+            guest_visits: string;
+            non_site: components["schemas"]["MethodAmount"][];
+            on_site: components["schemas"]["MethodAmount"][];
+            unrecorded: components["schemas"]["UnrecordedSales"];
+            /** Format: int64 */
+            void_count: number;
+        };
         TierLevel: {
             from: string;
             percent: string;
@@ -5302,6 +5516,14 @@ export interface components {
         };
         UnlinkCouponOrderInput: {
             redemption_id: string;
+        };
+        UnrecordedSales: {
+            amount: string;
+            /** Format: int64 */
+            count: number;
+        };
+        UnsealDayInput: {
+            reason: string;
         };
         UpdateCardTypeInput: {
             active: boolean;
@@ -5408,6 +5630,7 @@ export interface components {
         UpgradeCardInput: {
             bonus: string;
             card_id: string;
+            payments: components["schemas"]["Payment"][];
             principal: string;
             sales_staff_ids?: string[];
             to_type_id: string;
@@ -6051,6 +6274,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Punch"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    close_day: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseDayInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DayClose"];
                 };
             };
             /** @description Error */
@@ -7074,6 +7330,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Customer"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    get_day_close: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DayInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DayCloseDetail"];
                 };
             };
             /** @description Error */
@@ -8242,6 +8531,39 @@ export interface operations {
             };
         };
     };
+    list_day_closes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListDayClosesInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DayCloseList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     list_drafts: {
         parameters: {
             query?: never;
@@ -9298,6 +9620,39 @@ export interface operations {
             };
         };
     };
+    preview_day_close: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DayInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemFigures"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     quote_item_price: {
         parameters: {
             query?: never;
@@ -9991,6 +10346,39 @@ export interface operations {
             };
         };
     };
+    seal_day: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DayInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SealResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     search_customers: {
         parameters: {
             query?: never;
@@ -10407,6 +10795,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Redemption"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    unseal_day: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnsealDayInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SealResult"];
                 };
             };
             /** @description Error */

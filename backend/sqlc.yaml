@@ -256,3 +256,23 @@ sql:
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money
               type: Amount
+          - column: sale_payments.amount
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: day_closes.cash_counted
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: day_closes.unionpay_actual
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: day_closes.wechat_actual
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: day_closes.alipay_actual
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount

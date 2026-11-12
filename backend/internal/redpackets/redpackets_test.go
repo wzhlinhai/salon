@@ -16,6 +16,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/optest"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
 	"github.com/wzhlinhai/salon/backend/internal/redpackets"
+	"github.com/wzhlinhai/salon/backend/internal/salepayments"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
@@ -36,12 +37,16 @@ func (s *fixture) call(op string, in any, status int) map[string]any {
 	return s.Call(s.t, s.Owner, op, in, status).Body
 }
 func (s *fixture) input(kind string) map[string]any {
-	in := map[string]any{"customer_id": s.customer, "kind": kind, "face_value": "100", "expires_on": "2999-01-01"}
+	in := map[string]any{"customer_id": s.customer, "kind": kind, "face_value": "100", "expires_on": "2999-01-01", "payments": []any{}}
 	if kind == "sold" {
 		in["price"] = "80"
 		in["sales_staff_ids"] = []uuid.UUID{s.Res.OwnerID}
+		in["payments"] = cashPayment("80")
 	}
 	return in
+}
+func cashPayment(amount string) []any {
+	return []any{map[string]any{"method": "cash", "amount": amount}}
 }
 func (s *fixture) packet(kind string) map[string]any {
 	s.t.Helper()
@@ -140,7 +145,7 @@ func TestIssueStaffValidation(t *testing.T) {
 			if err := amount.Scan("1"); err != nil {
 				return err
 			}
-			_, err := redpackets.IssueRedPacketForTest(context.Background(), ops.Env{Now: time.Now(), Caller: caller, Q: q}, &redpackets.IssueRedPacketInput{CustomerID: s.customer, Kind: "sold", FaceValue: amount, Price: &amount, ExpiresOn: "2999-01-01", SalesStaffIDs: ids})
+			_, err := redpackets.IssueRedPacketForTest(context.Background(), ops.Env{Now: time.Now(), Caller: caller, Q: q}, &redpackets.IssueRedPacketInput{CustomerID: s.customer, Kind: "sold", FaceValue: amount, Price: &amount, ExpiresOn: "2999-01-01", SalesStaffIDs: ids, Payments: []salepayments.Payment{{Method: "cash", Amount: amount}}})
 			return err
 		})
 		if ops.StatusOf(err) != 409 || err.Error() != "请选择一到十名不同的业绩归属人" {
@@ -160,7 +165,7 @@ func TestIssueBusinessDate(t *testing.T) {
 	s.SetNow(at)
 	for _, offset := range []int{0, -1} {
 		before := s.snapshot()
-		r := s.HTTPWithToken(t, s.Owner, "issue_red_packet", &redpackets.IssueRedPacketInput{CustomerID: s.customer, Kind: "gift", FaceValue: a, ExpiresOn: day.AddDate(0, 0, offset).Format(time.DateOnly)})
+		r := s.HTTPWithToken(t, s.Owner, "issue_red_packet", &redpackets.IssueRedPacketInput{CustomerID: s.customer, Kind: "gift", FaceValue: a, ExpiresOn: day.AddDate(0, 0, offset).Format(time.DateOnly), Payments: []salepayments.Payment{}})
 		if offset == 0 && (r.Status != 200 || r.Body["business_date"] != day.Format(time.DateOnly) || r.Body["status"] != "available") || offset == -1 && (r.Status != 409 || r.Detail() != "有效期不能早于今天" || s.snapshot() != before) {
 			t.Fatal(r)
 		}
@@ -194,7 +199,7 @@ func (s *fixture) expired() map[string]any {
 	s.t.Helper()
 	s.SetNow(time.Date(2020, 1, 1, 12, 0, 0, 0, settings.Location))
 	defer s.SetNow(time.Time{})
-	return s.call("issue_red_packet", map[string]any{"customer_id": s.customer, "kind": "gift", "face_value": "10", "expires_on": "2020-01-01"}, 200)
+	return s.call("issue_red_packet", map[string]any{"customer_id": s.customer, "kind": "gift", "face_value": "10", "expires_on": "2020-01-01", "payments": []any{}}, 200)
 }
 func TestRevokeRules(t *testing.T) {
 	s := open(t)
@@ -427,7 +432,7 @@ func TestRedPacketListBusinessDate(t *testing.T) {
 	var available, expired uuid.UUID
 	for i, expiry := range []time.Time{day, day.AddDate(0, 0, -1)} {
 		s.SetNow(expiry.Add(12 * time.Hour))
-		packet := s.call("issue_red_packet", map[string]any{"customer_id": s.customer, "kind": "gift", "face_value": "1", "expires_on": expiry.Format(time.DateOnly)}, 200)
+		packet := s.call("issue_red_packet", map[string]any{"customer_id": s.customer, "kind": "gift", "face_value": "1", "expires_on": expiry.Format(time.DateOnly), "payments": []any{}}, 200)
 		if i == 0 {
 			available = id(packet["id"])
 		} else {

@@ -39,6 +39,9 @@ func (c *Change) Scan(src any) error { return scanDecimal(&c.value, src, changeR
 // Sub 返回目标金额与原金额的精确差额。
 func (a Amount) Sub(before Amount) Change { return Change{value: a.value.Sub(before.value)} }
 
+// SubChange 返回金额减去有符号变动后的差额。
+func (a Amount) SubChange(b Change) Change { return Change{value: a.value.Sub(b.value)} }
+
 // Apply 将有符号变动加到金额上，结果为负或超过金额上限时返回错误。
 func (a Amount) Apply(delta Change) (Amount, error) {
 	var out Amount

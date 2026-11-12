@@ -484,7 +484,7 @@ func TestCommissionAllSources(t *testing.T) {
 	s.call("save_commission_scheme", map[string]any{"effective_from": settings.Date(time.Now()).Format(time.DateOnly), "scheme": map[string]any{"rules": rules, "overrides": []any{}, "excluded_staff": []any{}}}, 200)
 	line := s.laborLine("10", nil)
 	card := s.countCard(line, "count", 1, 0)
-	packet := s.call("issue_red_packet", map[string]any{"customer_id": s.customer, "kind": "sold", "face_value": "100", "price": "20", "expires_on": "2999-01-01", "sales_staff_ids": []any{s.Res.OwnerID}}, 200)
+	packet := s.call("issue_red_packet", map[string]any{"customer_id": s.customer, "kind": "sold", "face_value": "100", "price": "20", "expires_on": "2999-01-01", "sales_staff_ids": []any{s.Res.OwnerID}, "payments": testPayments("20")}, 200)
 	o := s.customerOrder(line)
 	s.paid(o, countPayment(card, firstLine(o), "100"))
 	for _, ch := range s.Channels() {
