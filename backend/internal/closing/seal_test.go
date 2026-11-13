@@ -355,3 +355,16 @@ func TestSealedDraftConfirmRejected(t *testing.T) {
 		t.Fatal(r)
 	}
 }
+
+func TestBackfillEntryDayNeedsNoClose(t *testing.T) {
+	f := open(t)
+	f.now("2026-11-10", 12)
+	r := f.Call(t, f.Owner, "open_order", map[string]any{
+		"gender": "female", "designated": false, "paper_date": "2026-11-09",
+		"items": []any{map[string]any{"item_id": f.item, "staff": []any{}}},
+	}, 200)
+	orderID := uuid.MustParse(r.Body["id"].(string))
+	f.checkout(orderID, payment("cash", "100"))
+	f.now("2026-11-11", 12)
+	seal(t, f, "2026-11-10")
+}

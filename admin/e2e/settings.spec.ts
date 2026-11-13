@@ -223,3 +223,22 @@ test('业绩九项设置由目录显示', async ({ page }) => {
     await expect(card.getByRole('button', { name: '修改', exact: true })).toBeVisible()
   }
 })
+
+// #23：小票抬头是单行文字，用带 maxlength 的输入框编辑并读回。
+test('小票抬头用文字编辑并显示', async ({ page }) => {
+  await login(page, owner.account, owner.password)
+  await page.goto('/settings')
+  const card = page.locator('[data-setting=receipt_header]')
+  await expect(card).toContainText('小票抬头')
+  await card.getByRole('button', { name: '修改', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '修改小票抬头', exact: true })
+  const input = dialog.getByLabel('小票抬头', { exact: true })
+  await expect(input).toHaveAttribute('maxlength', '60')
+  await input.fill('本店小票')
+  const tomorrow = await page.locator('input[type=date]').getAttribute('min')
+    .then(d => new Date(Date.parse(d! + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10))
+  await page.getByLabel('生效日期', { exact: true }).fill(tomorrow)
+  await page.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(card).toContainText(`${tomorrow} 起改为 本店小票`)
+})

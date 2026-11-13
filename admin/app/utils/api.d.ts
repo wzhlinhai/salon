@@ -1041,6 +1041,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/get_receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看结账单的小票数据 */
+        post: operations["get_receipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/get_redemption": {
         parameters: {
             query?: never;
@@ -4217,6 +4234,9 @@ export interface components {
         GetOrderInput: {
             id: string;
         };
+        GetReceiptInput: {
+            checkout_id: string;
+        };
         GetRotationInput: {
             /**
              * Format: date
@@ -4743,11 +4763,18 @@ export interface components {
             /** @enum {string} */
             gender: "male" | "female";
             items: components["schemas"]["OrderItemInput"][];
+            /**
+             * Format: date
+             * @description 补录单纸单上的营业日；不填为正常开单
+             */
+            paper_date?: string;
         };
         OpenVoidWindowInput: {
             password: string;
         };
         Order: {
+            /** @description 断网后用纸单补录的单，营业日是纸单上的日期 */
+            backfill: boolean;
             /** Format: date */
             business_date: string;
             checkout_id: string | null;
@@ -5035,6 +5062,8 @@ export interface components {
             card_id: string;
         };
         PreviewCheckout: {
+            /** @description 断网后用纸单补录的单，营业日是纸单上的日期 */
+            backfill: boolean;
             /** Format: date */
             business_date: string;
             checkout_id: string | null;
@@ -5097,6 +5126,64 @@ export interface components {
             card_type_id?: string;
             item_id: string;
             staff_id: string;
+        };
+        Receipt: {
+            backfill: boolean;
+            /** Format: date */
+            business_date: string;
+            cards: components["schemas"]["ReceiptCard"][];
+            /** Format: date-time */
+            checked_out_at: string;
+            checkout_id: string;
+            /** @description 已脱敏的顾客姓名；未识别顾客为空 */
+            customer_name: string | null;
+            footer: string;
+            header: string;
+            orders: components["schemas"]["ReceiptOrder"][];
+            /** @enum {string} */
+            paper_width: "58mm" | "80mm";
+            show_card_balance: boolean;
+            show_customer_name: boolean;
+            show_payments: boolean;
+            show_staff: boolean;
+            store_name: string;
+            total: string;
+        };
+        ReceiptCard: {
+            bonus: string;
+            card_id: string;
+            counts: components["schemas"]["ReceiptCardCount"][];
+            principal: string;
+        };
+        ReceiptCardCount: {
+            /** Format: int32 */
+            gift: number;
+            item_id: string;
+            name: string;
+            /** Format: int32 */
+            paid: number;
+        };
+        ReceiptItem: {
+            item_name: string;
+            net: string;
+            price: string;
+            staff_names: string[];
+        };
+        ReceiptOrder: {
+            backfill: boolean;
+            /** Format: date */
+            business_date: string;
+            customer_name: string | null;
+            id: string;
+            items: components["schemas"]["ReceiptItem"][];
+            net: string;
+            payments: components["schemas"]["ReceiptPayment"][];
+            receivable: string;
+        };
+        ReceiptPayment: {
+            amount: string;
+            method: string;
+            store_price: string | null;
         };
         RechargeInput: {
             bonus: string;
@@ -5455,10 +5542,10 @@ export interface components {
             is_default: boolean;
             key: string;
             /**
-             * @description 值的形式：时刻、时段、选项或整数
+             * @description 值的形式：时刻、时段、选项、整数或文字
              * @enum {string}
              */
-            kind: "time" | "time_range" | "choice" | "integer";
+            kind: "time" | "time_range" | "choice" | "integer" | "text";
             label: string;
             /** Format: int64 */
             max: number;
@@ -7834,6 +7921,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Payroll"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    get_receipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GetReceiptInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Receipt"];
                 };
             };
             /** @description Error */

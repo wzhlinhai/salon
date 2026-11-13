@@ -284,22 +284,27 @@ func (q *Queries) CheckoutPaymentsByMethod(ctx context.Context, arg CheckoutPaym
 }
 
 const collectionCreatedAts = `-- name: CollectionCreatedAts :many
-SELECT created_at FROM collections WHERE store_id=$1
+SELECT created_at, business_date FROM collections WHERE store_id=$1
 `
 
-func (q *Queries) CollectionCreatedAts(ctx context.Context, storeID uuid.UUID) ([]pgtype.Timestamptz, error) {
+type CollectionCreatedAtsRow struct {
+	CreatedAt    pgtype.Timestamptz
+	BusinessDate pgtype.Date
+}
+
+func (q *Queries) CollectionCreatedAts(ctx context.Context, storeID uuid.UUID) ([]CollectionCreatedAtsRow, error) {
 	rows, err := q.db.Query(ctx, collectionCreatedAts, storeID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []pgtype.Timestamptz
+	var items []CollectionCreatedAtsRow
 	for rows.Next() {
-		var created_at pgtype.Timestamptz
-		if err := rows.Scan(&created_at); err != nil {
+		var i CollectionCreatedAtsRow
+		if err := rows.Scan(&i.CreatedAt, &i.BusinessDate); err != nil {
 			return nil, err
 		}
-		items = append(items, created_at)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -308,22 +313,33 @@ func (q *Queries) CollectionCreatedAts(ctx context.Context, storeID uuid.UUID) (
 }
 
 const collectionEventAts = `-- name: CollectionEventAts :many
-SELECT at FROM collection_events WHERE store_id=$1
+SELECT e.at, c.business_date,
+       e.id = (SELECT e2.id FROM collection_events e2
+               WHERE e2.tenant_id=e.tenant_id AND e2.collection_id=e.collection_id
+               ORDER BY e2.at, e2.id LIMIT 1) AS initial
+FROM collection_events e JOIN collections c ON c.tenant_id=e.tenant_id AND c.id=e.collection_id
+WHERE e.store_id=$1
 `
 
-func (q *Queries) CollectionEventAts(ctx context.Context, storeID uuid.UUID) ([]pgtype.Timestamptz, error) {
+type CollectionEventAtsRow struct {
+	At           pgtype.Timestamptz
+	BusinessDate pgtype.Date
+	Initial      bool
+}
+
+func (q *Queries) CollectionEventAts(ctx context.Context, storeID uuid.UUID) ([]CollectionEventAtsRow, error) {
 	rows, err := q.db.Query(ctx, collectionEventAts, storeID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []pgtype.Timestamptz
+	var items []CollectionEventAtsRow
 	for rows.Next() {
-		var at pgtype.Timestamptz
-		if err := rows.Scan(&at); err != nil {
+		var i CollectionEventAtsRow
+		if err := rows.Scan(&i.At, &i.BusinessDate, &i.Initial); err != nil {
 			return nil, err
 		}
-		items = append(items, at)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -394,6 +410,7 @@ SELECT
  OR EXISTS (SELECT 1 FROM sale_payments x WHERE x.store_id=$1 AND x.business_date=$2)
  OR EXISTS (SELECT 1 FROM card_points_ledger x WHERE x.store_id=$1 AND x.business_date=$2)
  OR EXISTS (SELECT 1 FROM guest_visits x WHERE x.store_id=$1 AND x.business_date=$2)
+ OR EXISTS (SELECT 1 FROM collections x WHERE x.store_id=$1 AND x.business_date=$2)
  OR EXISTS (SELECT 1 FROM performance_entries x WHERE x.store_id=$1 AND x.business_date=$2)
  AS has_business
 `

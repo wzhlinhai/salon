@@ -200,12 +200,12 @@ func exportOrdersSheet(ctx context.Context, f *excelize.File, q *dbgen.Queries, 
 	for _, item := range items {
 		byOrder[item.OrderID] = append(byOrder[item.OrderID], item)
 	}
-	headers := []string{"单ID", "顾客ID", "性别", "指定", "状态", "营业日", "开单时间", "开单员工", "结账ID", "合并到", "项目行ID", "项目", "种类", "价格", "折扣", "价格来源", "添加时间", "去掉时间"}
+	headers := []string{"单ID", "顾客ID", "性别", "指定", "状态", "营业日", "开单时间", "开单员工", "结账ID", "合并到", "补录单", "项目行ID", "项目", "种类", "价格", "折扣", "价格来源", "添加时间", "去掉时间"}
 	rows := 0
 	err = streamSheet(f, exportOrders, headers, func(sw *excelize.StreamWriter) error {
 		line := 2
 		for _, order := range orders {
-			base := []string{order.ID.String(), order.CustomerID.String(), map[string]string{"male": "男", "female": "女"}[order.Gender], yesNo(order.Designated), order.Status, dateValue(order.BusinessDate), timeValue(order.OpenedAt), order.OpenedByName, idValue(order.CheckoutID), idValue(order.MergedInto)}
+			base := []string{order.ID.String(), order.CustomerID.String(), map[string]string{"male": "男", "female": "女"}[order.Gender], yesNo(order.Designated), order.Status, dateValue(order.BusinessDate), timeValue(order.OpenedAt), order.OpenedByName, idValue(order.CheckoutID), idValue(order.MergedInto), yesNo(order.Backfill)}
 			lines := byOrder[order.ID]
 			if len(lines) == 0 {
 				if err := setRow(sw, line, append(base, "", "", "", "", "", "", "", "")); err != nil {

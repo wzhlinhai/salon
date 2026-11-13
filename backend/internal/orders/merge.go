@@ -38,6 +38,9 @@ func mergeOrders(ctx context.Context, env ops.Env, in *MergeOrdersInput) (*Order
 			if !row.BusinessDate.Time.Equal(kept.BusinessDate.Time) {
 				return ops.Rule("不同营业日的单不能合并")
 			}
+			if row.Backfill != kept.Backfill {
+				return ops.Rule("补录单不能和普通单合并")
+			}
 		}
 		if err := env.Q.MoveMergedOrderItems(ctx, dbgen.MoveMergedOrderItemsParams{StoreID: env.Caller.StoreID, OrderID: kept.ID, MergedOrderIds: in.MergedOrderIDs}); err != nil {
 			return err

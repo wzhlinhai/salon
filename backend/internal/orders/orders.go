@@ -3,6 +3,7 @@ package orders
 import (
 	"context"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,10 +12,12 @@ import (
 
 	"github.com/wzhlinhai/salon/backend/internal/audit"
 	"github.com/wzhlinhai/salon/backend/internal/catalog"
+	"github.com/wzhlinhai/salon/backend/internal/closingguard"
 	"github.com/wzhlinhai/salon/backend/internal/customers"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/payrollmonth"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
@@ -26,6 +29,7 @@ func Register(r *ops.Registry) {
 	registerCheckout(r)
 	registerPreview(r)
 	registerVoid(r)
+	registerReceipt(r)
 	ops.Register(r, ops.Operation[OpenOrderInput, Order]{Name: "open_order", Summary: "开单并保存规则快照", Kind: ops.Write, Permission: perm.OrderCreate, AI: ops.AIDraft, Handle: openOrder})
 	ops.Register(r, ops.Operation[AddOrderItemInput, Order]{Name: "add_order_item", Summary: "向单添加项目行", Kind: ops.Write, Permission: perm.OrderCreate, AI: ops.AIDraft, Handle: addOrderItem})
 	ops.Register(r, ops.Operation[ListOpenOrdersInput, OrderList]{Name: "list_open_orders", Summary: "列出本店挂单", Kind: ops.Read, Permission: perm.OrderCreate, AI: ops.AIDirect, Handle: listOpenOrders})
@@ -41,6 +45,17 @@ func rowError(err error) error {
 
 func openOrder(ctx context.Context, env ops.Env, in *OpenOrderInput) (*Order, error) {
 	now := env.Now
+	backfill := in.PaperDate != nil
+	var snapshot settings.Snapshot
+	var err error
+	if backfill {
+		snapshot, err = paperSnapshot(ctx, env, *in.PaperDate)
+	} else {
+		snapshot, err = settings.TakeSnapshot(ctx, env.Q, env.Caller.TenantID, env.Caller.StoreID, now)
+	}
+	if err != nil {
+		return nil, err
+	}
 	var customerID uuid.UUID
 	if in.CustomerID != nil {
 		row, err := customers.LockReference(ctx, env, *in.CustomerID)
@@ -55,11 +70,7 @@ func openOrder(ctx context.Context, env ops.Env, in *OpenOrderInput) (*Order, er
 		}
 		customerID = id
 	}
-	snapshot, err := settings.TakeSnapshot(ctx, env.Q, env.Caller.TenantID, env.Caller.StoreID, now)
-	if err != nil {
-		return nil, err
-	}
-	row, err := env.Q.CreateOrder(ctx, dbgen.CreateOrderParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CustomerID: customerID, Gender: in.Gender, Designated: in.Designated, SettingsSnapshotID: snapshot.ID, BusinessDate: pgtype.Date{Time: snapshot.BusinessDate, Valid: true}, OpenedBy: env.Caller.StaffID})
+	row, err := env.Q.CreateOrder(ctx, dbgen.CreateOrderParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CustomerID: customerID, Gender: in.Gender, Designated: in.Designated, SettingsSnapshotID: snapshot.ID, BusinessDate: pgtype.Date{Time: snapshot.BusinessDate, Valid: true}, OpenedBy: env.Caller.StaffID, Backfill: backfill})
 	if err != nil {
 		return nil, err
 	}
@@ -76,6 +87,37 @@ func openOrder(ctx context.Context, env ops.Env, in *OpenOrderInput) (*Order, er
 		return nil, err
 	}
 	return out, nil
+}
+
+// paperSnapshot 校验补录日期，并取下纸单营业日生效的规则快照。
+func paperSnapshot(ctx context.Context, env ops.Env, paperDate string) (settings.Snapshot, error) {
+	day, err := time.Parse(settings.DateLayout, paperDate)
+	if err != nil {
+		// rule-untested: OpenOrderInput.PaperDate 的 schema format=date 在调用前校验
+		return settings.Snapshot{}, ops.Rule("补录日期的格式是 YYYY-MM-DD")
+	}
+	today, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, env.Now)
+	if err != nil {
+		return settings.Snapshot{}, err
+	}
+	if day.After(today) {
+		return settings.Snapshot{}, ops.Rule("补录日期不能晚于今天")
+	}
+	todayRules, err := settings.Effective(ctx, env.Q, env.Caller.StoreID, today)
+	if err != nil {
+		return settings.Snapshot{}, err
+	}
+	days := int(today.Sub(day).Hours() / 24)
+	if days > todayRules.BackfillMaxDays() {
+		return settings.Snapshot{}, ops.Rule("只能补录最近 " + strconv.Itoa(todayRules.BackfillMaxDays()) + " 个营业日的单")
+	}
+	if err := closingguard.Guard(ctx, env.Q, env.Caller.StoreID, day); err != nil {
+		return settings.Snapshot{}, err
+	}
+	if err := payrollmonth.Guard(ctx, env.Q, env.Caller.StoreID, payrollmonth.Of(day), "补录"); err != nil {
+		return settings.Snapshot{}, err
+	}
+	return settings.TakeSnapshotForDay(ctx, env.Q, env.Caller.TenantID, env.Caller.StoreID, day)
 }
 
 func addOrderItem(ctx context.Context, env ops.Env, in *AddOrderItemInput) (*Order, error) {
@@ -235,7 +277,7 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 		if gb == nil {
 			gb = []OrderGroupbuy{}
 		}
-		out = append(out, Order{Void: byVoid[r.ID], CheckoutID: r.CheckoutID, Payments: ps, Groupbuy: gb, ID: r.ID, CustomerID: r.CustomerID, Gender: r.Gender, Designated: r.Designated, Status: r.Status, MergedInto: r.MergedInto, BusinessDate: r.BusinessDate.Time.Format(time.DateOnly), OpenedBy: r.OpenedBy, OpenedAt: r.OpenedAt.Time, Items: items, Receivable: totals[r.ID].Format(), Discount: discounts[r.ID].Format(), Net: nets[r.ID].Format()})
+		out = append(out, Order{Void: byVoid[r.ID], CheckoutID: r.CheckoutID, Payments: ps, Groupbuy: gb, ID: r.ID, CustomerID: r.CustomerID, Gender: r.Gender, Designated: r.Designated, Status: r.Status, MergedInto: r.MergedInto, BusinessDate: r.BusinessDate.Time.Format(time.DateOnly), Backfill: r.Backfill, OpenedBy: r.OpenedBy, OpenedAt: r.OpenedAt.Time, Items: items, Receivable: totals[r.ID].Format(), Discount: discounts[r.ID].Format(), Net: nets[r.ID].Format()})
 	}
 	return out, nil
 }

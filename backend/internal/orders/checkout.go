@@ -11,6 +11,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/payments"
+	"github.com/wzhlinhai/salon/backend/internal/payrollmonth"
 	"github.com/wzhlinhai/salon/backend/internal/performance"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
 	"github.com/wzhlinhai/salon/backend/internal/rotation"
@@ -50,9 +51,28 @@ func checkoutOrders(ctx context.Context, env ops.Env, in *CheckoutOrdersInput) (
 		if err != nil {
 			return err
 		}
-		day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, now)
+		today, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, now)
 		if err != nil {
 			return err
+		}
+		day := today
+		backfill := false
+		for i, row := range rows {
+			orderDay := today
+			if row.Backfill {
+				orderDay = row.BusinessDate.Time
+				backfill = true
+			}
+			if i == 0 {
+				day = orderDay
+			} else if !orderDay.Equal(day) {
+				return ops.Rule("一次结账只能是同一个营业日")
+			}
+		}
+		if backfill {
+			if err := payrollmonth.Guard(ctx, env.Q, env.Caller.StoreID, payrollmonth.Of(day), "补录"); err != nil {
+				return err
+			}
 		}
 		for i, row := range rows {
 			for _, payment := range in.Orders[i].Payments {
@@ -206,8 +226,11 @@ func checkoutOrders(ctx context.Context, env ops.Env, in *CheckoutOrdersInput) (
 			if err := env.Q.MarkOrderPaid(ctx, dbgen.MarkOrderPaidParams{StoreID: env.Caller.StoreID, ID: rows[i].ID, CheckoutID: &checkout.ID}); err != nil {
 				return err
 			}
-			if err := rotation.AdvanceAfterCheckout(ctx, env, rows[i].ID); err != nil {
-				return err
+			// 补录单不推进今天的轮牌：它不是今天实际发生的服务。
+			if !rows[i].Backfill {
+				if err := rotation.AdvanceAfterCheckout(ctx, env, rows[i].ID); err != nil {
+					return err
+				}
 			}
 			rows[i].Status = "paid"
 			rows[i].CheckoutID = &checkout.ID

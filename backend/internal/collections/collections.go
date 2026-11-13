@@ -94,24 +94,20 @@ func get(ctx context.Context, env ops.Env, in *GetCollectionInput) (*Collection,
 	return view(row), nil
 }
 
-// Initiate 在调用者事务内发起一笔关联单据的收款，启停取收款时的营业日设置。
-func Initiate(ctx context.Context, env ops.Env, code string, orderID uuid.UUID, paymentID *uuid.UUID, amount money.Amount, externalRef *string) (*Collection, error) {
+// Initiate 在调用者事务内发起一笔关联单据的收款，businessDate 是该笔收款归属的营业日。
+func Initiate(ctx context.Context, env ops.Env, code string, orderID uuid.UUID, paymentID *uuid.UUID, amount money.Amount, externalRef *string, businessDate time.Time) (*Collection, error) {
 	r, err := Lookup(code)
 	if err != nil {
 		return nil, err
 	}
-	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, env.Now)
-	if err != nil {
-		return nil, err
-	}
-	rules, err := settings.Effective(ctx, env.Q, env.Caller.StoreID, day)
+	rules, err := settings.Effective(ctx, env.Q, env.Caller.StoreID, businessDate)
 	if err != nil {
 		return nil, err
 	}
 	if !rules.CollectionChannelEnabled(code) {
 		return nil, ops.Rule("收款通道已停用：" + r.Name)
 	}
-	row, err := env.Q.CreateCollection(ctx, dbgen.CreateCollectionParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, OrderID: orderID, OrderPaymentID: paymentID, Channel: code, Amount: amount, ExternalRef: externalRef, CreatedBy: env.Caller.StaffID, CreatedAt: pgtype.Timestamptz{Time: env.Now, Valid: true}})
+	row, err := env.Q.CreateCollection(ctx, dbgen.CreateCollectionParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, OrderID: orderID, OrderPaymentID: paymentID, Channel: code, Amount: amount, ExternalRef: externalRef, CreatedBy: env.Caller.StaffID, CreatedAt: pgtype.Timestamptz{Time: env.Now, Valid: true}, BusinessDate: pgtype.Date{Time: businessDate, Valid: true}})
 	if err != nil {
 		return nil, err
 	}
@@ -148,9 +144,14 @@ func change(ctx context.Context, env ops.Env, in *ChangeCollectionInput, to stri
 	if err != nil {
 		return nil, err
 	}
-	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, row.CreatedAt.Time)
-	if err != nil {
-		return nil, err
+	day := row.CreatedAt.Time
+	if row.BusinessDate.Valid {
+		day = row.BusinessDate.Time
+	} else {
+		day, err = settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, day)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if err := closingguard.Guard(ctx, env.Q, env.Caller.StoreID, day); err != nil {
 		return nil, err
@@ -230,12 +231,22 @@ func reconcile(ctx context.Context, env ops.Env, code string, day time.Time) (Su
 		return Summary{}, err
 	}
 	times := make([]time.Time, len(rows))
+	explicit := make([]*time.Time, len(rows))
 	for i, row := range rows {
 		times[i] = row.CreatedAt.Time
+		if row.BusinessDate.Valid {
+			day := row.BusinessDate.Time
+			explicit[i] = &day
+		}
 	}
 	days, err := settings.BusinessDates(ctx, env.Q, env.Caller.StoreID, times)
 	if err != nil {
 		return Summary{}, err
+	}
+	for i, day := range explicit {
+		if day != nil {
+			days[i] = *day
+		}
 	}
 	out := Summary{BusinessDate: day.Format(time.DateOnly), Channel: code, Amounts: map[string]string{}, Counts: map[string]int{}}
 	totals := map[string]money.Total{}

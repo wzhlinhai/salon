@@ -67,6 +67,20 @@ func TestUnconfiguredSettingsShowSystemDefault(t *testing.T) {
 			if !reflect.DeepEqual(hours["value"], want) || hours["is_default"] != true {
 				t.Fatalf("business_hours = %v, want default %v unconfigured", hours, want)
 			}
+			for key, value := range map[string]any{
+				"backfill_max_days": float64(3), "receipt_paper_width": "80mm", "receipt_header": "",
+				"receipt_footer": "谢谢惠顾", "receipt_show_customer_name": "show", "receipt_show_staff": "show",
+				"receipt_show_payments": "show", "receipt_show_card_balance": "show",
+			} {
+				got := setting(t, r, key)
+				if !reflect.DeepEqual(got["value"], value) || got["default"] != value || got["is_default"] != true {
+					t.Fatalf("%s = %v, want default %v", key, got, value)
+				}
+			}
+			header := setting(t, r, "receipt_header")
+			if header["kind"] != "text" || header["max"] != float64(60) {
+				t.Fatalf("receipt_header = %v, want text max 60", header)
+			}
 		})
 	}
 }
@@ -518,4 +532,46 @@ func TestSettingsOfAnotherStoreDoNotApply(t *testing.T) {
 		}
 		return nil
 	})
+}
+
+func TestTextSettingValidationAndReadBack(t *testing.T) {
+	s := open(t)
+	today := day(0)
+	for _, tc := range []struct {
+		value  any
+		detail string
+	}{
+		{123, "小票抬头须为单行文字"},
+		{strings.Repeat("字", 61), "小票抬头最多 60 个字"},
+		{"第一行\n第二行", "小票抬头不能包含换行"},
+	} {
+		r := s.HTTP(t, &s.owner, "change_setting", map[string]any{"key": settings.KeyReceiptHeader, "value": tc.value, "effective_from": today})
+		if r.Status != http.StatusConflict || r.Body["detail"] != tc.detail {
+			t.Fatalf("value %v: %d %v", tc.value, r.Status, r.Body)
+		}
+	}
+	header := strings.Repeat("头", 60)
+	if r := s.change(s.owner, settings.KeyReceiptHeader, header, today, http.StatusOK); r.Status != http.StatusOK {
+		t.Fatal(r)
+	}
+	for _, ch := range s.Channels() {
+		got := setting(t, ch.Call(t, s.owner, "get_settings", map[string]any{"date": today}), settings.KeyReceiptHeader)
+		if got["value"] != header || got["is_default"] != false {
+			t.Fatalf("%s receipt_header = %v", ch.Name, got)
+		}
+	}
+	if r := s.change(s.owner, settings.KeyReceiptHeader, "", today, http.StatusOK); r.Status != http.StatusOK {
+		t.Fatal(r)
+	}
+	got := setting(t, s.HTTP(t, &s.owner, "get_settings", map[string]any{"date": today}), settings.KeyReceiptHeader)
+	if got["value"] != "" || got["is_default"] != false {
+		t.Fatal(got)
+	}
+	if r := s.change(s.owner, settings.KeyReceiptHeader, nil, today, http.StatusOK); r.Status != http.StatusOK {
+		t.Fatal(r)
+	}
+	got = setting(t, s.HTTP(t, &s.owner, "get_settings", map[string]any{"date": today}), settings.KeyReceiptHeader)
+	if got["value"] != "" || got["is_default"] != true {
+		t.Fatal(got)
+	}
 }

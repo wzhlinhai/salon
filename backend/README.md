@@ -71,8 +71,9 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 ## 门店设置（ADR-0002）
 
-- 设置值支持 time（时刻）、time_range（时段）、choice（Options 中的字符串）和 integer（Min/Max 内的非负整数）。`member_price_rule` 默认会员价优先，也可取较低价；`points_per_recharge_yuan` 为每积一分所需充值本金元数，默认 0（不积分），范围 0–100000。开卡、充值和升级补差价按当日规则积分，赠送金、转余额和调整余额不积分。`guest_count_split` 默认将客次记给第一个岗位的员工，也可选择单上员工均分，当天可生效。`performance_split` 默认按岗位比例分多人业绩，也可选择均分，项目没设岗位比例时均分；`performance_ratio_*` 为九种支付方式各自的 0–100 业绩比例，本金、现金、银联、微信、支付宝、团购和挂账默认 100%，赠送金和红包默认 0%；购买次数、赠送次数的耗卡业绩比例默认分别为 100%、0%，均可当天生效。退卡赠送金 `card_refund_bonus` 默认不退、作废，可选择扣回未被撤单退回的消费赠送金；`card_refund_fee_percent` 为 0–100 的退款手续费百分比，默认 0，当天可生效。撤单授权窗口 `void_window_minutes` 为 0（默认关闭）或 1–60 分钟，当天可生效。
+- 设置值支持 time（时刻）、time_range（时段）、choice（Options 中的字符串）、integer（Min/Max 内的非负整数）和 text（单行文字，可为空，最多 Max 个字符）。`member_price_rule` 默认会员价优先，也可取较低价；`points_per_recharge_yuan` 为每积一分所需充值本金元数，默认 0（不积分），范围 0–100000。开卡、充值和升级补差价按当日规则积分，赠送金、转余额和调整余额不积分。`guest_count_split` 默认将客次记给第一个岗位的员工，也可选择单上员工均分，当天可生效。`performance_split` 默认按岗位比例分多人业绩，也可选择均分，项目没设岗位比例时均分；`performance_ratio_*` 为九种支付方式各自的 0–100 业绩比例，本金、现金、银联、微信、支付宝、团购和挂账默认 100%，赠送金和红包默认 0%；购买次数、赠送次数的耗卡业绩比例默认分别为 100%、0%，均可当天生效。退卡赠送金 `card_refund_bonus` 默认不退、作废，可选择扣回未被撤单退回的消费赠送金；`card_refund_fee_percent` 为 0–100 的退款手续费百分比，默认 0，当天可生效。撤单授权窗口 `void_window_minutes` 为 0（默认关闭）或 1–60 分钟，当天可生效。
 - 考勤宽限分钟 `attendance_grace_minutes` 默认 0，范围 0–60，当天可生效，仅决定迟到、早退是否计异常。
+断网补录：可补录天数 `backfill_max_days` 默认 3，范围 0–31，0 为只能补录当天；按今天执行的设置检查纸单日期。小票设置 `receipt_paper_width` 为 58mm 或 80mm（默认 80mm），`receipt_header`/`receipt_footer` 为最多 60 字的单行文字（抬头留空表示打印门店名称，页尾默认“谢谢惠顾”），`receipt_show_customer_name`、`receipt_show_staff`、`receipt_show_payments`、`receipt_show_card_balance` 为显示/不显示（默认都显示），均可当天生效。
 - 轮牌设置：`rotation_order_rule` 新一天队列的初始顺序（先到先排、接昨天顺序、每晚按成员默认顺序重置，默认先到先排）；`rotation_designated_takes_turn` 点客结账后是否占轮排到队尾（默认占轮）；`rotation_skip_when_serving_designated` 队首正在服务点客时是否自动跳过并记录（默认跳过）；`rotation_skip_policy` 被跳过时排到队尾还是保留原位（默认排到队尾）；`rotation_half_rule` 半轮规则（不记、按价格、按项目、按预约，默认不记）；`rotation_half_price_below` 按价格记半轮的实收上限（元，默认 0 表示不按价格）。预约设置：`booking_min_lead_minutes` 顾客自助预约至少提前的分钟数（默认 0，前台代约不检查）；`booking_max_days_ahead` 从今天起最多可约的天数（默认 30）；`booking_default_minutes` 未选项目时的默认服务时长（默认 60）。营业时段复用 `business_hours`，预约必须完整落在开门到关门之间，关门须晚于开门，不支持跨天。规则按营业日生效，收银推进和每次轮牌操作都读取调用时刻执行的设置。
 - 设置项在 `internal/settings` 的 `Catalogue` 里声明：名称、值的形式、系统默认做法和校验。新的业务规则（例如各项业务的做法选择）在这里加一项，再给 `Rules` 加一个读取它的方法。
 - 每次修改都在 `setting_changes` 追加一行：改前、改后、生效日期、修改人、修改时间。`salon_app` 只有 SELECT 和 INSERT 权限。某个营业日执行的值，取生效日期不晚于这一天的最大者，同一生效日期取最后保存的一次（修改时间，再按 ID）；没有修改，或者改成了"恢复默认"，就用系统当前的默认做法。这条选法只在 `internal/inforce` 写一份，门店设置、提成方案版本和底薪共用，各类历史提供自己的保存顺序（提成方案按版本号；设置和底薪按保存时间、ID），SQL 只按门店读出历史；设置的"恢复默认"只在 settings 的 `resolve` 换成目录默认值。生效日期不能早于今天；划分营业日的设置（`fromTomorrow`，例如营业日结束时间）最早明天生效。同一项设置的修改用咨询锁排队，改前值才接得上前一次的改后值。
@@ -93,13 +94,15 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 结账、撤单的支付效果统一经过 `internal/payments`。
 
-`internal/collections` 管理统一收款对象。通道在启动时通过 `RegisterChannel` 注册，实现 `Channel` 的 Initiate、Query、Cancel、Refund、Reconcile；注册同时生成默认 on 的 `collection_channel_<code>` choice 设置（on/off）。现金和银联登记是同步登记通道，不调用支付机构；银联小票号通过结账支付的 `external_ref` 留存。结账按注册的 PaymentMethod 路由，每笔现金、银联支付在同一事务内生成一笔 succeeded 收款，以唯一的 order_payment_id 关联原支付；其余支付沿用原流程。停用只限制新发起，读取收款时营业日生效设置，不使用开单快照；已有收款仍可查询、撤销或退款。
+`internal/collections` 管理统一收款对象。通道在启动时通过 `RegisterChannel` 注册，实现 `Channel` 的 Initiate、Query、Cancel、Refund、Reconcile；注册同时生成默认 on 的 `collection_channel_<code>` choice 设置（on/off）。现金和银联登记是同步登记通道，不调用支付机构；银联小票号通过结账支付的 `external_ref` 留存。结账按注册的 PaymentMethod 路由，每笔现金、银联支付在同一事务内生成一笔 succeeded 收款，以唯一的 order_payment_id 关联原支付；其余支付沿用原流程。停用只限制新发起，读取收款时按 `collections.business_date` 换算营业日（补录单写入纸单日；为空的历史行按 `created_at` 换算）取生效设置，不使用开单快照；已有收款仍可查询、撤销或退款，撤销/退款的封账护栏也用这个营业日。
 
 收款状态由一张转换表校验：pending → processing/succeeded/failed/cancelled，processing → succeeded/failed/cancelled，succeeded → refunded/cancelled，failed/cancelled/refunded 为终态。撤销和退款先按本店锁收款（FOR NO KEY UPDATE），再检查状态、调用通道、更新并追加事件和 collection 审计；退款原因不能为空。撤单在原有支付冲回后按登记顺序锁收款并撤销，任一步失败则整单回滚；已进入终态的收款会拒绝再次撤销。list_collections、get_collection 为 Read/AIDirect，cancel_collection、refund_collection 为 Write/AIDraft，均需要 payment.collect；视图和日志不关联顾客、不含顾客资料。
 
-Reconcile 按收款创建时刻的营业日、通道和当前状态汇总金额与笔数，营业日由 settings.BusinessDates 批量换算；它是查询当时的收款汇总，供日结保存快照，不是按退款发生日统计的资金流水。collections 仅可更新 status、updated_at、external_ref；collection_events 与 order_payments 都只追加。
+Reconcile 按 `collections.business_date`（补录单写入纸单日；为空的历史行按 `created_at` 换算）的营业日、通道和当前状态汇总金额与笔数；它是查询当时的收款汇总，供日结保存快照，不是按退款发生日统计的资金流水。collections 仅可更新 status、updated_at、external_ref；collection_events 与 order_payments 都只追加。
 
-开单必须选择男客或女客、指定或非指定；未提供顾客时自动创建未识别顾客，由开单权限覆盖。开单保存规则快照和营业日，后续加项目读取快照规则。项目行保留添加时的项目名称，并复制项目岗位，允许必填岗位暂空；级别价来自第一个岗位的员工，没有员工或级别价时取标准价。多人贡献只在项目行记录一次价格，应收按项目行求和。
+开单必须选择男客或女客、指定或非指定；未提供顾客时自动创建未识别顾客，由开单权限覆盖。开单保存规则快照和营业日，后续加项目读取快照规则。
+
+`open_order` 的 `paper_date` 表示补录单纸单上的营业日：营业日就是这一天，规则快照取这一天生效的设置；日期不能晚于今天、不能早于 `backfill_max_days` 个营业日，且不能是已封账的日子。单据行记 `backfill=true`，所有单据视图（含全量导出的“单据”表“补录单”列）都返回它。结账一张补录单时，收款、业绩、提成来源、卡流水、欠款、红包和客次都归到纸单营业日，结账记录本身也用这一天；一次结账只能有一个有效营业日，补录单不能和别的营业日一起结。补录单不推进当天的轮牌，也不能通过 `assign_turn` 接轮牌；`merge_orders` 拒绝补录单和普通单混合合并。纸单营业日所在的工资结算月已锁定时，开单和结账都拒绝补录（再次检查是因为开单后可能锁月）。撤单仍按撤单当天记录反向单和退回流水；改单/撤单的时间窗口、预览的卡有效期按单自己的营业日判断。`get_receipt`（Read/AIDirect，`payment.collect`）按结账单返回门店名称、当天执行的小票设置、脱敏后的顾客姓名（不返回手机号）、项目与员工、按方式汇总的支付（团购带门店标价）、小票总额，以及本次结账用到卡的结账后余额/剩余次数（取自结账写入的卡流水，重打不随后续充值变化）。顾客不在调用者的查看范围时只把该顾客的姓名置空、卡余额隐藏，其余小票内容仍返回。项目行保留添加时的项目名称，并复制项目岗位，允许必填岗位暂空；级别价来自第一个岗位的员工，没有员工或级别价时取标准价。多人贡献只在项目行记录一次价格，应收按项目行求和。
 
 锁按顾客 → 单 → 项目 → 按 UUID 排序的员工取得：已有顾客、项目和员工只检查状态，用 FOR SHARE；加项目在读改前视图前用 FOR NO KEY UPDATE 锁单。单仅授予 customer_id、status、merged_into、checkout_id 列的 UPDATE，顾客合并仍可改挂 customer_id。项目行和岗位保留原记录：项目行仅授予 order_id、价格、来源、级别、改价原因及去掉标记列的 UPDATE，岗位仅授予 staff_id 的 UPDATE；三张表都不允许 DELETE。
 
@@ -414,6 +417,8 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 本任务没有服务商协议文档，因此不提供无限聚核 HTTP 实现，也不在生产注册测试适配器。
 
 `verify_coupon`、`redeem_coupon`、`revoke_coupon` 均为 AINone；`get_redemption` 为 AIDirect。
+
+开发环境可用 `GROUPBUY_FAKE_PLATFORMS=meituan,douyin` 启动内存假平台（`fakeprovider`），用于手工联调和端到端测试：没有脚本响应时，没见过的券码验为 unused，核销/撤销/查询按内存状态机返回，核销时刻取启动时刻；平台协议不返回购买价或平台商品 ID，这些仍由团购商品和核销记录留存。启动时打印一行警告。`scripts/dev.sh up|reset` 会为本地后端设置它，生产环境必须保持未设置。
 四者均要求 `groupbuy.redeem`，记录无关联顾客的 coupon_redemption 审计。
 核销本身不写订单；核销成功后可以另行关联挂单，也可以暂不关联。
 

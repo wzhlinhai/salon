@@ -1,6 +1,6 @@
 -- name: CreateCollection :one
-INSERT INTO collections (tenant_id,store_id,order_id,order_payment_id,channel,amount,status,external_ref,created_by,created_at,updated_at)
-VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$9) RETURNING *;
+INSERT INTO collections (tenant_id,store_id,order_id,order_payment_id,channel,amount,status,external_ref,created_by,created_at,updated_at,business_date)
+VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$9,$10) RETURNING *;
 
 -- name: GetCollection :one
 SELECT * FROM collections WHERE store_id=sqlc.arg(store_id) AND id=sqlc.arg(id);

@@ -576,7 +576,7 @@ func (q *Queries) ExportOrderPayments(ctx context.Context, storeID uuid.UUID) ([
 
 const exportOrders = `-- name: ExportOrders :many
 SELECT o.id, o.customer_id, o.gender, o.designated, o.status, o.business_date, o.opened_at, s.name AS opened_by_name,
-       o.checkout_id, o.merged_into
+       o.checkout_id, o.merged_into, o.backfill
 FROM orders o JOIN staff s ON s.id=o.opened_by
 WHERE o.store_id=$1 ORDER BY o.opened_at, o.id
 `
@@ -592,6 +592,7 @@ type ExportOrdersRow struct {
 	OpenedByName string
 	CheckoutID   *uuid.UUID
 	MergedInto   *uuid.UUID
+	Backfill     bool
 }
 
 func (q *Queries) ExportOrders(ctx context.Context, storeID uuid.UUID) ([]ExportOrdersRow, error) {
@@ -614,6 +615,7 @@ func (q *Queries) ExportOrders(ctx context.Context, storeID uuid.UUID) ([]Export
 			&i.OpenedByName,
 			&i.CheckoutID,
 			&i.MergedInto,
+			&i.Backfill,
 		); err != nil {
 			return nil, err
 		}

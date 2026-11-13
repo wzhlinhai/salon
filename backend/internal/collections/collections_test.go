@@ -40,7 +40,11 @@ func initiate(t *testing.T, s *optest.Shop, code string, o uuid.UUID) *collectio
 	t.Helper()
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	env := ops.Env{Q: dbgen.New(tx), Caller: s.MustCaller(s.Owner), Now: s.Now()}
-	row, err := collections.Initiate(context.Background(), env, code, o, nil, amount(), new("receipt-42"))
+	day, err := settings.BusinessDate(context.Background(), env.Q, s.Res.StoreID, env.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err := collections.Initiate(context.Background(), env, code, o, nil, amount(), new("receipt-42"), day)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +187,12 @@ func TestDisabled(t *testing.T) {
 		call(t, s, "change_setting", map[string]any{"key": "collection_channel_" + tc.code, "value": "off", "effective_from": day})
 		before := snapshot(t, s)
 		tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-		_, err := collections.Initiate(context.Background(), ops.Env{Q: dbgen.New(tx), Caller: s.MustCaller(s.Owner), Now: s.Now()}, tc.code, o, nil, amount(), nil)
+		env := ops.Env{Q: dbgen.New(tx), Caller: s.MustCaller(s.Owner), Now: s.Now()}
+		day, err := settings.BusinessDate(context.Background(), env.Q, s.Res.StoreID, env.Now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = collections.Initiate(context.Background(), env, tc.code, o, nil, amount(), nil, day)
 		if err == nil || err.Error() != ops.Rule("收款通道已停用："+tc.name).Error() {
 			t.Fatal(err)
 		}
@@ -686,4 +695,69 @@ func TestCollectionMigrationDownAuditCheck(t *testing.T) {
 			t.Fatal(tc.kind, err)
 		}
 	}
+}
+
+func initiateOn(t *testing.T, s *optest.Shop, code string, o uuid.UUID, day time.Time) *collections.Collection {
+	t.Helper()
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	env := ops.Env{Q: dbgen.New(tx), Caller: s.MustCaller(s.Owner), Now: s.Now()}
+	row, err := collections.Initiate(context.Background(), env, code, o, nil, amount(), nil, day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbtest.Commit(t, tx)
+	return row
+}
+
+func cashSummary(t *testing.T, env ops.Env, day time.Time) collections.Summary {
+	t.Helper()
+	all, err := collections.ReconcileAll(context.Background(), env, day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, summary := range all {
+		if summary.Channel == "cash" {
+			return summary
+		}
+	}
+	t.Fatal("cash summary missing")
+	return collections.Summary{}
+}
+
+func TestReconcileBusinessDateOverridesCreatedAt(t *testing.T) {
+	s := optest.OpenShop(t)
+	now := time.Date(2027, 3, 5, 1, 30, 0, 0, settings.Location)
+	s.SetNow(now)
+	o := order(t, s)
+	paper := settings.Date(now).AddDate(0, 0, -1)
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	env := ops.Env{Q: dbgen.New(tx), Caller: s.MustCaller(s.Owner), Now: now}
+	if _, err := collections.Initiate(context.Background(), env, "cash", o, nil, amount(), nil, paper); err != nil {
+		t.Fatal(err)
+	}
+	// 历史行没有 business_date，仍按 created_at 的营业日归属。
+	dbtest.Exec(t, tx, `INSERT INTO collections(tenant_id,store_id,order_id,channel,amount,status,created_by,created_at,updated_at) VALUES($1,$2,$3,'cash',7,'succeeded',$4,$5,$5)`, s.Res.TenantID, s.Res.StoreID, o, s.Res.OwnerID, now)
+	paperSum := cashSummary(t, env, paper)
+	entrySum := cashSummary(t, env, settings.Date(now))
+	dbtest.Rollback(t, tx)
+	if !reflect.DeepEqual(paperSum.Amounts, map[string]string{"succeeded": "10.00"}) || paperSum.Counts["succeeded"] != 1 {
+		t.Fatalf("paper day = %+v", paperSum)
+	}
+	if !reflect.DeepEqual(entrySum.Amounts, map[string]string{"succeeded": "7.00"}) || entrySum.Counts["succeeded"] != 1 {
+		t.Fatalf("entry day = %+v", entrySum)
+	}
+}
+
+func TestSealedCollectionUsesBusinessDate(t *testing.T) {
+	s := optest.OpenShop(t)
+	now := time.Date(2027, 3, 5, 12, 0, 0, 0, settings.Location)
+	s.SetNow(now)
+	o := order(t, s)
+	paper := settings.Date(now).AddDate(0, 0, -1)
+	row := initiateOn(t, s, "cash", o, paper)
+	call(t, s, "close_day", map[string]any{"date": paper.Format(settings.DateLayout), "cash_counted": "0", "unionpay_actual": "0", "wechat_actual": "0", "alipay_actual": "0"})
+	call(t, s, "seal_day", map[string]any{"date": paper.Format(settings.DateLayout)})
+	detail := "该营业日已封账（" + paper.Format(settings.DateLayout) + "）"
+	refuse(t, s, "cancel_collection", collections.ChangeCollectionInput{ID: row.ID}, detail)
+	refuse(t, s, "refund_collection", collections.ChangeCollectionInput{ID: row.ID, Reason: "退"}, detail)
 }

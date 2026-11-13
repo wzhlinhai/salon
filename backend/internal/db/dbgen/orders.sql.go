@@ -100,8 +100,8 @@ func (q *Queries) CreateCheckout(ctx context.Context, arg CreateCheckoutParams) 
 }
 
 const createOrder = `-- name: CreateOrder :one
-INSERT INTO orders (tenant_id,store_id,customer_id,gender,designated,settings_snapshot_id,business_date,opened_by)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into, checkout_id
+INSERT INTO orders (tenant_id,store_id,customer_id,gender,designated,settings_snapshot_id,business_date,opened_by,backfill)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into, checkout_id, backfill
 `
 
 type CreateOrderParams struct {
@@ -113,6 +113,7 @@ type CreateOrderParams struct {
 	SettingsSnapshotID uuid.UUID
 	BusinessDate       pgtype.Date
 	OpenedBy           uuid.UUID
+	Backfill           bool
 }
 
 func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error) {
@@ -125,6 +126,7 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		arg.SettingsSnapshotID,
 		arg.BusinessDate,
 		arg.OpenedBy,
+		arg.Backfill,
 	)
 	var i Order
 	err := row.Scan(
@@ -141,6 +143,7 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		&i.OpenedAt,
 		&i.MergedInto,
 		&i.CheckoutID,
+		&i.Backfill,
 	)
 	return i, err
 }
@@ -242,8 +245,31 @@ func (q *Queries) CreateOrderVoid(ctx context.Context, arg CreateOrderVoidParams
 	return i, err
 }
 
+const getCheckout = `-- name: GetCheckout :one
+SELECT tenant_id, store_id, id, business_date, checked_out_by, at FROM checkouts WHERE store_id=$1 AND id=$2
+`
+
+type GetCheckoutParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) GetCheckout(ctx context.Context, arg GetCheckoutParams) (Checkout, error) {
+	row := q.db.QueryRow(ctx, getCheckout, arg.StoreID, arg.ID)
+	var i Checkout
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.BusinessDate,
+		&i.CheckedOutBy,
+		&i.At,
+	)
+	return i, err
+}
+
 const getOrder = `-- name: GetOrder :one
-SELECT tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into, checkout_id FROM orders WHERE store_id=$1 AND id=$2
+SELECT tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into, checkout_id, backfill FROM orders WHERE store_id=$1 AND id=$2
 `
 
 type GetOrderParams struct {
@@ -268,6 +294,7 @@ func (q *Queries) GetOrder(ctx context.Context, arg GetOrderParams) (Order, erro
 		&i.OpenedAt,
 		&i.MergedInto,
 		&i.CheckoutID,
+		&i.Backfill,
 	)
 	return i, err
 }
@@ -309,8 +336,153 @@ func (q *Queries) GetOrderItem(ctx context.Context, arg GetOrderItemParams) (Ord
 	return i, err
 }
 
+const listCheckoutCardBalances = `-- name: ListCheckoutCardBalances :many
+SELECT p.card_id, card.customer_id, l.principal_after, l.bonus_after, l.at
+FROM order_payments p
+JOIN cards card ON card.tenant_id=p.tenant_id AND card.id=p.card_id
+JOIN card_ledger l ON l.tenant_id=p.tenant_id AND l.id=p.card_ledger_id
+WHERE p.store_id=$1 AND p.checkout_id=$2 AND p.method='card'
+ORDER BY p.card_id, l.at DESC, l.id DESC
+`
+
+type ListCheckoutCardBalancesParams struct {
+	StoreID    uuid.UUID
+	CheckoutID uuid.UUID
+}
+
+type ListCheckoutCardBalancesRow struct {
+	CardID         *uuid.UUID
+	CustomerID     uuid.UUID
+	PrincipalAfter money.Amount
+	BonusAfter     money.Amount
+	At             pgtype.Timestamptz
+}
+
+func (q *Queries) ListCheckoutCardBalances(ctx context.Context, arg ListCheckoutCardBalancesParams) ([]ListCheckoutCardBalancesRow, error) {
+	rows, err := q.db.Query(ctx, listCheckoutCardBalances, arg.StoreID, arg.CheckoutID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCheckoutCardBalancesRow
+	for rows.Next() {
+		var i ListCheckoutCardBalancesRow
+		if err := rows.Scan(
+			&i.CardID,
+			&i.CustomerID,
+			&i.PrincipalAfter,
+			&i.BonusAfter,
+			&i.At,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCheckoutCountBalances = `-- name: ListCheckoutCountBalances :many
+SELECT p.card_id, card.customer_id, c.item_id, i.name AS item_name, c.paid_after, c.gift_after, c.at
+FROM order_payments p
+JOIN cards card ON card.tenant_id=p.tenant_id AND card.id=p.card_id
+JOIN card_count_ledger c ON c.tenant_id=p.tenant_id AND c.id=p.card_count_ledger_id
+JOIN items i ON i.tenant_id=c.tenant_id AND i.id=c.item_id
+WHERE p.store_id=$1 AND p.checkout_id=$2 AND p.method='count'
+ORDER BY p.card_id, c.item_id, c.at DESC, c.id DESC
+`
+
+type ListCheckoutCountBalancesParams struct {
+	StoreID    uuid.UUID
+	CheckoutID uuid.UUID
+}
+
+type ListCheckoutCountBalancesRow struct {
+	CardID     *uuid.UUID
+	CustomerID uuid.UUID
+	ItemID     uuid.UUID
+	ItemName   string
+	PaidAfter  int32
+	GiftAfter  int32
+	At         pgtype.Timestamptz
+}
+
+func (q *Queries) ListCheckoutCountBalances(ctx context.Context, arg ListCheckoutCountBalancesParams) ([]ListCheckoutCountBalancesRow, error) {
+	rows, err := q.db.Query(ctx, listCheckoutCountBalances, arg.StoreID, arg.CheckoutID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCheckoutCountBalancesRow
+	for rows.Next() {
+		var i ListCheckoutCountBalancesRow
+		if err := rows.Scan(
+			&i.CardID,
+			&i.CustomerID,
+			&i.ItemID,
+			&i.ItemName,
+			&i.PaidAfter,
+			&i.GiftAfter,
+			&i.At,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCheckoutOrders = `-- name: ListCheckoutOrders :many
+SELECT tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into, checkout_id, backfill FROM orders WHERE store_id=$1 AND checkout_id=$2 ORDER BY id
+`
+
+type ListCheckoutOrdersParams struct {
+	StoreID    uuid.UUID
+	CheckoutID *uuid.UUID
+}
+
+func (q *Queries) ListCheckoutOrders(ctx context.Context, arg ListCheckoutOrdersParams) ([]Order, error) {
+	rows, err := q.db.Query(ctx, listCheckoutOrders, arg.StoreID, arg.CheckoutID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Order
+	for rows.Next() {
+		var i Order
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ID,
+			&i.CustomerID,
+			&i.Gender,
+			&i.Designated,
+			&i.Status,
+			&i.SettingsSnapshotID,
+			&i.BusinessDate,
+			&i.OpenedBy,
+			&i.OpenedAt,
+			&i.MergedInto,
+			&i.CheckoutID,
+			&i.Backfill,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOpenOrders = `-- name: ListOpenOrders :many
-SELECT tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into, checkout_id FROM orders WHERE store_id=$1 AND status='open' ORDER BY opened_at,id
+SELECT tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into, checkout_id, backfill FROM orders WHERE store_id=$1 AND status='open' ORDER BY opened_at,id
 `
 
 func (q *Queries) ListOpenOrders(ctx context.Context, storeID uuid.UUID) ([]Order, error) {
@@ -336,6 +508,7 @@ func (q *Queries) ListOpenOrders(ctx context.Context, storeID uuid.UUID) ([]Orde
 			&i.OpenedAt,
 			&i.MergedInto,
 			&i.CheckoutID,
+			&i.Backfill,
 		); err != nil {
 			return nil, err
 		}
@@ -552,7 +725,7 @@ func (q *Queries) ListOrderVoids(ctx context.Context, arg ListOrderVoidsParams) 
 }
 
 const lockOrder = `-- name: LockOrder :one
-SELECT tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into, checkout_id FROM orders WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
+SELECT tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into, checkout_id, backfill FROM orders WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
 `
 
 type LockOrderParams struct {
@@ -577,6 +750,7 @@ func (q *Queries) LockOrder(ctx context.Context, arg LockOrderParams) (Order, er
 		&i.OpenedAt,
 		&i.MergedInto,
 		&i.CheckoutID,
+		&i.Backfill,
 	)
 	return i, err
 }
