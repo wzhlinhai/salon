@@ -51,7 +51,7 @@ func TestExportAllReadable(t *testing.T) {
 	batch, _ := f.previewDefault()
 	f.commit(batch)
 	// 原生卡与导入数据同时导出。
-	f.call("open_card", map[string]any{"customer_id": f.nativeCustomer, "card_type_id": f.storedType, "principal": "5.00", "bonus": "0", "sales_staff_ids": []any{f.Res.OwnerID}})
+	f.call("open_card", map[string]any{"customer_id": f.nativeCustomer, "card_type_id": f.storedType, "principal": "5.00", "bonus": "0", "sales_staff_ids": []any{f.Res.OwnerID}, "payments": []any{map[string]any{"method": "cash", "amount": "5.00"}}})
 
 	file := exportFile(t, f, f.Owner)
 	wantSheets := []string{"顾客", "储值卡", "次卡套餐", "卡流水", "单据", "支付", "员工", "项目", "卡种"}

@@ -12,6 +12,7 @@ var paymentMethods = []paymentMethod{
 	{"unionpay", settings.KeyPerformanceRatioUnionpay, "cash"},
 	{"wechat", settings.KeyPerformanceRatioWechat, "cash"},
 	{"alipay", settings.KeyPerformanceRatioAlipay, "cash"},
+	{"groupbuy", settings.KeyPerformanceRatioGroupbuy, ""},
 	{"debt", settings.KeyPerformanceRatioDebt, "cash"},
 	{"red_packet", settings.KeyPerformanceRatioRedPacket, ""},
 	{"card_principal", settings.KeyPerformanceRatioCardPrincipal, "card"},

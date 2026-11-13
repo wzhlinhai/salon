@@ -10,7 +10,89 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/wzhlinhai/salon/backend/internal/money"
 )
+
+const createGroupbuyDeal = `-- name: CreateGroupbuyDeal :one
+INSERT INTO groupbuy_deals (tenant_id, store_id, platform, name, purchase_price, item_id, active, created_by)
+VALUES ($1,$2,$3,$4,$5,$6,true,$7) RETURNING tenant_id, store_id, id, platform, name, purchase_price, item_id, active, created_by, created_at
+`
+
+type CreateGroupbuyDealParams struct {
+	TenantID      uuid.UUID
+	StoreID       uuid.UUID
+	Platform      string
+	Name          string
+	PurchasePrice money.Amount
+	ItemID        uuid.UUID
+	CreatedBy     uuid.UUID
+}
+
+func (q *Queries) CreateGroupbuyDeal(ctx context.Context, arg CreateGroupbuyDealParams) (GroupbuyDeal, error) {
+	row := q.db.QueryRow(ctx, createGroupbuyDeal,
+		arg.TenantID,
+		arg.StoreID,
+		arg.Platform,
+		arg.Name,
+		arg.PurchasePrice,
+		arg.ItemID,
+		arg.CreatedBy,
+	)
+	var i GroupbuyDeal
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.Platform,
+		&i.Name,
+		&i.PurchasePrice,
+		&i.ItemID,
+		&i.Active,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const createGroupbuySettlement = `-- name: CreateGroupbuySettlement :one
+INSERT INTO groupbuy_settlements (tenant_id, store_id, platform, month, amount, note, entered_by)
+VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING tenant_id, store_id, id, platform, month, amount, note, entered_by, created_at
+`
+
+type CreateGroupbuySettlementParams struct {
+	TenantID  uuid.UUID
+	StoreID   uuid.UUID
+	Platform  string
+	Month     string
+	Amount    money.Amount
+	Note      string
+	EnteredBy uuid.UUID
+}
+
+func (q *Queries) CreateGroupbuySettlement(ctx context.Context, arg CreateGroupbuySettlementParams) (GroupbuySettlement, error) {
+	row := q.db.QueryRow(ctx, createGroupbuySettlement,
+		arg.TenantID,
+		arg.StoreID,
+		arg.Platform,
+		arg.Month,
+		arg.Amount,
+		arg.Note,
+		arg.EnteredBy,
+	)
+	var i GroupbuySettlement
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.Platform,
+		&i.Month,
+		&i.Amount,
+		&i.Note,
+		&i.EnteredBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
 
 const createRedemption = `-- name: CreateRedemption :execrows
 INSERT INTO coupon_redemptions (tenant_id, store_id, platform, coupon_code, idempotency_key, status, redeemed_by, created_at)
@@ -44,8 +126,35 @@ func (q *Queries) CreateRedemption(ctx context.Context, arg CreateRedemptionPara
 	return result.RowsAffected(), nil
 }
 
+const getGroupbuyDeal = `-- name: GetGroupbuyDeal :one
+SELECT tenant_id, store_id, id, platform, name, purchase_price, item_id, active, created_by, created_at FROM groupbuy_deals WHERE store_id = $1 AND id = $2
+`
+
+type GetGroupbuyDealParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) GetGroupbuyDeal(ctx context.Context, arg GetGroupbuyDealParams) (GroupbuyDeal, error) {
+	row := q.db.QueryRow(ctx, getGroupbuyDeal, arg.StoreID, arg.ID)
+	var i GroupbuyDeal
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.Platform,
+		&i.Name,
+		&i.PurchasePrice,
+		&i.ItemID,
+		&i.Active,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getRedemption = `-- name: GetRedemption :one
-SELECT id, tenant_id, store_id, platform, coupon_code, idempotency_key, status, redeemed_at, redeemed_by, revoked_at, order_id, created_at FROM coupon_redemptions WHERE store_id = $1 AND idempotency_key = $2
+SELECT id, tenant_id, store_id, platform, coupon_code, idempotency_key, status, redeemed_at, redeemed_by, revoked_at, order_id, created_at, deal_id, purchase_price, store_price, linked_at, order_payment_id FROM coupon_redemptions WHERE store_id = $1 AND idempotency_key = $2
 `
 
 type GetRedemptionParams struct {
@@ -69,6 +178,45 @@ func (q *Queries) GetRedemption(ctx context.Context, arg GetRedemptionParams) (C
 		&i.RevokedAt,
 		&i.OrderID,
 		&i.CreatedAt,
+		&i.DealID,
+		&i.PurchasePrice,
+		&i.StorePrice,
+		&i.LinkedAt,
+		&i.OrderPaymentID,
+	)
+	return i, err
+}
+
+const getRedemptionByID = `-- name: GetRedemptionByID :one
+SELECT id, tenant_id, store_id, platform, coupon_code, idempotency_key, status, redeemed_at, redeemed_by, revoked_at, order_id, created_at, deal_id, purchase_price, store_price, linked_at, order_payment_id FROM coupon_redemptions WHERE store_id = $1 AND id = $2
+`
+
+type GetRedemptionByIDParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) GetRedemptionByID(ctx context.Context, arg GetRedemptionByIDParams) (CouponRedemption, error) {
+	row := q.db.QueryRow(ctx, getRedemptionByID, arg.StoreID, arg.ID)
+	var i CouponRedemption
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Platform,
+		&i.CouponCode,
+		&i.IdempotencyKey,
+		&i.Status,
+		&i.RedeemedAt,
+		&i.RedeemedBy,
+		&i.RevokedAt,
+		&i.OrderID,
+		&i.CreatedAt,
+		&i.DealID,
+		&i.PurchasePrice,
+		&i.StorePrice,
+		&i.LinkedAt,
+		&i.OrderPaymentID,
 	)
 	return i, err
 }
@@ -100,6 +248,308 @@ func (q *Queries) HasOtherActiveRedemption(ctx context.Context, arg HasOtherActi
 	return exists, err
 }
 
+const linkRedemption = `-- name: LinkRedemption :one
+UPDATE coupon_redemptions
+SET order_id = $1, deal_id = $2, purchase_price = $3,
+    store_price = $4, linked_at = $5, order_payment_id = NULL
+WHERE store_id = $6 AND id = $7 RETURNING id, tenant_id, store_id, platform, coupon_code, idempotency_key, status, redeemed_at, redeemed_by, revoked_at, order_id, created_at, deal_id, purchase_price, store_price, linked_at, order_payment_id
+`
+
+type LinkRedemptionParams struct {
+	OrderID       *uuid.UUID
+	DealID        *uuid.UUID
+	PurchasePrice *money.Amount
+	StorePrice    *money.Amount
+	LinkedAt      pgtype.Timestamptz
+	StoreID       uuid.UUID
+	ID            uuid.UUID
+}
+
+func (q *Queries) LinkRedemption(ctx context.Context, arg LinkRedemptionParams) (CouponRedemption, error) {
+	row := q.db.QueryRow(ctx, linkRedemption,
+		arg.OrderID,
+		arg.DealID,
+		arg.PurchasePrice,
+		arg.StorePrice,
+		arg.LinkedAt,
+		arg.StoreID,
+		arg.ID,
+	)
+	var i CouponRedemption
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Platform,
+		&i.CouponCode,
+		&i.IdempotencyKey,
+		&i.Status,
+		&i.RedeemedAt,
+		&i.RedeemedBy,
+		&i.RevokedAt,
+		&i.OrderID,
+		&i.CreatedAt,
+		&i.DealID,
+		&i.PurchasePrice,
+		&i.StorePrice,
+		&i.LinkedAt,
+		&i.OrderPaymentID,
+	)
+	return i, err
+}
+
+const listGroupbuyDeals = `-- name: ListGroupbuyDeals :many
+SELECT d.tenant_id, d.store_id, d.id, d.platform, d.name, d.purchase_price, d.item_id, d.active, d.created_by, d.created_at, i.name AS item_name, s.name AS created_by_name
+FROM groupbuy_deals d
+JOIN items i ON i.tenant_id = d.tenant_id AND i.id = d.item_id
+JOIN staff s ON s.tenant_id = d.tenant_id AND s.id = d.created_by
+WHERE d.store_id = $1
+ORDER BY d.active DESC, d.platform, d.name, d.id
+`
+
+type ListGroupbuyDealsRow struct {
+	TenantID      uuid.UUID
+	StoreID       uuid.UUID
+	ID            uuid.UUID
+	Platform      string
+	Name          string
+	PurchasePrice money.Amount
+	ItemID        uuid.UUID
+	Active        bool
+	CreatedBy     uuid.UUID
+	CreatedAt     pgtype.Timestamptz
+	ItemName      string
+	CreatedByName string
+}
+
+func (q *Queries) ListGroupbuyDeals(ctx context.Context, storeID uuid.UUID) ([]ListGroupbuyDealsRow, error) {
+	rows, err := q.db.Query(ctx, listGroupbuyDeals, storeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGroupbuyDealsRow
+	for rows.Next() {
+		var i ListGroupbuyDealsRow
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ID,
+			&i.Platform,
+			&i.Name,
+			&i.PurchasePrice,
+			&i.ItemID,
+			&i.Active,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.ItemName,
+			&i.CreatedByName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGroupbuySettlements = `-- name: ListGroupbuySettlements :many
+SELECT s.tenant_id, s.store_id, s.id, s.platform, s.month, s.amount, s.note, s.entered_by, s.created_at, st.name AS entered_by_name
+FROM groupbuy_settlements s
+JOIN staff st ON st.tenant_id = s.tenant_id AND st.id = s.entered_by
+WHERE s.store_id = $1 AND s.platform = $2 AND s.month = $3
+ORDER BY s.created_at DESC, s.id DESC
+`
+
+type ListGroupbuySettlementsParams struct {
+	StoreID  uuid.UUID
+	Platform string
+	Month    string
+}
+
+type ListGroupbuySettlementsRow struct {
+	TenantID      uuid.UUID
+	StoreID       uuid.UUID
+	ID            uuid.UUID
+	Platform      string
+	Month         string
+	Amount        money.Amount
+	Note          string
+	EnteredBy     uuid.UUID
+	CreatedAt     pgtype.Timestamptz
+	EnteredByName string
+}
+
+func (q *Queries) ListGroupbuySettlements(ctx context.Context, arg ListGroupbuySettlementsParams) ([]ListGroupbuySettlementsRow, error) {
+	rows, err := q.db.Query(ctx, listGroupbuySettlements, arg.StoreID, arg.Platform, arg.Month)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGroupbuySettlementsRow
+	for rows.Next() {
+		var i ListGroupbuySettlementsRow
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ID,
+			&i.Platform,
+			&i.Month,
+			&i.Amount,
+			&i.Note,
+			&i.EnteredBy,
+			&i.CreatedAt,
+			&i.EnteredByName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMonthRedemptions = `-- name: ListMonthRedemptions :many
+SELECT r.id, r.platform, r.status, r.redeemed_at, r.order_id, r.purchase_price, r.store_price,
+       o.status AS order_status
+FROM coupon_redemptions r
+LEFT JOIN orders o ON o.tenant_id = r.tenant_id AND o.id = r.order_id
+WHERE r.store_id = $1 AND r.platform = $2
+  AND r.status IN ('redeemed','revoked')
+  AND r.redeemed_at >= $3 AND r.redeemed_at < $4
+ORDER BY r.redeemed_at, r.id
+`
+
+type ListMonthRedemptionsParams struct {
+	StoreID  uuid.UUID
+	Platform string
+	FromTime pgtype.Timestamptz
+	ToTime   pgtype.Timestamptz
+}
+
+type ListMonthRedemptionsRow struct {
+	ID            uuid.UUID
+	Platform      string
+	Status        string
+	RedeemedAt    pgtype.Timestamptz
+	OrderID       *uuid.UUID
+	PurchasePrice *money.Amount
+	StorePrice    *money.Amount
+	OrderStatus   *string
+}
+
+func (q *Queries) ListMonthRedemptions(ctx context.Context, arg ListMonthRedemptionsParams) ([]ListMonthRedemptionsRow, error) {
+	rows, err := q.db.Query(ctx, listMonthRedemptions,
+		arg.StoreID,
+		arg.Platform,
+		arg.FromTime,
+		arg.ToTime,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMonthRedemptionsRow
+	for rows.Next() {
+		var i ListMonthRedemptionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Platform,
+			&i.Status,
+			&i.RedeemedAt,
+			&i.OrderID,
+			&i.PurchasePrice,
+			&i.StorePrice,
+			&i.OrderStatus,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOrderRedemptions = `-- name: ListOrderRedemptions :many
+SELECT r.id, r.tenant_id, r.store_id, r.platform, r.coupon_code, r.idempotency_key, r.status, r.redeemed_at, r.redeemed_by, r.revoked_at, r.order_id, r.created_at, r.deal_id, r.purchase_price, r.store_price, r.linked_at, r.order_payment_id, d.name AS deal_name
+FROM coupon_redemptions r
+JOIN groupbuy_deals d ON d.tenant_id = r.tenant_id AND d.id = r.deal_id
+WHERE r.store_id = $1 AND r.order_id = ANY($2::uuid[])
+  AND r.deal_id IS NOT NULL AND r.status = 'redeemed'
+ORDER BY r.order_id, r.linked_at, r.id
+`
+
+type ListOrderRedemptionsParams struct {
+	StoreID  uuid.UUID
+	OrderIds []uuid.UUID
+}
+
+type ListOrderRedemptionsRow struct {
+	ID             uuid.UUID
+	TenantID       uuid.UUID
+	StoreID        uuid.UUID
+	Platform       string
+	CouponCode     string
+	IdempotencyKey string
+	Status         string
+	RedeemedAt     pgtype.Timestamptz
+	RedeemedBy     uuid.UUID
+	RevokedAt      pgtype.Timestamptz
+	OrderID        *uuid.UUID
+	CreatedAt      pgtype.Timestamptz
+	DealID         *uuid.UUID
+	PurchasePrice  *money.Amount
+	StorePrice     *money.Amount
+	LinkedAt       pgtype.Timestamptz
+	OrderPaymentID *uuid.UUID
+	DealName       string
+}
+
+func (q *Queries) ListOrderRedemptions(ctx context.Context, arg ListOrderRedemptionsParams) ([]ListOrderRedemptionsRow, error) {
+	rows, err := q.db.Query(ctx, listOrderRedemptions, arg.StoreID, arg.OrderIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOrderRedemptionsRow
+	for rows.Next() {
+		var i ListOrderRedemptionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.StoreID,
+			&i.Platform,
+			&i.CouponCode,
+			&i.IdempotencyKey,
+			&i.Status,
+			&i.RedeemedAt,
+			&i.RedeemedBy,
+			&i.RevokedAt,
+			&i.OrderID,
+			&i.CreatedAt,
+			&i.DealID,
+			&i.PurchasePrice,
+			&i.StorePrice,
+			&i.LinkedAt,
+			&i.OrderPaymentID,
+			&i.DealName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockCouponIdentity = `-- name: LockCouponIdentity :exec
 SELECT pg_advisory_xact_lock(hashtextextended(($1::uuid)::text || '/coupon/' || length($2::text)::text || ':' || $2::text || $3::text, 0))
 `
@@ -116,8 +566,110 @@ func (q *Queries) LockCouponIdentity(ctx context.Context, arg LockCouponIdentity
 	return err
 }
 
+const lockGroupbuyDeal = `-- name: LockGroupbuyDeal :one
+SELECT tenant_id, store_id, id, platform, name, purchase_price, item_id, active, created_by, created_at FROM groupbuy_deals WHERE store_id = $1 AND id = $2 FOR NO KEY UPDATE
+`
+
+type LockGroupbuyDealParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) LockGroupbuyDeal(ctx context.Context, arg LockGroupbuyDealParams) (GroupbuyDeal, error) {
+	row := q.db.QueryRow(ctx, lockGroupbuyDeal, arg.StoreID, arg.ID)
+	var i GroupbuyDeal
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.Platform,
+		&i.Name,
+		&i.PurchasePrice,
+		&i.ItemID,
+		&i.Active,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const lockOrderRedemptions = `-- name: LockOrderRedemptions :many
+SELECT r.id, r.tenant_id, r.store_id, r.platform, r.coupon_code, r.idempotency_key, r.status, r.redeemed_at, r.redeemed_by, r.revoked_at, r.order_id, r.created_at, r.deal_id, r.purchase_price, r.store_price, r.linked_at, r.order_payment_id, d.name AS deal_name
+FROM coupon_redemptions r
+JOIN groupbuy_deals d ON d.tenant_id = r.tenant_id AND d.id = r.deal_id
+WHERE r.store_id = $1 AND r.order_id = ANY($2::uuid[])
+  AND r.deal_id IS NOT NULL AND r.status = 'redeemed'
+ORDER BY r.order_id, r.linked_at, r.id
+FOR NO KEY UPDATE OF r
+`
+
+type LockOrderRedemptionsParams struct {
+	StoreID  uuid.UUID
+	OrderIds []uuid.UUID
+}
+
+type LockOrderRedemptionsRow struct {
+	ID             uuid.UUID
+	TenantID       uuid.UUID
+	StoreID        uuid.UUID
+	Platform       string
+	CouponCode     string
+	IdempotencyKey string
+	Status         string
+	RedeemedAt     pgtype.Timestamptz
+	RedeemedBy     uuid.UUID
+	RevokedAt      pgtype.Timestamptz
+	OrderID        *uuid.UUID
+	CreatedAt      pgtype.Timestamptz
+	DealID         *uuid.UUID
+	PurchasePrice  *money.Amount
+	StorePrice     *money.Amount
+	LinkedAt       pgtype.Timestamptz
+	OrderPaymentID *uuid.UUID
+	DealName       string
+}
+
+func (q *Queries) LockOrderRedemptions(ctx context.Context, arg LockOrderRedemptionsParams) ([]LockOrderRedemptionsRow, error) {
+	rows, err := q.db.Query(ctx, lockOrderRedemptions, arg.StoreID, arg.OrderIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LockOrderRedemptionsRow
+	for rows.Next() {
+		var i LockOrderRedemptionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.StoreID,
+			&i.Platform,
+			&i.CouponCode,
+			&i.IdempotencyKey,
+			&i.Status,
+			&i.RedeemedAt,
+			&i.RedeemedBy,
+			&i.RevokedAt,
+			&i.OrderID,
+			&i.CreatedAt,
+			&i.DealID,
+			&i.PurchasePrice,
+			&i.StorePrice,
+			&i.LinkedAt,
+			&i.OrderPaymentID,
+			&i.DealName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockRedemption = `-- name: LockRedemption :one
-SELECT id, tenant_id, store_id, platform, coupon_code, idempotency_key, status, redeemed_at, redeemed_by, revoked_at, order_id, created_at FROM coupon_redemptions WHERE store_id = $1 AND idempotency_key = $2 FOR NO KEY UPDATE
+SELECT id, tenant_id, store_id, platform, coupon_code, idempotency_key, status, redeemed_at, redeemed_by, revoked_at, order_id, created_at, deal_id, purchase_price, store_price, linked_at, order_payment_id FROM coupon_redemptions WHERE store_id = $1 AND idempotency_key = $2 FOR NO KEY UPDATE
 `
 
 type LockRedemptionParams struct {
@@ -141,13 +693,233 @@ func (q *Queries) LockRedemption(ctx context.Context, arg LockRedemptionParams) 
 		&i.RevokedAt,
 		&i.OrderID,
 		&i.CreatedAt,
+		&i.DealID,
+		&i.PurchasePrice,
+		&i.StorePrice,
+		&i.LinkedAt,
+		&i.OrderPaymentID,
+	)
+	return i, err
+}
+
+const lockRedemptionByID = `-- name: LockRedemptionByID :one
+SELECT id, tenant_id, store_id, platform, coupon_code, idempotency_key, status, redeemed_at, redeemed_by, revoked_at, order_id, created_at, deal_id, purchase_price, store_price, linked_at, order_payment_id FROM coupon_redemptions WHERE store_id = $1 AND id = $2 FOR NO KEY UPDATE
+`
+
+type LockRedemptionByIDParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) LockRedemptionByID(ctx context.Context, arg LockRedemptionByIDParams) (CouponRedemption, error) {
+	row := q.db.QueryRow(ctx, lockRedemptionByID, arg.StoreID, arg.ID)
+	var i CouponRedemption
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Platform,
+		&i.CouponCode,
+		&i.IdempotencyKey,
+		&i.Status,
+		&i.RedeemedAt,
+		&i.RedeemedBy,
+		&i.RevokedAt,
+		&i.OrderID,
+		&i.CreatedAt,
+		&i.DealID,
+		&i.PurchasePrice,
+		&i.StorePrice,
+		&i.LinkedAt,
+		&i.OrderPaymentID,
+	)
+	return i, err
+}
+
+const moveOrderRedemptions = `-- name: MoveOrderRedemptions :exec
+UPDATE coupon_redemptions SET order_id = $1
+WHERE store_id = $2 AND order_id = ANY($3::uuid[]) AND status = 'redeemed'
+`
+
+type MoveOrderRedemptionsParams struct {
+	OrderID        *uuid.UUID
+	StoreID        uuid.UUID
+	MergedOrderIds []uuid.UUID
+}
+
+func (q *Queries) MoveOrderRedemptions(ctx context.Context, arg MoveOrderRedemptionsParams) error {
+	_, err := q.db.Exec(ctx, moveOrderRedemptions, arg.OrderID, arg.StoreID, arg.MergedOrderIds)
+	return err
+}
+
+const releaseRedemption = `-- name: ReleaseRedemption :one
+UPDATE coupon_redemptions
+SET order_id = NULL, linked_at = NULL, order_payment_id = NULL
+WHERE store_id = $1 AND id = $2 RETURNING id, tenant_id, store_id, platform, coupon_code, idempotency_key, status, redeemed_at, redeemed_by, revoked_at, order_id, created_at, deal_id, purchase_price, store_price, linked_at, order_payment_id
+`
+
+type ReleaseRedemptionParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) ReleaseRedemption(ctx context.Context, arg ReleaseRedemptionParams) (CouponRedemption, error) {
+	row := q.db.QueryRow(ctx, releaseRedemption, arg.StoreID, arg.ID)
+	var i CouponRedemption
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Platform,
+		&i.CouponCode,
+		&i.IdempotencyKey,
+		&i.Status,
+		&i.RedeemedAt,
+		&i.RedeemedBy,
+		&i.RevokedAt,
+		&i.OrderID,
+		&i.CreatedAt,
+		&i.DealID,
+		&i.PurchasePrice,
+		&i.StorePrice,
+		&i.LinkedAt,
+		&i.OrderPaymentID,
+	)
+	return i, err
+}
+
+const revokeRedemption = `-- name: RevokeRedemption :one
+UPDATE coupon_redemptions
+SET status = 'revoked', revoked_at = $1, order_id = NULL, linked_at = NULL, order_payment_id = NULL
+WHERE store_id = $2 AND id = $3 RETURNING id, tenant_id, store_id, platform, coupon_code, idempotency_key, status, redeemed_at, redeemed_by, revoked_at, order_id, created_at, deal_id, purchase_price, store_price, linked_at, order_payment_id
+`
+
+type RevokeRedemptionParams struct {
+	RevokedAt pgtype.Timestamptz
+	StoreID   uuid.UUID
+	ID        uuid.UUID
+}
+
+func (q *Queries) RevokeRedemption(ctx context.Context, arg RevokeRedemptionParams) (CouponRedemption, error) {
+	row := q.db.QueryRow(ctx, revokeRedemption, arg.RevokedAt, arg.StoreID, arg.ID)
+	var i CouponRedemption
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Platform,
+		&i.CouponCode,
+		&i.IdempotencyKey,
+		&i.Status,
+		&i.RedeemedAt,
+		&i.RedeemedBy,
+		&i.RevokedAt,
+		&i.OrderID,
+		&i.CreatedAt,
+		&i.DealID,
+		&i.PurchasePrice,
+		&i.StorePrice,
+		&i.LinkedAt,
+		&i.OrderPaymentID,
+	)
+	return i, err
+}
+
+const setRedemptionPayment = `-- name: SetRedemptionPayment :exec
+UPDATE coupon_redemptions SET order_payment_id = $1
+WHERE store_id = $2 AND id = $3
+`
+
+type SetRedemptionPaymentParams struct {
+	OrderPaymentID *uuid.UUID
+	StoreID        uuid.UUID
+	ID             uuid.UUID
+}
+
+func (q *Queries) SetRedemptionPayment(ctx context.Context, arg SetRedemptionPaymentParams) error {
+	_, err := q.db.Exec(ctx, setRedemptionPayment, arg.OrderPaymentID, arg.StoreID, arg.ID)
+	return err
+}
+
+const unlinkRedemption = `-- name: UnlinkRedemption :one
+UPDATE coupon_redemptions
+SET order_id = NULL, linked_at = NULL, order_payment_id = NULL
+WHERE store_id = $1 AND id = $2 RETURNING id, tenant_id, store_id, platform, coupon_code, idempotency_key, status, redeemed_at, redeemed_by, revoked_at, order_id, created_at, deal_id, purchase_price, store_price, linked_at, order_payment_id
+`
+
+type UnlinkRedemptionParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) UnlinkRedemption(ctx context.Context, arg UnlinkRedemptionParams) (CouponRedemption, error) {
+	row := q.db.QueryRow(ctx, unlinkRedemption, arg.StoreID, arg.ID)
+	var i CouponRedemption
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Platform,
+		&i.CouponCode,
+		&i.IdempotencyKey,
+		&i.Status,
+		&i.RedeemedAt,
+		&i.RedeemedBy,
+		&i.RevokedAt,
+		&i.OrderID,
+		&i.CreatedAt,
+		&i.DealID,
+		&i.PurchasePrice,
+		&i.StorePrice,
+		&i.LinkedAt,
+		&i.OrderPaymentID,
+	)
+	return i, err
+}
+
+const updateGroupbuyDeal = `-- name: UpdateGroupbuyDeal :one
+UPDATE groupbuy_deals
+SET name = $1, purchase_price = $2, item_id = $3, active = $4
+WHERE store_id = $5 AND id = $6 RETURNING tenant_id, store_id, id, platform, name, purchase_price, item_id, active, created_by, created_at
+`
+
+type UpdateGroupbuyDealParams struct {
+	Name          string
+	PurchasePrice money.Amount
+	ItemID        uuid.UUID
+	Active        bool
+	StoreID       uuid.UUID
+	ID            uuid.UUID
+}
+
+func (q *Queries) UpdateGroupbuyDeal(ctx context.Context, arg UpdateGroupbuyDealParams) (GroupbuyDeal, error) {
+	row := q.db.QueryRow(ctx, updateGroupbuyDeal,
+		arg.Name,
+		arg.PurchasePrice,
+		arg.ItemID,
+		arg.Active,
+		arg.StoreID,
+		arg.ID,
+	)
+	var i GroupbuyDeal
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.Platform,
+		&i.Name,
+		&i.PurchasePrice,
+		&i.ItemID,
+		&i.Active,
+		&i.CreatedBy,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const updateRedemption = `-- name: UpdateRedemption :one
 UPDATE coupon_redemptions SET status = $1, redeemed_at = $2, revoked_at = $3
-WHERE store_id = $4 AND idempotency_key = $5 RETURNING id, tenant_id, store_id, platform, coupon_code, idempotency_key, status, redeemed_at, redeemed_by, revoked_at, order_id, created_at
+WHERE store_id = $4 AND idempotency_key = $5 RETURNING id, tenant_id, store_id, platform, coupon_code, idempotency_key, status, redeemed_at, redeemed_by, revoked_at, order_id, created_at, deal_id, purchase_price, store_price, linked_at, order_payment_id
 `
 
 type UpdateRedemptionParams struct {
@@ -180,6 +952,11 @@ func (q *Queries) UpdateRedemption(ctx context.Context, arg UpdateRedemptionPara
 		&i.RevokedAt,
 		&i.OrderID,
 		&i.CreatedAt,
+		&i.DealID,
+		&i.PurchasePrice,
+		&i.StorePrice,
+		&i.LinkedAt,
+		&i.OrderPaymentID,
 	)
 	return i, err
 }

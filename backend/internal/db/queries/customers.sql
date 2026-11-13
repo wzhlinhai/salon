@@ -80,6 +80,9 @@ WHERE id = $1 AND customer_id = $2 AND revoked_at IS NULL;
 -- name: MergeCustomerSafetyLabels :exec
 UPDATE customer_safety_labels SET customer_id = sqlc.arg(keep_id) WHERE customer_id = sqlc.arg(merged_id);
 
+-- name: MergeCustomerAppointments :exec
+UPDATE appointments SET customer_id = sqlc.arg(keep_id)::uuid WHERE customer_id = sqlc.arg(merged_id)::uuid;
+
 -- name: ShareCustomerSource :one
 -- 共享锁阻止并发修改来源，同时允许其他顾客检查来源状态。
 SELECT * FROM customer_sources WHERE id = $1 FOR SHARE;

@@ -95,10 +95,13 @@ func TestPreviewRejectsCrossSheetCardKey(t *testing.T) {
 	if r.Status != http.StatusOK {
 		t.Fatalf("preview = %d %v", r.Status, r.Body)
 	}
-	if got := rowError(t, rowsBySheet(t, r.Body, "次卡套餐"), "K1"); got != "同一来源卡号的其他项目有错误" {
+	if got := rowError(t, rowsBySheet(t, r.Body, "次卡套餐"), "K1"); got != "来源卡号与储值卡重复" {
 		t.Fatal(got)
 	}
 	result := f.commit(r.Body["id"].(string))
+	if got := rowError(t, rowsBySheet(t, result, "次卡套餐"), "K1"); got != "来源卡号与储值卡重复" {
+		t.Fatalf("commit row error = %q", got)
+	}
 	if result["written"].(map[string]any)["stored_value_cards"] != float64(1) || result["written"].(map[string]any)["count_package_cards"] != float64(0) {
 		t.Fatal(result)
 	}

@@ -159,20 +159,35 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 	if err != nil {
 		return nil, err
 	}
+	redemptions, err := env.Q.ListOrderRedemptions(ctx, dbgen.ListOrderRedemptionsParams{StoreID: env.Caller.StoreID, OrderIds: ids})
+	if err != nil {
+		return nil, err
+	}
 	byVoid := map[uuid.UUID]*OrderVoid{}
 	for _, v := range voids {
 		byVoid[v.OrderID] = &OrderVoid{ID: v.ID, Reason: v.Reason, BusinessDate: v.BusinessDate.Time.Format(time.DateOnly), VoidedBy: v.VoidedBy, At: v.At.Time}
 	}
 	byPaymentOrder := map[uuid.UUID][]OrderPayment{}
+	groupbuyAmount := map[uuid.UUID]money.Amount{}
 	for _, p := range payments {
-		payment := OrderPayment{RedPacketID: p.RedPacketID, DebtID: p.DebtID, ID: p.ID, Method: p.Method, Amount: p.Amount}
+		payment := OrderPayment{RedPacketID: p.RedPacketID, DebtID: p.DebtID, CouponRedemptionID: p.CouponRedemptionID, ID: p.ID, Method: p.Method, Amount: p.Amount}
 		if p.Method == "card" {
 			payment.Card = &OrderPaymentCard{CardID: *p.CardID, Principal: *p.Principal, Bonus: *p.Bonus}
 		}
 		if p.Method == "count" {
 			payment.Count = &OrderPaymentCount{CardID: *p.CardID, OrderItemID: *p.OrderItemID, ItemID: *p.CountItemID, Paid: p.Paid, Gift: p.Gift}
 		}
+		if p.CouponRedemptionID != nil {
+			groupbuyAmount[*p.CouponRedemptionID] = p.Amount
+		}
 		byPaymentOrder[p.OrderID] = append(byPaymentOrder[p.OrderID], payment)
+	}
+	byOrderGroupbuy := map[uuid.UUID][]OrderGroupbuy{}
+	for _, r := range redemptions {
+		if r.DealID == nil || r.PurchasePrice == nil || r.StorePrice == nil {
+			continue
+		}
+		byOrderGroupbuy[*r.OrderID] = append(byOrderGroupbuy[*r.OrderID], OrderGroupbuy{RedemptionID: r.ID, DealID: *r.DealID, DealName: r.DealName, Platform: r.Platform, PurchasePrice: *r.PurchasePrice, StorePrice: *r.StorePrice, Amount: groupbuyAmount[r.ID]})
 	}
 	itemIDs := make([]uuid.UUID, len(items))
 	for i, row := range items {
@@ -216,7 +231,11 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 		if ps == nil {
 			ps = []OrderPayment{}
 		}
-		out = append(out, Order{Void: byVoid[r.ID], CheckoutID: r.CheckoutID, Payments: ps, ID: r.ID, CustomerID: r.CustomerID, Gender: r.Gender, Designated: r.Designated, Status: r.Status, MergedInto: r.MergedInto, BusinessDate: r.BusinessDate.Time.Format(time.DateOnly), OpenedBy: r.OpenedBy, OpenedAt: r.OpenedAt.Time, Items: items, Receivable: totals[r.ID].Format(), Discount: discounts[r.ID].Format(), Net: nets[r.ID].Format()})
+		gb := byOrderGroupbuy[r.ID]
+		if gb == nil {
+			gb = []OrderGroupbuy{}
+		}
+		out = append(out, Order{Void: byVoid[r.ID], CheckoutID: r.CheckoutID, Payments: ps, Groupbuy: gb, ID: r.ID, CustomerID: r.CustomerID, Gender: r.Gender, Designated: r.Designated, Status: r.Status, MergedInto: r.MergedInto, BusinessDate: r.BusinessDate.Time.Format(time.DateOnly), OpenedBy: r.OpenedBy, OpenedAt: r.OpenedAt.Time, Items: items, Receivable: totals[r.ID].Format(), Discount: discounts[r.ID].Format(), Net: nets[r.ID].Format()})
 	}
 	return out, nil
 }

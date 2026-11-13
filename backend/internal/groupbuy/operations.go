@@ -10,21 +10,28 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/wzhlinhai/salon/backend/internal/audit"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
+	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
 )
 
 // Redemption 是本店核销记录，不包含顾客或订单写入。
 type Redemption struct {
-	ID         uuid.UUID  `json:"id"`
-	Platform   string     `json:"platform"`
-	CouponCode string     `json:"coupon_code"`
-	Key        string     `json:"key"`
-	Status     string     `json:"status"`
-	RedeemedAt *time.Time `json:"redeemed_at"`
-	RevokedAt  *time.Time `json:"revoked_at"`
-	RedeemedBy uuid.UUID  `json:"redeemed_by"`
-	CreatedAt  time.Time  `json:"created_at"`
+	ID             uuid.UUID     `json:"id"`
+	Platform       string        `json:"platform"`
+	CouponCode     string        `json:"coupon_code"`
+	Key            string        `json:"key"`
+	Status         string        `json:"status"`
+	RedeemedAt     *time.Time    `json:"redeemed_at"`
+	RevokedAt      *time.Time    `json:"revoked_at"`
+	RedeemedBy     uuid.UUID     `json:"redeemed_by"`
+	OrderID        *uuid.UUID    `json:"order_id" nullable:"true"`
+	OrderPaymentID *uuid.UUID    `json:"order_payment_id" nullable:"true"`
+	DealID         *uuid.UUID    `json:"deal_id" nullable:"true"`
+	PurchasePrice  *money.Amount `json:"purchase_price" nullable:"true"`
+	StorePrice     *money.Amount `json:"store_price" nullable:"true"`
+	LinkedAt       *time.Time    `json:"linked_at" nullable:"true"`
+	CreatedAt      time.Time     `json:"created_at"`
 }
 
 // LookupInput 是本店核销记录的幂等键。
@@ -40,11 +47,22 @@ func view(row dbgen.CouponRedemption) *Redemption {
 	if row.RevokedAt.Valid {
 		out.RevokedAt = &row.RevokedAt.Time
 	}
+	out.OrderID = row.OrderID
+	out.OrderPaymentID = row.OrderPaymentID
+	out.DealID = row.DealID
+	out.PurchasePrice = row.PurchasePrice
+	out.StorePrice = row.StorePrice
+	if row.LinkedAt.Valid {
+		out.LinkedAt = &row.LinkedAt.Time
+	}
 	return out
 }
 
 // Register 声明仅员工可发起的平台动作和 AI 可读的本店记录查询。
 func Register(r *ops.Registry, providers *Providers) {
+	registerDeals(r)
+	registerSettlements(r)
+	registerLink(r)
 	ops.Register(r, ops.Operation[CouponRequest, CouponResult]{Name: "verify_coupon", Summary: "验团购券", Kind: ops.Read, Permission: perm.GroupBuyRedeem, AI: ops.AINone, Phased: true,
 		Handle: func(ctx context.Context, env ops.Env, in *CouponRequest) (*CouponResult, error) {
 			in.TenantID = env.Caller.TenantID
@@ -166,7 +184,7 @@ func revoke(ctx context.Context, env ops.Env, in LookupInput, providers *Provide
 		if row.Status != "redeemed" {
 			return ops.Rule("只允许撤销已核销的券")
 		}
-		return nil
+		return linkedOrderRule(ctx, q, env.Caller.StoreID, row)
 	})
 	if err != nil {
 		return nil, err
@@ -219,6 +237,33 @@ func finish(ctx context.Context, env ops.Env, key, action string, result CouponR
 			return err
 		}
 		before := view(row)
+		// 平台已经撤销时以平台结果为准；即使券在初次检查后被关联，也要落 revoked。
+		if action == "revoke_coupon" && platformErr == nil && result.Platform == row.Platform && result.Status == "revoked" && row.Status == "redeemed" {
+			orderStatus := ""
+			if row.OrderID != nil {
+				order, err := q.GetOrder(ctx, dbgen.GetOrderParams{StoreID: env.Caller.StoreID, ID: *row.OrderID})
+				if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+					return err
+				}
+				if err == nil {
+					orderStatus = order.Status
+				}
+			}
+			if row.OrderID != nil && orderStatus == "open" {
+				row, err = q.RevokeRedemption(ctx, dbgen.RevokeRedemptionParams{StoreID: env.Caller.StoreID, ID: row.ID, RevokedAt: pgtype.Timestamptz{Time: env.Now, Valid: true}})
+			} else {
+				row, err = q.UpdateRedemption(ctx, dbgen.UpdateRedemptionParams{StoreID: env.Caller.StoreID, IdempotencyKey: key, Status: "revoked", RedeemedAt: row.RedeemedAt, RevokedAt: pgtype.Timestamptz{Time: env.Now, Valid: true}})
+				if err == nil && row.OrderID != nil && orderStatus == "paid" {
+					outcome = ops.Rule("团购券已被平台撤销；该券已用于已结账的订单，请撤单或走售后处理")
+				}
+			}
+			if err != nil {
+				return err
+			}
+			out = view(row)
+			env.Q = q
+			return audit.Record(ctx, env, action, audit.CouponRedemptionTarget(row.ID), before, out)
+		}
 		mutable := row.Status == "pending" || row.Status == "unknown"
 		if action == "revoke_coupon" {
 			mutable = row.Status == "redeemed"

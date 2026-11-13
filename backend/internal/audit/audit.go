@@ -40,6 +40,12 @@ func CustomerSourceTarget(id uuid.UUID) Target { return Target{kind: "customer_s
 // ItemTarget 创建项目日志目标。
 func ItemTarget(id uuid.UUID) Target { return Target{kind: "item", id: id} }
 
+// DayCloseTarget 创建日结快照日志目标。
+func DayCloseTarget(id uuid.UUID) Target { return Target{kind: "day_close", id: id} }
+
+// ClosingTarget 创建封账或撤销封账事件日志目标。
+func ClosingTarget(id uuid.UUID) Target { return Target{kind: "closing", id: id} }
+
 // Record 在业务操作的同一事务中追加日志；nil 表示新建前或删除后不存在；手机号必须用键名 phone。
 func Record(ctx context.Context, env ops.Env, action string, target Target, before, after any) error {
 	if err := checkPhoneKeys(before); err != nil {
@@ -303,6 +309,14 @@ func CollectionTarget(id uuid.UUID) Target { return Target{kind: "collection", i
 // CouponRedemptionTarget 创建不关联顾客的团购核销日志目标。
 func CouponRedemptionTarget(id uuid.UUID) Target { return Target{kind: "coupon_redemption", id: id} }
 
+// GroupbuyDealTarget 创建团购商品日志目标。
+func GroupbuyDealTarget(id uuid.UUID) Target { return Target{kind: "groupbuy_deal", id: id} }
+
+// GroupbuySettlementTarget 创建团购月结算日志目标。
+func GroupbuySettlementTarget(id uuid.UUID) Target {
+	return Target{kind: "groupbuy_settlement", id: id}
+}
+
 // RotationQueueTarget 创建不关联顾客的轮牌队列或轮牌配置日志目标。
 func RotationQueueTarget(id uuid.UUID) Target { return Target{kind: "rotation_queue", id: id} }
 
@@ -311,6 +325,14 @@ func ImportBatchTarget(id uuid.UUID) Target { return Target{kind: "import_batch"
 
 // DataExportTarget 创建不关联顾客的数据导出日志目标。
 func DataExportTarget(id uuid.UUID) Target { return Target{kind: "data_export", id: id} }
+
+// AppointmentTarget 创建关联顾客的预约日志目标。
+func AppointmentTarget(id, customerID uuid.UUID) Target {
+	return Target{kind: "appointment", id: id, customerID: &customerID}
+}
+
+// AppointmentBlockTarget 创建不关联顾客的私约占位日志目标。
+func AppointmentBlockTarget(id uuid.UUID) Target { return Target{kind: "appointment_block", id: id} }
 
 // MaskPhones 对其他审计视图复用相同的 JSON 手机号打码规则。
 func MaskPhones(raw json.RawMessage) (json.RawMessage, error) { return maskPhones(raw) }

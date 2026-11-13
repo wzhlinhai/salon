@@ -7,12 +7,10 @@ const toast = useToast()
 const { can } = useMe()
 
 type CustomerCard = components['schemas']['Card']
+type Payment = components['schemas']['Payment']
 const cardCards = ref<CustomerCard[]>([])
 const cardLoading = ref(false)
 const cardListGuard = useRequestGuard()
-// 弹窗关闭不代表顾客面板已失效；成功写入后仍需刷新当前顾客。
-const customerGuard = useRequestGuard()
-watch(() => props.id, () => customerGuard.invalidate(), { flush: 'sync' })
 
 async function cardLoad() {
   const id = props.id
@@ -38,6 +36,13 @@ const openingType = computed(() => cardTypes.value.find(t => t.id === cardCardTy
 const cardPrincipal = ref('0.00')
 const cardBonus = ref('0.00')
 const cardSales = ref<string[]>([])
+const cardPayments = ref<Payment[]>([])
+const cardPaymentsTouched = ref(false)
+const openingExpected = computed(() => {
+  if (cardTarget.value || !openingType.value || openingType.value.kind === 'stored_value') return cardPrincipal.value
+  const counts = (openingType.value.items ?? []).reduce((sum, item) => sum + Number(item.unit_price || 0) * Number(item.paid_count || 0), 0)
+  return (Number(cardPrincipal.value || 0) + counts).toFixed(2)
+})
 
 async function cardEdit(card: CustomerCard | null) {
   cardForm.begin(() => {
@@ -45,6 +50,8 @@ async function cardEdit(card: CustomerCard | null) {
     cardPrincipal.value = '0.00'
     cardBonus.value = '0.00'
     cardSales.value = []
+    cardPayments.value = []
+    cardPaymentsTouched.value = false
     cardCardType.value = ''
     cardTypes.value = []
     cardStaff.value = []
@@ -64,16 +71,15 @@ async function cardEdit(card: CustomerCard | null) {
 
 async function cardSave() {
   const id = props.id
-  const customerCurrent = customerGuard.hold()
   const isRecharge = !!cardTarget.value
   const countsOnly = !cardTarget.value && openingType.value?.kind === 'count'
-  const body = { principal: countsOnly ? '0.00' : cardPrincipal.value, bonus: countsOnly ? '0.00' : cardBonus.value, sales_staff_ids: [...cardSales.value] }
+  const body = { principal: countsOnly ? '0.00' : cardPrincipal.value, bonus: countsOnly ? '0.00' : cardBonus.value, sales_staff_ids: [...cardSales.value], payments: cardPayments.value }
   await cardForm.save(async (current) => {
     const { data, error } = cardTarget.value
       ? await api.POST('/api/ops/recharge_card', { body: { ...body, card_id: cardTarget.value.id } })
       : await api.POST('/api/ops/open_card', { body: { ...body, customer_id: id, card_type_id: cardCardType.value } })
     if (!current()) {
-      if (data && customerCurrent()) {
+      if (data) {
         toast.add({ title: isRecharge ? '充值成功' : '开卡成功', color: 'success' })
         await refreshCards()
       }
@@ -172,7 +178,6 @@ async function editAdjustment(card: CustomerCard) {
 async function saveAdjustment() {
   const card = adjustTarget.value
   if (!card) return
-  const customerCurrent = customerGuard.hold()
   const body: components['schemas']['AdjustCardInput'] = { card_id: card.id, reason: adjustReason.value.trim() }
   const changedCounts = adjustCounts.value.filter((x) => {
     const old = card.items.find(i => i.item_id === x.item_id)!
@@ -188,7 +193,7 @@ async function saveAdjustment() {
   await adjustForm.save(async (current) => {
     const { data, error } = await api.POST('/api/ops/adjust_card', { body })
     if (!current()) {
-      if (data && customerCurrent()) await refreshCards()
+      if (data) await refreshCards()
       return
     }
     if (data) {
@@ -218,6 +223,8 @@ const balanceTo = ref('')
 const balancePrincipal = ref('0.00')
 const balanceBonus = ref('0.00')
 const balanceSales = ref<string[]>([])
+const balancePayments = ref<Payment[]>([])
+const balancePaymentsTouched = ref(false)
 const balanceReason = ref('')
 const balanceTypes = ref<components['schemas']['CardType'][]>([])
 const balanceStaff = ref<components['schemas']['StaffOption'][]>([])
@@ -232,6 +239,8 @@ async function editBalance(card: CustomerCard, mode: 'upgrade' | 'transfer') {
     balancePrincipal.value = '0.00'
     balanceBonus.value = '0.00'
     balanceSales.value = []
+    balancePayments.value = []
+    balancePaymentsTouched.value = false
     balanceReason.value = ''
     balanceTypes.value = []
     balanceStaff.value = []
@@ -253,14 +262,13 @@ async function editBalance(card: CustomerCard, mode: 'upgrade' | 'transfer') {
 async function saveBalance() {
   const card = balanceCard.value
   if (!card) return
-  const customerCurrent = customerGuard.hold()
   const amounts = { principal: balancePrincipal.value, bonus: balanceBonus.value }
   await balanceForm.save(async (current) => {
     const { data, error } = balanceMode.value === 'upgrade'
-      ? await api.POST('/api/ops/upgrade_card', { body: { ...amounts, card_id: card.id, to_type_id: balanceTo.value, sales_staff_ids: hasDifference.value ? [...balanceSales.value] : [] } })
+      ? await api.POST('/api/ops/upgrade_card', { body: { ...amounts, card_id: card.id, to_type_id: balanceTo.value, sales_staff_ids: hasDifference.value ? [...balanceSales.value] : [], payments: balancePayments.value } })
       : await api.POST('/api/ops/transfer_card_balance', { body: { ...amounts, from_card_id: card.id, to_card_id: balanceTo.value, reason: balanceReason.value.trim() } })
     if (!current()) {
-      if (data && customerCurrent()) await refreshCards()
+      if (data) await refreshCards()
       return
     }
     if (data) {
@@ -295,11 +303,10 @@ async function saveRefund() {
   const quote = refundQuote.value
   const method = refundMethod.value
   if (!quote || !method) return
-  const customerCurrent = customerGuard.hold()
   await refundForm.save(async (current) => {
     const { data, error, response } = await api.POST('/api/ops/refund_card', { body: { card_id: quote.card_id, amount: quote.amount, method } })
     if (!current()) {
-      if (data && customerCurrent()) await refreshCards()
+      if (data) await refreshCards()
       return
     }
     if (data) {
@@ -436,6 +443,7 @@ onMounted(cardLoad)
         <UFormField label="本金"><UInput v-model="balancePrincipal" inputmode="decimal" class="w-full" /></UFormField>
         <UFormField label="赠送金"><UInput v-model="balanceBonus" inputmode="decimal" class="w-full" /></UFormField>
         <UFormField v-if="balanceMode === 'upgrade' && hasDifference" label="业绩归属人"><USelect v-model="balanceSales" multiple :items="balanceStaff.map(s => ({ label: s.name, value: s.id }))" class="w-full" /></UFormField>
+        <PaymentEditor v-if="balanceMode === 'upgrade'" v-model="balancePayments" v-model:touched="balancePaymentsTouched" :expected="balancePrincipal" />
         <UFormField v-if="balanceMode === 'transfer'" label="原因" required><UTextarea v-model="balanceReason" :maxlength="200" class="w-full" /></UFormField>
       </div>
     </template>
@@ -468,6 +476,7 @@ onMounted(cardLoad)
         <UFormField v-if="cardTarget || openingType?.kind !== 'count'" label="赠送金"><UInput v-model="cardBonus" inputmode="decimal" class="w-full" /></UFormField>
         <p v-for="item in openingType?.items ?? []" :key="item.item_id">{{ item.item_name }} · 购买 {{ item.paid_count }} · 赠送 {{ item.gift_count }} · 单次金额 {{ item.unit_price }}</p>
         <UFormField label="业绩归属人"><USelect v-model="cardSales" multiple :items="cardStaff.map(s => ({ label: s.name, value: s.id }))" class="w-full" /></UFormField>
+        <PaymentEditor v-model="cardPayments" v-model:touched="cardPaymentsTouched" :expected="openingExpected" />
       </div>
     </template>
     <template #footer><UButton :loading="cardSaving" :disabled="cardOptionsLoading || !cardSales.length || (!cardTarget && !cardCardType)" @click="cardSave">保存</UButton></template>

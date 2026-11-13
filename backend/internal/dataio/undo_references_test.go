@@ -5,9 +5,11 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/optest"
+	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
 type importedIDs struct {
@@ -73,7 +75,7 @@ func TestUndoReferenceBranches(t *testing.T) {
 	})
 	t.Run("other card", func(t *testing.T) {
 		f, ids := imported(t)
-		f.call("open_card", map[string]any{"customer_id": ids.customer, "card_type_id": f.storedType, "principal": "5", "bonus": "0", "sales_staff_ids": []any{f.Res.OwnerID}})
+		f.call("open_card", map[string]any{"customer_id": ids.customer, "card_type_id": f.storedType, "principal": "5", "bonus": "0", "sales_staff_ids": []any{f.Res.OwnerID}, "payments": []any{map[string]any{"method": "cash", "amount": "5"}}})
 		requireUndoBlocked(t, f, ids.batch, "还有其他卡")
 	})
 	t.Run("adjustment", func(t *testing.T) {
@@ -103,6 +105,19 @@ func TestUndoReferenceBranches(t *testing.T) {
 		}
 		f.appExec(t, `INSERT INTO card_transfers (tenant_id,store_id,from_card_id,to_card_id,reason,from_ledger_id,to_ledger_id,business_date,actor_id) VALUES ($1,$2,$3,$4,'转余额',$5,$6,'2020-01-01',$7)`, f.Res.TenantID, f.Res.StoreID, ids.stored, ids.count, fromLedger, toLedger, f.Res.OwnerID)
 		requireUndoBlocked(t, f, ids.batch, "有转余额记录")
+	})
+	t.Run("appointment", func(t *testing.T) {
+		f, ids := imported(t)
+		f.SetNow(time.Date(2026, 6, 12, 12, 0, 0, 0, settings.Location))
+		start := time.Date(2026, 6, 12, 13, 0, 0, 0, settings.Location)
+		f.call("create_appointment", map[string]any{"customer_id": ids.customer, "staff_id": f.Res.OwnerID, "starts_at": start})
+		requireUndoBlocked(t, f, ids.batch, "已有预约")
+		if n := f.count("SELECT count(*) FROM appointments"); n != 1 {
+			t.Fatalf("appointments after rejected undo = %d, want 1", n)
+		}
+		if n := f.count("SELECT count(*) FROM customers WHERE id='" + ids.customer + "'"); n != 1 {
+			t.Fatalf("customer after rejected undo = %d, want 1", n)
+		}
 	})
 	t.Run("merged", func(t *testing.T) {
 		f, ids := imported(t)

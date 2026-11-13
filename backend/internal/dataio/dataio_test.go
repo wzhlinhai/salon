@@ -382,10 +382,10 @@ func TestCountCardItemValidation(t *testing.T) {
 		t.Fatal(got)
 	}
 	counts := rowsBySheet(t, r.Body, "次卡套餐")
-	if got := rowError(t, counts, "K1"); got != "同一来源卡号的其他项目有错误" {
+	if got := rowError(t, counts, "K1"); got != "卡种未配置: 剪发十次" {
 		t.Fatal(got)
 	}
-	if got := rowError(t, counts, "K2"); got != "同一来源卡号的其他项目有错误" {
+	if got := rowError(t, counts, "K2"); got != "卡种未配置: 储值卡A" {
 		t.Fatal(got)
 	}
 }

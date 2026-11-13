@@ -23,6 +23,8 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 `mutchecks.py --since <git-ref>` 只选中该引用与工作树（含未跟踪文件）之间受影响的项，可与名称和 `--locate` 组合。保护文件、定义 guard 的包内测试文件或 e2e spec 改动会选中对应项；查询、迁移目录内任意文件改动会选中该目录的保护。每轮可运行受影响项，同时不带 `--since` 运行 `--locate` 检查整份清单的原文匹配。手动使用 `mutcheck.sh` 时测试选择只通过 `--run` 传入；省略它仍运行完整包。
 
+保护检查不写用户的默认 Go 构建缓存：`mutchecks.py` 每次正式运行（包括 `--jobs 1`）以及 `--since` 的 `go list` 在 `.dev/mutcheck-gocache/<run>/` 下建立独立 `GOCACHE`，并传给基线、`mutcheck.sh` 和每个副本；只有正式运行开始时清理残留运行目录，成功、失败、异常、Ctrl-C 或 SIGTERM 时删除本次缓存。`--locate` 不运行 go 命令时不创建缓存，也不清理残留目录。基线共享该缓存；每个变异副本另建缓存并硬链接基线条目（含 `xx/<hash>-d/` 可执行目录），跑完一项后删除该变异新增的条目，峰值只随并发副本数和一个变异的编译量增长。所有 `go test` 带 `-trimpath`，不同路径的副本因此共享编译结果。基线前和每项变异前检查缓存所在磁盘剩余空间，低于 20 GB 时用中文消息停止，未运行项计为 `environment` 并以非零码退出，不计为 caught；测试可用 `MUTCHECK_DISK_HEADROOM_BYTES` 调低该下限。单独运行 `mutcheck.sh`（含 `--restore`）且没有设置 `GOCACHE` 时，同样在 `.dev/` 下使用临时缓存并在退出时删除。
+
 `serve` 的可选环境变量：`HTTP_ADDR`（默认 `:8080`）、`TOKEN_TTL`（默认 `12h`）。健康检查 `GET /healthz`，登录 `POST /api/auth/login`。AI 对话的环境变量：`AI_API_KEY`（设置后才启用 `/api/ai/chat`；未设置时返回 503「AI 未启用」）、`AI_BASE_URL`（默认 `https://api.deepseek.com`）、`AI_MODEL`（默认 `deepseek-flash`）。密钥不写日志，也不出现在错误或响应里。
 
 `bootstrap` 开一个新租户：门店、内置的老板角色、四个默认角色（初始权限见 ADR-0009）和第一名老板。
@@ -69,9 +71,9 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 ## 门店设置（ADR-0002）
 
-- 设置值支持 time（时刻）、time_range（时段）、choice（Options 中的字符串）和 integer（Min/Max 内的非负整数）。`member_price_rule` 默认会员价优先，也可取较低价；`points_per_recharge_yuan` 为每积一分所需充值本金元数，默认 0（不积分），范围 0–100000。开卡、充值和升级补差价按当日规则积分，赠送金、转余额和调整余额不积分。`guest_count_split` 默认将客次记给第一个岗位的员工，也可选择单上员工均分，当天可生效。`performance_split` 默认按岗位比例分多人业绩，也可选择均分，项目没设岗位比例时均分；`performance_ratio_*` 为八种支付方式各自的 0–100 业绩比例，本金、现金、银联、微信、支付宝和挂账默认 100%，赠送金和红包默认 0%；购买次数、赠送次数的耗卡业绩比例默认分别为 100%、0%，均可当天生效。退卡赠送金 `card_refund_bonus` 默认不退、作废，可选择扣回未被撤单退回的消费赠送金；`card_refund_fee_percent` 为 0–100 的退款手续费百分比，默认 0，当天可生效。撤单授权窗口 `void_window_minutes` 为 0（默认关闭）或 1–60 分钟，当天可生效。
+- 设置值支持 time（时刻）、time_range（时段）、choice（Options 中的字符串）和 integer（Min/Max 内的非负整数）。`member_price_rule` 默认会员价优先，也可取较低价；`points_per_recharge_yuan` 为每积一分所需充值本金元数，默认 0（不积分），范围 0–100000。开卡、充值和升级补差价按当日规则积分，赠送金、转余额和调整余额不积分。`guest_count_split` 默认将客次记给第一个岗位的员工，也可选择单上员工均分，当天可生效。`performance_split` 默认按岗位比例分多人业绩，也可选择均分，项目没设岗位比例时均分；`performance_ratio_*` 为九种支付方式各自的 0–100 业绩比例，本金、现金、银联、微信、支付宝、团购和挂账默认 100%，赠送金和红包默认 0%；购买次数、赠送次数的耗卡业绩比例默认分别为 100%、0%，均可当天生效。退卡赠送金 `card_refund_bonus` 默认不退、作废，可选择扣回未被撤单退回的消费赠送金；`card_refund_fee_percent` 为 0–100 的退款手续费百分比，默认 0，当天可生效。撤单授权窗口 `void_window_minutes` 为 0（默认关闭）或 1–60 分钟，当天可生效。
 - 考勤宽限分钟 `attendance_grace_minutes` 默认 0，范围 0–60，当天可生效，仅决定迟到、早退是否计异常。
-- 轮牌设置：`rotation_order_rule` 新一天队列的初始顺序（先到先排、接昨天顺序、每晚按成员默认顺序重置，默认先到先排）；`rotation_designated_takes_turn` 点客结账后是否占轮排到队尾（默认占轮）；`rotation_skip_when_serving_designated` 队首正在服务点客时是否自动跳过并记录（默认跳过）；`rotation_skip_policy` 被跳过时排到队尾还是保留原位（默认排到队尾）；`rotation_half_rule` 半轮规则（不记、按价格、按项目，默认不记）；`rotation_half_price_below` 按价格记半轮的实收上限（元，默认 0 表示不按价格）。规则按营业日生效，收银推进和每次轮牌操作都读取调用时刻执行的设置。
+- 轮牌设置：`rotation_order_rule` 新一天队列的初始顺序（先到先排、接昨天顺序、每晚按成员默认顺序重置，默认先到先排）；`rotation_designated_takes_turn` 点客结账后是否占轮排到队尾（默认占轮）；`rotation_skip_when_serving_designated` 队首正在服务点客时是否自动跳过并记录（默认跳过）；`rotation_skip_policy` 被跳过时排到队尾还是保留原位（默认排到队尾）；`rotation_half_rule` 半轮规则（不记、按价格、按项目、按预约，默认不记）；`rotation_half_price_below` 按价格记半轮的实收上限（元，默认 0 表示不按价格）。预约设置：`booking_min_lead_minutes` 顾客自助预约至少提前的分钟数（默认 0，前台代约不检查）；`booking_max_days_ahead` 从今天起最多可约的天数（默认 30）；`booking_default_minutes` 未选项目时的默认服务时长（默认 60）。营业时段复用 `business_hours`，预约必须完整落在开门到关门之间，关门须晚于开门，不支持跨天。规则按营业日生效，收银推进和每次轮牌操作都读取调用时刻执行的设置。
 - 设置项在 `internal/settings` 的 `Catalogue` 里声明：名称、值的形式、系统默认做法和校验。新的业务规则（例如各项业务的做法选择）在这里加一项，再给 `Rules` 加一个读取它的方法。
 - 每次修改都在 `setting_changes` 追加一行：改前、改后、生效日期、修改人、修改时间。`salon_app` 只有 SELECT 和 INSERT 权限。某个营业日执行的值，取生效日期不晚于这一天的最大者，同一生效日期取最后保存的一次（修改时间，再按 ID）；没有修改，或者改成了"恢复默认"，就用系统当前的默认做法。这条选法只在 `internal/inforce` 写一份，门店设置、提成方案版本和底薪共用，各类历史提供自己的保存顺序（提成方案按版本号；设置和底薪按保存时间、ID），SQL 只按门店读出历史；设置的"恢复默认"只在 settings 的 `resolve` 换成目录默认值。生效日期不能早于今天；划分营业日的设置（`fromTomorrow`，例如营业日结束时间）最早明天生效。同一项设置的修改用咨询锁排队，改前值才接得上前一次的改后值。
 - 业务模块不直接查设置表：
@@ -82,6 +84,8 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 ## 卡
 
 开卡锁序为按 UUID 排序的业绩员工 FOR SHARE → 本店顾客 FOR NO KEY UPDATE（串行判定首购，并检查查看范围和未合并）→ 卡类型 FOR SHARE，再新建卡、复制次数和追加流水。其他顾客引用仍用 FOR SHARE。顾客合并为顾客 → 单 → 欠款 → 卡 → 红包；不会回锁员工，员工变更也不请求顾客锁，因此开卡不会引入反向锁序。顾客 NO KEY UPDATE 与卡插入外键的 KEY SHARE 兼容。
+
+开卡、充值、手动补差价升级和卖红包都要登记顾客实际支付的收款方式：`payments` 数组每项是现金、银联、微信或支付宝之一，金额须大于零，合计必须等于这笔销售计入业绩的金额——开卡为本金加购买次数折算额（`unit_price × paid_count_opened`），充值和手动补差价为本次本金，卖红包为售价；赠送金不计入实际支付。零金额销售（例如购买次数全为赠送、送红包）传空数组，传入非空数组按合计不一致拒绝。收款追加到只追加的 `sale_payments`，以组合外键关联卡流水或红包，二者恰有一个，营业日与来源相同；没有收款方式的历史数据不回填。金额格式或方式错误是 422，合计不一致是 409。数据导入的历史卡不写 `sale_payments`，仍按 `import` 来源处理。
 
 退卡只退整张卡，需要 card.adjust。本金加剩余购买次数乘以随卡单次金额，按规则扣回已用赠送金，扣回额至多为本金与购买次数折算的可退款金额，再减四舍五入到分的百分比手续费；赠送次数不退款，剩余赠送金一律作废。规则取退卡调用的营业日，不用单据快照；确认报价必须与锁内重算金额一致。登记现金、银联、微信或支付宝方式，不实际付款。余额写一条 refund 流水，每个卡项目写一条 refund 次数流水，即使原值为零也保留，全部归零；积分不变，卡状态改为 refunded。卡修改（充值、调整、升级及自动升级、转余额双方）、显式结账及试算、自动选卡和撤单退回均拒绝已退卡。退卡不改单据、欠款、红包，不扣业绩或提成，不处理原路退回（#43）。
 
@@ -105,15 +109,38 @@ Reconcile 按收款创建时刻的营业日、通道和当前状态汇总金额�
 
 结账需要 payment.collect，一张或几张挂单通过 change 按 UUID 锁单后一起登记支付；有效项目行的必填岗位须有员工，各单的支付合计须等于各自实收（应收减持卡折扣）。结账后单标为 paid 并引用同一个 checkout_id，拒绝再次结账、加项目、改单、改价和合并。结账的营业日取调用时刻的 settings.BusinessDate，各单保留原顾客和营业日。checkouts 和 order_payments 仅授予 SELECT、INSERT，支付只追加；挂账是支付方式 debt。卡余额支付为 card，每笔通过 order_payments.card_ledger_id 关联一条 consume 卡流水，按单的规则快照中的 card_deduction_order 拆扣本金、赠送金，不足则整次结账回滚；不累计积分。扣次为 count，每笔支付一个有效项目行、一行扣一次，金额等于该行实收；与卡余额支付共用本店、查看范围、有效期和用别人卡的检查，但允许次卡。每笔通过 card_count_ledger_id 关联一条 consume 次数流水，按单的规则快照 card_count_order（默认 paid_first，可选 gift_first）扣购买次数或赠送次数，不决定计价卡。卡余额支付的卡须本店发行、持卡顾客在调用者查看范围内、非次卡、未过期（到期当天仍可用），用别人卡须单的快照中 others_card_payment 允许。
 
-红包是独立于卡的一次性对象，卖红包记录售价和一到十名本店在职业绩归属人，送红包不记录售价及业绩归属人；不记录收款方式。面额须大于零，有效期不早于发放营业日，未识别顾客也能领取。结账只用单上顾客自己的红包，一张单可用多个，每笔抵扣不超过面额，一次用掉、不找零，结账为每个用掉的红包记录改前改后日志；红包不参与计价或选卡。未用红包可撤回，过期也可撤回，卖的红包撤回不记退款。状态为 available、used、revoked、expired，过期按当前营业日判断，到期当天仍可用。撤回先以 FOR NO KEY UPDATE 锁红包，再无锁检查顾客查看范围；发放先共享锁顾客，再按 UUID 共享锁业绩归属人。顾客合并在单、欠款和卡之后按 UUID 锁红包并改挂，与结账的卡→红包一致，结账或撤回不回锁顾客。
+红包是独立于卡的一次性对象，卖红包记录售价、一到十名本店在职业绩归属人和实际收款方式，送红包不记录售价、业绩归属人及收款方式。面额须大于零，有效期不早于发放营业日，未识别顾客也能领取。结账只用单上顾客自己的红包，一张单可用多个，每笔抵扣不超过面额，一次用掉、不找零，结账为每个用掉的红包记录改前改后日志；红包不参与计价或选卡。未用红包可撤回，过期也可撤回，卖的红包撤回不记退款。状态为 available、used、revoked、expired，过期按当前营业日判断，到期当天仍可用。撤回先以 FOR NO KEY UPDATE 锁红包，再无锁检查顾客查看范围；发放先共享锁顾客，再按 UUID 共享锁业绩归属人。顾客合并在单、欠款和卡之后按 UUID 锁红包并改挂，与结账的卡→红包一致，结账或撤回不回锁顾客。
 
 欠款是顾客欠门店的一笔钱，分为每笔挂账支付生成的单上欠款和不关联单的历史欠款。未识别顾客（没有手机号）不能结账挂账，历史欠款仍可登记。还款针对一笔欠款，可部分还但不能超过未还，仅支持现金、银联、微信、支付宝；欠款与还款只追加，顾客合并仅改挂欠款的 customer_id。登记历史欠款需要 data.import_export，沿用 customers.LockReference 的顾客共享锁和查看范围。还款需要 payment.collect，先以 FOR NO KEY UPDATE 锁欠款，再无锁检查顾客查看范围并读取已还；营业日取 settings.BusinessDate。合并先锁顾客，再改挂单、欠款；结账持单锁时无锁读取手机号，避免与合并倒置锁序，补手机号只会使顾客变为已识别。合并更新单等待结账提交，因此随后更新欠款能包含新挂账。还款只锁欠款，不回锁顾客，与合并没有锁环。list_customer_debts 的 totals 和 debt_summary 只统计未作废欠款，debt_summary 仅返回本店汇总，单上欠款金额恒等于 method=debt 支付合计，未作废欠款的金额恒等于已还加未还。
 
-撤单需要 order.void，只撤已结账的单，时间窗口按原单 business_date 与当前 settings.BusinessDate 比较，必须填写原因。在单锁之后、欠款和卡及红包锁之前写 order_voids 反向单，记原单、原因、撤单营业日及撤单人；原单、项目、支付和消费流水保留，原单标为 voided，checkout_id 不变。卡余额按原消费拆分退回本金及赠送金，次数按原消费退回购买及赠送次数，各追加 void 流水并关联原消费与反向单；不检查卡有效期或持卡顾客查看范围；卡已退时整次撤单拒绝。单上挂账随原单作废，不计未还和 debt_summary，已有任何还款则拒绝撤单；作废欠款不能还款。用掉的红包清空当前支付引用，恢复可用（过期则显示 expired）。历史支付保留，删除 order_payments_red_packet 历史唯一索引，当前支付由 red_packets.order_payment_id UNIQUE 和红包锁保护；若红包已有多次历史支付，00024 Down 明确拒绝恢复旧索引。一起结账的单逐张撤；现金、银联、微信、支付宝仅由反向单记录撤单。锁顺序为单 → 按 UUID 的欠款 → 按 UUID 的卡 → 按 UUID 的红包（均 FOR NO KEY UPDATE），与顾客合并的顾客 → 单 → 欠款 → 卡 → 红包及结账的单 → 卡 → 红包一致；还款只锁欠款，不回锁单或顾客。开启撤单授权窗口后，`open_void_window` 要求本人重新输入登录密码（与登录共用锁定），窗口内只有开启人能撤，过期须重开。撤单按调用时的营业日读取当前设置，不读原单快照；关闭设置跳过窗口检查，缩短设置不影响已开窗口。
+撤单需要 order.void，只撤已结账的单，时间窗口按原单 business_date 与当前 settings.BusinessDate 比较，必须填写原因。在单锁之后、欠款和卡及红包锁之前写 order_voids 反向单，记原单、原因、撤单营业日及撤单人；原单、项目、支付和消费流水保留，原单标为 voided，checkout_id 不变。卡余额按原消费拆分退回本金及赠送金，次数按原消费退回购买及赠送次数，各追加 void 流水并关联原消费与反向单；不检查卡有效期或持卡顾客查看范围；卡已退时整次撤单拒绝。单上挂账随原单作废，不计未还和 debt_summary，已有任何还款则拒绝撤单；作废欠款不能还款。用掉的红包清空当前支付引用，恢复可用（过期则显示 expired）。历史支付保留，删除 order_payments_red_packet 历史唯一索引，当前支付由 red_packets.order_payment_id UNIQUE 和红包锁保护；若红包已有多次历史支付，00024 Down 明确拒绝恢复旧索引。一起结账的单逐张撤；现金、银联、微信、支付宝仅由反向单记录撤单。锁顺序为单 → 按 UUID 的欠款 → 按 UUID 的卡 → 按 UUID 的红包 → 按 UUID 的团购券（均 FOR NO KEY UPDATE），与顾客合并的顾客 → 单 → 欠款 → 卡 → 红包 → 团购券及结账的单 → 卡 → 红包 → 团购券一致；还款只锁欠款，不回锁单或顾客。开启撤单授权窗口后，`open_void_window` 要求本人重新输入登录密码（与登录共用锁定），窗口内只有开启人能撤，过期须重开。撤单按调用时的营业日读取当前设置，不读原单快照；关闭设置跳过窗口检查，缩短设置不影响已开窗口。
 
 选卡规则 card_selection 从单的规则快照读取，默认 manual（手动选卡）要求每笔卡余额支付指定 card_id。by_discount（按折扣率）或 by_balance（按余额）允许每张单至多一笔未指定卡的卡余额支付。候选只列本店发行且属于单上顾客的卡，排除同单任意支付已指定的卡；与显式卡一起按 UUID 锁定后重新检查归属、营业日有效期、非次卡和本金加赠送金余额大于零。按折扣率逐张用其类型计价，按这张单实收从低到高；按余额按当前合计余额从少到多。同序先到期日（不限最后），再开卡时间，再 UUID。未指定支付按排序逐卡扣款，一张不够接着扣，每张使用的卡在原支付位置各追加一笔支付和消费流水；一起结账时按输入顺序逐单处理，每单在前面各单扣款后重新按当前余额过滤、排序并选计价卡，再计价、校验和写入；已扣空的卡不再参与后续单的计价。合计不足整次回滚。只给实际扣款或扣次的卡写日志。第一笔卡余额支付为未指定时，排序第一张是计价卡；其他卡只扣钱。扣次仍须指定卡，不参与选卡。preview_checkout 可传 auto_card 按同一快照规则只读选取计价卡，与 card_id 互斥；输出保留单据字段并返回 pricing_card_id（不传卡为空），不检查支付余额是否足够。
 
-结账锁顺序为按 UUID 排序的单 → 卡（FOR NO KEY UPDATE）→ 红包（按 UUID，FOR NO KEY UPDATE）→ 计价卡及候选卡类型（FOR SHARE）→ 有计价卡的单上的有效项目（FOR SHARE）。没有计价卡的单不加载计价数据、不锁项目。每张单第一笔卡余额支付的卡是计价卡；按该卡类型和单的规则快照读取会员价，与行上已记录价格比较，不重取标准价和级别价。改过价的行保持原价；不打折项目行既不取会员价，也不享受持卡折扣，按行上已记录价格扣卡；取会员价的行不打折，其余可打折行按卡类型 discount_percent 逐行四舍五入算持卡折扣。结账将新价格、来源、卡类型和折扣写回变动的有效行，去掉的行不改。preview_checkout 需要 payment.collect，HTTP 和 AI 均可直接试算同一套计价规则；它使用只读事务，不加业务行锁、不检查必填岗位或支付、不写任何数据。
+结账锁顺序为按 UUID 排序的单 → 卡（FOR NO KEY UPDATE）→ 红包（按 UUID，FOR NO KEY UPDATE）→ 团购券（按 UUID，FOR NO KEY UPDATE）→ 计价卡及候选卡类型（FOR SHARE）→ 有计价卡的单上的有效项目（FOR SHARE）。没有计价卡的单不加载计价数据、不锁项目。每张单第一笔卡余额支付的卡是计价卡；按该卡类型和单的规则快照读取会员价，与行上已记录价格比较，不重取标准价和级别价。改过价的行保持原价；不打折项目行既不取会员价，也不享受持卡折扣，按行上已记录价格扣卡；取会员价的行不打折，其余可打折行按卡类型 discount_percent 逐行四舍五入算持卡折扣。结账将新价格、来源、卡类型和折扣写回变动的有效行，去掉的行不改。preview_checkout 需要 payment.collect，HTTP 和 AI 均可直接试算同一套计价规则；它使用只读事务，不加业务行锁、不检查必填岗位或支付、不写任何数据。
+
+挂单关联团购券后，结账由服务端按关联顺序生成 method=groupbuy 的支付，客户端不提交团购支付。每笔金额取关联时留存的门店标价快照；团购总额超过本单实收时，从最后一笔团购券往前减到实收，不找零、不退款，其余支付是现场补差，可以为零。团购支付不是卡余额支付，不选计价卡、不享受持卡折扣；它也不经过 collections，不生成收款记录，因此团购已付金额不计现场收款。履约项目与团购券对应的项目不比较，按单上实际项目计价和结算。preview_checkout 返回同样的团购支付。撤单保留原支付流水，释放团购券关联，券可再次关联或撤销；业绩按原支付方式冲回。
+
+## 日结与封账
+
+`internal/paymethod` 是收款方式和现场收款划分的唯一清单：现金、银联、微信、支付宝是现场收款，卡本金、卡赠送金、扣次、红包、挂账、团购是非现场收款。以后新增方式只在这里登记；未声明为现场的方式自动列入非现场，不进入现金与到账对账。
+
+`internal/closing` 的 `preview_day_close`（Read/AIDirect）按营业日 D 直接从账本现算系统应收，不读以后生效的设置快照。现场收款按方式为：D 结账的 `order_payments` + D 的欠款还款 + D 的 `sale_payments` − D 的退卡退款 − D 撤单的原单现金、银联、微信、支付宝支付。非现场单列为 D 结账的卡本金、卡赠送金、扣次、红包、挂账、团购，减去 D 撤单原单的同类金额。团购支付只出现在非现场行，不进入现场收款、到账对账或差异；撤单保留原团购支付并在撤单营业日冲回。历史开卡、充值、手动补差价和卖红包有销售业绩金额却没有 `sale_payments` 时列入“未记方式”及笔数；次卡、套餐的历史开卡按本金加购买次数折算额列入。汇总还返回客次净额、结账单数和撤单数；`collections.ReconcileAll` 的全部通道汇总同时保存为通道汇总。
+
+`close_day`（Write/AIDraft，closing.daily）录入现金清点数和银联、微信、支付宝实际到账，要求 D 早于当前营业日且未封账。它保存系统快照、录入值、各现场方式的差异（现金为清点减系统，其余为实际减系统）和可选备注，版本号逐次递增；未封账的 D 重新日结追加新版本，当前版本为最新，旧版本仍可读。`get_day_close` 返回当前版本和全部版本，`list_day_closes` 按 `internal/daterange` 的营业日范围返回每天当前版本和封账状态。`day_closes` 只授予 SELECT、INSERT。
+
+`seal_day`（Write/AIDraft，closing.seal）要求 D 早于当前营业日；从未封账时 D 可为任意过去营业日，之后只能封当前封账日的下一天。D 有日结或完全没有业务（没有开单、结账、收款/退款、卡/欠款/红包/销售收款/团购券核销等带营业日的写入）才能封；D 及之前仍有状态为 open 的挂单时拒绝，提示中列出单 ID。封 D 表示封住 D 及以前全部日期。`unseal_day`（Write/AIDraft，新权限 closing.unseal，默认角色都没有）只能撤销最后一个封账日，原因必填，撤销后回到前一天或从未封账。每次封账和撤销封账追加 `closing_events`（日期、种类、原因、操作人、时刻）并写操作日志，目标种类为 `closing`；日结日志目标为 `day_close`。
+
+封账护栏 `closingguard.Guard` 按门店 `store_id + /closing` 咨询锁工作：业务写入取共享锁，封账和撤销封账取排他锁，因此“某天写入提交”和“封账提交”互斥。它拒绝营业日不晚于当前封账日的写入，提示 `该营业日已封账（YYYY-MM-DD）`。更新旧单的统一路径 `orders.change` 按每张单自己的 business_date 调用护栏，覆盖改单、改价、加项目、合并、结账和撤单；撤销收款按收款创建时刻换算的营业日调用护栏；登记历史欠款按欠款日期调用护栏。团购券关联、取消关联复用 `orders.ChangeOpenOrder`，合并时移动团购券复用 `orders.change`，都按单自己的 business_date 调用护栏；结账生成的 groupbuy 支付属于挂单结账，而封账拒绝所有不晚于 D 的挂单，因此不会写已封账营业日。团购券撤销只释放仍为挂单的券、已结账单拒绝撤销，而挂单不可能存在于已封账营业日，所以不需要额外护栏。团购商品新建/修改不记营业日、不改账务；`record_groupbuy_settlement` 只追加平台月结算额，不进入任何营业日的日结数字，二者都不调用护栏。卡调整、还款、退卡、开卡/充值/升级、红包发放都记录调用时的营业日，不可能是已封账的过去日期，因此不调用护栏。数据导入的卡流水也记当前营业日，不需要护栏；撤销导入前按被删除的卡余额、次数、积分流水和新建顾客/卡的营业日逐个调用护栏。顾客合并只改挂顾客归属，封账行金额和日期不变，因此不调用护栏；P0-18 后合并会同时改挂预约的 customer_id，预约本身不带金额、不影响任何日结行，所以仍不调用护栏。预约的创建、改约、取消、确认、完成、爽约，私约占位的创建和取消，轮牌变化，以及 findOrCreate 新建顾客，都只写预约/占位/轮牌/顾客这些非账务数据，不改现金或非现场收款、业绩、卡、红包、欠款，因此不调用护栏；完成预约只把已有单关联到预约，不改单的支付、营业日或业绩。预约和占位不进入 `DayHasBusiness`：它们没有金额，某天只有预约时仍可按“完全没有业务”封账，不需要日结。撤回红包记录撤回时刻并改变红包状态，但不改任何已封账营业日的账目，因此不调用护栏。团购券核销按 redeemed_at/created_at/revoked_at 换算营业日算作业务；团购平台月结算按结算月录入，不属于任何营业日，不算某天的业务。首次封账可以覆盖更早的上线前历史日子；只有被封的 D 本身需要日结（或完全没有业务）。考勤、轮牌、设置和提成方案不属于账务日期。
+
+| 操作 | 权限 | AI |
+| --- | --- | --- |
+| preview_day_close | closing.daily | AIDirect |
+| close_day | closing.daily | AIDraft |
+| get_day_close | closing.daily | AIDirect |
+| list_day_closes | closing.daily | AIDirect |
+| seal_day | closing.seal | AIDraft |
+| unseal_day | closing.unseal | AIDraft |
 
 ## 数据导入导出
 
@@ -167,7 +194,7 @@ Reconcile 按收款创建时刻的营业日、通道和当前状态汇总金额�
 ## 操作日志
 
 - `audit_log` 只追加，`salon_app` 只有 SELECT 和 INSERT 权限。日志与业务操作在同一事务里写入，任何一步失败都会一起回滚。同一员工或角色的修改用行锁排队，在读取改前快照前加锁，日志的改前才接得上前一次的改后。
-- 当前记录角色的新建、修改、删除，以及员工的新建、档案修改、登录设置、停用、恢复和角色分配；保留改前改后，删除角色时还保留持有员工的 ID、姓名。`list_audit_log` 需要操作日志权限，可按目标 ID 查询。每条日志记录目标种类及其关联顾客；`list_audit_log` 按调用者的顾客查看范围过滤关联顾客的日志。班次（`shift`）、员工班次（`staff_shift`，目标为员工 ID）、补卡与作废补卡（`punch`，目标为打卡 ID）、考勤核准与撤销（`attendance_approval`，目标为核准 ID）均不关联顾客，只需要操作日志权限即可查看；底薪（`base_salary`，目标为员工 ID）、加减项（`payroll_adjustment`，目标为加减项 ID）、工资锁月（`payroll_month`，目标为提成结算 ID，均不关联顾客）、提成方案（`commission_scheme`，不关联顾客）、卡类型、开卡、充值、开单、加项目、去掉项目、换岗位员工、改价、合并单、结账已记录日志。员工本人打卡（`clock_in`）不写操作日志，打卡行本身即记录。新增关联顾客的种类（例如单）时，添加接收顾客 ID 的构造函数，并扩展迁移中的 CHECK 列表。
+- 当前记录角色的新建、修改、删除，以及员工的新建、档案修改、登录设置、停用、恢复和角色分配；保留改前改后，删除角色时还保留持有员工的 ID、姓名。`list_audit_log` 需要操作日志权限，可按目标 ID 查询。每条日志记录目标种类及其关联顾客；`list_audit_log` 按调用者的顾客查看范围过滤关联顾客的日志。班次（`shift`）、员工班次（`staff_shift`，目标为员工 ID）、补卡与作废补卡（`punch`，目标为打卡 ID）、考勤核准与撤销（`attendance_approval`，目标为核准 ID）均不关联顾客，只需要操作日志权限即可查看；底薪（`base_salary`，目标为员工 ID）、加减项（`payroll_adjustment`，目标为加减项 ID）、工资锁月（`payroll_month`，目标为提成结算 ID，均不关联顾客）、提成方案（`commission_scheme`，不关联顾客）、团购商品（`groupbuy_deal`）、团购月结算（`groupbuy_settlement`）、预约（`appointment`，关联顾客）和私约占位（`appointment_block`，不关联顾客）、卡类型、开卡、充值、开单、加项目、去掉项目、换岗位员工、改价、合并单、结账已记录日志。员工本人打卡（`clock_in`）不写操作日志，打卡行本身即记录。新增关联顾客的种类（例如单）时，添加接收顾客 ID 的构造函数，并扩展迁移中的 CHECK 列表。
 - 新操作在成功路径末尾用同一个 `env` 调用 `audit.Record`，传入不含密码或密码哈希的返回值视图；新建前、删除后传 nil。手机号字段的 JSON 键名必须是 `phone`，`audit.Record` 遇到别的键名会拒绝写入（读取时只按这个键名打码）。
 
 ## 共享修改与引用检查
@@ -188,7 +215,7 @@ performance_entries.member 在非 sale 时必填，既有非销售行迁移为 f
 
 `internal/performance` 拥有业绩表、纯分配函数和 `list_performance`。performance 对外给出业绩单位（含基数构成），提成只消费业绩单位；支付方式表只有一份。结账在支付写入后、标记已结账前，在已有单锁的事务内按各单规则快照追加记录；撤单在已有单锁的事务内逐条追加冲回，不改原记录，不另记操作日志。结账记录用结账营业日，冲回用撤单营业日。
 
-仅有效且非扣次支付的项目行参与。performance 在结账事务内读取已登记支付，将卡余额从消费流水拆出本金和赠送金，并按次数流水区分购买次数与赠送次数。支付方式金额按各行实收比例分摊，以分为单位先向下取整，再按项目行顺序、现金、银联、微信、支付宝、挂账、红包、本金、赠送金的固定顺序，在行和支付方式都缺分的格子补分，保留两边合计。均分或没设岗位比例时按已填员工岗位均分；按岗位比例时仅对已填岗位的权重重新归一。岗位分配先向下取整，余分给最前的已填岗位。无人或已填岗位权重合计为零时记门店未分配业绩；同一员工占两岗位分别留存。实收份额乘该方式的业绩比例，用 money 的四舍五入到分计算业绩。
+仅有效且非扣次支付的项目行参与。performance 在结账事务内读取已登记支付，将卡余额从消费流水拆出本金和赠送金，并按次数流水区分购买次数与赠送次数。支付方式金额按各行实收比例分摊，以分为单位先向下取整，再按项目行顺序、现金、银联、微信、支付宝、团购、挂账、红包、本金、赠送金的固定顺序，在行和支付方式都缺分的格子补分，保留两边合计。均分或没设岗位比例时按已填员工岗位均分；按岗位比例时仅对已填岗位的权重重新归一。岗位分配先向下取整，余分给最前的已填岗位。无人或已填岗位权重合计为零时记门店未分配业绩；同一员工占两岗位分别留存。实收份额乘该方式的业绩比例，用 money 的四舍五入到分计算业绩。团购按 `performance_ratio_groupbuy` 计项目业绩，但计入 performance 基数，不计入 cash_performance 或 card_performance。
 
 耗卡业绩（consume）按扣次支付所关联次数流水的购买次数或赠送次数，取 card_items 随卡留存的单次金额，乘单的快照比例分给岗位员工；单次金额为零时不记。手工费（labor）对所有有效项目行按次计，包括扣次行，取加项目时留存的固定金额，或结账项目行价格（折扣前，含会员价）的百分比，四舍五入到分后按相同岗位规则分配；无人或已填岗位权重和为零时不记门店手工费。零手工费不记。
 
@@ -220,7 +247,7 @@ item 基数按单位汇总：paid 为 paid_amount 之和；performance 为 amoun
 
 冲回按（void_id、kind、order_item_id、slot）组成新笔，由 performance 批量取得原记录并关联原业绩单位，使用原单位的版本、命中项和基数，解释带原单位 ID；营业日为冲回日，因此归入冲回所在月。非阶梯格子与覆盖比例沿用原金额取负；阶梯使用冲回月及冲回位置的累计重新计算，不能直接取负原提成。
 
-结账在支付写入后、业绩写入前，以 cards.HasValidCard 为每张单读取一次会员判断：本店、该单顾客、active，复用卡支付 checkExpiry 的到期日规则，到期当天有效；不限卡种和余额。这是一个当时已提交状态的快照，不依赖该结果扣余额、次数或改变卡，卡随后开通、调整或退卡不应重算历史会员事实，所以无需新增行锁。该读取位于已有的单 → 卡 → 红包 → 卡类型 → 项目锁之后，不回锁顾客或其他卡，不逆转结账锁顺序。
+结账在支付写入后、业绩写入前，以 cards.HasValidCard 为每张单读取一次会员判断：本店、该单顾客、active，复用卡支付 checkExpiry 的到期日规则，到期当天有效；不限卡种和余额。这是一个当时已提交状态的快照，不依赖该结果扣余额、次数或改变卡，卡随后开通、调整或退卡不应重算历史会员事实，所以无需新增行锁。该读取位于已有的单 → 卡 → 红包 → 团购券 → 卡类型 → 项目锁之后，不回锁顾客或其他卡，不逆转结账锁顺序。
 
 list_commissions 是 Read / AIDirect，要求 performance.view。本人与全店范围沿用 list_performance；本人范围叠加他人的 staff_id 时为空，不能扩大范围。按营业日范围（相隔最多 92 天）、staff_id、source 筛选。以营业日降序、单位最早 created_at 降序、稳定单位 ID 降序排列；单位 ID 为该笔最小业绩记录 ID，limit / before_id 翻页。total 与按 item、consume、labor、sale 的 totals 使用完整筛选范围，原笔减冲回，不受分页影响。entries、explanation、totals 都在同一权限范围内，不含任何顾客字段。
 
@@ -313,7 +340,7 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 每次改位置都在同一事务里先锁队列行，再按位置和员工 ID 稳定顺序 `FOR UPDATE` 锁住当天全部轮牌行；写回时先把位置整体加一个偏移量，再写成 1..n 的连续位置，避免唯一约束瞬时冲突。并发 `assign_turn` 因此不会把同一名员工分给两位顾客。
 
-结账成功后，`orders` 在同一事务里调用 `rotation.AdvanceAfterCheckout`。它找出这张单上的服务员工，按队列 ID 顺序锁住队列和各行所属营业日的轮牌行；只推进 `serving_order_id` 指向这张单的行，跨营业日也按行自己的营业日推进，规则仍取结账时刻的营业日。点客与否取轮牌行记录的 `serving_designated`，不看单据上的指定标记。点客且 `rotation_designated_takes_turn=no` 时只恢复 waiting、不改变位置，记 advance_designated_no_turn；否则按 `rotation_half_rule` 判断整轮或半轮：整轮直接排到队尾并清除半轮标记；半轮第一次只标记 half_pending、不动位置，第二次才排到队尾并清除标记。事件写入 order_id 和 designated。单上没有正在服务的员工时不做任何事；撤单不反向推进轮牌（不在本任务范围）。
+结账成功后，`orders` 在同一事务里调用 `rotation.AdvanceAfterCheckout`。它找出这张单上的服务员工，按队列 ID 顺序锁住队列和各行所属营业日的轮牌行；只推进 `serving_order_id` 指向这张单的行，跨营业日也按行自己的营业日推进，规则仍取结账时刻的营业日。点客与否取轮牌行记录的 `serving_designated`，不看单据上的指定标记。点客且 `rotation_designated_takes_turn=no` 时只恢复 waiting、不改变位置，记 advance_designated_no_turn；否则按 `rotation_half_rule` 判断整轮或半轮：整轮直接排到队尾并清除半轮标记；半轮第一次只标记 half_pending、不动位置，第二次才排到队尾并清除标记。按预约记半轮要求前台在结账前完成预约并把这张单关联到预约；只关联待确认或已确认的预约、或结账后才完成，都按整轮。事件写入 order_id 和 designated。单上没有正在服务的员工时不做任何事；撤单不反向推进轮牌（不在本任务范围）。
 
 `get_rotation_stats` 从 advance_whole、advance_half 和 advance_designated_no_turn 事件按员工统计点客与轮牌接客数，两者分开合计；同一员工在两个队列服务同一张单只记一次，按员工和单去重。`list_rotation_events` 按日期范围和可选队列返回全部只追加记录；日期范围和统计都不得晚于今天的营业日。`get_rotation` 的轮牌行按批读取，查询数不随队列人数增长。
 
@@ -339,6 +366,31 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 老板拥有全部权限；店长和前台可以操作轮牌，发型师和助理只能查看。队列、成员和半轮项目配置写入 `audit_log`，目标为 `rotation_queue`（半轮项目清单以门店 ID 为目标）；轮牌事件本身仍是只追加的操作记录，不写 `audit_log`。
 
+## 预约与占位
+
+`internal/booking` 管理预约和私约占位。`appointments` 同时保存两种记录：`kind=appointment` 是员工代顾客登记的预约，必须有顾客；`kind=block` 是员工自己登记的私约占位，不关联顾客。状态为 pending、confirmed、completed、cancelled、no_show；代约和私约占位新建即 confirmed，待确认留给 P0-19 顾客自助预约。状态只能按 pending → confirmed/cancelled、confirmed → completed/cancelled/no_show 变化，私约占位只能 confirmed → cancelled。
+
+营业时段复用 `business_hours`，另有三项设置：`booking_min_lead_minutes` 提前量（前台代约不检查，导出 `booking.CheckLeadTime` 供 P0-19）、`booking_max_days_ahead` 可约天数和 `booking_default_minutes` 未选项目时的默认时长。预约必须提供顾客、顾客手机号或姓名；三者都没有时拒绝。预约开始必须在今天及以后、不早于当前时刻 5 分钟以上，结束必须晚于开始且与开始同一天、完整落在营业时段内。结束时间默认取所选项目 `duration_minutes` 之和，未选项目或项目都未设时长时取门店默认时长，前台传 `ends_at` 可手改。项目新增 `duration_minutes`（0–600，0 表示未设置）和 `bookable`（默认可以）；预约只接受启用且可约的项目。
+
+私约占位只检查同一员工的时段冲突和 `ends_at > starts_at`，最长 24 小时，结束时间必须在当前时刻之后；不检查营业时段、可约天数或是否跨天，也不要求顾客。同一员工的 pending/confirmed 记录时段不能重叠，`appointments` 用 `tstzrange` 上的 PostgreSQL EXCLUDE 约束（btree_gist）兜底并发；写入前先查冲突，以便提示里带出冲突记录 ID。相切边界允许，已取消、已完成、爽约的记录不占时段。`appointment_items` 保存项目及顺序；`appointment_events` 只追加，每次创建、改约、确认、完成、取消、爽约都记录改前改后的时间、发型师、原因、说明和操作人。取消预约必须选择顾客取消、门店取消、改约或其他，选其他要写说明；取消私约占位不需要原因。
+
+| 操作 | 权限 | AI |
+| --- | --- | --- |
+| create_appointment | booking.manage | AIDraft |
+| reschedule_appointment | booking.manage | AIDraft |
+| cancel_appointment | booking.manage | AIDraft |
+| confirm_appointment | booking.manage | AIDraft |
+| complete_appointment | booking.manage | AIDraft |
+| mark_no_show | booking.manage | AIDraft |
+| create_block | booking.manage | AIDraft |
+| cancel_block | booking.manage | AIDraft |
+| list_appointments | booking.manage | AIDirect |
+| get_appointment | booking.manage | AIDirect |
+
+发型师的 booking.manage 只有本人范围：只能查看、创建、改约、取消和登记自己的预约或占位，其他员工的记录按不存在处理；店长和前台为全店范围。完成预约可关联同一顾客的一张单；轮牌“按预约”用这条关联把已完成的预约记半轮，因此前台必须在结账前完成预约并关联这张单，否则这张单按整轮推进。`list_appointments` 按营业日范围（最多 92 天）和可选员工筛选，项目、顾客、员工名称都按批读取；`get_appointment` 同时返回项目和全部事件。预约与占位写入 `audit_log`，目标分别为 `appointment` 和 `appointment_block`。
+
+轮牌自动分配（不指定员工）时，`rotation.assign_turn` 一次询问 `booking.OccupiedStaff`：等待中的员工若在当前时刻被预约或私约占位覆盖，就跳过并记录一条原因为“预约/私约占位中”的 auto_skip，不改变其位置；点客不受影响。`rotation_half_rule=by_appointment` 时，结账的单关联了已完成的预约记半轮，否则记整轮。
+
 ## 团购适配层
 
 `internal/groupbuy.Provider` 统一验券、核销、撤销、查状态，四个动作均带幂等键。
@@ -347,7 +399,7 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 `verify_coupon`、`redeem_coupon`、`revoke_coupon` 均为 AINone；`get_redemption` 为 AIDirect。
 四者均要求 `groupbuy.redeem`，记录无关联顾客的 coupon_redemption 审计。
-`coupon_redemptions` 不写订单，`order_id` 预留给 P0-24。
+核销本身不写订单；核销成功后可以另行关联挂单，也可以暂不关联。
 
 团购使用 `ops.Operation.Phased`：处理函数在事务外执行，每段数据库操作由 `env.Transact`
 开启独立的租户事务，调用者和 `env.Now` 保持不变；普通操作仍在原来的单事务中执行。
@@ -356,6 +408,16 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 平台失败或结果未知时，也在保存状态的事务中记录改前、改后及不含平台内部错误的提示；日志写入失败时状态更新回滚，原 pending 可供重试恢复。
 撤销先 Query 以恢复上次未知结果，调用平台的键为 revoke: 加原键；抖音超过平台核销时刻一小时拒绝。
 所有进程并发和崩溃恢复最终依赖 Provider 对同键动作的幂等保证；事务不跨外部调用持锁。
+
+### 团购开单与业绩
+
+`groupbuy_deals` 是本店维护的团购商品映射：每个（门店、平台、名称）一条，记录平台购买价和对应的门店项目；平台不能修改，改名、改价、换项目或停用都不改已关联团购券的快照。`create_groupbuy_deal`、`update_groupbuy_deal` 为 Write / AIDraft，复用 `settings.manage`，写 groupbuy_deal 操作日志；`list_groupbuy_deals` 为 Read / AIDirect，登录即可读。订单和试算视图中的券平台取核销记录的 platform，不取团购商品当前值；商品名称仍取当前值。
+
+`link_coupon_order(redemption_id, deal_id, order_id)` 由 `groupbuy.redeem` 和 `order.create` 共同授权，通过 `orders.ChangeOpenOrder` 复用挂单锁和挂单检查；`order.create` 没有范围和窗口限制。它要求券是本店已核销且未关联的券，单是本店挂单，团购商品启用且平台一致；关联时把平台购买价和团购商品对应项目的标准价复制到 `coupon_redemptions.purchase_price`、`store_price`，记 `linked_at` 和 `order_id`。`unlink_coupon_order` 只在单仍是挂单时允许，只清空 `order_id`、`linked_at` 和当前支付指针，保留购买价和门店标价快照；之后重新关联会按新选择的团购商品覆盖快照。锁顺序为单 → 团购券 → 团购商品。一张券最多关联一张单，一张单可以关联多张券；`revoke_coupon` 在券仍关联挂单或已结账单时拒绝，必须先取消关联或撤单。关联和取消关联都写 coupon_redemption 和单的操作日志；两个操作均为 Write / AIDraft。
+
+结账时服务端按 `linked_at, id` 顺序为单上每张券生成一笔 `order_payments.method='groupbuy'`，金额取 `store_price`；`order_payments.coupon_redemption_id` 记录来源，团购总额超过本单实收时从最后一笔往前减到实收。客户端只提交现场补差，合计须等于实收减团购总额，可为零。团购支付不选计价卡、不参与持卡折扣，也不进入 collections，因此不生成收款记录、不计现场收款；挂账只由 method=debt 产生，不包含团购。`preview_checkout` 按同一规则返回团购支付。撤单保留 groupbuy 支付历史，释放券的 `order_id`、`linked_at` 和当前支付指针但保留购买价/标价快照并写 coupon_redemption 日志，券可重新关联或撤销；业绩按原支付方式冲回。平台在撤销请求期间先撤销、券随后被关联时，以平台结果为准：挂单上的券同时释放，已结账订单上的券保留支付历史并返回 409 提示撤单或售后。
+
+`groupbuy_settlements` 只追加，按门店、平台、YYYY-MM 保存平台结算额，最新一条为当前值。`record_groupbuy_settlement` 为 Write / AIDraft，复用 `closing.daily`，写 groupbuy_settlement 操作日志；`get_groupbuy_month` 为 Read / AIDirect，复用 `report.view`。月度视图用 `settings.BusinessDates(redeemed_at)` 归属营业日，窗口从当月首日本地零点前两天到下月首日本地零点后两天，按结算月筛选并排除已撤销券；购买价合计包含当月所有有快照的非撤销券。分类返回已关联已结账、已关联挂单、未关联但有购买价快照，以及未关联且无快照的笔数，再给出当前结算额、差额（结算额减购买价合计）和录入历史。
 
 ## AI 草稿
 

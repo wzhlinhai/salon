@@ -123,6 +123,20 @@ func TestDifferentKeysCannotRedeemSameCoupon(t *testing.T) {
 	}
 }
 
+func TestRevokedAllowsNewKey(t *testing.T) {
+	s, f, c := setup(t)
+	in := groupbuy.CouponRequest{Platform: "douyin", CouponCode: "revoked coupon", Key: "first"}
+	success(t, s.HTTP(t, &c, "redeem_coupon", in), "redeemed")
+	success(t, s.HTTP(t, &c, "revoke_coupon", groupbuy.LookupInput{Key: in.Key}), "revoked")
+	f.Replies["redeem"] = []fakeprovider.Reply{{Result: groupbuy.CouponResult{Status: "redeemed", Platform: "douyin", RedeemedAt: &instant}}}
+	second := in
+	second.Key = "second"
+	success(t, s.HTTP(t, &c, "redeem_coupon", second), "redeemed")
+	if f.Count("redeem") != 2 {
+		t.Fatalf("redeem calls = %d, want 2", f.Count("redeem"))
+	}
+}
+
 func TestCouponIdentityLock(t *testing.T) {
 	s, _, c := setup(t)
 	in := request("locked coupon")
@@ -136,6 +150,26 @@ func TestCouponIdentityLock(t *testing.T) {
 	optest.AssertWaiting(t, s.Pool, done, 1)
 	dbtest.Commit(t, tx)
 	success(t, optest.WaitResult(t, done, 200), "redeemed")
+}
+
+func TestCouponIdentityLockIsPerCoupon(t *testing.T) {
+	s, _, c := setup(t)
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	q := dbgen.New(tx)
+	if err := q.LockCouponIdentity(context.Background(), dbgen.LockCouponIdentityParams{StoreID: c.StoreID, Platform: "douyin", CouponCode: "held coupon"}); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan optest.Result, 1)
+	go func() { done <- s.HTTP(t, &c, "redeem_coupon", request("other coupon")) }()
+	select {
+	case r := <-done:
+		success(t, r, "redeemed")
+		dbtest.Rollback(t, tx)
+	case <-time.After(5 * time.Second):
+		dbtest.Rollback(t, tx)
+		optest.WaitResult(t, done, 200)
+		t.Fatal("different coupon blocked by the identity lock")
+	}
 }
 
 func TestUnknownBlocksDifferentKeyButFailedAllowsIt(t *testing.T) {
@@ -188,6 +222,38 @@ func TestFailedRedemptionIsAudited(t *testing.T) {
 			if !strings.Contains(after, tc.status) || !strings.Contains(after, tc.detail) || strings.Contains(after, "sensitive provider error") {
 				t.Fatalf("unexpected audit after: %s", after)
 			}
+		})
+	}
+}
+
+func TestFailedRedemptionAuditFailureKeepsPending(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"unknown", groupbuy.ErrUnknown},
+		{"failed", errors.New("provider refused")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, f, c := setup(t)
+			ctx := context.Background()
+			in := request("audit rollback " + tc.name)
+			f.Replies["redeem"] = []fakeprovider.Reply{{Err: tc.err}}
+			if _, err := s.Pool.Exec(ctx, "REVOKE INSERT ON audit_log FROM salon_app"); err != nil {
+				t.Fatal(err)
+			}
+			r := s.HTTP(t, &c, "redeem_coupon", in)
+			// rejection-detail: 内部数据库写入失败统一映射 500，此处检查失败结果也随审计回滚。
+			if r.Status != 500 {
+				t.Fatalf("audit failure: %+v", r)
+			}
+			if _, err := s.Pool.Exec(ctx, "GRANT INSERT ON audit_log TO salon_app"); err != nil {
+				t.Fatal(err)
+			}
+			for _, ch := range s.Channels() {
+				success(t, ch.Call(t, c, "get_redemption", groupbuy.LookupInput{Key: in.Key}), "pending")
+			}
+			success(t, s.HTTP(t, &c, "redeem_coupon", in), "redeemed")
 		})
 	}
 }
@@ -611,15 +677,15 @@ func TestFakeIdempotency(t *testing.T) {
 func TestSchema(t *testing.T) {
 	s, _, _ := setup(t)
 	ctx := context.Background()
-	for _, tc := range []struct{ name, field, value, code string }{
-		{"status", "status", "nonsense", "23514"},
-		{"staff FK", "redeemed_by", "00000000-0000-0000-0000-000000000000", "23503"},
-		{"order FK", "order_id", "00000000-0000-0000-0000-000000000000", "23503"},
-		{"store FK", "store_id", "00000000-0000-0000-0000-000000000000", "23503"},
+	for _, tc := range []struct{ name, update, code string }{
+		{"status", "status='nonsense'", "23514"},
+		{"staff FK", "redeemed_by='00000000-0000-0000-0000-000000000000'", "23503"},
+		{"order FK", "order_id='00000000-0000-0000-0000-000000000000',deal_id='00000000-0000-0000-0000-000000000000',purchase_price=1,store_price=1,linked_at=clock_timestamp()", "23503"},
+		{"store FK", "store_id='00000000-0000-0000-0000-000000000000'", "23503"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-			_, err := tx.Exec(ctx, "INSERT INTO coupon_redemptions (tenant_id,store_id,platform,coupon_code,idempotency_key,status,redeemed_by,created_at) VALUES ($1,$2,'douyin','schema','schema','pending',$3,$4)", s.Res.TenantID, s.Res.StoreID, s.Res.OwnerID, instant)
+			_, err := tx.Exec(ctx, "INSERT INTO coupon_redemptions (tenant_id,store_id,platform,coupon_code,idempotency_key,status,redeemed_by,created_at) VALUES ($1,$2,'douyin','schema',$5,'pending',$3,$4)", s.Res.TenantID, s.Res.StoreID, s.Res.OwnerID, instant, tc.name)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -627,7 +693,7 @@ func TestSchema(t *testing.T) {
 			if err := tx.Commit(ctx); err != nil {
 				t.Fatal(err)
 			}
-			_, err = s.Pool.Exec(ctx, "UPDATE coupon_redemptions SET "+tc.field+"=$1", tc.value)
+			_, err = s.Pool.Exec(ctx, "UPDATE coupon_redemptions SET "+tc.update)
 			var pgErr *pgconn.PgError
 			if !errors.As(err, &pgErr) || pgErr.Code != tc.code {
 				t.Fatalf("%s: %v", tc.name, err)
@@ -675,7 +741,7 @@ func TestTenantPolicyAndColumnGrants(t *testing.T) {
 		t.Fatalf("tenant write policy: %v", err)
 	}
 	_ = tx.Rollback(ctx)
-	for _, sql := range []string{"UPDATE coupon_redemptions SET coupon_code='changed'", "UPDATE coupon_redemptions SET order_id=NULL", "UPDATE coupon_redemptions SET idempotency_key='changed'", "DELETE FROM coupon_redemptions"} {
+	for _, sql := range []string{"UPDATE coupon_redemptions SET coupon_code='changed'", "UPDATE coupon_redemptions SET created_at=clock_timestamp()", "UPDATE coupon_redemptions SET idempotency_key='changed'", "DELETE FROM coupon_redemptions"} {
 		tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 		_, err := tx.Exec(ctx, sql)
 		if !errors.As(err, &pgErr) || pgErr.Code != "42501" {
@@ -683,6 +749,12 @@ func TestTenantPolicyAndColumnGrants(t *testing.T) {
 		}
 		_ = tx.Rollback(ctx)
 	}
+	tx = dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	var dealGrants bool
+	if err := tx.QueryRow(ctx, `SELECT has_column_privilege('salon_app','groupbuy_deals','name','UPDATE') AND has_column_privilege('salon_app','groupbuy_deals','purchase_price','UPDATE') AND has_column_privilege('salon_app','groupbuy_deals','item_id','UPDATE') AND has_column_privilege('salon_app','groupbuy_deals','active','UPDATE') AND NOT has_column_privilege('salon_app','groupbuy_deals','platform','UPDATE') AND NOT has_column_privilege('salon_app','groupbuy_deals','created_by','UPDATE') AND NOT has_table_privilege('salon_app','groupbuy_deals','UPDATE')`).Scan(&dealGrants); err != nil || !dealGrants {
+		t.Fatal("groupbuy deal column grants", dealGrants, err)
+	}
+	_ = tx.Rollback(ctx)
 }
 
 func TestFakeScope(t *testing.T) {

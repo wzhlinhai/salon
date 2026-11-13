@@ -245,8 +245,12 @@ func TestCountPackageGroupErrorsAreConsistent(t *testing.T) {
 		}
 		counts := rowsBySheet(t, r.Body, "次卡套餐")
 		for _, row := range counts {
-			if row["error"] != "同一来源卡号的其他项目有错误" {
-				t.Fatalf("group row = %v", row)
+			want := "同一来源卡号的其他项目有错误"
+			if row["item_name"] == "烫发" {
+				want = "剩余购买次数格式不正确"
+			}
+			if row["error"] != want {
+				t.Fatalf("group row = %v, want %q", row, want)
 			}
 		}
 	})

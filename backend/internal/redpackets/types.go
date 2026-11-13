@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/wzhlinhai/salon/backend/internal/money"
+	"github.com/wzhlinhai/salon/backend/internal/salepayments"
 )
 
 // RedPacketSalesStaff 是卖红包的业绩归属人。
@@ -36,12 +37,13 @@ type RedPacket struct {
 
 // IssueRedPacketInput 是卖或送红包的参数。
 type IssueRedPacketInput struct {
-	CustomerID    uuid.UUID     `json:"customer_id"`
-	Kind          string        `json:"kind" enum:"sold,gift"`
-	FaceValue     money.Amount  `json:"face_value"`
-	ExpiresOn     string        `json:"expires_on" format:"date"`
-	Price         *money.Amount `json:"price,omitempty"`
-	SalesStaffIDs []uuid.UUID   `json:"sales_staff_ids,omitempty" maxItems:"10" uniqueItems:"true"`
+	CustomerID    uuid.UUID              `json:"customer_id"`
+	Kind          string                 `json:"kind" enum:"sold,gift"`
+	FaceValue     money.Amount           `json:"face_value"`
+	ExpiresOn     string                 `json:"expires_on" format:"date"`
+	Price         *money.Amount          `json:"price,omitempty"`
+	SalesStaffIDs []uuid.UUID            `json:"sales_staff_ids,omitempty" maxItems:"10" uniqueItems:"true"`
+	Payments      []salepayments.Payment `json:"payments" maxItems:"4"`
 }
 
 // RevokeRedPacketInput 是撤回未用红包的原因。

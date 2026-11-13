@@ -18,7 +18,7 @@ import (
 )
 
 func upgrade(id, to any) map[string]any {
-	return map[string]any{"card_id": id, "to_type_id": to, "principal": "0.00", "bonus": "0.00"}
+	return map[string]any{"card_id": id, "to_type_id": to, "principal": "0.00", "bonus": "0.00", "payments": []any{}}
 }
 func rule(from, to any, kind, threshold string) map[string]any {
 	return map[string]any{"from_type_id": from, "to_type_id": to, "condition_kind": kind, "threshold": threshold}
@@ -49,6 +49,7 @@ func TestManualUpgrade(t *testing.T) {
 	target := s.call("create_card_type", typeInput("高级"), 200)
 	in := upgrade(card["id"], target["id"])
 	in["principal"], in["bonus"], in["sales_staff_ids"] = "25.50", "2.00", []any{s.Res.OwnerID}
+	in["payments"] = cashPayment("25.50")
 	out := s.call("upgrade_card", in, 200)
 	if out["card_type_id"] != target["id"] || out["principal"] != "1260.06" || out["bonus"] != "2.50" || out["expires_on"] != "2030-01-01" {
 		t.Fatal(out)
@@ -80,6 +81,9 @@ func TestUpgradeRequiresSalesStaff(t *testing.T) {
 	for _, key := range []string{"principal", "bonus"} {
 		in := upgrade(card["id"], to["id"])
 		in[key] = "0.01"
+		if key == "principal" {
+			in["payments"] = cashPayment("0.01")
+		}
 		if r := s.call("upgrade_card", in, 409); r["detail"] != "请选择一到十名不同的业绩归属人" {
 			t.Fatal(r)
 		}
@@ -95,6 +99,7 @@ func TestUpgradeCurrentStoredValue(t *testing.T) {
 			ct := s.countType(kind)
 			in := s.opening()
 			in["card_type_id"], in["principal"], in["bonus"] = ct["id"], "0.00", "0.00"
+			in["payments"] = []any{}
 			card := s.call("open_card", in, 200)
 			before := upgradeSnapshot(t, s)
 			if r := s.call("upgrade_card", upgrade(card["id"], s.cardType), 409); r["detail"] != "仅储值卡支持升级" {
@@ -184,6 +189,7 @@ func TestAutoUpgradeSingle(t *testing.T) {
 			r := s.call("create_card_upgrade_rule", rule(s.cardType, to["id"], "single_recharge", "100.00"), 200)
 			in := s.recharge(card["id"])
 			in["principal"] = amount
+			in["payments"] = cashPayment(amount)
 			out := s.call("recharge_card", in, 200)
 			if amount == "99.99" {
 				if out["card_type_id"] != s.cardType || out["upgraded_to"] != nil {
@@ -227,11 +233,13 @@ func TestAutoUpgradeTotal(t *testing.T) {
 	s := open(t)
 	opening := s.opening()
 	opening["principal"], opening["bonus"] = "10.00", "0.00"
+	opening["payments"] = cashPayment("10.00")
 	card := s.call("open_card", opening, 200)
 	middle := s.call("create_card_type", typeInput("中级"), 200)
 	to := s.call("create_card_type", typeInput("高级"), 200)
 	in := upgrade(card["id"], middle["id"])
 	in["principal"], in["sales_staff_ids"] = "20.00", []any{s.Res.OwnerID}
+	in["payments"] = cashPayment("20.00")
 	s.call("upgrade_card", in, 200)
 	s.call("create_card_upgrade_rule", rule(middle["id"], to["id"], "total_recharge", "40.00"), 200)
 	s.call("adjust_card", map[string]any{"card_id": card["id"], "principal": "1000.00", "reason": "更正不算充值"}, 200)
@@ -241,6 +249,7 @@ func TestAutoUpgradeTotal(t *testing.T) {
 	s.call("transfer_card_balance", tr, 200)
 	rc := s.recharge(card["id"])
 	rc["principal"], rc["bonus"] = "5.00", "0.00"
+	rc["payments"] = cashPayment("5.00")
 	out := s.call("recharge_card", rc, 200)
 	if out["card_type_id"] != middle["id"] || out["upgraded_to"] != nil {
 		t.Fatal(out)
@@ -312,6 +321,7 @@ func TestUpgradeSerializes(t *testing.T) {
 	done := make(chan optest.Result, 1)
 	in := upgrade(card["id"], to["id"])
 	in["principal"], in["sales_staff_ids"] = "1.00", []any{s.Res.OwnerID}
+	in["payments"] = cashPayment("1.00")
 	go func() { done <- s.HTTPWithToken(t, s.Owner, "upgrade_card", in) }()
 	dbtest.WaitForLockWait(t, s.Pool)
 	dbtest.Exec(t, held, `INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id) VALUES ($1,$2,$3,'recharge',1234.56,10,1244.56,0.50,0,0.50,current_date,$4)`, s.Res.TenantID, s.Res.StoreID, card["id"], s.Res.OwnerID)
@@ -417,6 +427,7 @@ func TestTransferRules(t *testing.T) {
 	ct := s.countType("count")
 	opening := s.opening()
 	opening["card_type_id"], opening["principal"], opening["bonus"] = ct["id"], "0.00", "0.00"
+	opening["payments"] = []any{}
 	c := s.call("open_card", opening, 200)
 	if r := s.call("transfer_card_balance", transfer(a["id"], c["id"]), 409); r["detail"] != "次卡不能接收余额" {
 		t.Fatal(r)
@@ -630,6 +641,7 @@ func TestUpgradeReferenceLocks(t *testing.T) {
 			} else {
 				id, _ := s.Hire("员工", "002", "seller")
 				in["principal"], in["sales_staff_ids"] = "1.00", []any{id}
+				in["payments"] = cashPayment("1.00")
 				dbtest.Exec(t, held, "UPDATE staff SET active=false,deactivated_at=clock_timestamp() WHERE id=$1", id)
 			}
 			done := make(chan optest.Result, 1)

@@ -59,6 +59,8 @@ type Item struct {
 	Discountable    bool           `json:"discountable"`
 	LaborFeeAmount  *money.Amount  `json:"labor_fee_amount" nullable:"true"`
 	LaborFeePercent *money.Percent `json:"labor_fee_percent" nullable:"true"`
+	DurationMinutes int            `json:"duration_minutes" minimum:"0" maximum:"600" doc:"一次服务的分钟数，0 表示未设置"`
+	Bookable        bool           `json:"bookable" doc:"项目能否被预约"`
 	Active          bool           `json:"active"`
 	CreatedAt       time.Time      `json:"created_at"`
 	LevelPrices     []LevelPrice   `json:"level_prices"`
@@ -82,6 +84,8 @@ type CreateItemInput struct {
 	Discountable    bool                `json:"discountable"`
 	LaborFeeAmount  *money.Amount       `json:"labor_fee_amount" nullable:"true"`
 	LaborFeePercent *money.Percent      `json:"labor_fee_percent" nullable:"true"`
+	DurationMinutes *int                `json:"duration_minutes,omitempty" minimum:"0" maximum:"600" doc:"一次服务的分钟数，不填为 0（未设置）"`
+	Bookable        *bool               `json:"bookable,omitempty" doc:"能否被预约，新建时不填为可以"`
 	Positions       []ItemPositionInput `json:"positions" maxItems:"20"`
 	LevelPrices     []LevelPrice        `json:"level_prices" maxItems:"20"`
 }
@@ -168,7 +172,7 @@ func views(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, rows []dbge
 	indices := map[uuid.UUID]int{}
 	for _, r := range rows {
 		indices[r.ID] = len(out)
-		out = append(out, Item{ID: r.ID, Name: r.Name, Kind: r.Kind, Price: r.Price, Discountable: r.Discountable, LaborFeeAmount: r.LaborFeeAmount, LaborFeePercent: r.LaborFeePercent, Active: r.Active, CreatedAt: r.CreatedAt.Time, MemberPrices: []MemberPrice{}, LevelPrices: []LevelPrice{}, Positions: []ItemPosition{}})
+		out = append(out, Item{ID: r.ID, Name: r.Name, Kind: r.Kind, Price: r.Price, Discountable: r.Discountable, LaborFeeAmount: r.LaborFeeAmount, LaborFeePercent: r.LaborFeePercent, DurationMinutes: int(r.DurationMinutes), Bookable: r.Bookable, Active: r.Active, CreatedAt: r.CreatedAt.Time, MemberPrices: []MemberPrice{}, LevelPrices: []LevelPrice{}, Positions: []ItemPosition{}})
 	}
 	for _, m := range members {
 		if i, ok := indices[m.ItemID]; ok {
@@ -248,7 +252,14 @@ func createItem(ctx context.Context, env ops.Env, in *CreateItemInput) (*Item, e
 	if err := shareReferences(ctx, env, in, &Item{}); err != nil {
 		return nil, err
 	}
-	row, err := env.Q.CreateItem(ctx, dbgen.CreateItemParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Name: in.Name, Kind: in.Kind, Price: in.Price, Discountable: in.Discountable, LaborFeeAmount: in.LaborFeeAmount, LaborFeePercent: in.LaborFeePercent})
+	duration, bookable := int32(0), true
+	if in.DurationMinutes != nil {
+		duration = int32(*in.DurationMinutes)
+	}
+	if in.Bookable != nil {
+		bookable = *in.Bookable
+	}
+	row, err := env.Q.CreateItem(ctx, dbgen.CreateItemParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Name: in.Name, Kind: in.Kind, Price: in.Price, Discountable: in.Discountable, LaborFeeAmount: in.LaborFeeAmount, LaborFeePercent: in.LaborFeePercent, DurationMinutes: duration, Bookable: bookable})
 	if err != nil {
 		return nil, rowError(err)
 	}
@@ -280,7 +291,14 @@ func updateItem(ctx context.Context, env ops.Env, in *UpdateItemInput) (*Item, e
 	if err := shareReferences(ctx, env, &in.CreateItemInput, before); err != nil {
 		return nil, err
 	}
-	row, err = env.Q.UpdateItem(ctx, dbgen.UpdateItemParams{ID: in.ID, Name: in.Name, Kind: in.Kind, Price: in.Price, Discountable: in.Discountable, LaborFeeAmount: in.LaborFeeAmount, LaborFeePercent: in.LaborFeePercent, Active: in.Active})
+	duration, bookable := row.DurationMinutes, row.Bookable
+	if in.DurationMinutes != nil {
+		duration = int32(*in.DurationMinutes)
+	}
+	if in.Bookable != nil {
+		bookable = *in.Bookable
+	}
+	row, err = env.Q.UpdateItem(ctx, dbgen.UpdateItemParams{ID: in.ID, Name: in.Name, Kind: in.Kind, Price: in.Price, Discountable: in.Discountable, LaborFeeAmount: in.LaborFeeAmount, LaborFeePercent: in.LaborFeePercent, DurationMinutes: duration, Bookable: bookable, Active: in.Active})
 	if err != nil {
 		return nil, rowError(err)
 	}

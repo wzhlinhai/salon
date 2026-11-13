@@ -37,7 +37,7 @@ type PerformanceEntry struct {
 	Slot               *int16       `json:"slot" nullable:"true"`
 	PositionID         *uuid.UUID   `json:"position_id" nullable:"true"`
 	Staff              *staff.Ref   `json:"staff"`
-	Method             string       `json:"method" enum:"cash,unionpay,wechat,alipay,debt,red_packet,card_principal,card_bonus,count_paid,count_gift,labor,card_open,card_recharge,card_upgrade,red_packet_sold"`
+	Method             string       `json:"method" enum:"cash,unionpay,wechat,alipay,groupbuy,debt,red_packet,card_principal,card_bonus,count_paid,count_gift,labor,card_open,card_recharge,card_upgrade,red_packet_sold"`
 	PaidAmount         money.Amount `json:"paid_amount" doc:"非负实收份额，reversal 为 true 时计负数"`
 	Ratio              int16        `json:"ratio"`
 	Amount             money.Amount `json:"amount" doc:"非负业绩金额，reversal 为 true 时计负数"`

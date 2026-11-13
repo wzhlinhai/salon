@@ -16,6 +16,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/performance"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
+	"github.com/wzhlinhai/salon/backend/internal/salepayments"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
@@ -90,6 +91,13 @@ func openCard(ctx context.Context, env ops.Env, in *OpenCardInput) (*Card, error
 	if ct.Kind == CountCard && (in.Principal.Cmp(money.Amount{}) != 0 || in.Bonus.Cmp(money.Amount{}) != 0) {
 		return nil, ops.Rule("次卡本金和赠送金必须为零")
 	}
+	expected, err := openingSaleTotal(ctx, env, ct.ID, in.Principal)
+	if err != nil {
+		return nil, err
+	}
+	if err := salepayments.Validate(in.Payments, expected); err != nil {
+		return nil, err
+	}
 	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, now)
 	if err != nil {
 		return nil, err
@@ -121,6 +129,9 @@ func openCard(ctx context.Context, env ops.Env, in *OpenCardInput) (*Card, error
 	return out, nil
 }
 func rechargeCard(ctx context.Context, env ops.Env, in *RechargeInput) (*RechargeResult, error) {
+	if err := salepayments.Validate(in.Payments, (money.Total{}).AddProduct(in.Principal, 1)); err != nil {
+		return nil, err
+	}
 	if err := staff.LockSalesStaff(ctx, env, in.SalesStaffIDs); err != nil {
 		return nil, err
 	}
@@ -144,6 +155,18 @@ func rechargeCard(ctx context.Context, env ops.Env, in *RechargeInput) (*Recharg
 	}
 	return &RechargeResult{Card: *out, UpgradedTo: upgraded}, nil
 }
+func openingSaleTotal(ctx context.Context, env ops.Env, cardTypeID uuid.UUID, principal money.Amount) (money.Total, error) {
+	total := (money.Total{}).AddProduct(principal, 1)
+	rows, err := env.Q.ListCardTypeItems(ctx, []uuid.UUID{cardTypeID})
+	if err != nil {
+		return money.Total{}, err
+	}
+	for _, row := range rows {
+		total = total.AddProduct(row.CardTypeItem.UnitPrice, int64(row.CardTypeItem.PaidCount))
+	}
+	return total, nil
+}
+
 func appendLedger(ctx context.Context, env ops.Env, id uuid.UUID, kind string, principal, bonus money.Amount, in TopUpInput, day time.Time) (dbgen.CardLedger, error) {
 	row, err := writeBalance(ctx, env, id, kind, principal, bonus, in.Principal.Sub(money.Amount{}), in.Bonus.Sub(money.Amount{}), day, nil, nil, nil)
 	if err != nil {
@@ -155,6 +178,9 @@ func appendLedger(ctx context.Context, env ops.Env, id uuid.UUID, kind string, p
 		}
 	}
 	if err := earnPoints(ctx, env, row, in.Principal); err != nil {
+		return dbgen.CardLedger{}, err
+	}
+	if err := salepayments.WriteCard(ctx, env, row, in.Payments); err != nil {
 		return dbgen.CardLedger{}, err
 	}
 	value, purchase := (money.Total{}).AddProduct(in.Principal, 1), "repeat"

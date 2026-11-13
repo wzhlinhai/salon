@@ -17,7 +17,7 @@ func (s *fixture) saleSource() {
 func TestSaleDatabaseChecks(t *testing.T) {
 	s := open(t)
 	s.saleSource()
-	packet := s.call("issue_red_packet", map[string]any{"customer_id": s.customer, "kind": "sold", "face_value": "100", "price": "88", "expires_on": "2999-01-01", "sales_staff_ids": []uuid.UUID{s.Res.OwnerID}}, 200)["id"]
+	packet := s.call("issue_red_packet", map[string]any{"customer_id": s.customer, "kind": "sold", "face_value": "100", "price": "88", "expires_on": "2999-01-01", "sales_staff_ids": []uuid.UUID{s.Res.OwnerID}, "payments": testPayments("88")}, 200)["id"]
 	s.paid(s.customerOrder(s.checkoutLine()), payment("cash", "100"))
 	checks := []struct {
 		name      string
@@ -104,7 +104,7 @@ func TestSaleCompositeForeignKeys(t *testing.T) {
 func TestSaleMigrationDown(t *testing.T) {
 	s := open(t)
 	s.saleSource()
-	s.call("issue_red_packet", map[string]any{"customer_id": s.customer, "kind": "sold", "face_value": "100", "price": "88", "expires_on": "2999-01-01", "sales_staff_ids": []uuid.UUID{s.Res.OwnerID}}, 200)
+	s.call("issue_red_packet", map[string]any{"customer_id": s.customer, "kind": "sold", "face_value": "100", "price": "88", "expires_on": "2999-01-01", "sales_staff_ids": []uuid.UUID{s.Res.OwnerID}, "payments": testPayments("88")}, 200)
 	s.paid(s.customerOrder(s.checkoutLine()), payment("cash", "100"))
 	dbtest.MigrateDownTo(t, s.Pool, 29)
 	var rows, cols, nullable, checks int

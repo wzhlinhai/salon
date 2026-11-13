@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/wzhlinhai/salon/backend/internal/audit"
+	"github.com/wzhlinhai/salon/backend/internal/closingguard"
 	"github.com/wzhlinhai/salon/backend/internal/customers"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
@@ -51,6 +52,9 @@ func RegisterHistoricalDebt(ctx context.Context, env ops.Env, in *RegisterHistor
 	}
 	if incurred.Format(time.DateOnly) > day.Format(time.DateOnly) {
 		return nil, ops.Rule("欠款日期不能晚于今天")
+	}
+	if err := closingguard.Guard(ctx, env.Q, env.Caller.StoreID, incurred); err != nil {
+		return nil, err
 	}
 	if _, err := customers.LockReference(ctx, env, in.CustomerID); err != nil {
 		return nil, rowError(err)

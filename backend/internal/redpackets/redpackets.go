@@ -17,6 +17,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/performance"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
+	"github.com/wzhlinhai/salon/backend/internal/salepayments"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
@@ -40,11 +41,13 @@ func issueRedPacket(ctx context.Context, env ops.Env, in *IssueRedPacketInput) (
 	if in.FaceValue.Cmp(money.Amount{}) <= 0 {
 		return nil, ops.Rule("面额须大于零")
 	}
+	var expected money.Total
 	switch in.Kind {
 	case "sold":
 		if in.Price == nil || in.Price.Cmp(money.Amount{}) <= 0 {
 			return nil, ops.Rule("卖红包须填写大于零的售价")
 		}
+		expected = (money.Total{}).AddProduct(*in.Price, 1)
 	case "gift":
 		if in.Price != nil || len(in.SalesStaffIDs) > 0 {
 			return nil, ops.Rule("送红包不能填写售价或业绩归属人")
@@ -52,6 +55,9 @@ func issueRedPacket(ctx context.Context, env ops.Env, in *IssueRedPacketInput) (
 	default:
 		// rule-untested: IssueRedPacketInput.Kind 的 schema enum 在调用前拒绝 sold、gift 以外的值
 		return nil, ops.Rule("红包种类无效")
+	}
+	if err := salepayments.Validate(in.Payments, expected); err != nil {
+		return nil, err
 	}
 	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, now)
 	if err != nil {
@@ -87,6 +93,9 @@ func issueRedPacket(ctx context.Context, env ops.Env, in *IssueRedPacketInput) (
 		if err := performance.RecordSale(ctx, env, performance.Sale{Method: "red_packet_sold", Value: (money.Total{}).AddProduct(*row.Price, 1), StaffIDs: in.SalesStaffIDs, BusinessDate: row.BusinessDate.Time, RedPacketID: &row.ID, Purchase: "repeat"}); err != nil {
 			return nil, err
 		}
+	}
+	if err := salepayments.WriteRedPacket(ctx, env, row, in.Payments); err != nil {
+		return nil, err
 	}
 	out, err := view(ctx, env, row, day)
 	if err != nil {

@@ -15,9 +15,9 @@ func TestSalePerformanceRead(t *testing.T) {
 	s := open(t)
 	mine, token := s.Hire("本人", "098", "sale-reader", s.Role("发型师"))
 	ct := s.paymentType("销售卡", nil)
-	s.call("open_card", map[string]any{"customer_id": s.customer, "card_type_id": ct["id"], "principal": "100", "bonus": "20", "sales_staff_ids": []uuid.UUID{mine, s.Res.OwnerID}}, 200)
+	s.call("open_card", map[string]any{"customer_id": s.customer, "card_type_id": ct["id"], "principal": "100", "bonus": "20", "sales_staff_ids": []uuid.UUID{mine, s.Res.OwnerID}, "payments": testPayments("100")}, 200)
 	s.paid(s.customerOrder(s.checkoutLine()), payment("cash", "100"))
-	packet := s.call("issue_red_packet", map[string]any{"customer_id": s.customer, "kind": "sold", "face_value": "100", "price": "88", "expires_on": "2999-01-01", "sales_staff_ids": []uuid.UUID{s.Res.OwnerID}}, 200)
+	packet := s.call("issue_red_packet", map[string]any{"customer_id": s.customer, "kind": "sold", "face_value": "100", "price": "88", "expires_on": "2999-01-01", "sales_staff_ids": []uuid.UUID{s.Res.OwnerID}, "payments": testPayments("88")}, 200)
 	day := settings.Date(time.Now()).Format(time.DateOnly)
 	for _, ch := range s.Channels() {
 		t.Run(ch.Name, func(t *testing.T) {

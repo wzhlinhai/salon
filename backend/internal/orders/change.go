@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/wzhlinhai/salon/backend/internal/audit"
+	"github.com/wzhlinhai/salon/backend/internal/closingguard"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
@@ -46,6 +47,9 @@ func change(ctx context.Context, env ops.Env, action, requiredStatus string, ids
 	rows := make([]dbgen.Order, len(ids))
 	for i, id := range ids {
 		rows[i] = locked[id]
+		if err := closingguard.Guard(ctx, env.Q, env.Caller.StoreID, rows[i].BusinessDate.Time); err != nil {
+			return nil, err
+		}
 		if err := checkEdit(ctx, env, rows[i], now); err != nil {
 			return nil, err
 		}
@@ -97,6 +101,11 @@ func changeOne(ctx context.Context, env ops.Env, action string, id uuid.UUID, ed
 		return nil, err
 	}
 	return &after[0], nil
+}
+
+// ChangeOpenOrder 在单锁和调用者的开单权限限制下修改一张挂单，供团购关联与取消关联复用。
+func ChangeOpenOrder(ctx context.Context, env ops.Env, action string, id uuid.UUID, edit func(*dbgen.Order) error) (*Order, error) {
+	return changeOne(ctx, env, action, id, edit)
 }
 
 // changeItem 在单锁和权限检查之后读取项目行，拒绝修改已去掉的行。

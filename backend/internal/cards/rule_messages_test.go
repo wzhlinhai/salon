@@ -44,6 +44,7 @@ func TestRefundOverflowMessage(t *testing.T) {
 	ct := s.call("create_card_type", countType("高额次卡", "count", item), 200)
 	input := s.opening()
 	input["card_type_id"], input["principal"], input["bonus"] = ct["id"], "0", "0"
+	input["payments"] = []any{}
 	card := s.call("open_card", input, 200)
 	s.call("adjust_card", map[string]any{"card_id": card["id"], "reason": "更正购买次数", "counts": []any{map[string]any{"item_id": item["item_id"], "paid": 2, "gift": 3}}}, 200)
 	before := s.refundSnapshot()

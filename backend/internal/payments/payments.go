@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/wzhlinhai/salon/backend/internal/audit"
 	"github.com/wzhlinhai/salon/backend/internal/cards"
 	"github.com/wzhlinhai/salon/backend/internal/collections"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
@@ -18,6 +19,7 @@ import (
 type Input struct {
 	ExternalRef                      *string
 	RedPacketID, OrderItemID, CardID *uuid.UUID
+	CouponRedemptionID               *uuid.UUID
 	Method                           string
 	Amount                           money.Amount
 }
@@ -29,6 +31,10 @@ func Validate(orders [][]Input) error {
 	for _, order := range orders {
 		unspecified := 0
 		for _, payment := range order {
+			if payment.Method == "groupbuy" || payment.CouponRedemptionID != nil {
+				// rule-untested: 客户支付类型没有 groupbuy 或 coupon_redemption_id 字段，HTTP 和 AI schema 在到达这里前已拒绝
+				return ops.Rule("团购支付由系统按关联的团购券生成，不能手动登记")
+			}
 			if payment.Method != "red_packet" && payment.RedPacketID != nil {
 				return ops.Rule("只有红包支付要选红包")
 			}
@@ -124,9 +130,14 @@ func (p *Checkout) Record(ctx context.Context, checkoutID uuid.UUID, order dbgen
 			}
 			ledgerID = &id
 		}
-		paymentID, err := env.Q.CreateOrderPayment(ctx, dbgen.CreateOrderPaymentParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CheckoutID: checkoutID, OrderID: order.ID, Method: payment.Method, Amount: payment.Amount, CardID: payment.CardID, CardLedgerID: ledgerID, OrderItemID: payment.OrderItemID, CardCountLedgerID: countLedgerID, RedPacketID: payment.RedPacketID})
+		paymentID, err := env.Q.CreateOrderPayment(ctx, dbgen.CreateOrderPaymentParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, CheckoutID: checkoutID, OrderID: order.ID, Method: payment.Method, Amount: payment.Amount, CardID: payment.CardID, CardLedgerID: ledgerID, OrderItemID: payment.OrderItemID, CardCountLedgerID: countLedgerID, RedPacketID: payment.RedPacketID, CouponRedemptionID: payment.CouponRedemptionID})
 		if err != nil {
 			return err
+		}
+		if payment.Method == "groupbuy" {
+			if err := env.Q.SetRedemptionPayment(ctx, dbgen.SetRedemptionPaymentParams{StoreID: env.Caller.StoreID, ID: *payment.CouponRedemptionID, OrderPaymentID: &paymentID}); err != nil {
+				return err
+			}
 		}
 		if payment.Method == "red_packet" {
 			if err := p.recordRedPacket(ctx, payment, paymentID); err != nil {
@@ -190,8 +201,56 @@ func Reverse(ctx context.Context, env ops.Env, orderID, voidID uuid.UUID, day ti
 			return err
 		}
 	}
+	if err := releaseGroupbuy(ctx, env, orderID); err != nil {
+		return err
+	}
 	if err := collections.CancelOrder(ctx, env, orderID); err != nil {
 		return err
 	}
 	return cards.Audit(ctx, env, "void_order", used)
+}
+
+// redemptionAudit 是团购券释放前后的日志视图，键名与其他团购日志一致。
+type redemptionAudit struct {
+	ID             uuid.UUID     `json:"id"`
+	Platform       string        `json:"platform"`
+	CouponCode     string        `json:"coupon_code"`
+	Status         string        `json:"status"`
+	OrderID        *uuid.UUID    `json:"order_id" nullable:"true"`
+	DealID         *uuid.UUID    `json:"deal_id" nullable:"true"`
+	PurchasePrice  *money.Amount `json:"purchase_price" nullable:"true"`
+	StorePrice     *money.Amount `json:"store_price" nullable:"true"`
+	LinkedAt       *time.Time    `json:"linked_at" nullable:"true"`
+	OrderPaymentID *uuid.UUID    `json:"order_payment_id" nullable:"true"`
+}
+
+func redemptionAuditView(row dbgen.CouponRedemption) redemptionAudit {
+	out := redemptionAudit{ID: row.ID, Platform: row.Platform, CouponCode: row.CouponCode, Status: row.Status, OrderID: row.OrderID, DealID: row.DealID, PurchasePrice: row.PurchasePrice, StorePrice: row.StorePrice, OrderPaymentID: row.OrderPaymentID}
+	if row.LinkedAt.Valid {
+		out.LinkedAt = &row.LinkedAt.Time
+	}
+	return out
+}
+
+// releaseGroupbuy 撤单时锁住单上关联的团购券并清空关联和当前支付指针，券可再次关联或撤销。
+func releaseGroupbuy(ctx context.Context, env ops.Env, orderID uuid.UUID) error {
+	rows, err := env.Q.LockOrderRedemptions(ctx, dbgen.LockOrderRedemptionsParams{StoreID: env.Caller.StoreID, OrderIds: []uuid.UUID{orderID}})
+	if err != nil {
+		return err
+	}
+	for _, row := range rows {
+		before := redemptionAudit{ID: row.ID, Platform: row.Platform, CouponCode: row.CouponCode, Status: row.Status, OrderID: row.OrderID, DealID: row.DealID, PurchasePrice: row.PurchasePrice, StorePrice: row.StorePrice, OrderPaymentID: row.OrderPaymentID}
+		if row.LinkedAt.Valid {
+			before.LinkedAt = &row.LinkedAt.Time
+		}
+		released, err := env.Q.ReleaseRedemption(ctx, dbgen.ReleaseRedemptionParams{StoreID: env.Caller.StoreID, ID: row.ID})
+		if err != nil {
+			return err
+		}
+		after := redemptionAuditView(released)
+		if err := audit.Record(ctx, env, "void_order", audit.CouponRedemptionTarget(row.ID), before, after); err != nil {
+			return err
+		}
+	}
+	return nil
 }

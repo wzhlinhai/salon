@@ -317,6 +317,7 @@ func TestDatabaseGuards(t *testing.T) {
 
 // fakeChannel 让新增通道走相同的发起、查询、撤销、退款及设置路径。
 var fakeCancels atomic.Int64
+var fakeRefunds atomic.Int64
 
 type fakeChannel struct{}
 
@@ -330,12 +331,37 @@ func (fakeChannel) Cancel(context.Context, ops.Env, dbgen.Collection) error {
 	fakeCancels.Add(1)
 	return nil
 }
-func (fakeChannel) Refund(context.Context, ops.Env, dbgen.Collection) error { return nil }
+func (fakeChannel) Refund(context.Context, ops.Env, dbgen.Collection) error {
+	fakeRefunds.Add(1)
+	return nil
+}
 func (fakeChannel) Reconcile(_ context.Context, _ ops.Env, _ time.Time) (collections.Summary, error) {
 	return collections.Summary{Channel: "test_channel"}, nil
 }
+
+type succeedingChannel struct{}
+
+func (succeedingChannel) Initiate(_ context.Context, _ ops.Env, row dbgen.Collection) (collections.Result, error) {
+	return collections.Result{Status: "succeeded", ExternalRef: row.ExternalRef}, nil
+}
+func (succeedingChannel) Query(_ context.Context, _ ops.Env, row dbgen.Collection) (collections.Result, error) {
+	return collections.Result{Status: row.Status}, nil
+}
+func (succeedingChannel) Cancel(context.Context, ops.Env, dbgen.Collection) error {
+	fakeCancels.Add(1)
+	return nil
+}
+func (succeedingChannel) Refund(context.Context, ops.Env, dbgen.Collection) error {
+	fakeRefunds.Add(1)
+	return nil
+}
+func (succeedingChannel) Reconcile(_ context.Context, _ ops.Env, _ time.Time) (collections.Summary, error) {
+	return collections.Summary{Channel: "test_success_channel"}, nil
+}
+
 func init() {
 	collections.RegisterChannel(collections.Registration{Code: "test_channel", Name: "测试通道", Channel: fakeChannel{}})
+	collections.RegisterChannel(collections.Registration{Code: "test_success_channel", Name: "测试成功通道", Channel: succeedingChannel{}})
 }
 func TestRegisteredChannel(t *testing.T) {
 	s := optest.OpenShop(t)
@@ -348,6 +374,22 @@ func TestRegisteredChannel(t *testing.T) {
 		t.Fatal(def)
 	}
 	call(t, s, "cancel_collection", collections.ChangeCollectionInput{ID: row.ID})
+}
+
+func TestSuccessfulChannelEffects(t *testing.T) {
+	s := optest.OpenShop(t)
+	cancel := initiate(t, s, "test_success_channel", order(t, s))
+	beforeCancel := fakeCancels.Load()
+	call(t, s, "cancel_collection", collections.ChangeCollectionInput{ID: cancel.ID})
+	if fakeCancels.Load() != beforeCancel+1 {
+		t.Fatal("successful cancel did not call the channel")
+	}
+	refund := initiate(t, s, "test_success_channel", order(t, s))
+	beforeRefund := fakeRefunds.Load()
+	call(t, s, "refund_collection", collections.ChangeCollectionInput{ID: refund.ID, Reason: "退款"})
+	if fakeRefunds.Load() != beforeRefund+1 {
+		t.Fatal("successful refund did not call the channel")
+	}
 }
 
 func TestCollectionRollback(t *testing.T) {
@@ -377,16 +419,42 @@ func TestCollectionForeignKeys(t *testing.T) {
 	if _, err := s.Pool.Exec(context.Background(), "INSERT INTO stores(id,tenant_id,name) VALUES($1,$2,'另店')", otherStore, otherTenant); err != nil {
 		t.Fatal(err)
 	}
+	var otherStaff, otherCustomer, otherSnapshot, otherOrder, otherCheckout, otherPayment, otherCollection uuid.UUID
+	if err := s.Pool.QueryRow(context.Background(), `INSERT INTO staff(tenant_id,store_id,name,number) VALUES($1,$2,'别员工','001') RETURNING id`, otherTenant, otherStore).Scan(&otherStaff); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Pool.QueryRow(context.Background(), `INSERT INTO customers(tenant_id,store_id,name,created_by) VALUES($1,$2,'别顾客',$3) RETURNING id`, otherTenant, otherStore, otherStaff).Scan(&otherCustomer); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Pool.QueryRow(context.Background(), `INSERT INTO settings_snapshots(tenant_id,store_id,rules,digest) VALUES($1,$2,'{}','other') RETURNING id`, otherTenant, otherStore).Scan(&otherSnapshot); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Pool.QueryRow(context.Background(), `INSERT INTO orders(tenant_id,store_id,customer_id,gender,designated,settings_snapshot_id,business_date,opened_by) VALUES($1,$2,$3,'female',false,$4,current_date,$5) RETURNING id`, otherTenant, otherStore, otherCustomer, otherSnapshot, otherStaff).Scan(&otherOrder); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Pool.QueryRow(context.Background(), `INSERT INTO checkouts(tenant_id,store_id,business_date,checked_out_by) VALUES($1,$2,current_date,$3) RETURNING id`, otherTenant, otherStore, otherStaff).Scan(&otherCheckout); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Pool.QueryRow(context.Background(), `INSERT INTO order_payments(tenant_id,store_id,checkout_id,order_id,method,amount) VALUES($1,$2,$3,$4,'cash',1) RETURNING id`, otherTenant, otherStore, otherCheckout, otherOrder).Scan(&otherPayment); err != nil {
+		t.Fatal(err)
+	}
+	var otherPayment2 uuid.UUID
+	if err := s.Pool.QueryRow(context.Background(), `INSERT INTO order_payments(tenant_id,store_id,checkout_id,order_id,method,amount) VALUES($1,$2,$3,$4,'cash',1) RETURNING id`, otherTenant, otherStore, otherCheckout, otherOrder).Scan(&otherPayment2); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Pool.QueryRow(context.Background(), `INSERT INTO collections(tenant_id,store_id,order_id,order_payment_id,channel,amount,status,created_by,created_at,updated_at) VALUES($1,$2,$3,$4,'cash',1,'succeeded',$5,now(),now()) RETURNING id`, otherTenant, otherStore, otherOrder, otherPayment, otherStaff).Scan(&otherCollection); err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		name, sql string
 		args      []any
 	}{
-		{"order", `INSERT INTO collections(tenant_id,store_id,order_id,channel,amount,status,created_by,created_at,updated_at) VALUES($1,$2,$3,'cash',1,'pending',$4,now(),now())`, []any{s.Res.TenantID, s.Res.StoreID, uuid.New(), s.Res.OwnerID}},
+		{"order", `INSERT INTO collections(tenant_id,store_id,order_id,channel,amount,status,created_by,created_at,updated_at) VALUES($1,$2,$3,'cash',1,'pending',$4,now(),now())`, []any{s.Res.TenantID, s.Res.StoreID, otherOrder, s.Res.OwnerID}},
 		{"store", `INSERT INTO collections(tenant_id,store_id,order_id,channel,amount,status,created_by,created_at,updated_at) VALUES($1,$2,$3,'cash',1,'pending',$4,now(),now())`, []any{s.Res.TenantID, otherStore, o, s.Res.OwnerID}},
-		{"creator", `INSERT INTO collections(tenant_id,store_id,order_id,channel,amount,status,created_by,created_at,updated_at) VALUES($1,$2,$3,'cash',1,'pending',$4,now(),now())`, []any{s.Res.TenantID, s.Res.StoreID, o, uuid.New()}},
-		{"payment", `INSERT INTO collections(tenant_id,store_id,order_id,order_payment_id,channel,amount,status,created_by,created_at,updated_at) VALUES($1,$2,$3,$4,'cash',1,'pending',$5,now(),now())`, []any{s.Res.TenantID, s.Res.StoreID, o, uuid.New(), s.Res.OwnerID}},
-		{"event collection", `INSERT INTO collection_events(tenant_id,store_id,collection_id,from_status,to_status,actor_id,at,reason) VALUES($1,$2,$3,'pending','succeeded',$4,now(),'x')`, []any{s.Res.TenantID, s.Res.StoreID, uuid.New(), s.Res.OwnerID}},
-		{"event actor", `INSERT INTO collection_events(tenant_id,store_id,collection_id,from_status,to_status,actor_id,at,reason) VALUES($1,$2,$3,'pending','succeeded',$4,now(),'x')`, []any{s.Res.TenantID, s.Res.StoreID, row.ID, uuid.New()}},
+		{"creator", `INSERT INTO collections(tenant_id,store_id,order_id,channel,amount,status,created_by,created_at,updated_at) VALUES($1,$2,$3,'cash',1,'pending',$4,now(),now())`, []any{s.Res.TenantID, s.Res.StoreID, o, otherStaff}},
+		{"payment", `INSERT INTO collections(tenant_id,store_id,order_id,order_payment_id,channel,amount,status,created_by,created_at,updated_at) VALUES($1,$2,$3,$4,'cash',1,'pending',$5,now(),now())`, []any{s.Res.TenantID, s.Res.StoreID, o, otherPayment2, s.Res.OwnerID}},
+		{"event collection", `INSERT INTO collection_events(tenant_id,store_id,collection_id,from_status,to_status,actor_id,at,reason) VALUES($1,$2,$3,'pending','succeeded',$4,now(),'x')`, []any{s.Res.TenantID, s.Res.StoreID, otherCollection, s.Res.OwnerID}},
+		{"event actor", `INSERT INTO collection_events(tenant_id,store_id,collection_id,from_status,to_status,actor_id,at,reason) VALUES($1,$2,$3,'pending','succeeded',$4,now(),'x')`, []any{s.Res.TenantID, s.Res.StoreID, row.ID, otherStaff}},
 		{"event store", `INSERT INTO collection_events(tenant_id,store_id,collection_id,from_status,to_status,actor_id,at,reason) VALUES($1,$2,$3,'pending','succeeded',$4,now(),'x')`, []any{s.Res.TenantID, otherStore, row.ID, s.Res.OwnerID}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -571,4 +639,51 @@ func TestReconcileScope(t *testing.T) {
 		t.Fatal(sum, err)
 	}
 	dbtest.Rollback(t, tx)
+}
+
+func TestReconcileBusinessDateAcrossMidnight(t *testing.T) {
+	s := optest.OpenShop(t)
+	s.SetNow(time.Date(2029, 12, 31, 12, 0, 0, 0, settings.Location))
+	s.Call(t, s.Owner, "change_setting", map[string]any{"key": "business_day_end", "value": "02:00", "effective_from": "2030-01-01"}, 200)
+	now := time.Date(2030, 1, 2, 1, 30, 0, 0, settings.Location)
+	s.SetNow(now)
+	row := initiate(t, s, "cash", order(t, s))
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	env := ops.Env{Q: dbgen.New(tx), Caller: s.MustCaller(s.Owner), Now: now}
+	reg, err := collections.Lookup("cash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := reg.Channel.Reconcile(context.Background(), env, settings.Date(now).AddDate(0, 0, -1))
+	if err != nil || first.Amounts["succeeded"] != row.Amount.String() || first.Counts["succeeded"] != 1 {
+		t.Fatal(first, err)
+	}
+	second, err := reg.Channel.Reconcile(context.Background(), env, settings.Date(now))
+	if err != nil || len(second.Amounts) != 0 || len(second.Counts) != 0 {
+		t.Fatal(second, err)
+	}
+	dbtest.Rollback(t, tx)
+}
+
+func TestCollectionMigrationDownAuditCheck(t *testing.T) {
+	s := optest.OpenShop(t)
+	dbtest.MigrateDownTo(t, s.Pool, 37)
+	for _, tc := range []struct {
+		kind string
+		code string
+	}{{"collection", "23514"}, {"payroll_month", "00000"}} {
+		tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+		_, err := tx.Exec(context.Background(), `INSERT INTO audit_log(tenant_id,store_id,actor_id,action,target_kind,target_id) VALUES($1,$2,$3,'test',$4,$5)`, s.Res.TenantID, s.Res.StoreID, s.Res.OwnerID, tc.kind, uuid.New())
+		dbtest.Rollback(t, tx)
+		if tc.code == "00000" {
+			if err != nil {
+				t.Fatal(tc.kind, err)
+			}
+			continue
+		}
+		var pe *pgconn.PgError
+		if !errors.As(err, &pe) || pe.Code != tc.code || pe.ConstraintName != "audit_log_target_kind_check" {
+			t.Fatal(tc.kind, err)
+		}
+	}
 }

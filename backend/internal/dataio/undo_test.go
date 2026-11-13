@@ -62,7 +62,7 @@ func TestUndoRefusedAfterCardLedgerEntry(t *testing.T) {
 	if err := f.Pool.QueryRow(context.Background(), "SELECT id::text FROM cards WHERE card_type_id=$1", f.storedType).Scan(&cardID); err != nil {
 		t.Fatal(err)
 	}
-	f.call("recharge_card", map[string]any{"card_id": cardID, "principal": "1", "bonus": "0", "sales_staff_ids": []any{f.Res.OwnerID}})
+	f.call("recharge_card", map[string]any{"card_id": cardID, "principal": "1", "bonus": "0", "sales_staff_ids": []any{f.Res.OwnerID}, "payments": []any{map[string]any{"method": "cash", "amount": "1"}}})
 	r := f.Call(f.t, f.Owner, "undo_import", map[string]any{"batch_id": batch}, 0)
 	if r.Status != http.StatusConflict || !strings.Contains(r.Detail(), "不能撤销这次导入：") || !strings.Contains(r.Detail(), "有其他余额流水") {
 		t.Fatalf("undo = %d %q", r.Status, r.Detail())

@@ -271,6 +271,9 @@ func Preview(ctx context.Context, pool *pgxpool.Pool, caller ops.Caller, now tim
 			if invalid {
 				reason := "同一来源卡号的其他项目有错误"
 				for _, row := range group {
+					if row.params.Error != nil {
+						continue
+					}
 					if err := q.UpdateImportBatchRow(ctx, dbgen.UpdateImportBatchRowParams{StoreID: caller.StoreID, BatchID: batch.ID, ID: row.id, Error: &reason}); err != nil {
 						return err
 					}

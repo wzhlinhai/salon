@@ -3,7 +3,9 @@ package cards_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
@@ -20,10 +22,11 @@ type fixture struct {
 	*optest.Shop
 	t                  *testing.T
 	customer, cardType string
+	types              map[string]map[string]any
 }
 
 func open(t *testing.T) *fixture {
-	s := &fixture{Shop: optest.OpenShop(t), t: t}
+	s := &fixture{Shop: optest.OpenShop(t), t: t, types: map[string]map[string]any{}}
 	s.customer = s.call("create_customer", map[string]any{"name": "顾客"}, 200)["customer"].(map[string]any)["id"].(string)
 	s.cardType = s.call("create_card_type", typeInput("储值"), 200)["id"].(string)
 	return s
@@ -33,13 +36,75 @@ func typeInput(name string) map[string]any {
 }
 func (s *fixture) call(op string, in any, status int) map[string]any {
 	s.t.Helper()
-	return s.Call(s.t, s.Owner, op, in, status).Body
+	if op == "open_card" {
+		s.fillOpeningPayments(in)
+	}
+	body := s.Call(s.t, s.Owner, op, in, status).Body
+	if (op == "create_card_type" || op == "update_card_type") && status == 200 {
+		s.types[body["id"].(string)] = body
+	}
+	return body
+}
+
+func (s *fixture) fillOpeningPayments(in any) {
+	m, ok := in.(map[string]any)
+	if !ok {
+		return
+	}
+	principal, _ := m["principal"].(string)
+	principalCents := priceCents(principal)
+	expected := principalCents
+	if ct := s.types[m["card_type_id"].(string)]; ct != nil {
+		for _, raw := range ct["items"].([]any) {
+			item := raw.(map[string]any)
+			expected += priceCents(item["unit_price"].(string)) * int64(item["paid_count"].(float64))
+		}
+	}
+	payments, _ := m["payments"].([]any)
+	for _, raw := range payments {
+		if raw.(map[string]any)["method"] != "cash" {
+			return
+		}
+	}
+	m["payments"] = defaultPayments(expected)
+	if s.t != nil {
+		s.t.Logf("AUTOPAY %s %v", m["card_type_id"], m["payments"])
+	}
+}
+
+func defaultPayments(cents int64) []any {
+	out := []any{}
+	const max = int64(9999999999)
+	for cents > 0 {
+		part := cents
+		if part > max {
+			part = max
+		}
+		out = append(out, map[string]any{"method": "cash", "amount": formatCents(part)})
+		cents -= part
+	}
+	return out
+}
+
+func priceCents(s string) int64 {
+	f, _ := strconv.ParseFloat(s, 64)
+	return int64(f*100 + 0.5)
+}
+
+func formatCents(c int64) string {
+	return fmt.Sprintf("%d.%02d", c/100, c%100)
 }
 func (s *fixture) opening() map[string]any {
-	return map[string]any{"customer_id": s.customer, "card_type_id": s.cardType, "principal": "1234.56", "bonus": "0.50", "sales_staff_ids": []any{s.Res.OwnerID}}
+	return map[string]any{"customer_id": s.customer, "card_type_id": s.cardType, "principal": "1234.56", "bonus": "0.50", "sales_staff_ids": []any{s.Res.OwnerID}, "payments": cashPayment("1234.56")}
 }
 func (s *fixture) recharge(id any) map[string]any {
-	return map[string]any{"card_id": id, "principal": "0.50", "bonus": "1234.56", "sales_staff_ids": []any{s.Res.OwnerID}}
+	return map[string]any{"card_id": id, "principal": "0.50", "bonus": "1234.56", "sales_staff_ids": []any{s.Res.OwnerID}, "payments": cashPayment("0.50")}
+}
+func cashPayment(amount string) []any {
+	if amount == "0" || amount == "0.00" {
+		return []any{}
+	}
+	return []any{map[string]any{"method": "cash", "amount": amount}}
 }
 
 func TestLedgerChain(t *testing.T) {
@@ -154,6 +219,7 @@ func TestZeroRecharge(t *testing.T) {
 	in := s.recharge(card["id"])
 	in["principal"] = "0.00"
 	in["bonus"] = "0.00"
+	in["payments"] = []any{}
 	if r := s.call("recharge_card", in, 409); r["detail"] != "充值本金与赠送金合计必须大于零" {
 		t.Fatal(r)
 	}
@@ -523,6 +589,9 @@ func TestBalanceLimit(t *testing.T) {
 			s := open(t)
 			in := s.opening()
 			in[field] = "99999999.99"
+			if field == "principal" {
+				in["payments"] = cashPayment("99999999.99")
+			}
 			card := s.call("open_card", in, 200)
 			before := snapshot(t, s)
 			r := s.call("recharge_card", s.recharge(card["id"]), 409)

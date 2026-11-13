@@ -17,8 +17,10 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/attendance"
 	"github.com/wzhlinhai/salon/backend/internal/audit"
 	"github.com/wzhlinhai/salon/backend/internal/auth"
+	"github.com/wzhlinhai/salon/backend/internal/booking"
 	"github.com/wzhlinhai/salon/backend/internal/cards"
 	"github.com/wzhlinhai/salon/backend/internal/catalog"
+	"github.com/wzhlinhai/salon/backend/internal/closing"
 	"github.com/wzhlinhai/salon/backend/internal/collections"
 	"github.com/wzhlinhai/salon/backend/internal/commission"
 	"github.com/wzhlinhai/salon/backend/internal/customers"
@@ -106,11 +108,13 @@ func New(pool *pgxpool.Pool, cfg Config) (*echo.Echo, *ops.Registry) {
 	catalog.Register(reg)
 	orders.Register(reg)
 	collections.Register(reg)
+	closing.Register(reg)
 	performance.Register(reg)
 	commission.Register(reg)
 	payroll.Register(reg)
 	attendance.Register(reg)
 	rotation.Register(reg)
+	booking.Register(reg)
 	debts.Register(reg)
 	redpackets.Register(reg)
 	cards.Register(reg)

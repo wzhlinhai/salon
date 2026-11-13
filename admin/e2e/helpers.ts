@@ -55,3 +55,7 @@ export async function login(page: Page, account: string, password: string) {
 export async function navLabels(page: Page): Promise<string[]> {
   return (await page.locator('aside nav a').allInnerTexts()).map(s => s.trim())
 }
+
+export function cash(amount: string) {
+  return [{ method: 'cash', amount }]
+}

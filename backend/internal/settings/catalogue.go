@@ -66,6 +66,7 @@ const (
 	KeyPerformanceRatioUnionpay          = "performance_ratio_unionpay"
 	KeyPerformanceRatioWechat            = "performance_ratio_wechat"
 	KeyPerformanceRatioAlipay            = "performance_ratio_alipay"
+	KeyPerformanceRatioGroupbuy          = "performance_ratio_groupbuy"
 	KeyPerformanceRatioDebt              = "performance_ratio_debt"
 	KeyPerformanceRatioCardPrincipal     = "performance_ratio_card_principal"
 	KeyPerformanceRatioCardBonus         = "performance_ratio_card_bonus"
@@ -85,6 +86,9 @@ const (
 	KeyDraftDualConfirm                  = "draft_dual_confirm"
 	KeyBusinessHours                     = "business_hours"
 	KeyBusinessDayEnd                    = "business_day_end"
+	KeyBookingMinLeadMinutes             = "booking_min_lead_minutes"
+	KeyBookingMaxDaysAhead               = "booking_max_days_ahead"
+	KeyBookingDefaultMinutes             = "booking_default_minutes"
 )
 
 // Catalogue 是全部门店设置，顺序即设置页面的显示顺序。后续模块的业务规则在这里添加。
@@ -109,6 +113,7 @@ var Catalogue = []Def{
 	{Key: KeyPerformanceRatioUnionpay, Label: "银联业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
 	{Key: KeyPerformanceRatioWechat, Label: "微信业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
 	{Key: KeyPerformanceRatioAlipay, Label: "支付宝业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
+	{Key: KeyPerformanceRatioGroupbuy, Label: "团购业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
 	{Key: KeyPerformanceRatioDebt, Label: "挂账业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
 	{Key: KeyPerformanceRatioCardPrincipal, Label: "卡余额本金业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
 	{Key: KeyPerformanceRatioCardBonus, Label: "卡余额赠送金业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 0, Hint: "这种支付方式付的钱按百分之几计入业绩"},
@@ -133,8 +138,11 @@ var Catalogue = []Def{
 	{Key: KeyRotationDesignatedTakesTurn, Label: "点客占轮", Hint: "点客服务结账后，这名员工是否排到队尾", Kind: KindChoice, Default: "yes", Options: []ChoiceOption{{Value: "yes", Label: "占轮，排到队尾"}, {Value: "no", Label: "不占轮，顺序不变"}}},
 	{Key: KeyRotationSkipWhenServingDesignated, Label: "点牌跳牌", Hint: "队首员工正在服务点客时，是否自动跳过并记录", Kind: KindChoice, Default: "yes", Options: []ChoiceOption{{Value: "yes", Label: "自动跳过"}, {Value: "no", Label: "不自动跳过"}}},
 	{Key: KeyRotationSkipPolicy, Label: "轮牌跳牌", Hint: "员工被跳过时排到队尾还是保留原位下次优先", Kind: KindChoice, Default: "to_tail", Options: []ChoiceOption{{Value: "to_tail", Label: "排到队尾算一轮"}, {Value: "keep_position", Label: "保留原位下次优先"}}},
-	{Key: KeyRotationHalfRule, Label: "半轮规则", Hint: "按价格或项目判断一次服务是否只算半轮", Kind: KindChoice, Default: "none", Options: []ChoiceOption{{Value: "none", Label: "不记半轮"}, {Value: "by_price", Label: "按价格"}, {Value: "by_item", Label: "按项目"}}},
+	{Key: KeyRotationHalfRule, Label: "半轮规则", Hint: "按价格、项目或预约判断一次服务是否只算半轮", Kind: KindChoice, Default: "none", Options: []ChoiceOption{{Value: "none", Label: "不记半轮"}, {Value: "by_price", Label: "按价格"}, {Value: "by_item", Label: "按项目"}, {Value: "by_appointment", Label: "按预约"}}},
 	{Key: KeyRotationHalfPriceBelow, Label: "半轮价格线", Hint: "按价格记半轮时，实收低于多少元算半轮；0 表示不按价格记半轮", Kind: KindInteger, Min: 0, Max: 1000000, Default: 0},
+	{Key: KeyBookingMinLeadMinutes, Label: "预约提前量", Hint: "顾客自助预约至少要提前多少分钟；0 为不限制。前台代约不受此项限制", Kind: KindInteger, Min: 0, Max: 10080, Default: 0},
+	{Key: KeyBookingMaxDaysAhead, Label: "可约天数", Hint: "从今天起最多可以预约多少天内的时段，0 为只能约今天", Kind: KindInteger, Min: 0, Max: 365, Default: 30},
+	{Key: KeyBookingDefaultMinutes, Label: "默认服务时长", Hint: "预约没有选择项目时默认占用的分钟数", Kind: KindInteger, Min: 1, Max: 600, Default: 60},
 	{
 		Key: KeyBusinessHours, Label: "营业时段", Kind: KindTimeRange,
 		Hint:    "每天开门和关门的时间，预约等按它限制",

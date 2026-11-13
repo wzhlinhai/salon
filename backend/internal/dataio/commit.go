@@ -257,9 +257,14 @@ func commit(ctx context.Context, env ops.Env, in *CommitImportInput) (*ImportBat
 	}
 
 	groups := map[string][]dbgen.ImportBatchRow{}
+	allGroups := map[string][]dbgen.ImportBatchRow{}
 	order := []string{}
 	for _, row := range rows {
-		if row.Kind != "count_package" || row.Error != nil {
+		if row.Kind != "count_package" {
+			continue
+		}
+		allGroups[row.SourceKey] = append(allGroups[row.SourceKey], row)
+		if row.Error != nil {
 			continue
 		}
 		if _, ok := groups[row.SourceKey]; !ok {
@@ -272,7 +277,10 @@ func commit(ctx context.Context, env ops.Env, in *CommitImportInput) (*ImportBat
 		group := groups[key]
 		first := group[0]
 		if badCountGroups[key] {
-			for _, row := range group {
+			for _, row := range allGroups[key] {
+				if row.Error != nil {
+					continue
+				}
 				if err := rowIssue(ctx, env, batch.ID, row.ID, "同一来源卡号的其他项目有错误"); err != nil {
 					return nil, err
 				}
@@ -410,6 +418,9 @@ func resolveCustomer(ctx context.Context, env ops.Env, row dbgen.ImportBatchRow,
 				if !locked[linked.ID] {
 					return uuid.Nil, "", errCustomerChanged
 				}
+				if linked.Phone == nil || *linked.Phone != *row.Phone {
+					return uuid.Nil, "", errCustomerChanged
+				}
 				if !customers.CanView(env.Caller, linked) {
 					return uuid.Nil, "", errPhoneNotVisible
 				}
@@ -426,8 +437,11 @@ func resolveCustomer(ctx context.Context, env ops.Env, row dbgen.ImportBatchRow,
 	created, err := env.Q.CreateCustomer(ctx, dbgen.CreateCustomerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Name: row.Name, Phone: row.Phone, Gender: row.Gender, CreatedBy: env.Caller.StaffID})
 	if errors.Is(err, pgx.ErrNoRows) && row.Phone != nil {
 		found, findErr := env.Q.FindCustomersByPhones(ctx, []string{*row.Phone})
-		if findErr != nil || len(found) == 0 {
+		if findErr != nil {
 			return uuid.Nil, "", findErr
+		}
+		if len(found) == 0 {
+			return uuid.Nil, "", errCustomerChanged
 		}
 		if !locked[found[0].ID] {
 			return uuid.Nil, "", errCustomerChanged

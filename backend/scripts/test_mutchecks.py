@@ -10,12 +10,35 @@ import time
 from pathlib import Path
 import subprocess
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
 SPEC = importlib.util.spec_from_file_location('mutchecks', Path(__file__).with_name('mutchecks.py'))
 mutchecks = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(mutchecks)
+
+TEST_TEMP_ROOT = None
+
+
+def setUpModule():
+    global TEST_TEMP_ROOT
+    base = mutchecks.ROOT / '.dev'
+    base.mkdir(parents=True, exist_ok=True)
+    TEST_TEMP_ROOT = tempfile.mkdtemp(prefix='test-mutchecks-', dir=base)
+    # Worker subprocesses check the real filesystem; /tmp is a small tmpfs here.
+    tempfile.tempdir = TEST_TEMP_ROOT
+
+
+def tearDownModule():
+    tempfile.tempdir = None
+    if TEST_TEMP_ROOT is not None:
+        shutil.rmtree(TEST_TEMP_ROOT, ignore_errors=True)
+
+
+def relaxed_disk_headroom():
+    """Let subprocess tests run on CI filesystems with less than 20 GB free."""
+    return patch.dict(os.environ, {mutchecks.DISK_HEADROOM_ENV: '1'})
 
 
 def git(root, *args):
@@ -168,8 +191,11 @@ class ManifestEditTests(unittest.TestCase):
 
 
 class AllManifestTests(unittest.TestCase):
-    def invoke(self, root, *args):
-        with patch.object(mutchecks, 'ROOT', root), patch.object(sys, 'argv', ['mutchecks.py', *args]), patch('sys.stdout', new=io.StringIO()) as output, patch('sys.stderr', new=io.StringIO()) as error:
+    def invoke(self, root, *args, free=1 << 40, disk_usage=None):
+        usage = (patch.object(mutchecks.shutil, 'disk_usage', side_effect=disk_usage)
+                 if disk_usage is not None else
+                 patch.object(mutchecks.shutil, 'disk_usage', return_value=Mock(free=free)))
+        with patch.object(mutchecks, 'ROOT', root), patch.object(sys, 'argv', ['mutchecks.py', *args]), patch('sys.stdout', new=io.StringIO()) as output, patch('sys.stderr', new=io.StringIO()) as error, usage:
             code = mutchecks.main()
         return code, output.getvalue(), error.getvalue()
 
@@ -246,6 +272,7 @@ class AllManifestTests(unittest.TestCase):
                 code, output, error = self.invoke(root, '--since', 'main', '--jobs', '1')
             baseline.assert_called_once()
             logs = next(manifest.parent.glob('mutchecks-*'))
+            self.assertFalse((root / '.dev/mutcheck-gocache').exists())
             return code, output, error, (logs / 'results.log').read_text()
 
     def test_single_manifest_jobs_one_runs_go_before_earlier_e2e(self):
@@ -278,6 +305,32 @@ class AllManifestTests(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn('total selected=2 passed=0 failed=2', output)
 
+    def test_stale_cache_dirs_are_removed_before_the_run(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            stale = root / '.dev/mutcheck-gocache/killed-run'
+            stale.mkdir(parents=True)
+            (stale / 'entry').write_text('stale')
+            manifest = root / '.dev/codex/a/manifest.py'
+            manifest.parent.mkdir(parents=True)
+            entry = dict(kind='go', step='1', name='guard', guards=['TestGuard'], packages=['a'])
+            manifest.write_text('ENTRIES = ' + repr([entry]))
+            observed = []
+
+            def run_baseline(entries, logs, results):
+                observed.append((stale.exists(),
+                                 Path(os.environ['GOCACHE']).parent == root / '.dev/mutcheck-gocache'))
+                return False
+
+            with patch.object(mutchecks, 'affected_entries', return_value=[entry]), \
+                    patch.object(mutchecks, 'baseline', side_effect=run_baseline), \
+                    patch.object(mutchecks, 'run_go') as mutate:
+                code, _, _ = self.invoke(root, '--since', 'main')
+            self.assertEqual(code, 1)
+            self.assertEqual(observed, [(False, True)])
+            mutate.assert_not_called()
+            self.assertFalse((root / '.dev/mutcheck-gocache').exists())
+
     def test_locate_and_broken_manifest_continue_and_report_totals(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
@@ -291,6 +344,26 @@ class AllManifestTests(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn('total selected=1 passed=1 failed=1', output)
             self.assertIn('only literal', error)
+
+    def test_locate_does_not_create_or_remove_run_caches(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            stale = root / '.dev/mutcheck-gocache/run-existing'
+            stale.mkdir(parents=True)
+            (stale / 'keep').write_text('keep')
+            manifest = root / '.dev/codex/a/manifest.py'
+            manifest.parent.mkdir(parents=True)
+            entry = dict(kind='go', step='1', name='guard', file='guard',
+                         original='original', replacement='mutated',
+                         guards=['TestGuard'], packages=['a'])
+            manifest.write_text('ENTRIES = ' + repr([entry]))
+            (root / 'guard').write_text('original')
+            code, output, error = self.invoke(root, '--locate')
+            self.assertEqual(code, 0, error)
+            self.assertTrue((stale / 'keep').exists())
+            self.assertEqual([path.name for path in (root / '.dev/mutcheck-gocache').iterdir()],
+                             ['run-existing'])
+            self.assertIn('total selected=1 passed=1 failed=0', output)
 
 
 class PartitionTests(unittest.TestCase):
@@ -324,9 +397,142 @@ class BaselineTests(unittest.TestCase):
                 start.return_value.poll.return_value = 0
                 self.assertTrue(mutchecks.baseline(selected, logs, io.StringIO()))
             self.assertEqual([call.args[0] for call in start.call_args_list], [
-                ['go', 'test', '-count=1', '-run', '^(TestA|TestShared|TestB)$', 'a'],
-                ['go', 'test', '-count=1', '-run', '^(TestA|TestShared)$', 'b']])
+                ['go', 'test', '-count=1', '-trimpath', '-run', '^(TestA|TestShared|TestB)$', 'a'],
+                ['go', 'test', '-count=1', '-trimpath', '-run', '^(TestA|TestShared)$', 'b']])
             self.assertTrue(all(call.kwargs['cwd'] == mutchecks.ROOT / 'backend' for call in start.call_args_list))
+
+    def test_children_receive_the_run_gocache(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / 'backend').mkdir()
+            cache = root / '.dev/mutcheck-gocache/run-test'
+            cache.mkdir(parents=True)
+            (root / 'guard').write_text('original')
+            logs = root / 'logs'
+            logs.mkdir()
+            entry = dict(kind='go', step='1', name='guard', file='guard',
+                         original='original', replacement='mutated',
+                         guards=['TestGuard'], packages=['a'])
+            with patch.object(mutchecks, 'ROOT', root), patch.dict(os.environ, {'GOCACHE': str(cache)}), \
+                    patch.object(mutchecks.subprocess, 'Popen') as start, patch.object(mutchecks, 'stop_processes'):
+                start.return_value.poll.return_value = 0
+                self.assertTrue(mutchecks.baseline([entry], logs, io.StringIO()))
+            self.assertEqual(start.call_args.kwargs['env']['GOCACHE'], str(cache))
+
+    def test_run_go_uses_the_explicit_mutation_cache(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / 'backend').mkdir()
+            cache = root / '.dev/mutcheck-gocache/run-test/entry'
+            cache.mkdir(parents=True)
+            (root / 'guard').write_text('original')
+            logs = root / 'logs'
+            logs.mkdir()
+            entry = dict(kind='go', step='1', name='guard', file='guard',
+                         original='original', replacement='mutated',
+                         guards=['TestGuard'], packages=['a'])
+            with patch.object(mutchecks, 'ROOT', root), \
+                    patch.object(mutchecks.subprocess, 'run', return_value=Mock(returncode=0)) as execute:
+                mutchecks.run_go(entry, logs, io.StringIO(), cache)
+            self.assertEqual(execute.call_args.kwargs['env']['GOCACHE'], str(cache))
+
+    def test_disk_headroom_env_override(self):
+        with patch.dict(os.environ, {mutchecks.DISK_HEADROOM_ENV: '12345'}):
+            self.assertEqual(mutchecks.disk_headroom(), 12345)
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(mutchecks.disk_headroom(), mutchecks.DISK_HEADROOM)
+
+    def test_low_disk_stops_before_baseline_for_serial_and_parallel_runs(self):
+        for jobs in ('1', '8'):
+            with self.subTest(jobs=jobs), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                manifest = root / '.dev/codex/a/manifest.py'
+                manifest.parent.mkdir(parents=True)
+                entry = dict(kind='go', step='1', name='guard', file='guard',
+                             original='original', replacement='mutated',
+                             guards=['TestGuard'], packages=['a'])
+                manifest.write_text('ENTRIES = ' + repr([entry]))
+                with patch.object(mutchecks, 'affected_entries', return_value=[entry]), \
+                        patch.object(mutchecks, 'baseline') as baseline, \
+                        patch.object(mutchecks, 'run_go') as mutate:
+                    code, output, error = AllManifestTests().invoke(
+                        root, '--since', 'main', '--jobs', jobs, free=mutchecks.DISK_HEADROOM - 1)
+                baseline.assert_not_called()
+                mutate.assert_not_called()
+                self.assertEqual(code, 1)
+                self.assertIn('保护验证停止', error)
+                self.assertIn('selected=1 passed=0 failed=0 environment=1', output)
+                results = next(manifest.parent.glob('mutchecks-*')) / 'results.log'
+                content = results.read_text()
+                self.assertIn('not run (environment)', content)
+                self.assertNotIn('PASS', content)
+                self.assertFalse((root / '.dev/mutcheck-gocache').exists())
+
+    def test_keyboard_interrupt_removes_the_run_cache(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            manifest = root / '.dev/codex/a/manifest.py'
+            manifest.parent.mkdir(parents=True)
+            entry = dict(kind='go', step='1', name='guard', guards=['TestGuard'], packages=['a'])
+            manifest.write_text('ENTRIES = ' + repr([entry]))
+            with patch.object(mutchecks, 'affected_entries', return_value=[entry]), \
+                    patch.object(mutchecks, 'baseline', side_effect=KeyboardInterrupt):
+                code, output, _ = AllManifestTests().invoke(root, '--since', 'main')
+            self.assertEqual(code, 130)
+            self.assertFalse((root / '.dev/mutcheck-gocache').exists())
+
+    def test_low_disk_before_an_entry_stops_a_single_manifest_run(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            manifest = root / 'manifest.py'
+            entry = dict(kind='go', step='1', name='guard', file='guard',
+                         original='original', replacement='mutated',
+                         guards=['TestGuard'], packages=['a'])
+            manifest.write_text('ENTRIES = ' + repr([entry]))
+            checks = []
+
+            def disk_usage(path):
+                checks.append(path)
+                return Mock(free=(1 << 40) if len(checks) == 1 else mutchecks.DISK_HEADROOM - 1)
+
+            with patch.object(mutchecks, 'baseline', return_value=True) as baseline, \
+                    patch.object(mutchecks, 'run_go') as mutate:
+                code, output, error = AllManifestTests().invoke(root, str(manifest), disk_usage=disk_usage)
+            baseline.assert_called_once()
+            mutate.assert_not_called()
+            self.assertEqual(code, mutchecks.DISK_EXIT)
+            self.assertIn('保护验证停止', error)
+            self.assertIn('environment=1', output)
+            self.assertFalse((root / '.dev/mutcheck-gocache').exists())
+
+    def test_low_disk_before_a_worker_entry_stops_the_parallel_run(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            init_repo(root)
+            (root / 'guard').write_text('original')
+            stage_fixture(root)
+            manifest = root / '.dev/codex/a/manifest.py'
+            manifest.parent.mkdir(parents=True)
+            entry = dict(kind='go', step='1', name='guard', file='guard',
+                         original='original', replacement='mutated',
+                         guards=['TestGuard'], packages=['a'])
+            manifest.write_text('ENTRIES = ' + repr([entry]))
+            checks = []
+
+            def disk_usage(path):
+                checks.append(path)
+                return Mock(free=(1 << 40) if len(checks) == 1 else mutchecks.DISK_HEADROOM - 1)
+
+            with patch.object(mutchecks, 'affected_entries', return_value=[entry]), \
+                    patch.object(mutchecks, 'baseline', return_value=True) as baseline:
+                code, output, error = AllManifestTests().invoke(
+                    root, '--since', 'main', '--jobs', '8', disk_usage=disk_usage)
+            baseline.assert_called_once()
+            self.assertEqual(code, 1)
+            self.assertIn('保护验证停止', error)
+            self.assertIn('environment=1', output)
+            self.assertFalse((root / '.dev/mutcheck-gocache').exists())
+            self.assertFalse((root / '.dev/mutcheck-worktrees').exists())
 
 
     def test_failure_cancels_running_baselines_without_starting_queued_packages(self):
@@ -344,8 +550,8 @@ class BaselineTests(unittest.TestCase):
             started = []
             popen = subprocess.Popen
 
-            def start(*args, **kwargs):
-                process = popen(*args, **kwargs)
+            def start(command, *args, **kwargs):
+                process = popen(command, *args, **kwargs)
                 started.append(process)
                 return process
 
@@ -399,6 +605,199 @@ class WorkerTests(unittest.TestCase):
             mutchecks.cleanup_workers(workers)
             mutchecks.cleanup_workers(workers)
             self.assertFalse(workers.exists())
+
+    def test_seed_links_baseline_entries_and_prune_drops_mutation_entries(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / 'source'
+            (source / 'aa').mkdir(parents=True)
+            (source / 'aa' / 'base').write_text('baseline')
+            target = root / 'target'
+            seeded = mutchecks.seed_cache(source, target)
+            (target / 'aa' / 'new').write_text('mutation')
+            (target / 'bb').mkdir()
+            (target / 'bb' / 'fresh').write_text('mutation')
+            mutchecks.prune_cache(target, seeded)
+            self.assertEqual((target / 'aa' / 'base').read_text(), 'baseline')
+            self.assertFalse((target / 'aa' / 'new').exists())
+            self.assertFalse((target / 'bb').exists())
+
+    def test_serial_run_seeds_and_prunes_files_and_executable_directories(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            cache = root / '.dev/mutcheck-gocache/run-test'
+            (cache / 'aa').mkdir(parents=True)
+            (cache / 'aa' / 'base').write_text('baseline')
+            (cache / 'bb' / 'keep-d').mkdir(parents=True)
+            (cache / 'bb' / 'keep-d' / 'exec').write_text('seeded executable')
+            (root / 'guard').write_text('original')
+            scripts = root / 'backend/scripts'
+            scripts.mkdir(parents=True)
+            worker = scripts / 'mutcheck.sh'
+            worker.write_text(
+                '#!/bin/bash\n'
+                'cache=${GOCACHE:?}\n'
+                'printf mutant > "$cache/aa/new"\n'
+                'mkdir -p "$cache/bb/keep-d/newdir" "$cache/cc"\n'
+                'printf x > "$cache/bb/keep-d/newdir/file"\n'
+                'printf y > "$cache/cc/new"\n'
+                "echo 'caught by:'\n"
+                "echo '--- FAIL: TestGuard (0.00s)'\n"
+                'exit 0\n')
+            worker.chmod(0o755)
+            logs = root / 'logs'
+            logs.mkdir()
+            entry = dict(kind='go', step='1', name='guard', file='guard',
+                         original='original', replacement='mutated',
+                         guards=['TestGuard'], packages=['a'])
+            args = SimpleNamespace(jobs=1, worker_logs=None, locate=False)
+            with patch.object(mutchecks, 'ROOT', root), \
+                    patch.dict(os.environ, {'GOCACHE': str(cache)}), \
+                    patch.object(mutchecks, 'baseline', return_value=True), \
+                    patch('sys.stdout', new=io.StringIO()):
+                self.assertEqual(mutchecks.run_selected([entry], root / 'manifest.py', args, logs), 0)
+            mutation = cache / 'entry'
+            self.assertEqual((mutation / 'aa' / 'base').read_text(), 'baseline')
+            self.assertEqual((mutation / 'bb' / 'keep-d' / 'exec').read_text(),
+                             'seeded executable')
+            self.assertFalse((mutation / 'aa' / 'new').exists())
+            self.assertFalse((mutation / 'bb' / 'keep-d' / 'newdir').exists())
+            self.assertFalse((mutation / 'cc').exists())
+
+    def test_workers_use_a_seeded_cache_and_have_mutations_pruned(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            init_repo(root)
+            cache = root / '.dev/mutcheck-gocache/run-test'
+            (cache / 'aa').mkdir(parents=True)
+            (cache / 'aa' / 'base').write_text('baseline')
+            script = root / 'backend/scripts/mutchecks.py'
+            script.parent.mkdir(parents=True)
+            script.write_text(
+                "import os, pathlib, sys\n"
+                "cache = pathlib.Path(os.environ['GOCACHE'])\n"
+                "(cache / 'bb').mkdir(exist_ok=True)\n"
+                "(cache / 'bb' / 'new').write_text('mutation')\n"
+                "logs = pathlib.Path(sys.argv[sys.argv.index('--worker-logs') + 1])\n"
+                "(logs.parent / 'used-cache').write_text(str(cache))\n"
+                "(logs / 'results.log').write_text('1 guard exit=0 caught=TestGuard restored=True PASS\\n')\n")
+            (root / 'guard').write_text('original')
+            stage_fixture(root)
+            manifest = root / 'manifest.py'
+            manifest.write_text('ENTRIES = []')
+            logs = root / 'logs'
+            logs.mkdir()
+            entry = dict(kind='go', step='1', name='guard', file='guard', original='original',
+                         replacement='mutated', packages=['a'], guards=['TestGuard'])
+            with patch.object(mutchecks, 'ROOT', root), patch.dict(os.environ, {'GOCACHE': str(cache)}), \
+                    patch.object(mutchecks, 'baseline', return_value=True), \
+                    patch.object(mutchecks.shutil, 'disk_usage', return_value=Mock(free=1 << 40)), \
+                    patch('sys.stdout', new=io.StringIO()):
+                self.assertEqual(mutchecks.run_parallel([entry], manifest, 1, logs, io.StringIO()), 0)
+            worker = cache / 'workers' / '0'
+            self.assertEqual((logs / 'used-cache').read_text(), str(worker))
+            self.assertEqual((worker / 'aa' / 'base').read_text(), 'baseline')
+            self.assertFalse((worker / 'bb').exists())
+
+    def test_finished_pass_is_reaped_before_a_disk_stop(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            cache = root / '.dev/mutcheck-gocache/run-test'
+            cache.mkdir(parents=True)
+            (root / 'guard').write_text('original')
+            manifest = root / 'manifest.py'
+            manifest.write_text('ENTRIES = []')
+            logs = root / 'logs'
+            logs.mkdir()
+            entries = [dict(kind='go', step='1', name=name, file='guard', original='original',
+                            replacement='mutated', packages=['a'], guards=['TestGuard'])
+                       for name in ('first', 'second')]
+            finished = {'value': False}
+
+            def copy(source, target):
+                target.mkdir(parents=True)
+                shutil.copy2(source / 'guard', target / 'guard')
+
+            def start(command, **kwargs):
+                worker_logs = Path(command[command.index('--worker-logs') + 1])
+                name = command[-1].split('/')[1]
+                worker_logs.mkdir(parents=True, exist_ok=True)
+                (worker_logs / 'results.log').write_text(
+                    f'1 {name} exit=0 caught=TestGuard restored=True PASS\n')
+                process = Mock(pid=12345, returncode=0)
+                process.poll.side_effect = lambda: 0 if finished['value'] else None
+                return process
+
+            def disk_usage(path):
+                return Mock(free=(mutchecks.DISK_HEADROOM - 1)
+                            if finished['value'] else (1 << 40))
+
+            def sleep(_):
+                finished['value'] = True
+
+            results = io.StringIO()
+            with patch.object(mutchecks, 'ROOT', root), \
+                    patch.dict(os.environ, {'GOCACHE': str(cache)}), \
+                    patch.object(mutchecks, 'baseline', return_value=True), \
+                    patch.object(mutchecks, 'copy_working_tree', side_effect=copy), \
+                    patch.object(mutchecks.subprocess, 'Popen', side_effect=start), \
+                    patch.object(mutchecks, 'stop_processes'), \
+                    patch.object(mutchecks.shutil, 'disk_usage', side_effect=disk_usage), \
+                    patch.object(mutchecks.time, 'sleep', side_effect=sleep), \
+                    patch('sys.stdout', new=io.StringIO()), patch('sys.stderr', new=io.StringIO()):
+                code = mutchecks.run_parallel(entries, manifest, 1, logs, results)
+            self.assertEqual(code, mutchecks.DISK_EXIT)
+            content = results.getvalue()
+            self.assertIn('1 first exit=0 caught=TestGuard restored=True PASS', content)
+            self.assertIn('1 second exit=not-run caught=- restored=True not run (environment)', content)
+            self.assertNotIn('1 first exit=not-run', content)
+
+    def test_worker_disk_exit_stops_the_queue_and_shows_real_free_space(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            init_repo(root)
+            cache = root / '.dev/mutcheck-gocache/run-test'
+            cache.mkdir(parents=True)
+            script = root / 'backend/scripts/mutchecks.py'
+            script.parent.mkdir(parents=True)
+            script.write_text(
+                "import os, pathlib, sys\n"
+                "name = sys.argv[-1].split('/')[1]\n"
+                "logs = pathlib.Path(sys.argv[sys.argv.index('--worker-logs') + 1])\n"
+                "if name == 'done':\n"
+                "    (logs / 'results.log').write_text('1 done exit=0 caught=TestGuard restored=True PASS\\n')\n"
+                "    sys.exit(0)\n"
+                "if name == 'disk':\n"
+                "    sys.exit(5)\n"
+                "pathlib.Path(os.environ['MUTCHECK_TEST_MARKER']).touch()\n"
+                "sys.exit(0)\n")
+            (root / 'guard').write_text('original')
+            stage_fixture(root)
+            manifest = root / 'manifest.py'
+            manifest.write_text('ENTRIES = []')
+            logs = root / 'logs'
+            logs.mkdir()
+            entries = [dict(kind='go', step='1', name=name, file='guard', original='original',
+                            replacement='mutated', packages=['a'], guards=['TestGuard'])
+                       for name in ('done', 'disk', 'later')]
+            free = 1 << 40
+            results = io.StringIO()
+            with patch.object(mutchecks, 'ROOT', root), \
+                    patch.dict(os.environ, {'GOCACHE': str(cache),
+                                            'MUTCHECK_TEST_MARKER': str(root / 'should-not-run')}), \
+                    patch.object(mutchecks, 'baseline', return_value=True), \
+                    patch.object(mutchecks.shutil, 'disk_usage', return_value=Mock(free=free)), \
+                    patch('sys.stdout', new=io.StringIO()), \
+                    patch('sys.stderr', new=io.StringIO()) as error:
+                code = mutchecks.run_parallel(entries, manifest, 1, logs, results)
+            self.assertEqual(code, mutchecks.DISK_EXIT)
+            self.assertIn(mutchecks.disk_message(free), error.getvalue())
+            self.assertNotIn('0.0 GB', error.getvalue())
+            self.assertFalse((root / 'should-not-run').exists())
+            content = results.getvalue()
+            self.assertIn('1 done exit=0 caught=TestGuard restored=True PASS', content)
+            self.assertIn('1 disk exit=not-run caught=- restored=False FAIL', content)
+            self.assertIn('1 later exit=not-run caught=- restored=True not run (environment)', content)
 
     def test_baseline_failure_never_copies_or_starts_workers(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -488,7 +887,7 @@ class WorkerTests(unittest.TestCase):
                                 original='original', replacement=value, packages=[str(root)], guards=['TestGuard'])
                            for i, value in enumerate(replacements)]
                 manifest.write_text('ENTRIES = ' + repr(entries))
-            with patch.object(mutchecks, 'affected_entries', side_effect=lambda entries, ref: entries), patch.object(mutchecks, 'baseline', return_value=True) as baseline:
+            with patch.object(mutchecks, 'affected_entries', side_effect=lambda entries, ref: entries), patch.object(mutchecks, 'baseline', return_value=True) as baseline, relaxed_disk_headroom():
                 code, output, _ = AllManifestTests().invoke(root, '--since', 'main', '--jobs', '2')
             self.assertEqual(code, 1, output)
             baseline.assert_called_once()
@@ -504,7 +903,7 @@ class WorkerTests(unittest.TestCase):
 
     def test_signals_remove_worker_copies_and_leave_main_file_untouched(self):
         for sig in (signal.SIGINT, signal.SIGTERM):
-            with self.subTest(signal=sig), tempfile.TemporaryDirectory() as folder:
+            with self.subTest(signal=sig), tempfile.TemporaryDirectory(dir=mutchecks.ROOT / '.dev') as folder:
                 root = Path(folder)
                 init_repo(root)
                 script = root / 'backend/scripts/mutchecks.py'
@@ -526,10 +925,11 @@ class WorkerTests(unittest.TestCase):
                 second = root / '.dev/codex/b/manifest.py'
                 second.parent.mkdir(parents=True)
                 second.write_text('ENTRIES = ' + repr([entry]))
-                env = dict(os.environ, PATH=str(root / 'bin') + os.pathsep + os.environ['PATH'])
-                process = subprocess.Popen([sys.executable, str(script), '--since', 'HEAD', '--jobs', '4'],
-                                           cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                           start_new_session=True)
+                with relaxed_disk_headroom():
+                    env = dict(os.environ, PATH=str(root / 'bin') + os.pathsep + os.environ['PATH'])
+                    process = subprocess.Popen([sys.executable, str(script), '--since', 'HEAD', '--jobs', '4'],
+                                               cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                               start_new_session=True)
                 try:
                     ready = root / '.dev/mutcheck-worktrees/0/.dev/ready'
                     deadline = time.monotonic() + 10
@@ -541,6 +941,7 @@ class WorkerTests(unittest.TestCase):
                     output, error = process.communicate(timeout=15)
                     self.assertEqual(process.returncode, 130, (output, error))
                     self.assertFalse((root / '.dev/mutcheck-worktrees').exists())
+                    self.assertFalse((root / '.dev/mutcheck-gocache').exists())
                     self.assertEqual((root / 'guard').read_text(), 'original')
                 finally:
                     if process.poll() is None:
@@ -574,7 +975,152 @@ class SymlinkQueryTests(unittest.TestCase):
                                     text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual(calls.read_text().splitlines().count('tool sqlc generate'), 2)
+            test_calls = [line for line in calls.read_text().splitlines() if line.startswith('test ')]
+            self.assertTrue(test_calls)
+            self.assertTrue(all('-trimpath' in line for line in test_calls), test_calls)
             self.assertEqual(query.read_text(), 'SELECT 1;')
+
+
+class StandaloneCacheTests(unittest.TestCase):
+    def run_shell(self, root, env, go_body=None):
+        scripts = root / 'backend/scripts'
+        scripts.mkdir(parents=True)
+        shutil.copy(Path(__file__).with_name('mutcheck.sh'), scripts / 'mutcheck.sh')
+        target = root / 'guard.go'
+        target.write_text('original')
+        (root / 'bin').mkdir()
+        seen = root / 'seen'
+        go = root / 'bin/go'
+        go.write_text(go_body or (
+            '#!/bin/bash\nprintf "%s\\n" "$GOCACHE" >> "' + str(seen) + '"\n'
+            'if [[ $* == *"-run ^$"* || $1 == tool ]]; then exit 0; fi\n'
+            "echo '--- FAIL: TestGuard (0.00s)'\nexit 1\n"))
+        go.chmod(0o755)
+        env = {**env, 'PATH': str(root / 'bin') + os.pathsep + env['PATH']}
+        result = subprocess.run(['bash', str(scripts / 'mutcheck.sh'), str(target),
+                                 'original', 'mutated', './internal/example'],
+                                env=env, text=True, capture_output=True)
+        return result, target, seen
+
+    def test_uses_and_removes_a_temporary_cache_when_gocache_is_unset(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            env = {key: value for key, value in os.environ.items() if key != 'GOCACHE'}
+            result, target, seen = self.run_shell(root, env)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            paths = [Path(line).resolve() for line in seen.read_text().splitlines()]
+            self.assertTrue(paths)
+            self.assertTrue(all(path.parent == (root / '.dev').resolve() and
+                                path.name.startswith('mutcheck-gocache-standalone.')
+                                for path in paths), paths)
+            self.assertFalse(any(path.exists() for path in paths))
+            self.assertEqual(target.read_text(), 'original')
+
+    def test_keeps_a_caller_provided_cache_and_does_not_create_a_temporary_one(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            provided = root / 'provided-cache'
+            provided.mkdir()
+            env = {**os.environ, 'GOCACHE': str(provided)}
+            result, target, seen = self.run_shell(root, env)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(set(seen.read_text().splitlines()), {str(provided)})
+            self.assertTrue(provided.exists())
+            self.assertFalse(list((root / '.dev').glob('mutcheck-gocache-standalone.*')))
+            self.assertEqual(target.read_text(), 'original')
+
+    def test_removes_temporary_cache_on_failure(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            env = {key: value for key, value in os.environ.items() if key != 'GOCACHE'}
+            body = ('#!/bin/bash\nprintf "%s\\n" "$GOCACHE" >> "' + str(root / 'seen') + '"\n'
+                    'if [[ $* == *"-run ^$"* ]]; then exit 1; fi\nexit 0\n')
+            result, target, seen = self.run_shell(root, env, body)
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn('mutated code does not build', result.stderr)
+            paths = [Path(line).resolve() for line in seen.read_text().splitlines()]
+            self.assertTrue(paths)
+            self.assertFalse(any(path.exists() for path in paths))
+            self.assertFalse((root / '.dev/mutcheck-backup').exists())
+            self.assertEqual(target.read_text(), 'original')
+
+    def test_removes_temporary_cache_on_sigterm(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            scripts = root / 'backend/scripts'
+            scripts.mkdir(parents=True)
+            shutil.copy(Path(__file__).with_name('mutcheck.sh'), scripts / 'mutcheck.sh')
+            target = root / 'guard.go'
+            target.write_text('original')
+            bin_dir = root / 'bin'
+            bin_dir.mkdir()
+            seen = root / 'seen'
+            marker = root / 'test-running'
+            go = bin_dir / 'go'
+            go.write_text('#!/bin/bash\nprintf "%s\\n" "$GOCACHE" >> "' + str(seen) + '"\n'
+                          'if [[ $* == *"-run ^$"* ]]; then exit 0; fi\n'
+                          'touch "' + str(marker) + '"\nsleep 30\n')
+            go.chmod(0o755)
+            env = {key: value for key, value in os.environ.items() if key != 'GOCACHE'}
+            env['PATH'] = str(bin_dir) + os.pathsep + env['PATH']
+            process = subprocess.Popen(
+                ['bash', str(scripts / 'mutcheck.sh'), str(target), 'original', 'mutated',
+                 './internal/example'],
+                env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                start_new_session=True)
+            try:
+                deadline = time.monotonic() + 10
+                while not marker.exists() and process.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                self.assertTrue(marker.exists(), 'fixture never reached tests')
+                paths = [Path(line).resolve() for line in seen.read_text().splitlines()]
+                self.assertTrue(paths)
+                os.killpg(process.pid, signal.SIGTERM)
+                output = process.communicate(timeout=15)[0]
+                self.assertIn(process.returncode, (143, -signal.SIGTERM), output)
+                self.assertEqual(target.read_text(), 'original')
+                self.assertFalse((root / '.dev/mutcheck-backup').exists())
+                self.assertFalse(any(path.exists() for path in paths))
+                self.assertFalse(list((root / '.dev').glob('mutcheck-gocache-standalone.*')))
+            finally:
+                if process.poll() is None:
+                    os.killpg(process.pid, signal.SIGKILL)
+                process.communicate()
+
+    def test_restore_uses_and_removes_a_temporary_cache(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            scripts = root / 'backend/scripts'
+            scripts.mkdir(parents=True)
+            shutil.copy(Path(__file__).with_name('mutcheck.sh'), scripts / 'mutcheck.sh')
+            query = root / 'backend/internal/db/queries/example.sql'
+            query.parent.mkdir(parents=True)
+            query.write_text('mutated sql\n')
+            slot = root / '.dev/mutcheck-backup'
+            slot.mkdir(parents=True)
+            (slot / 'path').write_text(str(query) + '\n')
+            (slot / 'original').write_text('original sql\n')
+            bin_dir = root / 'bin'
+            bin_dir.mkdir()
+            seen = root / 'seen'
+            go = bin_dir / 'go'
+            go.write_text('#!/bin/bash\nprintf "%s\\n" "$GOCACHE" >> "' + str(seen) + '"\nexit 0\n')
+            go.chmod(0o755)
+            env = {key: value for key, value in os.environ.items() if key != 'GOCACHE'}
+            env['PATH'] = str(bin_dir) + os.pathsep + env['PATH']
+            result = subprocess.run(['bash', str(scripts / 'mutcheck.sh'), '--restore'],
+                                    env=env, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(result.stdout.strip(), f'restored: {query}')
+            self.assertEqual(query.read_text(), 'original sql\n')
+            self.assertFalse(slot.exists())
+            paths = [Path(line).resolve() for line in seen.read_text().splitlines()]
+            self.assertTrue(paths)
+            self.assertTrue(all(path.parent == (root / '.dev').resolve() and
+                                path.name.startswith('mutcheck-gocache-standalone.')
+                                for path in paths), paths)
+            self.assertFalse(any(path.exists() for path in paths))
+            self.assertNotIn((Path.home() / '.cache/go-build').resolve(), paths)
 
 
 class EnvironmentTests(unittest.TestCase):
@@ -696,7 +1242,7 @@ class EnvironmentTests(unittest.TestCase):
                 entry = dict(kind='go', step='1', name='guard', file='guard', guards=['TestGuard'], packages=['a'], original='original', replacement='mutated')
                 manifest.write_text('ENTRIES = ' + repr([entry]))
 
-                with patch.object(mutchecks, 'affected_entries', return_value=[entry]), patch.object(mutchecks, 'baseline', return_value=True):
+                with patch.object(mutchecks, 'affected_entries', return_value=[entry]), patch.object(mutchecks, 'baseline', return_value=True), relaxed_disk_headroom():
                     status, output, _ = AllManifestTests().invoke(root, '--since', 'main')
                 self.assertEqual(status, 1)
                 self.assertIn('exit=4 caught=- restored=True not run (environment)', output)

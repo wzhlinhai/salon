@@ -52,6 +52,9 @@ var customerReferences = []customerReference{
 	{"customer_safety_labels", "customer_id", func(ctx context.Context, q *dbgen.Queries, from, to uuid.UUID) error {
 		return q.MergeCustomerSafetyLabels(ctx, dbgen.MergeCustomerSafetyLabelsParams{MergedID: from, KeepID: to})
 	}},
+	{"appointments", "customer_id", func(ctx context.Context, q *dbgen.Queries, from, to uuid.UUID) error {
+		return q.MergeCustomerAppointments(ctx, dbgen.MergeCustomerAppointmentsParams{MergedID: from, KeepID: to})
+	}},
 }
 
 func registerMerge(r *ops.Registry) {
