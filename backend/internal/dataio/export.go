@@ -48,7 +48,7 @@ func Export(ctx context.Context, w io.Writer, pool *pgxpool.Pool, caller ops.Cal
 			return err
 		}
 	}
-	err := db.InTenant(ctx, pool, caller.TenantID, func(q *dbgen.Queries) error {
+	err := db.InTenantSnapshot(ctx, pool, caller.TenantID, func(q *dbgen.Queries) error {
 		env := ops.Env{Now: now, Caller: caller, Q: q}
 		counts := map[string]int{}
 		if err := exportCustomersSheet(ctx, f, q, caller, counts); err != nil {

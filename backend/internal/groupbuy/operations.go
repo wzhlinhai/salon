@@ -116,6 +116,16 @@ func redeem(ctx context.Context, env ops.Env, in CouponRequest, providers *Provi
 	var row dbgen.CouponRedemption
 	var fresh bool
 	err := env.Transact(ctx, func(q *dbgen.Queries) error {
+		if err := q.LockCouponIdentity(ctx, dbgen.LockCouponIdentityParams{StoreID: env.Caller.StoreID, Platform: in.Platform, CouponCode: in.CouponCode}); err != nil {
+			return err
+		}
+		active, err := q.HasOtherActiveRedemption(ctx, dbgen.HasOtherActiveRedemptionParams{StoreID: env.Caller.StoreID, Platform: in.Platform, CouponCode: in.CouponCode, IdempotencyKey: in.Key})
+		if err != nil {
+			return err
+		}
+		if active {
+			return ops.Rule("这张券已有核销记录，请使用原幂等键查询或重试")
+		}
 		n, err := q.CreateRedemption(ctx, dbgen.CreateRedemptionParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Platform: in.Platform, CouponCode: in.CouponCode, IdempotencyKey: in.Key, RedeemedBy: env.Caller.StaffID, CreatedAt: pgtype.Timestamptz{Time: env.Now, Valid: true}})
 		if err != nil {
 			return err
@@ -290,10 +300,10 @@ func finish(ctx context.Context, env ops.Env, key, action string, result CouponR
 			}
 		}
 		out = view(row)
-		if outcome != nil {
-			return nil
-		}
 		env.Q = q
+		if outcome != nil {
+			return audit.Record(ctx, env, action, audit.CouponRedemptionTarget(row.ID), before, map[string]any{"redemption": out, "error": outcome.Error()})
+		}
 		return audit.Record(ctx, env, action, audit.CouponRedemptionTarget(row.ID), before, out)
 	})
 	if err != nil {

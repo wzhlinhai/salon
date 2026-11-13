@@ -21,6 +21,7 @@ import (
 var (
 	errPhoneNotVisible = errors.New("手机号已属于其他顾客，无权导入")
 	errCustomerMerged  = errors.New("该顾客已合并到另一位顾客")
+	errCustomerChanged = errors.New("顾客手机号已变化，请重新预览导入")
 )
 
 // commit 在一个事务里写入预览通过的顾客、卡、流水和积分；行级错误只跳过该行。
@@ -72,6 +73,53 @@ func commit(ctx context.Context, env ops.Env, in *CommitImportInput) (*ImportBat
 		}
 	}
 
+	// 先锁住所有可能关联的已有顾客，再申请手机号咨询锁；与改手机号、合并顾客的锁序一致。
+	phones := []string{}
+	lockIDs := map[uuid.UUID]bool{}
+	for _, row := range rows {
+		if row.Kind != "customer" || row.Error != nil {
+			continue
+		}
+		if row.Phone != nil {
+			phones = append(phones, *row.Phone)
+		}
+		if row.EntityID != nil {
+			lockIDs[*row.EntityID] = true
+		}
+	}
+	found, err := env.Q.FindCustomersByPhones(ctx, phones)
+	if err != nil {
+		return nil, err
+	}
+	for _, customer := range found {
+		lockIDs[customer.ID] = true
+	}
+	ordered := make([]uuid.UUID, 0, len(lockIDs))
+	for id := range lockIDs {
+		ordered = append(ordered, id)
+	}
+	sort.Slice(ordered, func(i, j int) bool { return bytes.Compare(ordered[i][:], ordered[j][:]) < 0 })
+	locked := map[uuid.UUID]bool{}
+	for _, id := range ordered {
+		_, err := env.Q.LockCustomer(ctx, id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		locked[id] = true
+	}
+	sort.Strings(phones)
+	for i, phone := range phones {
+		if i > 0 && phone == phones[i-1] {
+			continue
+		}
+		if err := env.Q.LockCustomerPhone(ctx, phone); err != nil {
+			return nil, err
+		}
+	}
+
 	customerIDs := map[string]uuid.UUID{}
 	phoneTargets := map[string]uuid.UUID{}
 	var writtenCustomers int32
@@ -85,8 +133,8 @@ func commit(ctx context.Context, env ops.Env, in *CommitImportInput) (*ImportBat
 			if target, ok := phoneTargets[*row.Phone]; ok {
 				id, action = target, "linked"
 			} else {
-				id, action, err = resolveCustomer(ctx, env, row)
-				if errors.Is(err, errPhoneNotVisible) || errors.Is(err, errCustomerMerged) {
+				id, action, err = resolveCustomer(ctx, env, row, locked)
+				if errors.Is(err, errPhoneNotVisible) || errors.Is(err, errCustomerMerged) || errors.Is(err, errCustomerChanged) {
 					if err := rowIssue(ctx, env, batch.ID, row.ID, err.Error()); err != nil {
 						return nil, err
 					}
@@ -98,7 +146,7 @@ func commit(ctx context.Context, env ops.Env, in *CommitImportInput) (*ImportBat
 				phoneTargets[*row.Phone] = id
 			}
 		} else {
-			id, action, err = resolveCustomer(ctx, env, row)
+			id, action, err = resolveCustomer(ctx, env, row, locked)
 			if err != nil {
 				return nil, err
 			}
@@ -186,6 +234,7 @@ func commit(ctx context.Context, env ops.Env, in *CommitImportInput) (*ImportBat
 		if err := record(ctx, env, batch.ID, "card", card.ID, row.SourceKey, true); err != nil {
 			return nil, err
 		}
+		imported[row.SourceKey] = true
 		if err := record(ctx, env, batch.ID, "card_ledger", ledger.ID, row.SourceKey, true); err != nil {
 			return nil, err
 		}
@@ -208,9 +257,14 @@ func commit(ctx context.Context, env ops.Env, in *CommitImportInput) (*ImportBat
 	}
 
 	groups := map[string][]dbgen.ImportBatchRow{}
+	allGroups := map[string][]dbgen.ImportBatchRow{}
 	order := []string{}
 	for _, row := range rows {
-		if row.Kind != "count_package" || row.Error != nil {
+		if row.Kind != "count_package" {
+			continue
+		}
+		allGroups[row.SourceKey] = append(allGroups[row.SourceKey], row)
+		if row.Error != nil {
 			continue
 		}
 		if _, ok := groups[row.SourceKey]; !ok {
@@ -223,7 +277,10 @@ func commit(ctx context.Context, env ops.Env, in *CommitImportInput) (*ImportBat
 		group := groups[key]
 		first := group[0]
 		if badCountGroups[key] {
-			for _, row := range group {
+			for _, row := range allGroups[key] {
+				if row.Error != nil {
+					continue
+				}
 				if err := rowIssue(ctx, env, batch.ID, row.ID, "同一来源卡号的其他项目有错误"); err != nil {
 					return nil, err
 				}
@@ -287,6 +344,7 @@ func commit(ctx context.Context, env ops.Env, in *CommitImportInput) (*ImportBat
 		if err := record(ctx, env, batch.ID, "card", card.ID, first.SourceKey, true); err != nil {
 			return nil, err
 		}
+		imported[first.SourceKey] = true
 		if err := record(ctx, env, batch.ID, "card_ledger", ledger.ID, first.SourceKey, true); err != nil {
 			return nil, err
 		}
@@ -338,16 +396,16 @@ func commit(ctx context.Context, env ops.Env, in *CommitImportInput) (*ImportBat
 }
 
 // resolveCustomer 按租户手机号查询并复用查看范围，预览和提交使用同一条查询。
-func resolveCustomer(ctx context.Context, env ops.Env, row dbgen.ImportBatchRow) (uuid.UUID, string, error) {
+func resolveCustomer(ctx context.Context, env ops.Env, row dbgen.ImportBatchRow, locked map[uuid.UUID]bool) (uuid.UUID, string, error) {
 	if row.Phone != nil {
-		if err := env.Q.LockCustomerPhone(ctx, *row.Phone); err != nil {
-			return uuid.Nil, "", err
-		}
 		found, err := env.Q.FindCustomersByPhones(ctx, []string{*row.Phone})
 		if err != nil {
 			return uuid.Nil, "", err
 		}
 		if len(found) > 0 {
+			if !locked[found[0].ID] {
+				return uuid.Nil, "", errCustomerChanged
+			}
 			if !customers.CanView(env.Caller, found[0]) {
 				return uuid.Nil, "", errPhoneNotVisible
 			}
@@ -357,6 +415,12 @@ func resolveCustomer(ctx context.Context, env ops.Env, row dbgen.ImportBatchRow)
 		if row.EntityID != nil {
 			linked, err := env.Q.GetCustomer(ctx, *row.EntityID)
 			if err == nil {
+				if !locked[linked.ID] {
+					return uuid.Nil, "", errCustomerChanged
+				}
+				if linked.Phone == nil || *linked.Phone != *row.Phone {
+					return uuid.Nil, "", errCustomerChanged
+				}
 				if !customers.CanView(env.Caller, linked) {
 					return uuid.Nil, "", errPhoneNotVisible
 				}
@@ -373,8 +437,14 @@ func resolveCustomer(ctx context.Context, env ops.Env, row dbgen.ImportBatchRow)
 	created, err := env.Q.CreateCustomer(ctx, dbgen.CreateCustomerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Name: row.Name, Phone: row.Phone, Gender: row.Gender, CreatedBy: env.Caller.StaffID})
 	if errors.Is(err, pgx.ErrNoRows) && row.Phone != nil {
 		found, findErr := env.Q.FindCustomersByPhones(ctx, []string{*row.Phone})
-		if findErr != nil || len(found) == 0 {
+		if findErr != nil {
 			return uuid.Nil, "", findErr
+		}
+		if len(found) == 0 {
+			return uuid.Nil, "", errCustomerChanged
+		}
+		if !locked[found[0].ID] {
+			return uuid.Nil, "", errCustomerChanged
 		}
 		if !customers.CanView(env.Caller, found[0]) {
 			return uuid.Nil, "", errPhoneNotVisible
@@ -384,6 +454,7 @@ func resolveCustomer(ctx context.Context, env ops.Env, row dbgen.ImportBatchRow)
 	if err != nil {
 		return uuid.Nil, "", err
 	}
+	locked[created.ID] = true
 	return created.ID, "created", nil
 }
 

@@ -149,7 +149,7 @@ func TestReadToolsExcludeWritesAndDrafts(t *testing.T) {
 
 func TestReadToolsExcludeLazyWriteReads(t *testing.T) {
 	r := newRegistry(t)
-	for _, name := range []string{"read_thing", ops.ReadToolListDrafts, ops.ReadToolGetDraft, ops.ReadToolGetRedemption} {
+	for _, name := range []string{"read_thing", ops.ReadToolListDrafts, ops.ReadToolGetDraft, ops.ReadToolGetRedemption, ops.ReadToolGetRotation} {
 		op := valid()
 		op.Name = name
 		ops.Register(r, op)
@@ -159,7 +159,7 @@ func TestReadToolsExcludeLazyWriteReads(t *testing.T) {
 	if len(tools) != 1 || tools[0].Name != "read_thing" {
 		t.Fatalf("ReadTools = %v, want only read_thing", tools)
 	}
-	for _, name := range []string{ops.ReadToolListDrafts, ops.ReadToolGetDraft, ops.ReadToolGetRedemption} {
+	for _, name := range []string{ops.ReadToolListDrafts, ops.ReadToolGetDraft, ops.ReadToolGetRedemption, ops.ReadToolGetRotation} {
 		if _, err := r.CallReadTool(context.Background(), caller, name, nil); !errors.Is(err, ops.ErrUnknownOperation) {
 			t.Fatalf("CallReadTool(%q) err = %v, want ErrUnknownOperation", name, err)
 		}

@@ -71,13 +71,20 @@ async function cardEdit(card: CustomerCard | null) {
 
 async function cardSave() {
   const id = props.id
+  const isRecharge = !!cardTarget.value
   const countsOnly = !cardTarget.value && openingType.value?.kind === 'count'
   const body = { principal: countsOnly ? '0.00' : cardPrincipal.value, bonus: countsOnly ? '0.00' : cardBonus.value, sales_staff_ids: [...cardSales.value], payments: cardPayments.value }
   await cardForm.save(async (current) => {
     const { data, error } = cardTarget.value
       ? await api.POST('/api/ops/recharge_card', { body: { ...body, card_id: cardTarget.value.id } })
       : await api.POST('/api/ops/open_card', { body: { ...body, customer_id: id, card_type_id: cardCardType.value } })
-    if (!current()) return
+    if (!current()) {
+      if (data) {
+        toast.add({ title: isRecharge ? '充值成功' : '开卡成功', color: 'success' })
+        await refreshCards()
+      }
+      return
+    }
     if (data) {
       const upgradedTo = (data as components['schemas']['RechargeResult']).upgraded_to
       if (upgradedTo) toast.add({ title: `充值成功，已自动升级为 ${upgradedTo.name}`, color: 'success' })
@@ -185,7 +192,10 @@ async function saveAdjustment() {
   if (adjustType.value !== card.card_type_id) body.card_type_id = adjustType.value
   await adjustForm.save(async (current) => {
     const { data, error } = await api.POST('/api/ops/adjust_card', { body })
-    if (!current()) return
+    if (!current()) {
+      if (data) await refreshCards()
+      return
+    }
     if (data) {
       adjustModal.value = false
       await refreshCards()
@@ -257,7 +267,10 @@ async function saveBalance() {
     const { data, error } = balanceMode.value === 'upgrade'
       ? await api.POST('/api/ops/upgrade_card', { body: { ...amounts, card_id: card.id, to_type_id: balanceTo.value, sales_staff_ids: hasDifference.value ? [...balanceSales.value] : [], payments: balancePayments.value } })
       : await api.POST('/api/ops/transfer_card_balance', { body: { ...amounts, from_card_id: card.id, to_card_id: balanceTo.value, reason: balanceReason.value.trim() } })
-    if (!current()) return
+    if (!current()) {
+      if (data) await refreshCards()
+      return
+    }
     if (data) {
       balanceOpen.value = false
       await refreshCards()
@@ -292,7 +305,10 @@ async function saveRefund() {
   if (!quote || !method) return
   await refundForm.save(async (current) => {
     const { data, error, response } = await api.POST('/api/ops/refund_card', { body: { card_id: quote.card_id, amount: quote.amount, method } })
-    if (!current()) return
+    if (!current()) {
+      if (data) await refreshCards()
+      return
+    }
     if (data) {
       refundOpen.value = false
       await refreshCards()

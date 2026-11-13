@@ -20,19 +20,20 @@ type Tool struct {
 	Draft bool
 }
 
-// ReadToolListDrafts、ReadToolGetDraft 和 ReadToolGetRedemption 虽然声明为 Read + AIDirect，
-// 执行时仍会写入：前两个读取消时会惰性过期草稿，get_redemption 会写审计。对话暂不提供，
+// 以下操作虽然声明为 Read + AIDirect，执行时仍会惰性更新数据或写审计。对话暂不提供，
 // 等这些读操作拆出惰性写入后（另开 issue）再从排除集合移除。
 const (
 	ReadToolListDrafts    = "list_drafts"
 	ReadToolGetDraft      = "get_draft"
 	ReadToolGetRedemption = "get_redemption"
+	ReadToolGetRotation   = "get_rotation"
 )
 
 var excludedReadTools = map[string]struct{}{
 	ReadToolListDrafts:    {},
 	ReadToolGetDraft:      {},
 	ReadToolGetRedemption: {},
+	ReadToolGetRotation:   {},
 }
 
 // ToolError 是 AI 工具调用的参数错误，信息可以原样返回给模型，让它修正参数。

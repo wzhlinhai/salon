@@ -1,6 +1,13 @@
 import { expect, test } from '@playwright/test'
 import { api, apiLogin, hire, login, owner } from './helpers'
 
+test('各设置使用自己的选项标签', async ({ page }) => {
+  await login(page, owner.account, owner.password)
+  await page.goto('/settings')
+  await page.locator('[data-setting=rotation_skip_when_serving_designated]').getByRole('button', { name: '修改', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '修改点牌跳牌' })).toContainText('系统默认：自动跳过')
+})
+
 // #27：老板修改设置并指定生效日期，页面显示已安排的修改和修改记录。
 test('老板安排明天起的营业日结束时间，并在修改记录里看到', async ({ page }) => {
   await login(page, owner.account, owner.password)

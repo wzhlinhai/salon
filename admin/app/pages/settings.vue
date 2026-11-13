@@ -28,18 +28,18 @@ async function load() {
 
 onMounted(load)
 
-function show(kind: Setting['kind'] | undefined, value: unknown): string {
-  if (kind === 'time_range') {
+function show(setting: Setting | undefined, value: unknown): string {
+  if (setting?.kind === 'time_range') {
     const r = value as TimeRange
     return `${r.open}–${r.close}`
   }
-  if (kind === 'choice') {
-    return settings.value.flatMap(s => s.options ?? []).find(o => o.value === value)?.label ?? String(value)
+  if (setting?.kind === 'choice') {
+    return setting.options?.find(o => o.value === value)?.label ?? String(value)
   }
   return String(value)
 }
 
-const kindOf = (key: string) => settings.value.find(s => s.key === key)?.kind
+const settingOf = (key: string) => settings.value.find(s => s.key === key)
 
 // 编辑中的设置。值按形式分开存，保存时再组装。
 const editorGuard = useRequestGuard()
@@ -134,13 +134,13 @@ onMounted(loadSources)
           <div class="font-medium">{{ s.label }}</div>
           <div class="text-sm text-muted">{{ s.hint }}</div>
           <div class="flex items-center gap-2">
-            <span class="text-lg">{{ show(s.kind, s.value) }}</span>
+            <span class="text-lg">{{ show(s, s.value) }}</span>
             <UBadge v-if="s.is_default" color="neutral" variant="subtle">系统默认</UBadge>
             <span v-else class="text-xs text-muted">{{ s.effective_from }} 起</span>
           </div>
           <div v-for="u in s.upcoming" :key="u.effective_from" class="text-sm">
             <UBadge color="warning" variant="subtle">已安排</UBadge>
-            {{ u.effective_from }} 起改为 {{ show(s.kind, u.value) }}{{ u.is_default ? '（系统默认）' : '' }}
+            {{ u.effective_from }} 起改为 {{ show(s, u.value) }}{{ u.is_default ? '（系统默认）' : '' }}
           </div>
         </div>
         <UButton v-if="can('settings.manage')" variant="outline" @click="openEditor(s)">修改</UButton>
@@ -183,8 +183,8 @@ onMounted(loadSources)
             <td class="py-1">{{ new Date(c.changed_at).toLocaleString('zh-CN') }}</td>
             <td>{{ c.changed_by.name }}</td>
             <td>{{ c.label }}</td>
-            <td>{{ show(kindOf(c.key), c.old_value) }}{{ c.old_is_default ? '（默认）' : '' }}</td>
-            <td>{{ show(kindOf(c.key), c.value) }}{{ c.is_default ? '（恢复默认）' : '' }}</td>
+            <td>{{ show(settingOf(c.key), c.old_value) }}{{ c.old_is_default ? '（默认）' : '' }}</td>
+            <td>{{ show(settingOf(c.key), c.value) }}{{ c.is_default ? '（恢复默认）' : '' }}</td>
             <td>{{ c.effective_from }}</td>
           </tr>
         </tbody>
@@ -203,7 +203,7 @@ onMounted(loadSources)
           <UFormField v-else-if="editing.kind === 'integer'" :label="editing.label"><UInput v-model="form.integer" type="number" :min="editing.min" :max="editing.max" :step="1" /></UFormField>
           <UFormField v-else label="时间"><UInput v-model="form.time" type="time" /></UFormField>
           <UFormField label="生效日期" help="不能早于今天"><UInput v-model="form.from" type="date" :min="today" /></UFormField>
-          <p class="text-xs text-muted">系统默认：{{ show(editing.kind, editing.default) }}</p>
+          <p class="text-xs text-muted">系统默认：{{ show(editing, editing.default) }}</p>
         </div>
       </template>
       <template #footer>

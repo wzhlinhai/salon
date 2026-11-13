@@ -221,6 +221,33 @@ func (q *Queries) GetRedemptionByID(ctx context.Context, arg GetRedemptionByIDPa
 	return i, err
 }
 
+const hasOtherActiveRedemption = `-- name: HasOtherActiveRedemption :one
+SELECT EXISTS (
+  SELECT 1 FROM coupon_redemptions
+  WHERE store_id = $1 AND platform = $2 AND coupon_code = $3
+    AND idempotency_key <> $4 AND status IN ('pending', 'unknown', 'redeemed')
+)
+`
+
+type HasOtherActiveRedemptionParams struct {
+	StoreID        uuid.UUID
+	Platform       string
+	CouponCode     string
+	IdempotencyKey string
+}
+
+func (q *Queries) HasOtherActiveRedemption(ctx context.Context, arg HasOtherActiveRedemptionParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasOtherActiveRedemption,
+		arg.StoreID,
+		arg.Platform,
+		arg.CouponCode,
+		arg.IdempotencyKey,
+	)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const linkRedemption = `-- name: LinkRedemption :one
 UPDATE coupon_redemptions
 SET order_id = $1, deal_id = $2, purchase_price = $3,
@@ -521,6 +548,22 @@ func (q *Queries) ListOrderRedemptions(ctx context.Context, arg ListOrderRedempt
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockCouponIdentity = `-- name: LockCouponIdentity :exec
+SELECT pg_advisory_xact_lock(hashtextextended(($1::uuid)::text || '/coupon/' || length($2::text)::text || ':' || $2::text || $3::text, 0))
+`
+
+type LockCouponIdentityParams struct {
+	StoreID    uuid.UUID
+	Platform   string
+	CouponCode string
+}
+
+// 同一门店的平台券先排队，再检查是否已有未结束的核销。
+func (q *Queries) LockCouponIdentity(ctx context.Context, arg LockCouponIdentityParams) error {
+	_, err := q.db.Exec(ctx, lockCouponIdentity, arg.StoreID, arg.Platform, arg.CouponCode)
+	return err
 }
 
 const lockGroupbuyDeal = `-- name: LockGroupbuyDeal :one

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import type { Page } from '@playwright/test'
 import { api, apiLogin, cash, hire, login, owner } from './helpers'
 
 async function seed() {
@@ -9,6 +10,154 @@ async function seed() {
   const second = await api(token, 'create_staff', { name: `业绩乙${suffix}`, number: `b${suffix}`, role_ids: [] })
   return { token, suffix, customer, staff, second }
 }
+
+async function blockRoute(page: Page, pattern: string) {
+  let release!: () => void
+  let started!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const pending = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  await page.route(pattern, async (route) => {
+    const response = await route.fetch()
+    started()
+    await blocked
+    await route.fulfill({ response })
+  })
+  return { pending, release }
+}
+
+test('充值成功后即使弹窗已关闭也刷新余额', async ({ page }) => {
+  const { token, suffix, customer, staff } = await seed()
+  const type = await api(token, 'create_card_type', { name: `刷新卡${suffix}`, kind: 'stored_value', validity_kind: 'none' })
+  const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: type.id, principal: '100.00', bonus: '0.00', sales_staff_ids: [staff.id], payments: cash('100.00') })
+  await login(page, owner.account, owner.password)
+  await page.goto(`/customers?id=${customer.id}`)
+  const shown = page.locator(`[data-card="${card.id}"]`)
+  await expect(shown).toContainText('本金 100.00')
+  let release!: () => void
+  let started!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const pending = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  await page.route('**/api/ops/recharge_card', async (route) => {
+    const response = await route.fetch()
+    started()
+    await blocked
+    await route.fulfill({ response })
+  })
+  await shown.getByRole('button', { name: '充值', exact: true }).click()
+  const modal = page.getByRole('dialog', { name: '充值', exact: true })
+  await modal.getByLabel('本金', { exact: true }).fill('10.00')
+  await modal.getByRole('combobox', { name: '业绩归属人', exact: true }).click()
+  await page.getByRole('option', { name: staff.name, exact: true }).click()
+  await page.keyboard.press('Escape')
+  await modal.getByRole('button', { name: '保存', exact: true }).click()
+  await pending
+  await page.keyboard.press('Escape')
+  await expect(modal).not.toBeVisible()
+  release()
+  await expect(shown).toContainText('本金 110.00')
+})
+
+test('调整成功后即使弹窗已关闭也刷新余额', async ({ page }) => {
+  const { token, suffix, customer, staff } = await seed()
+  const type = await api(token, 'create_card_type', { name: `调整刷新卡${suffix}`, kind: 'stored_value', validity_kind: 'none' })
+  const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: type.id, principal: '100.00', bonus: '0.00', sales_staff_ids: [staff.id], payments: cash('100.00') })
+  await login(page, owner.account, owner.password)
+  await page.goto(`/customers?id=${customer.id}`)
+  const shown = page.locator(`[data-card="${card.id}"]`)
+  await expect(shown).toContainText('本金 100.00')
+  const blocked = await blockRoute(page, '**/api/ops/adjust_card')
+  await shown.getByRole('button', { name: '调整', exact: true }).click()
+  const modal = page.getByRole('dialog', { name: '调整', exact: true })
+  await modal.getByLabel('本金', { exact: true }).fill('120.00')
+  await modal.getByLabel('原因', { exact: true }).fill('刷新测试')
+  await modal.getByRole('button', { name: '保存', exact: true }).click()
+  await blocked.pending
+  await page.keyboard.press('Escape')
+  await expect(modal).not.toBeVisible()
+  blocked.release()
+  await expect(shown).toContainText('本金 120.00')
+})
+
+test('升级成功后即使弹窗已关闭也刷新卡类型', async ({ page }) => {
+  const { token, suffix, customer, staff } = await seed()
+  const source = await api(token, 'create_card_type', { name: `升级源${suffix}`, kind: 'stored_value', validity_kind: 'none' })
+  const target = await api(token, 'create_card_type', { name: `升级目标${suffix}`, kind: 'stored_value', validity_kind: 'none' })
+  const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: source.id, principal: '100.00', bonus: '0.00', sales_staff_ids: [staff.id], payments: cash('100.00') })
+  await login(page, owner.account, owner.password)
+  await page.goto(`/customers?id=${customer.id}`)
+  const shown = page.locator(`[data-card="${card.id}"]`)
+  await expect(shown).toContainText(source.name)
+  const blocked = await blockRoute(page, '**/api/ops/upgrade_card')
+  await shown.getByRole('button', { name: '升级', exact: true }).click()
+  const modal = page.getByRole('dialog', { name: '升级', exact: true })
+  await modal.getByRole('combobox', { name: '目标卡类型', exact: true }).click()
+  await page.getByRole('option', { name: target.name, exact: true }).click()
+  await modal.getByLabel('本金', { exact: true }).fill('10.00')
+  await modal.getByRole('combobox', { name: '业绩归属人', exact: true }).click()
+  await page.getByRole('option', { name: staff.name, exact: true }).click()
+  await page.keyboard.press('Escape')
+  await modal.getByRole('button', { name: '保存', exact: true }).click()
+  await blocked.pending
+  await page.keyboard.press('Escape')
+  await expect(modal).not.toBeVisible()
+  blocked.release()
+  await expect(shown).toContainText(target.name)
+  await expect(shown).toContainText('本金 110.00')
+})
+
+test('转余额成功后即使弹窗已关闭也刷新两张卡', async ({ page }) => {
+  const { token, suffix, customer, staff } = await seed()
+  const type = await api(token, 'create_card_type', { name: `转余额卡${suffix}`, kind: 'stored_value', validity_kind: 'none' })
+  const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: type.id, principal: '100.00', bonus: '0.00', sales_staff_ids: [staff.id], payments: cash('100.00') })
+  const second = await api(token, 'open_card', { customer_id: customer.id, card_type_id: type.id, principal: '50.00', bonus: '0.00', sales_staff_ids: [staff.id], payments: cash('50.00') })
+  await login(page, owner.account, owner.password)
+  await page.goto(`/customers?id=${customer.id}`)
+  const shown = page.locator(`[data-card="${card.id}"]`)
+  await expect(shown).toContainText('本金 100.00')
+  const blocked = await blockRoute(page, '**/api/ops/transfer_card_balance')
+  await shown.getByRole('button', { name: '转余额', exact: true }).click()
+  const modal = page.getByRole('dialog', { name: '转余额', exact: true })
+  await modal.getByRole('combobox', { name: '目标卡', exact: true }).click()
+  await page.getByRole('option').filter({ hasText: second.id }).click()
+  await modal.getByLabel('本金', { exact: true }).fill('10.00')
+  await modal.getByLabel('原因', { exact: true }).fill('刷新测试')
+  await modal.getByRole('button', { name: '保存', exact: true }).click()
+  await blocked.pending
+  await page.keyboard.press('Escape')
+  await expect(modal).not.toBeVisible()
+  blocked.release()
+  await expect(shown).toContainText('本金 90.00')
+})
+
+test('退卡成功后即使弹窗已关闭也刷新卡状态', async ({ page }) => {
+  const { token, suffix, customer, staff } = await seed()
+  const type = await api(token, 'create_card_type', { name: `退卡刷新${suffix}`, kind: 'stored_value', validity_kind: 'none' })
+  const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: type.id, principal: '100.00', bonus: '0.00', sales_staff_ids: [staff.id], payments: cash('100.00') })
+  await login(page, owner.account, owner.password)
+  await page.goto(`/customers?id=${customer.id}`)
+  const shown = page.locator(`[data-card="${card.id}"]`)
+  await expect(shown).toContainText('本金 100.00')
+  const blocked = await blockRoute(page, '**/api/ops/refund_card')
+  await shown.getByRole('button', { name: '退卡', exact: true }).click()
+  const modal = page.getByRole('dialog', { name: '退卡', exact: true })
+  await expect(modal.getByTestId('refund-amount')).toBeVisible()
+  await modal.getByRole('combobox', { name: /^退款方式/ }).click()
+  await page.getByRole('option', { name: '现金', exact: true }).click()
+  await modal.getByRole('button', { name: '确认退卡', exact: true }).click()
+  await blocked.pending
+  await page.keyboard.press('Escape')
+  await expect(modal).not.toBeVisible()
+  blocked.release()
+  await expect(shown).toContainText('已退')
+})
 
 test('卡类型有效期、两名业绩归属人开卡、充值及流水', async ({ page }) => {
   const { suffix, customer, staff, second } = await seed()
