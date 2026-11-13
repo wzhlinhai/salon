@@ -44,7 +44,7 @@ const settingOf = (key: string) => settings.value.find(s => s.key === key)
 // 编辑中的设置。值按形式分开存，保存时再组装。
 const editorGuard = useRequestGuard()
 const editing = ref<Setting | null>(null)
-const form = reactive({ choice: '', integer: 0, time: '', open: '', close: '', from: '' })
+const form = reactive({ choice: '', integer: 0, time: '', text: '', open: '', close: '', from: '' })
 
 function openEditor(s: Setting) {
   editorGuard.next()
@@ -57,6 +57,8 @@ function openEditor(s: Setting) {
     form.choice = s.value as string
   } else if (s.kind === 'integer') {
     form.integer = Number(s.value)
+  } else if (s.kind === 'text') {
+    form.text = String(s.value ?? '')
   } else {
     form.time = s.value as string
   }
@@ -66,7 +68,7 @@ function openEditor(s: Setting) {
 async function save(reset: boolean) {
   const current = editorGuard.hold()
   const s = editing.value!
-  const value = reset ? null : s.kind === 'time_range' ? { open: form.open, close: form.close } : s.kind === 'choice' ? form.choice : s.kind === 'integer' ? Number(form.integer) : form.time
+  const value = reset ? null : s.kind === 'time_range' ? { open: form.open, close: form.close } : s.kind === 'choice' ? form.choice : s.kind === 'integer' ? Number(form.integer) : s.kind === 'text' ? form.text : form.time
   const { data, error } = await api.POST('/api/ops/change_setting', { body: { key: s.key, value, effective_from: form.from } })
   if (!current()) {
     if (data) load()
@@ -201,6 +203,7 @@ onMounted(loadSources)
           </div>
           <UFormField v-else-if="editing.kind === 'choice'" label="做法"><USelect v-model="form.choice" aria-label="做法" :items="editing.options" value-key="value" label-key="label" /></UFormField>
           <UFormField v-else-if="editing.kind === 'integer'" :label="editing.label"><UInput v-model="form.integer" type="number" :min="editing.min" :max="editing.max" :step="1" /></UFormField>
+          <UFormField v-else-if="editing.kind === 'text'" :label="editing.label"><UInput v-model="form.text" :maxlength="editing.max" :aria-label="editing.label" /></UFormField>
           <UFormField v-else label="时间"><UInput v-model="form.time" type="time" /></UFormField>
           <UFormField label="生效日期" help="不能早于今天"><UInput v-model="form.from" type="date" :min="today" /></UFormField>
           <p class="text-xs text-muted">系统默认：{{ show(editing, editing.default) }}</p>

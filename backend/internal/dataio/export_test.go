@@ -12,6 +12,7 @@ import (
 	"github.com/xuri/excelize/v2"
 
 	"github.com/wzhlinhai/salon/backend/internal/dataio"
+	"github.com/wzhlinhai/salon/backend/internal/settings"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 
@@ -52,6 +53,9 @@ func TestExportAllReadable(t *testing.T) {
 	f.commit(batch)
 	// 原生卡与导入数据同时导出。
 	f.call("open_card", map[string]any{"customer_id": f.nativeCustomer, "card_type_id": f.storedType, "principal": "5.00", "bonus": "0", "sales_staff_ids": []any{f.Res.OwnerID}, "payments": []any{map[string]any{"method": "cash", "amount": "5.00"}}})
+	paper := settings.Date(f.Now()).AddDate(0, 0, -1).Format(settings.DateLayout)
+	backfill := f.call("open_order", map[string]any{"gender": "female", "designated": false, "paper_date": paper, "items": []any{}})
+	normal := f.call("open_order", map[string]any{"gender": "female", "designated": false, "items": []any{}})
 
 	file := exportFile(t, f, f.Owner)
 	wantSheets := []string{"顾客", "储值卡", "次卡套餐", "卡流水", "单据", "支付", "员工", "项目", "卡种"}
@@ -110,6 +114,16 @@ func TestExportAllReadable(t *testing.T) {
 	orders, _ := file.GetRows("单据")
 	if len(orders)-1 != f.count("SELECT count(*) FROM orders o LEFT JOIN order_items i ON i.order_id=o.id") {
 		t.Fatalf("单据 rows = %d", len(orders)-1)
+	}
+	if len(orders[0]) < 11 || orders[0][10] != "补录单" {
+		t.Fatalf("单据 header = %v", orders[0])
+	}
+	flags := map[string]string{}
+	for _, row := range orders[1:] {
+		flags[row[0]] = row[10]
+	}
+	if flags[backfill["id"].(string)] != "是" || flags[normal["id"].(string)] != "否" {
+		t.Fatalf("补录单列 = %v", flags)
 	}
 	if n := f.count("SELECT count(*) FROM audit_log WHERE target_kind='data_export'"); n != 1 {
 		t.Fatalf("export audit = %d", n)

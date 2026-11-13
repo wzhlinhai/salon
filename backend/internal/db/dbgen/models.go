@@ -386,6 +386,7 @@ type Collection struct {
 	CreatedBy      uuid.UUID
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	BusinessDate   pgtype.Date
 }
 
 type CollectionEvent struct {
@@ -695,6 +696,7 @@ type Order struct {
 	OpenedAt           pgtype.Timestamptz
 	MergedInto         *uuid.UUID
 	CheckoutID         *uuid.UUID
+	Backfill           bool
 }
 
 type OrderItem struct {

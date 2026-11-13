@@ -11,7 +11,8 @@
 // 环境变量：DATABASE_URL（必填）；serve 还需要 JWT_SECRET（至少 32 字节），
 // 可选 HTTP_ADDR（默认 :8080）、TOKEN_TTL（默认 12h）。
 // AI 对话可选 AI_API_KEY（设置后启用）、AI_BASE_URL（默认 https://api.deepseek.com）、
-// AI_MODEL（默认 deepseek-flash）。
+// AI_MODEL（默认 deepseek-flash）。GROUPBUY_FAKE_PLATFORMS=meituan,douyin 只在开发环境
+// 注册内存假团购平台，生产必须不设置。
 package main
 
 import (
@@ -24,6 +25,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -33,6 +35,8 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/ai"
 	"github.com/wzhlinhai/salon/backend/internal/auth"
 	"github.com/wzhlinhai/salon/backend/internal/db"
+	"github.com/wzhlinhai/salon/backend/internal/groupbuy"
+	"github.com/wzhlinhai/salon/backend/internal/groupbuy/fakeprovider"
 	"github.com/wzhlinhai/salon/backend/internal/httpapi"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
@@ -116,9 +120,33 @@ func serve(ctx context.Context, pool *pgxpool.Pool) error {
 		})
 		model = func() ai.Model { return m }
 	}
-	e, _ := httpapi.New(pool, httpapi.Config{Authenticate: authn.Authenticate, Login: authn.Login, AIModel: model})
+	providers, fakes := fakeGroupbuy(os.Getenv("GROUPBUY_FAKE_PLATFORMS"))
+	if len(fakes) > 0 {
+		slog.Warn("dev-only fake groupbuy platforms enabled; never set GROUPBUY_FAKE_PLATFORMS in production", "platforms", fakes)
+	}
+	e, _ := httpapi.New(pool, httpapi.Config{Authenticate: authn.Authenticate, Login: authn.Login, AIModel: model, Groupbuy: providers})
 	sc := echo.StartConfig{Address: addr, HideBanner: true}
 	return sc.Start(ctx, e)
+}
+
+// fakeGroupbuy 按逗号分隔的平台名注册内存假适配器；空值不注册任何平台。
+func fakeGroupbuy(value string) (*groupbuy.Providers, []string) {
+	providers := &groupbuy.Providers{}
+	seen := map[string]bool{}
+	platforms := []string{}
+	for _, raw := range strings.Split(value, ",") {
+		platform := strings.TrimSpace(raw)
+		if platform == "" || seen[platform] {
+			continue
+		}
+		seen[platform] = true
+		platforms = append(platforms, platform)
+	}
+	now := time.Now()
+	for _, platform := range platforms {
+		providers.Register(platform, fakeprovider.New(platform, now))
+	}
+	return providers, platforms
 }
 
 func bootstrap(ctx context.Context, pool *pgxpool.Pool, args []string) error {

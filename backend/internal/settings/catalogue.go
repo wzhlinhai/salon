@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 // Kind 是设置值的形式，管理后台按它显示编辑控件。
@@ -19,6 +20,8 @@ const (
 	KindInteger Kind = "integer"
 	// KindTimeRange：一天中的时段，{"open": "HH:MM", "close": "HH:MM"}。
 	KindTimeRange Kind = "time_range"
+	// KindText：单行文字，可为空，长度不超过 Max 个字符。
+	KindText Kind = "text"
 )
 
 // TimeRange 是一天中的时段。
@@ -93,6 +96,14 @@ const (
 	KeyAftersaleApprovalMode             = "aftersale_approval_mode"
 	KeyAftersaleDeductPerformance        = "aftersale_deduct_performance"
 	KeyAftersaleDeductCommission         = "aftersale_deduct_commission"
+	KeyBackfillMaxDays                   = "backfill_max_days"
+	KeyReceiptPaperWidth                 = "receipt_paper_width"
+	KeyReceiptHeader                     = "receipt_header"
+	KeyReceiptFooter                     = "receipt_footer"
+	KeyReceiptShowCustomerName           = "receipt_show_customer_name"
+	KeyReceiptShowStaff                  = "receipt_show_staff"
+	KeyReceiptShowPayments               = "receipt_show_payments"
+	KeyReceiptShowCardBalance            = "receipt_show_card_balance"
 )
 
 // Catalogue 是全部门店设置，顺序即设置页面的显示顺序。后续模块的业务规则在这里添加。
@@ -158,6 +169,27 @@ var Catalogue = []Def{
 	},
 	{Key: KeyAftersaleDeductPerformance, Label: "退款默认扣业绩", Kind: KindChoice, Default: "off", Options: []ChoiceOption{{Value: "off", Label: "不扣"}, {Value: "on", Label: "扣"}}, Hint: "审批退款售后单时默认是否扣原单项目业绩，审批时可以逐单改"},
 	{Key: KeyAftersaleDeductCommission, Label: "退款默认扣提成", Kind: KindChoice, Default: "off", Options: []ChoiceOption{{Value: "off", Label: "不扣"}, {Value: "on", Label: "扣"}}, Hint: "按业绩计算；选择扣提成时必须同时扣业绩"},
+	{
+		Key: KeyBackfillMaxDays, Label: "可补录天数", Kind: KindInteger, Min: 0, Max: 31, Default: 3,
+		Hint: "断网后用纸单补录时，最多能补录今天之前多少个营业日的单；0 为只能补录当天",
+	},
+	{
+		Key: KeyReceiptPaperWidth, Label: "小票纸宽", Kind: KindChoice, Default: "80mm",
+		Options: []ChoiceOption{{Value: "58mm", Label: "58mm"}, {Value: "80mm", Label: "80mm"}},
+		Hint:    "浏览器打印小票时使用的纸宽",
+	},
+	{
+		Key: KeyReceiptHeader, Label: "小票抬头", Kind: KindText, Max: 60, Default: "",
+		Hint: "打印在小票最上方的一行文字，最多 60 字；留空时打印门店名称",
+	},
+	{
+		Key: KeyReceiptFooter, Label: "小票页尾", Kind: KindText, Max: 60, Default: "谢谢惠顾",
+		Hint: "打印在小票最下方的一行文字，最多 60 字；可以留空",
+	},
+	{Key: KeyReceiptShowCustomerName, Label: "小票显示顾客姓名", Kind: KindChoice, Default: "show", Options: []ChoiceOption{{Value: "show", Label: "显示"}, {Value: "hide", Label: "不显示"}}},
+	{Key: KeyReceiptShowStaff, Label: "小票显示服务员工", Kind: KindChoice, Default: "show", Options: []ChoiceOption{{Value: "show", Label: "显示"}, {Value: "hide", Label: "不显示"}}},
+	{Key: KeyReceiptShowPayments, Label: "小票显示支付明细", Kind: KindChoice, Default: "show", Options: []ChoiceOption{{Value: "show", Label: "显示"}, {Value: "hide", Label: "不显示"}}},
+	{Key: KeyReceiptShowCardBalance, Label: "小票显示卡余额", Kind: KindChoice, Default: "show", Options: []ChoiceOption{{Value: "show", Label: "显示"}, {Value: "hide", Label: "不显示"}}},
 	{
 		Key: KeyBusinessHours, Label: "营业时段", Kind: KindTimeRange,
 		Hint:    "每天开门和关门的时间，预约等按它限制",
@@ -230,6 +262,18 @@ func (d Def) validate(raw json.RawMessage) error {
 		var value int
 		if err := strict(raw, &value); err != nil || value < 0 || value < d.Min || value > d.Max {
 			return fmt.Errorf("%s须为 %d 到 %d 的整数", d.Label, d.Min, d.Max)
+		}
+		return nil
+	case KindText:
+		var value string
+		if err := strict(raw, &value); err != nil {
+			return fmt.Errorf("%s须为单行文字", d.Label)
+		}
+		if strings.ContainsAny(value, "\r\n") {
+			return fmt.Errorf("%s不能包含换行", d.Label)
+		}
+		if len([]rune(value)) > d.Max {
+			return fmt.Errorf("%s最多 %d 个字", d.Label, d.Max)
 		}
 		return nil
 	default:

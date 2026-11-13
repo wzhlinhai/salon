@@ -753,7 +753,7 @@ func (q *Queries) RejectAftersale(ctx context.Context, arg RejectAftersaleParams
 }
 
 const shareOrder = `-- name: ShareOrder :one
-SELECT tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into, checkout_id FROM orders WHERE store_id=$1 AND id=$2 FOR SHARE
+SELECT tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into, checkout_id, backfill FROM orders WHERE store_id=$1 AND id=$2 FOR SHARE
 `
 
 type ShareOrderParams struct {
@@ -778,6 +778,7 @@ func (q *Queries) ShareOrder(ctx context.Context, arg ShareOrderParams) (Order, 
 		&i.OpenedAt,
 		&i.MergedInto,
 		&i.CheckoutID,
+		&i.Backfill,
 	)
 	return i, err
 }

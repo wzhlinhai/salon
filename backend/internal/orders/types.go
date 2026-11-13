@@ -23,6 +23,7 @@ type Order struct {
 	Status       string          `json:"status" enum:"open,merged,paid,voided"`
 	MergedInto   *uuid.UUID      `json:"merged_into" nullable:"true"`
 	BusinessDate string          `json:"business_date" format:"date"`
+	Backfill     bool            `json:"backfill" doc:"断网后用纸单补录的单，营业日是纸单上的日期"`
 	OpenedBy     uuid.UUID       `json:"opened_by"`
 	OpenedAt     time.Time       `json:"opened_at"`
 	Items        []OrderItem     `json:"items"`
@@ -86,6 +87,7 @@ type OrderItemInput struct {
 // OpenOrderInput 是开单时选择的顾客、男客女客、指定和项目。
 type OpenOrderInput struct {
 	CustomerID *uuid.UUID       `json:"customer_id,omitempty"`
+	PaperDate  *string          `json:"paper_date,omitempty" format:"date" doc:"补录单纸单上的营业日；不填为正常开单"`
 	Gender     string           `json:"gender" enum:"male,female"`
 	Designated bool             `json:"designated"`
 	Items      []OrderItemInput `json:"items" maxItems:"30"`

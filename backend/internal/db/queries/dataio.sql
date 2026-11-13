@@ -101,7 +101,7 @@ WHERE l.store_id=$1 ORDER BY l.at, l.id;
 
 -- name: ExportOrders :many
 SELECT o.id, o.customer_id, o.gender, o.designated, o.status, o.business_date, o.opened_at, s.name AS opened_by_name,
-       o.checkout_id, o.merged_into
+       o.checkout_id, o.merged_into, o.backfill
 FROM orders o JOIN staff s ON s.id=o.opened_by
 WHERE o.store_id=$1 ORDER BY o.opened_at, o.id;
 

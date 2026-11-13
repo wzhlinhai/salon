@@ -51,6 +51,10 @@ func previewCheckout(ctx context.Context, env ops.Env, in *PreviewCheckoutInput)
 		if err != nil {
 			return nil, err
 		}
+		// 补录单按纸单的营业日试算卡有效期和会员价，与结账一致。
+		if row.Backfill {
+			day = row.BusinessDate.Time
+		}
 	}
 	candidates := []uuid.UUID{}
 	used := map[uuid.UUID]*cards.PaymentCard{}

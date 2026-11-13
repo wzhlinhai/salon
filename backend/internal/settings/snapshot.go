@@ -27,6 +27,11 @@ func TakeSnapshot(ctx context.Context, q *dbgen.Queries, tenantID, storeID uuid.
 	if err != nil {
 		return Snapshot{}, err
 	}
+	return TakeSnapshotForDay(ctx, q, tenantID, storeID, day)
+}
+
+// TakeSnapshotForDay 保存营业日 day 生效的全部设置，用于补录单按纸单日期取规则。
+func TakeSnapshotForDay(ctx context.Context, q *dbgen.Queries, tenantID, storeID uuid.UUID, day time.Time) (Snapshot, error) {
 	rules, err := Effective(ctx, q, storeID, day)
 	if err != nil {
 		return Snapshot{}, err

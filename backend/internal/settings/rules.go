@@ -417,3 +417,59 @@ func BusinessDayDeadline(ctx context.Context, q *dbgen.Queries, storeID uuid.UUI
 	next := day.AddDate(0, 0, 1)
 	return time.Date(next.Year(), next.Month(), next.Day(), clock.Hour(), clock.Minute(), 0, 0, Location), nil
 }
+
+// BackfillMaxDays 返回可补录的营业日天数，0 表示只能补录当天。
+func (r Rules) BackfillMaxDays() int {
+	var v int
+	r.decode(KeyBackfillMaxDays, &v)
+	return v
+}
+
+// ReceiptPaperWidth 返回小票纸宽，58mm 或 80mm。
+func (r Rules) ReceiptPaperWidth() string {
+	var v string
+	r.decode(KeyReceiptPaperWidth, &v)
+	return v
+}
+
+// ReceiptHeader 返回小票抬头文字。
+func (r Rules) ReceiptHeader() string {
+	var v string
+	r.decode(KeyReceiptHeader, &v)
+	return v
+}
+
+// ReceiptFooter 返回小票页尾文字。
+func (r Rules) ReceiptFooter() string {
+	var v string
+	r.decode(KeyReceiptFooter, &v)
+	return v
+}
+
+// ReceiptShowCustomerName 返回小票是否显示顾客姓名。
+func (r Rules) ReceiptShowCustomerName() bool {
+	var v string
+	r.decode(KeyReceiptShowCustomerName, &v)
+	return v == "show"
+}
+
+// ReceiptShowStaff 返回小票是否显示服务员工。
+func (r Rules) ReceiptShowStaff() bool {
+	var v string
+	r.decode(KeyReceiptShowStaff, &v)
+	return v == "show"
+}
+
+// ReceiptShowPayments 返回小票是否显示支付明细。
+func (r Rules) ReceiptShowPayments() bool {
+	var v string
+	r.decode(KeyReceiptShowPayments, &v)
+	return v == "show"
+}
+
+// ReceiptShowCardBalance 返回小票是否显示卡余额或剩余次数。
+func (r Rules) ReceiptShowCardBalance() bool {
+	var v string
+	r.decode(KeyReceiptShowCardBalance, &v)
+	return v == "show"
+}

@@ -42,18 +42,18 @@ func daySetup(ctx context.Context, env ops.Env, queueID uuid.UUID, requireActive
 	return queue, day, rules, turns, nil
 }
 
-func lockOpenOrder(ctx context.Context, env ops.Env, id uuid.UUID) error {
+func lockOpenOrder(ctx context.Context, env ops.Env, id uuid.UUID) (dbgen.Order, error) {
 	row, err := env.Q.LockOrder(ctx, dbgen.LockOrderParams{StoreID: env.Caller.StoreID, ID: id})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return ops.ErrNotFound
+		return dbgen.Order{}, ops.ErrNotFound
 	}
 	if err != nil {
-		return err
+		return dbgen.Order{}, err
 	}
 	if row.Status != "open" {
-		return ops.Rule("只能对未结账未撤单的单接客")
+		return dbgen.Order{}, ops.Rule("只能对未结账未撤单的单接客")
 	}
-	return nil
+	return row, nil
 }
 
 func finish(ctx context.Context, env ops.Env, queue dbgen.RotationQueue, day time.Time, turns []turnState) (*Rotation, error) {
@@ -160,8 +160,12 @@ func leaveRotation(ctx context.Context, env ops.Env, in *LeaveRotationInput) (*R
 
 func assignTurn(ctx context.Context, env ops.Env, in *AssignTurnInput) (*Rotation, error) {
 	if in.OrderID != nil {
-		if err := lockOpenOrder(ctx, env, *in.OrderID); err != nil {
+		row, err := lockOpenOrder(ctx, env, *in.OrderID)
+		if err != nil {
 			return nil, err
+		}
+		if row.Backfill {
+			return nil, ops.Rule("补录单不能接轮牌")
 		}
 	}
 	queue, day, rules, turns, err := daySetup(ctx, env, in.QueueID, true)

@@ -44,8 +44,8 @@ func (q *Queries) AddCollectionEvent(ctx context.Context, arg AddCollectionEvent
 }
 
 const createCollection = `-- name: CreateCollection :one
-INSERT INTO collections (tenant_id,store_id,order_id,order_payment_id,channel,amount,status,external_ref,created_by,created_at,updated_at)
-VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$9) RETURNING tenant_id, store_id, id, order_id, order_payment_id, channel, amount, status, external_ref, created_by, created_at, updated_at
+INSERT INTO collections (tenant_id,store_id,order_id,order_payment_id,channel,amount,status,external_ref,created_by,created_at,updated_at,business_date)
+VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$9,$10) RETURNING tenant_id, store_id, id, order_id, order_payment_id, channel, amount, status, external_ref, created_by, created_at, updated_at, business_date
 `
 
 type CreateCollectionParams struct {
@@ -58,6 +58,7 @@ type CreateCollectionParams struct {
 	ExternalRef    *string
 	CreatedBy      uuid.UUID
 	CreatedAt      pgtype.Timestamptz
+	BusinessDate   pgtype.Date
 }
 
 func (q *Queries) CreateCollection(ctx context.Context, arg CreateCollectionParams) (Collection, error) {
@@ -71,6 +72,7 @@ func (q *Queries) CreateCollection(ctx context.Context, arg CreateCollectionPara
 		arg.ExternalRef,
 		arg.CreatedBy,
 		arg.CreatedAt,
+		arg.BusinessDate,
 	)
 	var i Collection
 	err := row.Scan(
@@ -86,12 +88,13 @@ func (q *Queries) CreateCollection(ctx context.Context, arg CreateCollectionPara
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.BusinessDate,
 	)
 	return i, err
 }
 
 const getCollection = `-- name: GetCollection :one
-SELECT tenant_id, store_id, id, order_id, order_payment_id, channel, amount, status, external_ref, created_by, created_at, updated_at FROM collections WHERE store_id=$1 AND id=$2
+SELECT tenant_id, store_id, id, order_id, order_payment_id, channel, amount, status, external_ref, created_by, created_at, updated_at, business_date FROM collections WHERE store_id=$1 AND id=$2
 `
 
 type GetCollectionParams struct {
@@ -115,12 +118,13 @@ func (q *Queries) GetCollection(ctx context.Context, arg GetCollectionParams) (C
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.BusinessDate,
 	)
 	return i, err
 }
 
 const listCollections = `-- name: ListCollections :many
-SELECT tenant_id, store_id, id, order_id, order_payment_id, channel, amount, status, external_ref, created_by, created_at, updated_at FROM collections WHERE store_id=$1 AND order_id=$2 ORDER BY id
+SELECT tenant_id, store_id, id, order_id, order_payment_id, channel, amount, status, external_ref, created_by, created_at, updated_at, business_date FROM collections WHERE store_id=$1 AND order_id=$2 ORDER BY id
 `
 
 type ListCollectionsParams struct {
@@ -150,6 +154,7 @@ func (q *Queries) ListCollections(ctx context.Context, arg ListCollectionsParams
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.BusinessDate,
 		); err != nil {
 			return nil, err
 		}
@@ -162,7 +167,7 @@ func (q *Queries) ListCollections(ctx context.Context, arg ListCollectionsParams
 }
 
 const lockCollection = `-- name: LockCollection :one
-SELECT tenant_id, store_id, id, order_id, order_payment_id, channel, amount, status, external_ref, created_by, created_at, updated_at FROM collections WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
+SELECT tenant_id, store_id, id, order_id, order_payment_id, channel, amount, status, external_ref, created_by, created_at, updated_at, business_date FROM collections WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
 `
 
 type LockCollectionParams struct {
@@ -186,12 +191,13 @@ func (q *Queries) LockCollection(ctx context.Context, arg LockCollectionParams) 
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.BusinessDate,
 	)
 	return i, err
 }
 
 const reconcileCollections = `-- name: ReconcileCollections :many
-SELECT tenant_id, store_id, id, order_id, order_payment_id, channel, amount, status, external_ref, created_by, created_at, updated_at FROM collections WHERE store_id=$1 AND channel=$2
+SELECT tenant_id, store_id, id, order_id, order_payment_id, channel, amount, status, external_ref, created_by, created_at, updated_at, business_date FROM collections WHERE store_id=$1 AND channel=$2
 `
 
 type ReconcileCollectionsParams struct {
@@ -221,6 +227,7 @@ func (q *Queries) ReconcileCollections(ctx context.Context, arg ReconcileCollect
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.BusinessDate,
 		); err != nil {
 			return nil, err
 		}
@@ -233,7 +240,7 @@ func (q *Queries) ReconcileCollections(ctx context.Context, arg ReconcileCollect
 }
 
 const updateCollection = `-- name: UpdateCollection :one
-UPDATE collections SET status=$3,updated_at=$4,external_ref=$5 WHERE store_id=$1 AND id=$2 RETURNING tenant_id, store_id, id, order_id, order_payment_id, channel, amount, status, external_ref, created_by, created_at, updated_at
+UPDATE collections SET status=$3,updated_at=$4,external_ref=$5 WHERE store_id=$1 AND id=$2 RETURNING tenant_id, store_id, id, order_id, order_payment_id, channel, amount, status, external_ref, created_by, created_at, updated_at, business_date
 `
 
 type UpdateCollectionParams struct {
@@ -266,6 +273,7 @@ func (q *Queries) UpdateCollection(ctx context.Context, arg UpdateCollectionPara
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.BusinessDate,
 	)
 	return i, err
 }

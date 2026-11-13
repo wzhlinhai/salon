@@ -178,6 +178,7 @@ up() {
     docker exec "$DB_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 -c "UPDATE stores SET created_at = (date_trunc('month', now() AT TIME ZONE 'Asia/Shanghai') - interval '1 month' + interval '14 days 12 hours') AT TIME ZONE 'Asia/Shanghai'"
   fi
   JWT_SECRET=dev-secret-dev-secret-dev-secret-0123 HTTP_ADDR=$BACKEND_ADDR \
+    GROUPBUY_FAKE_PLATFORMS=meituan,douyin \
     start_proc backend "$ROOT/backend" "${BACKEND_ADDR##*:}" "$STATE/salon" serve
   wait_for backend curl --max-time 2 -sf "http://$BACKEND_ADDR/healthz"
   if [ ! -d "$ROOT/admin/node_modules" ]; then (cd "$ROOT/admin" && npm install); fi

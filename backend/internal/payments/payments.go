@@ -145,7 +145,7 @@ func (p *Checkout) Record(ctx context.Context, checkoutID uuid.UUID, order dbgen
 			}
 		}
 		if code, ok := collections.ForPayment(payment.Method); ok {
-			if _, err := collections.Initiate(ctx, env, code, order.ID, &paymentID, payment.Amount, payment.ExternalRef); err != nil {
+			if _, err := collections.Initiate(ctx, env, code, order.ID, &paymentID, payment.Amount, payment.ExternalRef, day); err != nil {
 				return err
 			}
 		}

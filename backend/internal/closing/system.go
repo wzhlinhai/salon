@@ -180,19 +180,27 @@ func hasBusiness(ctx context.Context, env ops.Env, day time.Time) (bool, error) 
 		return true, nil
 	}
 	times := []time.Time{}
+	explicit := []time.Time{}
 	collections, err := q.CollectionCreatedAts(ctx, storeID)
 	if err != nil {
 		return false, err
 	}
-	for _, at := range collections {
-		times = append(times, at.Time)
+	for _, row := range collections {
+		if row.BusinessDate.Valid {
+			explicit = append(explicit, row.BusinessDate.Time)
+		} else {
+			times = append(times, row.CreatedAt.Time)
+		}
 	}
 	events, err := q.CollectionEventAts(ctx, storeID)
 	if err != nil {
 		return false, err
 	}
-	for _, at := range events {
-		times = append(times, at.Time)
+	for _, row := range events {
+		if row.BusinessDate.Valid && row.Initial {
+			continue
+		}
+		times = append(times, row.At.Time)
 	}
 	coupons, err := q.CouponRedemptionAts(ctx, storeID)
 	if err != nil {
@@ -205,6 +213,7 @@ func hasBusiness(ctx context.Context, env ops.Env, day time.Time) (bool, error) 
 	if err != nil {
 		return false, err
 	}
+	days = append(days, explicit...)
 	for _, d := range days {
 		if d.Equal(day) {
 			return true, nil

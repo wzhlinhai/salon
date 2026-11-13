@@ -21,7 +21,7 @@ type Setting struct {
 	Key       string         `json:"key"`
 	Label     string         `json:"label"`
 	Hint      string         `json:"hint"`
-	Kind      Kind           `json:"kind" enum:"time,time_range,choice,integer" doc:"值的形式：时刻、时段、选项或整数"`
+	Kind      Kind           `json:"kind" enum:"time,time_range,choice,integer,text" doc:"值的形式：时刻、时段、选项、整数或文字"`
 	Value     any            `json:"value" doc:"这一天执行的值"`
 	Default   any            `json:"default" doc:"系统默认做法"`
 	IsDefault bool           `json:"is_default" doc:"这一天用的是系统默认做法"`

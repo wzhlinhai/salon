@@ -24,10 +24,15 @@ WHERE store_id=sqlc.arg(store_id) AND kind='seal' AND business_date=sqlc.arg(bus
 ORDER BY at DESC, id DESC LIMIT 1;
 
 -- name: CollectionCreatedAts :many
-SELECT created_at FROM collections WHERE store_id=sqlc.arg(store_id);
+SELECT created_at, business_date FROM collections WHERE store_id=sqlc.arg(store_id);
 
 -- name: CollectionEventAts :many
-SELECT at FROM collection_events WHERE store_id=sqlc.arg(store_id);
+SELECT e.at, c.business_date,
+       e.id = (SELECT e2.id FROM collection_events e2
+               WHERE e2.tenant_id=e.tenant_id AND e2.collection_id=e.collection_id
+               ORDER BY e2.at, e2.id LIMIT 1) AS initial
+FROM collection_events e JOIN collections c ON c.tenant_id=e.tenant_id AND c.id=e.collection_id
+WHERE e.store_id=sqlc.arg(store_id);
 
 -- name: CouponRedemptionAts :many
 SELECT x.created_at AS at FROM coupon_redemptions x WHERE x.store_id=sqlc.arg(store_id)
@@ -84,6 +89,7 @@ SELECT
  OR EXISTS (SELECT 1 FROM sale_payments x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
  OR EXISTS (SELECT 1 FROM card_points_ledger x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
  OR EXISTS (SELECT 1 FROM guest_visits x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
+ OR EXISTS (SELECT 1 FROM collections x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
  OR EXISTS (SELECT 1 FROM performance_entries x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
  AS has_business;
 

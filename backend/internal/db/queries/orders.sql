@@ -1,6 +1,6 @@
 -- name: CreateOrder :one
-INSERT INTO orders (tenant_id,store_id,customer_id,gender,designated,settings_snapshot_id,business_date,opened_by)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *;
+INSERT INTO orders (tenant_id,store_id,customer_id,gender,designated,settings_snapshot_id,business_date,opened_by,backfill)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *;
 
 -- name: LockOrder :one
 SELECT * FROM orders WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE;
@@ -91,3 +91,26 @@ UPDATE orders SET status='voided' WHERE store_id=$1 AND id=$2;
 
 -- name: ListOrderVoids :many
 SELECT * FROM order_voids WHERE store_id=$1 AND order_id=ANY(sqlc.arg(order_ids)::uuid[]);
+
+-- name: GetCheckout :one
+SELECT * FROM checkouts WHERE store_id=$1 AND id=$2;
+
+-- name: ListCheckoutOrders :many
+SELECT * FROM orders WHERE store_id=$1 AND checkout_id=$2 ORDER BY id;
+
+-- name: ListCheckoutCardBalances :many
+SELECT p.card_id, card.customer_id, l.principal_after, l.bonus_after, l.at
+FROM order_payments p
+JOIN cards card ON card.tenant_id=p.tenant_id AND card.id=p.card_id
+JOIN card_ledger l ON l.tenant_id=p.tenant_id AND l.id=p.card_ledger_id
+WHERE p.store_id=$1 AND p.checkout_id=$2 AND p.method='card'
+ORDER BY p.card_id, l.at DESC, l.id DESC;
+
+-- name: ListCheckoutCountBalances :many
+SELECT p.card_id, card.customer_id, c.item_id, i.name AS item_name, c.paid_after, c.gift_after, c.at
+FROM order_payments p
+JOIN cards card ON card.tenant_id=p.tenant_id AND card.id=p.card_id
+JOIN card_count_ledger c ON c.tenant_id=p.tenant_id AND c.id=p.card_count_ledger_id
+JOIN items i ON i.tenant_id=c.tenant_id AND i.id=c.item_id
+WHERE p.store_id=$1 AND p.checkout_id=$2 AND p.method='count'
+ORDER BY p.card_id, c.item_id, c.at DESC, c.id DESC;
