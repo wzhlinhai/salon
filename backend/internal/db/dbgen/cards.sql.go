@@ -70,6 +70,65 @@ func (q *Queries) ActiveCardUpgradeRules(ctx context.Context, arg ActiveCardUpgr
 	return items, nil
 }
 
+const addAftersaleCardLedger = `-- name: AddAftersaleCardLedger :one
+INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id,aftersale_id)
+VALUES ($1,$2,$3,'aftersale_refund',$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, tenant_id, store_id, card_id, kind, principal_before, principal_delta, principal_after, bonus_before, bonus_delta, bonus_after, business_date, actor_id, at, reverses_id, order_void_id, refund_id, aftersale_id
+`
+
+type AddAftersaleCardLedgerParams struct {
+	TenantID        uuid.UUID
+	StoreID         uuid.UUID
+	CardID          uuid.UUID
+	PrincipalBefore money.Amount
+	PrincipalDelta  money.Change
+	PrincipalAfter  money.Amount
+	BonusBefore     money.Amount
+	BonusDelta      money.Change
+	BonusAfter      money.Amount
+	BusinessDate    pgtype.Date
+	ActorID         uuid.UUID
+	AftersaleID     *uuid.UUID
+}
+
+func (q *Queries) AddAftersaleCardLedger(ctx context.Context, arg AddAftersaleCardLedgerParams) (CardLedger, error) {
+	row := q.db.QueryRow(ctx, addAftersaleCardLedger,
+		arg.TenantID,
+		arg.StoreID,
+		arg.CardID,
+		arg.PrincipalBefore,
+		arg.PrincipalDelta,
+		arg.PrincipalAfter,
+		arg.BonusBefore,
+		arg.BonusDelta,
+		arg.BonusAfter,
+		arg.BusinessDate,
+		arg.ActorID,
+		arg.AftersaleID,
+	)
+	var i CardLedger
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.CardID,
+		&i.Kind,
+		&i.PrincipalBefore,
+		&i.PrincipalDelta,
+		&i.PrincipalAfter,
+		&i.BonusBefore,
+		&i.BonusDelta,
+		&i.BonusAfter,
+		&i.BusinessDate,
+		&i.ActorID,
+		&i.At,
+		&i.ReversesID,
+		&i.OrderVoidID,
+		&i.RefundID,
+		&i.AftersaleID,
+	)
+	return i, err
+}
+
 const addCardAdjustment = `-- name: AddCardAdjustment :one
 INSERT INTO card_adjustments (tenant_id,store_id,card_id,reason,expires_before,expires_after,expiry_changed,card_type_before,card_type_after,ledger_id,business_date,actor_id,counts_changed,points_changed)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id, tenant_id, store_id, card_id, reason, expires_before, expires_after, expiry_changed, card_type_before, card_type_after, ledger_id, business_date, actor_id, at, counts_changed, points_changed
@@ -210,7 +269,7 @@ func (q *Queries) AddCardItem(ctx context.Context, arg AddCardItemParams) error 
 
 const addCardLedger = `-- name: AddCardLedger :one
 INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id,reverses_id,order_void_id,refund_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id, tenant_id, store_id, card_id, kind, principal_before, principal_delta, principal_after, bonus_before, bonus_delta, bonus_after, business_date, actor_id, at, reverses_id, order_void_id, refund_id
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id, tenant_id, store_id, card_id, kind, principal_before, principal_delta, principal_after, bonus_before, bonus_delta, bonus_after, business_date, actor_id, at, reverses_id, order_void_id, refund_id, aftersale_id
 `
 
 type AddCardLedgerParams struct {
@@ -268,6 +327,7 @@ func (q *Queries) AddCardLedger(ctx context.Context, arg AddCardLedgerParams) (C
 		&i.ReversesID,
 		&i.OrderVoidID,
 		&i.RefundID,
+		&i.AftersaleID,
 	)
 	return i, err
 }
@@ -1052,7 +1112,7 @@ func (q *Queries) ListCardCounts(ctx context.Context, arg ListCardCountsParams) 
 }
 
 const listCardLedger = `-- name: ListCardLedger :many
-SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.kind, l.principal_before, l.principal_delta, l.principal_after, l.bonus_before, l.bonus_delta, l.bonus_after, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id, l.refund_id, s.name AS actor_name, COALESCE(a.reason,tr.reason,'')::text AS reason,
+SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.kind, l.principal_before, l.principal_delta, l.principal_after, l.bonus_before, l.bonus_delta, l.bonus_after, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id, l.refund_id, l.aftersale_id, s.name AS actor_name, COALESCE(a.reason,tr.reason,'')::text AS reason,
  CASE WHEN tr.from_ledger_id=l.id THEN tr.to_card_id ELSE tr.from_card_id END::uuid AS other_card_id, p.order_id, rf.method AS refund_method, rf.amount::numeric AS refund_amount
 FROM card_ledger l JOIN staff s ON s.id=l.actor_id LEFT JOIN card_adjustments a ON a.ledger_id=l.id
 LEFT JOIN card_transfers tr ON tr.from_ledger_id=l.id OR tr.to_ledger_id=l.id
@@ -1105,6 +1165,7 @@ func (q *Queries) ListCardLedger(ctx context.Context, arg ListCardLedgerParams) 
 			&i.CardLedger.ReversesID,
 			&i.CardLedger.OrderVoidID,
 			&i.CardLedger.RefundID,
+			&i.CardLedger.AftersaleID,
 			&i.ActorName,
 			&i.Reason,
 			&i.OtherCardID,

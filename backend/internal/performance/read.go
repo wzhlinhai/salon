@@ -45,6 +45,7 @@ type PerformanceEntry struct {
 	CheckoutID         *uuid.UUID   `json:"checkout_id" nullable:"true" doc:"结账来源，销售业绩为空"`
 	CardLedgerID       *uuid.UUID   `json:"card_ledger_id" nullable:"true" doc:"开卡、充值或补差价流水"`
 	RedPacketID        *uuid.UUID   `json:"red_packet_id" nullable:"true" doc:"卖红包的来源红包"`
+	AftersaleID        *uuid.UUID   `json:"aftersale_id" nullable:"true" doc:"售后冲回来源"`
 	Purchase           *string      `json:"purchase" nullable:"true" enum:"first,repeat" doc:"销售首购或复购"`
 	Reversal           bool         `json:"reversal"`
 	ReversesID         *uuid.UUID   `json:"reverses_id" nullable:"true"`
@@ -103,7 +104,7 @@ func listPerformance(ctx context.Context, env ops.Env, in *ListPerformanceInput)
 		if e.StaffID != nil {
 			ref = &staff.Ref{ID: *e.StaffID, Name: *e.StaffName}
 		}
-		out.Entries = append(out.Entries, PerformanceEntry{Member: e.Member, ID: e.ID, Kind: e.Kind, BusinessDate: e.BusinessDate.Time.Format(settings.DateLayout), OrderID: e.OrderID, OrderItemID: e.OrderItemID, ItemName: e.ItemName, Slot: e.Slot, PositionID: e.PositionID, Staff: ref, Method: e.Method, PaidAmount: e.PaidAmount, Ratio: e.Ratio, Amount: e.Amount, SettingsSnapshotID: e.SettingsSnapshotID, CheckoutID: e.CheckoutID, CardLedgerID: e.CardLedgerID, RedPacketID: e.RedPacketID, Purchase: e.Purchase, Reversal: e.ReversesID != nil, ReversesID: e.ReversesID})
+		out.Entries = append(out.Entries, PerformanceEntry{Member: e.Member, ID: e.ID, Kind: e.Kind, BusinessDate: e.BusinessDate.Time.Format(settings.DateLayout), OrderID: e.OrderID, OrderItemID: e.OrderItemID, ItemName: e.ItemName, Slot: e.Slot, PositionID: e.PositionID, Staff: ref, Method: e.Method, PaidAmount: e.PaidAmount, Ratio: e.Ratio, Amount: e.Amount, SettingsSnapshotID: e.SettingsSnapshotID, CheckoutID: e.CheckoutID, CardLedgerID: e.CardLedgerID, RedPacketID: e.RedPacketID, AftersaleID: e.AftersaleID, Purchase: e.Purchase, Reversal: e.ReversesID != nil, ReversesID: e.ReversesID})
 	}
 	return out, nil
 }

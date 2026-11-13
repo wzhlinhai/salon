@@ -46,13 +46,11 @@ func (c *cumulative) position(target performance.Unit, kind string) (cumulativeP
 	positions := map[uuid.UUID]cumulativePosition{}
 	totals := map[cumulativeKey]int64{}
 	for _, u := range c.units {
-		original := u
 		sign := int64(1)
 		if u.Reverses != nil {
-			original = *u.Reverses
 			sign = -1
 		}
-		base, err := unitBase(original, kind)
+		base, err := unitBase(u, kind)
 		if err != nil {
 			return cumulativePosition{}, err
 		}

@@ -140,6 +140,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/approve_aftersale": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 审批售后单并执行退款 */
+        post: operations["approve_aftersale"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/approve_attendance": {
         parameters: {
             query?: never;
@@ -423,6 +440,23 @@ export interface paths {
         put?: never;
         /** 盖牌：保留位置但暂不接客 */
         post: operations["cover_turn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/create_aftersale": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 为已结账的原单创建售后单 */
+        post: operations["create_aftersale"];
         delete?: never;
         options?: never;
         head?: never;
@@ -803,6 +837,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/get_aftersale": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看一张售后单 */
+        post: operations["get_aftersale"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/get_appointment": {
         parameters: {
             query?: never;
@@ -1171,6 +1222,23 @@ export interface paths {
         put?: never;
         /** 把已核销的团购券关联到挂单，记录平台购买价和门店标价 */
         post: operations["link_coupon_order"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_aftersales": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按营业日范围、状态或原单查看售后单 */
+        post: operations["list_aftersales"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2197,6 +2265,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/reject_aftersale": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 拒绝售后单 */
+        post: operations["reject_aftersale"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/reject_draft": {
         parameters: {
             query?: never;
@@ -2991,6 +3076,54 @@ export interface components {
             principal?: string;
             reason: string;
         };
+        Aftersale: {
+            /** Format: date-time */
+            approved_at?: string;
+            approved_by?: components["schemas"]["Ref"] | null;
+            /** Format: date */
+            business_date: string;
+            /** Format: date-time */
+            created_at: string;
+            created_by: components["schemas"]["Ref"];
+            deduct_commission: boolean;
+            deduct_performance: boolean;
+            events: components["schemas"]["AftersaleEvent"][];
+            id: string;
+            order_id: string;
+            reason: string;
+            refund_lines: components["schemas"]["RefundLine"][];
+            refunds: components["schemas"]["AftersaleRefund"][];
+            reject_note?: string;
+            /** Format: date-time */
+            rejected_at?: string;
+            rejected_by?: components["schemas"]["Ref"] | null;
+            /** @enum {string} */
+            status: "pending" | "approved" | "rejected";
+            /** @enum {string} */
+            type: "repair" | "redo" | "partial_refund" | "full_refund";
+        };
+        AftersaleEvent: {
+            actor: components["schemas"]["Ref"];
+            /** Format: date-time */
+            at: string;
+            id: string;
+            /** @enum {string} */
+            kind: "created" | "approved" | "rejected";
+            note?: string | null;
+        };
+        AftersaleList: {
+            items: components["schemas"]["Aftersale"][];
+        };
+        AftersaleRefund: {
+            amount: string;
+            /** Format: date */
+            business_date: string;
+            card_id?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            id: string;
+            method: string;
+        };
         Answer: {
             reply: string;
             sources: components["schemas"]["Source"][];
@@ -3060,6 +3193,11 @@ export interface components {
             entries: components["schemas"]["Appointment"][];
         };
         AppointmentStatusInput: {
+            id: string;
+        };
+        ApproveAftersaleInput: {
+            deduct_commission?: boolean;
+            deduct_performance?: boolean;
             id: string;
         };
         ApproveAttendanceInput: {
@@ -3249,6 +3387,7 @@ export interface components {
         };
         CardLedgerEntry: {
             actor: components["schemas"]["CardLedgerActor"];
+            aftersale_id: string | null;
             /** Format: date-time */
             at: string;
             bonus_after: string;
@@ -3538,6 +3677,7 @@ export interface components {
             override?: components["schemas"]["Override"];
         };
         CommissionOrigin: {
+            aftersale_id?: string;
             card_ledger_id?: string;
             checkout_id?: string;
             item?: components["schemas"]["Ref"];
@@ -3669,6 +3809,13 @@ export interface components {
         CoverTurnInput: {
             queue_id: string;
             staff_id: string;
+        };
+        CreateAftersaleInput: {
+            order_id: string;
+            reason: string;
+            refund_lines?: components["schemas"]["RefundLine"][];
+            /** @enum {string} */
+            type: "repair" | "redo" | "partial_refund" | "full_refund";
         };
         CreateAppointmentInput: {
             customer_id?: string;
@@ -4048,6 +4195,9 @@ export interface components {
         ExplainCommissionInput: {
             id: string;
         };
+        GetAftersaleInput: {
+            id: string;
+        };
         GetAppointmentInput: {
             id: string;
         };
@@ -4348,6 +4498,18 @@ export interface components {
         };
         List: {
             drafts: components["schemas"]["Draft"][];
+        };
+        ListAftersalesInput: {
+            before_id?: string;
+            /** Format: date */
+            date_from: string;
+            /** Format: date */
+            date_to: string;
+            /** Format: int32 */
+            limit?: number;
+            order_id?: string;
+            /** @enum {string} */
+            status?: "pending" | "approved" | "rejected";
         };
         ListAppointmentsInput: {
             /** Format: date */
@@ -4786,6 +4948,8 @@ export interface components {
             total: string;
         };
         PerformanceEntry: {
+            /** @description 售后冲回来源 */
+            aftersale_id: string | null;
             /** @description 非负业绩金额，reversal 为 true 时计负数 */
             amount: string;
             /** Format: date */
@@ -5027,11 +5191,21 @@ export interface components {
             /** @enum {string} */
             method: "cash" | "unionpay" | "wechat" | "alipay";
         };
+        RefundLine: {
+            amount: string;
+            card_id?: string | null;
+            /** @enum {string} */
+            method: "cash" | "unionpay" | "wechat" | "alipay" | "card_principal";
+        };
         RegisterHistoricalDebtInput: {
             amount: string;
             customer_id: string;
             /** Format: date */
             incurred_on: string;
+            note?: string;
+        };
+        RejectAftersaleInput: {
+            id: string;
             note?: string;
         };
         RejectInput: {
@@ -5924,6 +6098,39 @@ export interface operations {
             };
         };
     };
+    approve_aftersale: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveAftersaleInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Aftersale"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     approve_attendance: {
         parameters: {
             query?: never;
@@ -6472,6 +6679,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Rotation"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    create_aftersale: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAftersaleInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Aftersale"];
                 };
             };
             /** @description Error */
@@ -7211,6 +7451,39 @@ export interface operations {
             };
         };
     };
+    get_aftersale: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GetAftersaleInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Aftersale"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     get_appointment: {
         parameters: {
             query?: never;
@@ -7924,6 +8197,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Redemption"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_aftersales: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListAftersalesInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AftersaleList"];
                 };
             };
             /** @description Error */
@@ -9904,6 +10210,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Debt"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    reject_aftersale: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectAftersaleInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Aftersale"];
                 };
             };
             /** @description Error */

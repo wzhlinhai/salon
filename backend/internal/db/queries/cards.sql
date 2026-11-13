@@ -204,3 +204,8 @@ FROM cards c WHERE c.id=$1;
 
 -- name: MemberCardCandidates :many
 SELECT * FROM cards WHERE store_id = $1 AND customer_id = $2 AND status = 'active';
+
+
+-- name: AddAftersaleCardLedger :one
+INSERT INTO card_ledger (tenant_id,store_id,card_id,kind,principal_before,principal_delta,principal_after,bonus_before,bonus_delta,bonus_after,business_date,actor_id,aftersale_id)
+VALUES ($1,$2,$3,'aftersale_refund',$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *;

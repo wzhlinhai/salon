@@ -272,6 +272,9 @@ func RedPacketTarget(id, customerID uuid.UUID) Target {
 	return Target{kind: "red_packet", id: id, customerID: &customerID}
 }
 
+// AftersaleTarget 创建不关联顾客的售后单日志目标。
+func AftersaleTarget(id uuid.UUID) Target { return Target{kind: "aftersale", id: id} }
+
 // DebtTarget 创建关联顾客的欠款日志目标。
 func DebtTarget(id, customerID uuid.UUID) Target {
 	return Target{kind: "debt", id: id, customerID: &customerID}

@@ -142,6 +142,44 @@ func (q *Queries) AddSalePayment(ctx context.Context, arg AddSalePaymentParams) 
 	return err
 }
 
+const aftersaleRefundsByMethod = `-- name: AftersaleRefundsByMethod :many
+SELECT r.method,COALESCE(sum(r.amount),0)::text AS amount,count(*)::bigint AS count
+FROM aftersale_refunds r JOIN aftersales a ON a.tenant_id=r.tenant_id AND a.id=r.aftersale_id
+WHERE r.store_id=$1 AND r.business_date=$2 AND a.status='approved'
+GROUP BY r.method
+`
+
+type AftersaleRefundsByMethodParams struct {
+	StoreID uuid.UUID
+	Day     pgtype.Date
+}
+
+type AftersaleRefundsByMethodRow struct {
+	Method string
+	Amount string
+	Count  int64
+}
+
+func (q *Queries) AftersaleRefundsByMethod(ctx context.Context, arg AftersaleRefundsByMethodParams) ([]AftersaleRefundsByMethodRow, error) {
+	rows, err := q.db.Query(ctx, aftersaleRefundsByMethod, arg.StoreID, arg.Day)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AftersaleRefundsByMethodRow
+	for rows.Next() {
+		var i AftersaleRefundsByMethodRow
+		if err := rows.Scan(&i.Method, &i.Amount, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const cardRefundsByMethod = `-- name: CardRefundsByMethod :many
 SELECT method, COALESCE(sum(amount),0)::text AS amount, count(*)::bigint AS count
 FROM card_refunds
@@ -352,6 +390,7 @@ SELECT
  OR EXISTS (SELECT 1 FROM debt_repayments x WHERE x.store_id=$1 AND x.business_date=$2)
  OR EXISTS (SELECT 1 FROM red_packets x WHERE x.store_id=$1 AND x.business_date=$2)
  OR EXISTS (SELECT 1 FROM order_voids x WHERE x.store_id=$1 AND x.business_date=$2)
+ OR EXISTS (SELECT 1 FROM aftersale_refunds x JOIN aftersales a ON a.tenant_id=x.tenant_id AND a.id=x.aftersale_id WHERE x.store_id=$1 AND x.business_date=$2 AND a.status='approved')
  OR EXISTS (SELECT 1 FROM sale_payments x WHERE x.store_id=$1 AND x.business_date=$2)
  OR EXISTS (SELECT 1 FROM card_points_ledger x WHERE x.store_id=$1 AND x.business_date=$2)
  OR EXISTS (SELECT 1 FROM guest_visits x WHERE x.store_id=$1 AND x.business_date=$2)

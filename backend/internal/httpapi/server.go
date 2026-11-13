@@ -13,6 +13,7 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 
+	"github.com/wzhlinhai/salon/backend/internal/aftersales"
 	"github.com/wzhlinhai/salon/backend/internal/ai"
 	"github.com/wzhlinhai/salon/backend/internal/attendance"
 	"github.com/wzhlinhai/salon/backend/internal/audit"
@@ -106,6 +107,7 @@ func New(pool *pgxpool.Pool, cfg Config) (*echo.Echo, *ops.Registry) {
 	stores.Register(reg)
 	staff.Register(reg)
 	catalog.Register(reg)
+	aftersales.Register(reg)
 	orders.Register(reg)
 	collections.Register(reg)
 	closing.Register(reg)
