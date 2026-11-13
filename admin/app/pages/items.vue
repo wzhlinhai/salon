@@ -47,6 +47,8 @@ const name = ref('')
 const kind = ref<Item['kind']>('service')
 const price = ref('0.00')
 const discountable = ref(true)
+const durationMinutes = ref('0')
+const bookable = ref(true)
 const active = ref(true)
 const feeKind = ref('none')
 const feeValue = ref('0.00')
@@ -67,6 +69,8 @@ function openEditor(item: Item | null) {
     kind.value = item?.kind ?? 'service'
     price.value = item?.price ?? '0.00'
     discountable.value = item?.discountable ?? true
+    durationMinutes.value = String(item?.duration_minutes ?? 0)
+    bookable.value = item?.bookable ?? true
     active.value = item?.active ?? true
     feeKind.value = item?.labor_fee_amount != null ? 'amount' : item?.labor_fee_percent != null ? 'percent' : 'none'
     feeValue.value = item?.labor_fee_amount ?? item?.labor_fee_percent ?? '0.00'
@@ -86,6 +90,7 @@ function move(index: number, offset: number) {
 async function save() {
   const body = {
     name: name.value, kind: kind.value, price: price.value, discountable: discountable.value,
+    duration_minutes: Number(durationMinutes.value), bookable: bookable.value,
     labor_fee_amount: feeKind.value === 'amount' ? feeValue.value : null,
     labor_fee_percent: feeKind.value === 'percent' ? feeValue.value : null,
     positions: positionRows.value.map(p => ({ ...p, share_percent: p.share_percent === '' ? null : Number(p.share_percent) })),
@@ -127,6 +132,7 @@ function laborFee(item: Item) {
           <UBadge class="ml-2" color="neutral">{{ item.active ? '启用' : '停用' }}</UBadge>
           <p>种类 {{ item.kind === 'goods' ? '卖品' : '服务' }}</p>
           <p>标准价 {{ item.price }} 元 · 手工费 {{ laborFee(item) }}</p>
+          <p>服务时长 {{ item.duration_minutes || '未设置' }}{{ item.duration_minutes ? ' 分钟' : '' }} · {{ item.bookable ? '可预约' : '不可预约' }}</p>
         </div>
         <UButton variant="ghost" @click="openEditor(item)">编辑</UButton>
       </div>
@@ -137,6 +143,8 @@ function laborFee(item: Item) {
           <UFormField label="项目名称"><UInput v-model="name" aria-label="项目名称" :maxlength="40" /></UFormField>
           <UFormField label="种类"><USelect v-model="kind" aria-label="种类" :items="[{ label: '服务', value: 'service' }, { label: '卖品', value: 'goods' }]" /></UFormField>
           <UFormField label="标准价"><UInput v-model="price" aria-label="标准价" inputmode="decimal" /></UFormField>
+          <UFormField label="服务时长（分钟）" help="0 表示未设置，最多 600"><UInput v-model="durationMinutes" type="number" min="0" max="600" aria-label="服务时长（分钟）" /></UFormField>
+          <USwitch v-model="bookable" label="可以预约" />
           <USwitch v-model="discountable" label="可以打折" />
           <UFormField label="手工费">
             <USelect v-model="feeKind" aria-label="手工费类型" :items="[{ label: '无', value: 'none' }, { label: '固定金额', value: 'amount' }, { label: '售价百分比', value: 'percent' }]" />
