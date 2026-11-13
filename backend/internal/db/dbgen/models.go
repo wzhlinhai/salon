@@ -10,6 +10,50 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/money"
 )
 
+type Aftersale struct {
+	TenantID          uuid.UUID
+	StoreID           uuid.UUID
+	ID                uuid.UUID
+	OrderID           uuid.UUID
+	Type              string
+	Reason            string
+	RefundLines       []byte
+	Status            string
+	BusinessDate      pgtype.Date
+	CreatedBy         uuid.UUID
+	CreatedAt         pgtype.Timestamptz
+	ApprovedBy        *uuid.UUID
+	ApprovedAt        pgtype.Timestamptz
+	RejectedBy        *uuid.UUID
+	RejectedAt        pgtype.Timestamptz
+	RejectNote        *string
+	DeductPerformance bool
+	DeductCommission  bool
+}
+
+type AftersaleEvent struct {
+	TenantID    uuid.UUID
+	StoreID     uuid.UUID
+	ID          uuid.UUID
+	AftersaleID uuid.UUID
+	Kind        string
+	Note        *string
+	ActorID     uuid.UUID
+	At          pgtype.Timestamptz
+}
+
+type AftersaleRefund struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	ID           uuid.UUID
+	AftersaleID  uuid.UUID
+	Method       string
+	Amount       *money.Amount
+	CardID       *uuid.UUID
+	BusinessDate pgtype.Date
+	CreatedAt    pgtype.Timestamptz
+}
+
 type AiDraft struct {
 	ID             uuid.UUID
 	TenantID       uuid.UUID
@@ -197,6 +241,7 @@ type CardLedger struct {
 	ReversesID      *uuid.UUID
 	OrderVoidID     *uuid.UUID
 	RefundID        *uuid.UUID
+	AftersaleID     *uuid.UUID
 }
 
 type CardLedgerSale struct {
@@ -767,6 +812,7 @@ type PerformanceEntry struct {
 	RedPacketID        *uuid.UUID
 	Purchase           *string
 	Member             *bool
+	AftersaleID        *uuid.UUID
 }
 
 type Position struct {

@@ -7,7 +7,7 @@ INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,order_id,
 SELECT e.tenant_id,e.store_id,e.kind,sqlc.arg(day),e.order_id,e.order_item_id,e.checkout_id,e.settings_snapshot_id,e.slot,e.position_id,e.staff_id,e.method,e.paid_amount,e.ratio,e.amount,sqlc.arg(void_id),e.id,e.member
 FROM performance_entries e
 WHERE e.store_id=sqlc.arg(store_id) AND e.order_id=sqlc.arg(order_id) AND e.reverses_id IS NULL
-AND NOT EXISTS (SELECT 1 FROM performance_entries r WHERE r.reverses_id=e.id);
+AND NOT EXISTS (SELECT 1 FROM performance_entries r WHERE r.reverses_id=e.id AND r.void_id IS NOT NULL);
 
 -- name: ListPerformance :many
 SELECT e.*, i.item_name, s.name AS staff_name
@@ -36,9 +36,10 @@ INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,staff_id,
 VALUES ($1,$2,'sale',$3,$4,$5,$6,100,$6,$7,$8,$9);
 
 -- name: PerformanceUnitEntries :many
-SELECT * FROM performance_entries
-WHERE store_id = @store_id AND business_date BETWEEN @date_from::date AND @date_to::date
-AND staff_id IS NOT NULL AND (sqlc.narg(staff_id)::uuid IS NULL OR staff_id = sqlc.narg(staff_id));
+SELECT e.* FROM performance_entries e
+WHERE e.store_id = @store_id AND e.business_date BETWEEN @date_from::date AND @date_to::date
+AND e.staff_id IS NOT NULL AND (sqlc.narg(staff_id)::uuid IS NULL OR e.staff_id = sqlc.narg(staff_id))
+AND (e.aftersale_id IS NULL OR EXISTS (SELECT 1 FROM aftersales a WHERE a.tenant_id=e.tenant_id AND a.id=e.aftersale_id AND a.status='approved' AND a.deduct_commission));
 
 -- name: PerformanceOriginalEntries :many
 SELECT * FROM performance_entries WHERE store_id = @store_id AND id = ANY(@ids::uuid[]);

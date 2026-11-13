@@ -345,6 +345,34 @@ func (r Rules) BookingDefaultMinutes() int {
 	return v
 }
 
+// AftersaleWindowDays 返回售后期限的营业日天数。
+func (r Rules) AftersaleWindowDays() int {
+	var v int
+	r.decode(KeyAftersaleWindowDays, &v)
+	return v
+}
+
+// AftersaleApprovalMode 返回售后审批方式：self 或 other。
+func (r Rules) AftersaleApprovalMode() string {
+	var v string
+	r.decode(KeyAftersaleApprovalMode, &v)
+	return v
+}
+
+// AftersaleDeductPerformance 返回退款默认是否扣业绩。
+func (r Rules) AftersaleDeductPerformance() bool {
+	var v string
+	r.decode(KeyAftersaleDeductPerformance, &v)
+	return v == "on"
+}
+
+// AftersaleDeductCommission 返回退款默认是否扣提成。
+func (r Rules) AftersaleDeductCommission() bool {
+	var v string
+	r.decode(KeyAftersaleDeductCommission, &v)
+	return v == "on"
+}
+
 // EffectiveDays 一次加载设置历史，按输入顺序返回各营业日执行的设置。
 func EffectiveDays(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, days []time.Time) ([]Rules, error) {
 	h, err := loadHistory(ctx, q, storeID, nil)

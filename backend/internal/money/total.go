@@ -25,6 +25,9 @@ func (a Total) AddProduct(price Amount, count int64) Total {
 	return Total{value: a.value.Add(price.value.Mul(decimal.NewFromInt(count)))}
 }
 
+// Fen 返回累计金额对应的整数分。
+func (a Total) Fen() int64 { return a.value.Shift(2).IntPart() }
+
 // Format 返回累计金额的固定两位小数显示文本。
 func (a Total) Format() string { return a.value.StringFixed(2) }
 
@@ -44,6 +47,15 @@ func (a Total) AddTotal(b Total) Total { return Total{value: a.value.Add(b.value
 
 // Deduct 返回累计金额扣减后的金额，扣减超过累计金额时 panic。
 func (a Total) Deduct(deduction Amount) Total {
+	value := a.value.Sub(deduction.value)
+	if value.IsNegative() {
+		panic("money: deduction exceeds total")
+	}
+	return Total{value: value}
+}
+
+// DeductTotal 返回累计金额扣减另一份累计金额后的金额，扣减超过累计金额时 panic。
+func (a Total) DeductTotal(deduction Total) Total {
 	value := a.value.Sub(deduction.value)
 	if value.IsNegative() {
 		panic("money: deduction exceeds total")

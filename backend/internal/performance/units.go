@@ -14,20 +14,20 @@ import (
 
 // Unit 是按来源、结账、冲回、项目行和岗位归并的业绩单位。
 type Unit struct {
-	ID                                                        uuid.UUID
-	Kind                                                      string
-	StaffID                                                   uuid.UUID
-	BusinessDate                                              time.Time
-	CreatedAt                                                 time.Time
-	OrderID, OrderItemID                                      *uuid.UUID
-	ItemID                                                    uuid.UUID
-	Slot                                                      *int16
-	PositionID, CheckoutID, CardLedgerID, RedPacketID, VoidID *uuid.UUID
-	Member                                                    *bool
-	Designated                                                bool
-	Entries                                                   []UnitEntry
-	Base                                                      UnitBase
-	Reverses                                                  *Unit
+	ID                                                                     uuid.UUID
+	Kind                                                                   string
+	StaffID                                                                uuid.UUID
+	BusinessDate                                                           time.Time
+	CreatedAt                                                              time.Time
+	OrderID, OrderItemID                                                   *uuid.UUID
+	ItemID                                                                 uuid.UUID
+	Slot                                                                   *int16
+	PositionID, CheckoutID, CardLedgerID, RedPacketID, VoidID, AftersaleID *uuid.UUID
+	Member                                                                 *bool
+	Designated                                                             bool
+	Entries                                                                []UnitEntry
+	Base                                                                   UnitBase
+	Reverses                                                               *Unit
 }
 
 // UnitEntry 是业绩单位内按 ID 排序的支付方式记录。
@@ -58,6 +58,7 @@ type lineFact struct {
 type unitKey struct {
 	kind                       string
 	checkout, void, line, sale uuid.UUID
+	aftersale                  uuid.UUID
 	slot                       int16
 }
 type unit struct {
@@ -84,7 +85,7 @@ func groupEntries(entries []dbgen.PerformanceEntry) []unit {
 		if e.StaffID == nil {
 			continue
 		}
-		k := unitKey{kind: e.Kind, checkout: optional(e.CheckoutID), void: optional(e.VoidID), line: optional(e.OrderItemID), slot: optional(e.Slot)}
+		k := unitKey{kind: e.Kind, checkout: optional(e.CheckoutID), void: optional(e.VoidID), line: optional(e.OrderItemID), aftersale: optional(e.AftersaleID), slot: optional(e.Slot)}
 		if e.Kind == "sale" {
 			k.sale = e.ID
 		}
@@ -148,7 +149,7 @@ func compose(u unit, f lineFact) Unit {
 	e := u.first
 	out := Unit{ID: e.ID, Kind: e.Kind, StaffID: *e.StaffID, BusinessDate: e.BusinessDate.Time, CreatedAt: u.createdAt,
 		OrderID: e.OrderID, OrderItemID: e.OrderItemID, ItemID: f.itemID, Slot: e.Slot, PositionID: e.PositionID,
-		CheckoutID: e.CheckoutID, CardLedgerID: e.CardLedgerID, RedPacketID: e.RedPacketID, VoidID: e.VoidID,
+		CheckoutID: e.CheckoutID, CardLedgerID: e.CardLedgerID, RedPacketID: e.RedPacketID, VoidID: e.VoidID, AftersaleID: e.AftersaleID,
 		Member: e.Member, Designated: f.designated, Entries: make([]UnitEntry, 0, len(u.entries))}
 	for _, row := range u.entries {
 		out.Entries = append(out.Entries, UnitEntry{ID: row.ID, Method: row.Method, PaidAmount: row.PaidAmount, Ratio: row.Ratio, Amount: row.Amount})

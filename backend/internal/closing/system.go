@@ -82,6 +82,21 @@ func systemFigures(ctx context.Context, env ops.Env, day time.Time) (*SystemFigu
 			return nil, err
 		}
 	}
+	aftersales, err := q.AftersaleRefundsByMethod(ctx, dbgen.AftersaleRefundsByMethodParams{StoreID: storeID, Day: pgDate(day)})
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range aftersales {
+		if row.Method == string(paymethod.CardPrincipal) {
+			if err := card.add(paymethod.CardPrincipal, row.Amount, -1); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if err := values.add(paymethod.Code(row.Method), row.Amount, -1); err != nil {
+			return nil, err
+		}
+	}
 	voids, err := q.VoidPaymentsByMethod(ctx, dbgen.VoidPaymentsByMethodParams{StoreID: storeID, Day: pgDate(day)})
 	if err != nil {
 		return nil, err

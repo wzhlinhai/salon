@@ -89,6 +89,10 @@ const (
 	KeyBookingMinLeadMinutes             = "booking_min_lead_minutes"
 	KeyBookingMaxDaysAhead               = "booking_max_days_ahead"
 	KeyBookingDefaultMinutes             = "booking_default_minutes"
+	KeyAftersaleWindowDays               = "aftersale_window_days"
+	KeyAftersaleApprovalMode             = "aftersale_approval_mode"
+	KeyAftersaleDeductPerformance        = "aftersale_deduct_performance"
+	KeyAftersaleDeductCommission         = "aftersale_deduct_commission"
 )
 
 // Catalogue 是全部门店设置，顺序即设置页面的显示顺序。后续模块的业务规则在这里添加。
@@ -143,6 +147,17 @@ var Catalogue = []Def{
 	{Key: KeyBookingMinLeadMinutes, Label: "预约提前量", Hint: "顾客自助预约至少要提前多少分钟；0 为不限制。前台代约不受此项限制", Kind: KindInteger, Min: 0, Max: 10080, Default: 0},
 	{Key: KeyBookingMaxDaysAhead, Label: "可约天数", Hint: "从今天起最多可以预约多少天内的时段，0 为只能约今天", Kind: KindInteger, Min: 0, Max: 365, Default: 30},
 	{Key: KeyBookingDefaultMinutes, Label: "默认服务时长", Hint: "预约没有选择项目时默认占用的分钟数", Kind: KindInteger, Min: 1, Max: 600, Default: 60},
+	{
+		Key: KeyAftersaleWindowDays, Label: "售后期限", Kind: KindInteger, Min: 0, Max: 36500, Default: 30,
+		Hint: "原单营业日到当前营业日不超过多少天可以开售后单，0 为只能当天售后",
+	},
+	{
+		Key: KeyAftersaleApprovalMode, Label: "售后审批方式", Kind: KindChoice, Default: "self",
+		Options: []ChoiceOption{{Value: "self", Label: "本人可以审批"}, {Value: "other", Label: "须另一名员工审批"}},
+		Hint:    "开售后单的人和审批的人是否可以相同",
+	},
+	{Key: KeyAftersaleDeductPerformance, Label: "退款默认扣业绩", Kind: KindChoice, Default: "off", Options: []ChoiceOption{{Value: "off", Label: "不扣"}, {Value: "on", Label: "扣"}}, Hint: "审批退款售后单时默认是否扣原单项目业绩，审批时可以逐单改"},
+	{Key: KeyAftersaleDeductCommission, Label: "退款默认扣提成", Kind: KindChoice, Default: "off", Options: []ChoiceOption{{Value: "off", Label: "不扣"}, {Value: "on", Label: "扣"}}, Hint: "按业绩计算；选择扣提成时必须同时扣业绩"},
 	{
 		Key: KeyBusinessHours, Label: "营业时段", Kind: KindTimeRange,
 		Hint:    "每天开门和关门的时间，预约等按它限制",

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"slices"
 	"time"
 
@@ -29,7 +30,7 @@ func calculate(units []performance.Unit, versions []dbgen.CommissionSchemeVersio
 		if u.Reverses != nil {
 			original = *u.Reverses
 		}
-		c, err := calculateOriginal(original, versions)
+		c, err := calculateOriginal(original, u, versions)
 		if err != nil {
 			return nil, err
 		}
@@ -42,6 +43,7 @@ func calculate(units []performance.Unit, versions []dbgen.CommissionSchemeVersio
 			c.Amount = c.Amount.Negate()
 			c.Reversal = true
 			c.Explanation.Origin.VoidID = u.VoidID
+			c.Explanation.Origin.AftersaleID = u.AftersaleID
 			c.Explanation.Entries = entryViews(u.Entries)
 		}
 		if cell := c.Explanation.Match.Cell; cell != nil && cell.Tiers != nil {
@@ -58,7 +60,9 @@ func calculate(units []performance.Unit, versions []dbgen.CommissionSchemeVersio
 	return out, nil
 }
 
-func calculateOriginal(u performance.Unit, versions []dbgen.CommissionSchemeVersion) (*Commission, error) {
+// calculateOriginal 用原始业绩命中方案和版本，用 base 的金额计算提成；
+// 售后按比例冲回时 base 是缩放后的冲回单位，撤单时两者相同。
+func calculateOriginal(u, baseUnit performance.Unit, versions []dbgen.CommissionSchemeVersion) (*Commission, error) {
 	e := u
 	v, err := selectVersion(versions, e.BusinessDate, &u.CreatedAt)
 	if err != nil {
@@ -79,13 +83,16 @@ func calculateOriginal(u performance.Unit, versions []dbgen.CommissionSchemeVers
 		if value == nil {
 			return nil, nil
 		}
-		base, err := unitBase(u, r.Base)
+		base, err := unitBase(baseUnit, r.Base)
 		if err != nil {
 			return nil, err
 		}
 		amount := money.Amount{}
 		if value.FixedAmount != nil {
 			amount = *value.FixedAmount
+			if baseUnit.Reverses != nil && baseUnit.AftersaleID != nil {
+				amount = prorateFixedFloor(amount, baseUnit.Base.Paid, u.Base.Paid)
+			}
 		} else if value.Percent != nil {
 			amount = base.Amount.Share(*value.Percent)
 		}
@@ -99,6 +106,24 @@ func calculateOriginal(u performance.Unit, versions []dbgen.CommissionSchemeVers
 		return &Commission{ID: e.ID, Source: e.Kind, Staff: staff.Ref{ID: e.StaffID}, Amount: amount.Sub(money.Amount{}), Explanation: CommissionExplanation{Origin: origin, Entries: entryViews(u.Entries), Designated: designated, Member: e.Member, Base: base, Match: match, Version: CommissionVersion{ID: v.ID, Version: v.Version, EffectiveFrom: v.EffectiveFrom.Time.Format(time.DateOnly)}}}, nil
 	}
 	return nil, nil
+}
+
+// prorateFixedFloor 按比例向下取整到分，用于部分售后退款冲回固定提成。
+func prorateFixedFloor(fixed money.Amount, numerator, denominator int64) money.Amount {
+	if numerator <= 0 || denominator <= 0 {
+		return money.Amount{}
+	}
+	var product big.Int
+	product.Mul(big.NewInt(fixed.Fen()), big.NewInt(numerator))
+	product.Quo(&product, big.NewInt(denominator))
+	out, err := money.FromFen(product.Int64())
+	if err != nil {
+		return money.Amount{}
+	}
+	if out.Cmp(fixed) > 0 {
+		return fixed
+	}
+	return out
 }
 
 func matchRule(r Rule, overrides []Override, e performance.Unit) (CommissionMatch, *Cell) {

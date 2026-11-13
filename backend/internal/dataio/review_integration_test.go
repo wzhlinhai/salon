@@ -337,6 +337,7 @@ func TestImportInvalidKeysDownGuard(t *testing.T) {
 	dbtest.Exec(t, tx, `INSERT INTO import_batch_rows(tenant_id,store_id,batch_id,sheet,row_number,kind,source_key,error) VALUES($1,$2,$3,'顾客',99,'customer','','来源顾客ID不能为空')`, f.Res.TenantID, f.Res.StoreID, uuid.MustParse(batch))
 	dbtest.Commit(t, tx)
 
+	dbtest.MigrateDownTo(t, f.Pool, 48)
 	err := db.MigrateDown(ctx, f.Pool)
 	if err == nil || !strings.Contains(err.Error(), "无法恢复来源编号约束：存在空编号的导入错误行") {
 		t.Fatalf("down with empty keys = %v", err)

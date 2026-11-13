@@ -117,6 +117,7 @@ type CardLedgerEntry struct {
 	RefundAmount    *money.Amount   `json:"refund_amount" nullable:"true"`
 	ReversesID      *uuid.UUID      `json:"reverses_id" nullable:"true"`
 	OrderVoidID     *uuid.UUID      `json:"order_void_id" nullable:"true"`
+	AftersaleID     *uuid.UUID      `json:"aftersale_id" nullable:"true"`
 	OrderID         *uuid.UUID      `json:"order_id" nullable:"true"`
 	OtherCardID     *uuid.UUID      `json:"other_card_id,omitempty"`
 	ID              uuid.UUID       `json:"id"`

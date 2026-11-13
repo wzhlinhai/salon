@@ -53,7 +53,7 @@ func (q *Queries) CreateOrderPayment(ctx context.Context, arg CreateOrderPayment
 }
 
 const voidBalanceConsumes = `-- name: VoidBalanceConsumes :many
-SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.kind, l.principal_before, l.principal_delta, l.principal_after, l.bonus_before, l.bonus_delta, l.bonus_after, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id, l.refund_id FROM card_ledger l JOIN order_payments p ON p.card_ledger_id=l.id WHERE p.store_id=$1 AND p.order_id=$2 ORDER BY p.id
+SELECT l.id, l.tenant_id, l.store_id, l.card_id, l.kind, l.principal_before, l.principal_delta, l.principal_after, l.bonus_before, l.bonus_delta, l.bonus_after, l.business_date, l.actor_id, l.at, l.reverses_id, l.order_void_id, l.refund_id, l.aftersale_id FROM card_ledger l JOIN order_payments p ON p.card_ledger_id=l.id WHERE p.store_id=$1 AND p.order_id=$2 ORDER BY p.id
 `
 
 type VoidBalanceConsumesParams struct {
@@ -88,6 +88,7 @@ func (q *Queries) VoidBalanceConsumes(ctx context.Context, arg VoidBalanceConsum
 			&i.ReversesID,
 			&i.OrderVoidID,
 			&i.RefundID,
+			&i.AftersaleID,
 		); err != nil {
 			return nil, err
 		}

@@ -45,6 +45,13 @@ func voidOrder(ctx context.Context, env ops.Env, in *VoidOrderInput) (*Order, er
 		if err != nil {
 			return err
 		}
+		refunded, err := env.Q.HasApprovedRefundAftersale(ctx, dbgen.HasApprovedRefundAftersaleParams{StoreID: env.Caller.StoreID, OrderID: row.ID})
+		if err != nil {
+			return err
+		}
+		if refunded {
+			return ops.Rule("有已生效的退款售后单，不能撤单")
+		}
 		reversal, err := env.Q.CreateOrderVoid(ctx, dbgen.CreateOrderVoidParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, OrderID: row.ID, Reason: reason, BusinessDate: pgtype.Date{Time: day, Valid: true}, VoidedBy: env.Caller.StaffID})
 		if err != nil {
 			return err

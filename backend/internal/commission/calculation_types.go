@@ -45,6 +45,7 @@ type CommissionOrigin struct {
 	RedPacketID  *uuid.UUID `json:"red_packet_id,omitempty"`
 	CheckoutID   *uuid.UUID `json:"checkout_id,omitempty"`
 	VoidID       *uuid.UUID `json:"void_id,omitempty"`
+	AftersaleID  *uuid.UUID `json:"aftersale_id,omitempty"`
 }
 
 // CommissionPerformanceEntry 是一笔提成所包含的支付方式业绩记录。

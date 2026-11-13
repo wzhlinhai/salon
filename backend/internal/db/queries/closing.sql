@@ -80,6 +80,7 @@ SELECT
  OR EXISTS (SELECT 1 FROM debt_repayments x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
  OR EXISTS (SELECT 1 FROM red_packets x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
  OR EXISTS (SELECT 1 FROM order_voids x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
+ OR EXISTS (SELECT 1 FROM aftersale_refunds x JOIN aftersales a ON a.tenant_id=x.tenant_id AND a.id=x.aftersale_id WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day) AND a.status='approved')
  OR EXISTS (SELECT 1 FROM sale_payments x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
  OR EXISTS (SELECT 1 FROM card_points_ledger x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
  OR EXISTS (SELECT 1 FROM guest_visits x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
@@ -137,6 +138,12 @@ SELECT method, COALESCE(sum(amount),0)::text AS amount, count(*)::bigint AS coun
 FROM card_refunds
 WHERE store_id=sqlc.arg(store_id) AND business_date=sqlc.arg(day)
 GROUP BY method;
+
+-- name: AftersaleRefundsByMethod :many
+SELECT r.method,COALESCE(sum(r.amount),0)::text AS amount,count(*)::bigint AS count
+FROM aftersale_refunds r JOIN aftersales a ON a.tenant_id=r.tenant_id AND a.id=r.aftersale_id
+WHERE r.store_id=sqlc.arg(store_id) AND r.business_date=sqlc.arg(day) AND a.status='approved'
+GROUP BY r.method;
 
 -- name: VoidPaymentsByMethod :many
 SELECT p.method, COALESCE(sum(p.amount),0)::text AS amount, count(*)::bigint AS count
