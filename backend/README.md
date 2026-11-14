@@ -14,14 +14,16 @@ golangci-lint run ./...                        # CI 同样运行，配置见 .go
 scripts/mutcheck.sh [--run <regex>] <文件> <原文> <替换> [包] # 临时改坏一处，确认有测试失败，然后还原；改查询 SQL 时自动重新生成
 scripts/mutcheck.sh --restore                  # 恢复中断的变异验证，清理未发布的备份槽
 scripts/mutchecks.py <清单> [--since <git-ref>] [--locate] [名称...] # go 项只运行 guards（含子测试）；每包先跑完整基线
-scripts/mutchecks.py --since <git-ref> [--jobs N]          # 不带清单：逐份运行 .dev/codex/*/manifest.py 的受影响项
+scripts/mutchecks.py --since <git-ref> [--jobs N]          # 不带清单：逐份运行 .dev/codex/*/manifest.py 的受影响项；N 最多 4
 DATABASE_URL=postgres://... go run ./cmd/salon migrate up
 DATABASE_URL=postgres://... BOOTSTRAP_PASSWORD=... go run ./cmd/salon bootstrap \
   -tenant 本店 -store 本店 -owner-name 姓名 -owner-number 001 -owner-account boss
 DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 ```
 
-`mutchecks.py --since <git-ref>` 只选中该引用与工作树（含未跟踪文件）之间受影响的项，可与名称和 `--locate` 组合。保护文件、定义 guard 的包内测试文件或 e2e spec 改动会选中对应项；查询、迁移目录内任意文件改动会选中该目录的保护。每轮可运行受影响项，同时不带 `--since` 运行 `--locate` 检查整份清单的原文匹配。手动使用 `mutcheck.sh` 时测试选择只通过 `--run` 传入；省略它仍运行完整包。
+`mutchecks.py --since <git-ref>` 只选中该引用与工作树（含未跟踪文件）之间受影响的项，可与名称和 `--locate` 组合。保护文件、定义 guard 的包内测试文件或 e2e spec 改动会选中对应项；迁移项只在自身文件改动、或改动的迁移涉及它保护的表时选中，查询项只在自身 `.sql` 文件改动、或改动的迁移涉及它查询的表时选中。表从迁移的建表/改表/删表、索引、外键、写入、`DELETE … USING`、逗号 `FROM`、`UPDATE … FROM`、授权语句和策略的 `USING`/`WITH CHECK` 子查询读取；改动的迁移同时比较 ref 与工作树版本（重命名按删除加新增），带引号的名字按表名解析。认不出表的项保守选中，改动的迁移含函数/视图/规则、`DO` 块或无法归属的语句时选中全部迁移和查询项；查询用到迁移里 `CREATE VIEW` 的名字时也保守选中。`stderr` 会输出改动的表以及按表规则跳过的数量。每轮可运行受影响项，同时不带 `--since` 运行 `--locate` 检查整份清单的原文匹配。正式运行默认给每个 go worker 一个 PostgreSQL 容器并通过 `SALON_TEST_PG_DSN` 复用，结束或中断时删除；`--no-shared-pg` 恢复每个 `go test` 自启容器。手动使用 `mutcheck.sh` 时测试选择只通过 `--run` 传入；省略它仍运行完整包。
+
+所有保护验证都要通过 `scripts/gate.py` 运行。`mutchecks.py` 正式运行和单独运行的 `mutcheck.sh` 也会持有与 `gate.py` 相同的 `flock` 重锁（`GATE_HEAVY_LOCK`，否则 `.dev/heavy.lock`），等待时打印 `waiting for heavy lock <path>`；`gate.py` 用 `SALON_HEAVY_LOCK_HELD` 标记父进程已持有的锁，子进程不重复加锁。`--locate` 和内部 `--worker-logs` 进程不加锁。`--jobs` 最多 4（`MUTCHECK_MAX_JOBS` 可调低），超过时打印提示并按上限运行；`--jobs` 大于 1 时每个 go worker 用 `-p max(1, CPU/jobs)` 和同样的 `GOMAXPROCS`，把全部 worker 的编译并行度限制在 CPU 数附近，`--jobs 1` 保持原行为。
 
 保护检查不写用户的默认 Go 构建缓存：`mutchecks.py` 每次正式运行（包括 `--jobs 1`）以及 `--since` 的 `go list` 在 `.dev/mutcheck-gocache/<run>/` 下建立独立 `GOCACHE`，并传给基线、`mutcheck.sh` 和每个副本；只有正式运行开始时清理残留运行目录，成功、失败、异常、Ctrl-C 或 SIGTERM 时删除本次缓存。`--locate` 不运行 go 命令时不创建缓存，也不清理残留目录。基线共享该缓存；每个变异副本另建缓存并硬链接基线条目（含 `xx/<hash>-d/` 可执行目录），跑完一项后删除该变异新增的条目，峰值只随并发副本数和一个变异的编译量增长。所有 `go test` 带 `-trimpath`，不同路径的副本因此共享编译结果。基线前和每项变异前检查缓存所在磁盘剩余空间，低于 20 GB 时用中文消息停止，未运行项计为 `environment` 并以非零码退出，不计为 caught；测试可用 `MUTCHECK_DISK_HEADROOM_BYTES` 调低该下限。单独运行 `mutcheck.sh`（含 `--restore`）且没有设置 `GOCACHE` 时，同样在 `.dev/` 下使用临时缓存并在退出时删除。
 

@@ -19,6 +19,23 @@ set -euo pipefail
 
 backend=$(cd "$(dirname "$0")/.." && pwd -P)
 slot="$backend/../.dev/mutcheck-backup"
+heavy_lock() {
+  local path=${GATE_HEAVY_LOCK:-$backend/../.dev/heavy.lock}
+  local resolved
+  mkdir -p "$(dirname "$path")"
+  resolved=$(realpath -m "$path")
+  if [ -n "${SALON_HEAVY_LOCK_HELD:-}" ] &&
+     [ "$(realpath -m "$SALON_HEAVY_LOCK_HELD")" = "$resolved" ]; then
+    return 0
+  fi
+  exec 9>"$path"
+  if ! flock -n 9; then
+    echo "waiting for heavy lock $resolved" >&2
+    flock 9
+  fi
+  export SALON_HEAVY_LOCK_HELD=$resolved
+}
+heavy_lock
 discard_incomplete() {
   if [ -d "$slot" ] && [ ! -f "$slot/original" ]; then
     rm -f "$slot/path" "$slot/original.tmp"
@@ -74,6 +91,30 @@ setup_cache
 trap cleanup_cache EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+# 共用测试服务器时先确认可达；连不上按环境失败处理，绝不把超时算成捕获。
+probe_test_server() {
+  [ -n "${SALON_TEST_PG_DSN:-}" ] || return 0
+  python3 - "$SALON_TEST_PG_DSN" <<'PY'
+import socket
+import sys
+import urllib.parse
+
+dsn = sys.argv[1]
+if '://' in dsn:
+    address = urllib.parse.urlparse(dsn)
+    host = address.hostname or '127.0.0.1'
+    port = address.port or 5432
+else:
+    fields = dict(item.split('=', 1) for item in dsn.split() if '=' in item)
+    host = fields.get('host', '127.0.0.1').split(',')[0]
+    port = int(fields.get('port', 5432))
+socket.create_connection((host, port), timeout=3).close()
+PY
+}
+if ! probe_test_server; then
+  echo "not run (environment): SALON_TEST_PG_DSN server is unreachable" >&2
+  exit 4
+fi
 if [ -d "$slot" ] && ! discard_incomplete; then
   echo "mutcheck: backup occupied for $(cat "$slot/path" 2>/dev/null || echo unknown); restore with: $backend/scripts/mutcheck.sh --restore" >&2
   exit 2
@@ -83,6 +124,11 @@ if [ "${1:-}" = --run ]; then
   [ -n "${2:-}" ] || { echo "mutcheck: --run requires a nonempty regex" >&2; exit 2; }
   test_selection=(-run "$2")
   shift 2
+fi
+go_parallel=()
+if [ -n "${MUTCHECK_GO_PARALLEL:-}" ]; then
+  go_parallel=(-p "$MUTCHECK_GO_PARALLEL")
+  export GOMAXPROCS=${GOMAXPROCS:-$MUTCHECK_GO_PARALLEL}
 fi
 [ $# -ge 3 ] || { echo "usage: backend/scripts/mutcheck.sh [--run <regex>] <file> <old> <new> [go test args] | --restore" >&2; exit 2; }
 file=$(realpath "$1") old=$2 new=$3; shift 3
@@ -125,7 +171,7 @@ if $regen && ! go tool sqlc generate; then
 fi
 
 # 只编译、不运行测试，确认改坏后的代码仍能构建（例如查询的参数没变）。
-if ! build=$(go test -count=1 -trimpath -run '^$' "$@" 2>&1); then
+if ! build=$(go test -count=1 -trimpath "${go_parallel[@]}" -run '^$' "$@" 2>&1); then
   echo "mutcheck: mutated code does not build:" >&2
   head -5 <<<"$build" >&2
   exit 2
@@ -133,7 +179,7 @@ fi
 
 for attempt in 1 2; do
   status=0
-  out=$(go test -count=1 -trimpath "${test_selection[@]}" "$@" 2>&1) || status=$?
+  out=$(go test -count=1 -trimpath "${go_parallel[@]}" "${test_selection[@]}" "$@" 2>&1) || status=$?
   if [[ "$out" == *"启动 PostgreSQL 测试容器失败"* ]]; then
     echo "mutcheck: environment failure (attempt $attempt/2):" >&2
     if [ "$attempt" -eq 1 ]; then
@@ -150,6 +196,10 @@ for attempt in 1 2; do
   fi
   break
 done
+if [ "$status" -ne 0 ] && ! probe_test_server; then
+  echo "not run (environment): SALON_TEST_PG_DSN server became unreachable during the run" >&2
+  exit 4
+fi
 fails=$(grep -E '^--- FAIL' <<<"$out" | sed 's/ (.*//' || true)
 if [ -n "$fails" ]; then
   echo "caught by:"
