@@ -36,6 +36,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/payroll"
 	"github.com/wzhlinhai/salon/backend/internal/performance"
 	"github.com/wzhlinhai/salon/backend/internal/redpackets"
+	"github.com/wzhlinhai/salon/backend/internal/reports"
 	"github.com/wzhlinhai/salon/backend/internal/rotation"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
@@ -112,6 +113,7 @@ func New(pool *pgxpool.Pool, cfg Config) (*echo.Echo, *ops.Registry) {
 	collections.Register(reg)
 	closing.Register(reg)
 	performance.Register(reg)
+	reports.Register(reg)
 	commission.Register(reg)
 	payroll.Register(reg)
 	attendance.Register(reg)
