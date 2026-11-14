@@ -1,10 +1,12 @@
 package reports_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/google/uuid"
 
+	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 )
 
@@ -23,6 +25,30 @@ func TestReportPermissionsAndRanges(t *testing.T) {
 	f.call("refund_card", map[string]any{"card_id": refunded["id"], "method": "cash", "amount": quote["amount"]}, 200)
 	voided := f.checkout(f.order(customer, []uuid.UUID{f.staffA}, false, "male", f.item), payment("cash", "100"))
 	f.call("void_order", map[string]any{"order_id": voided["id"], "reason": "录入错误"}, 200)
+	refundOrder := f.checkout(f.order(customer, []uuid.UUID{f.staffB}, true, "female", f.item), payment("cash", "100"))
+	refund := f.call("create_aftersale", map[string]any{"order_id": refundOrder["id"], "type": "partial_refund", "reason": "退款", "refund_lines": []any{payment("cash", "10.00")}}, 200)
+	f.call("approve_aftersale", map[string]any{"id": refund["id"]}, 200)
+	voidCard := f.openCard(customer, f.stored, "100.00", "0", payment("cash", "100"))
+	voidCardOrder := f.checkout(f.order(customer, []uuid.UUID{f.staffB}, false, "male", f.item), f.cardPayment(id(voidCard["id"]), "100"))
+	f.call("void_order", map[string]any{"order_id": voidCardOrder["id"], "reason": "录入错误"}, 200)
+	unknown := f.customer("未识别", "", nil)
+	f.checkout(f.order(unknown, []uuid.UUID{f.staffB}, false, "female", f.item), payment("cash", "100"))
+	mainDebt := f.call("register_historical_debt", map[string]any{"customer_id": customer, "amount": "10.00", "incurred_on": "2026-11-02"}, 200)
+	f.call("repay_debt", map[string]any{"debt_id": mainDebt["id"], "amount": "10.00", "method": "cash"}, 200)
+
+	tx := dbtest.AppTx(t, f.Pool, f.Res.TenantID)
+	var otherStore, otherCustomer, otherDebt uuid.UUID
+	if err := tx.QueryRow(context.Background(), `INSERT INTO stores (tenant_id,name) VALUES ($1,'外店') RETURNING id`, f.Res.TenantID).Scan(&otherStore); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.QueryRow(context.Background(), `INSERT INTO customers (tenant_id,store_id,phone,created_by) VALUES ($1,$2,'13800000099',$3) RETURNING id`, f.Res.TenantID, otherStore, f.Res.OwnerID).Scan(&otherCustomer); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.QueryRow(context.Background(), `INSERT INTO debts (tenant_id,store_id,customer_id,amount,business_date,recorded_by) VALUES ($1,$2,$3,20,'2026-11-02',$4) RETURNING id`, f.Res.TenantID, otherStore, otherCustomer, f.Res.OwnerID).Scan(&otherDebt); err != nil {
+		t.Fatal(err)
+	}
+	dbtest.Exec(t, tx, `INSERT INTO debt_repayments (tenant_id,store_id,debt_id,amount,method,business_date,repaid_by) VALUES ($1,$2,$3,20,'cash','2026-11-02',$4)`, f.Res.TenantID, otherStore, otherDebt, f.Res.OwnerID)
+	dbtest.Commit(t, tx)
 
 	owner := f.MustCaller(f.Owner)
 	cases := []struct {
@@ -71,6 +97,11 @@ func TestReportPermissionsAndRanges(t *testing.T) {
 				t.Fatalf("%s %s: %d %q", ch.Name, tc.name, got.Status, got.Detail())
 			}
 		}
+	}
+
+	business := f.call("get_business_report", map[string]any{"from": "2026-11-02", "to": "2026-11-02", "granularity": "day"}, 200)
+	if got := business["rows"].([]any)[0].(map[string]any)["debt_repayment"]; got != "10.00" {
+		t.Fatalf("debt repayment includes foreign store: %v", got)
 	}
 
 	other := owner
