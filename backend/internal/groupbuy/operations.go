@@ -9,10 +9,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/wzhlinhai/salon/backend/internal/audit"
+	"github.com/wzhlinhai/salon/backend/internal/daterange"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
+	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
 // Redemption 是本店核销记录，不包含顾客或订单写入。
@@ -100,6 +102,48 @@ func Register(r *ops.Registry, providers *Providers) {
 			}
 			return view(row), nil
 		}})
+	ops.Register(r, ops.Operation[ListRedemptionsInput, RedemptionList]{Name: "list_redemptions", Summary: "按营业日范围列出本店团购核销记录", Kind: ops.Read, Permission: perm.GroupBuyRedeem, AI: ops.AIDirect, Handle: listRedemptions})
+}
+
+// listRedemptions 按营业日范围返回核销记录；营业日由核销时刻换算，待核销记录按创建时刻。
+func listRedemptions(ctx context.Context, env ops.Env, in *ListRedemptionsInput) (*RedemptionList, error) {
+	query, err := daterange.Parse(env.Caller, perm.GroupBuyRedeem, in.From, in.To, nil, 0)
+	if err != nil {
+		return nil, err
+	}
+	from, to := query.From, query.To
+	fromTime := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, settings.Location).AddDate(0, 0, -2)
+	toTime := time.Date(to.Year(), to.Month(), to.Day(), 0, 0, 0, 0, settings.Location).AddDate(0, 0, 3)
+	rows, err := env.Q.ListRedemptions(ctx, dbgen.ListRedemptionsParams{StoreID: env.Caller.StoreID, FromTime: pgtype.Timestamptz{Time: fromTime, Valid: true}, ToTime: pgtype.Timestamptz{Time: toTime, Valid: true}})
+	if err != nil {
+		return nil, err
+	}
+	times := make([]time.Time, len(rows))
+	for i, row := range rows {
+		if row.RedeemedAt.Valid {
+			times[i] = row.RedeemedAt.Time
+		} else {
+			times[i] = row.CreatedAt.Time
+		}
+	}
+	days, err := settings.BusinessDates(ctx, env.Q, env.Caller.StoreID, times)
+	if err != nil {
+		return nil, err
+	}
+	out := &RedemptionList{Items: make([]Redemption, 0, len(rows))}
+	for i, row := range rows {
+		if days[i].Before(from) || days[i].After(to) {
+			continue
+		}
+		if in.Status != "" && row.Status != in.Status {
+			continue
+		}
+		if in.UnlinkedOnly && row.OrderID != nil {
+			continue
+		}
+		out.Items = append(out.Items, *view(row))
+	}
+	return out, nil
 }
 
 func platformError(err error) error {
