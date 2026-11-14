@@ -1,0 +1,1375 @@
+[
+  {
+    "id": "read-revenue-today",
+    "story": "read.revenue",
+    "category": "read",
+    "role": "owner",
+    "messages": [
+      {
+        "role": "user",
+        "content": "今天店里营业额多少？"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "get_business_report",
+        "args": {
+          "from": "$today",
+          "to": "$today",
+          "granularity": "day"
+        }
+      }
+    ],
+    "answer_contains": [
+      "128.00"
+    ],
+    "reference_answer": "今天营业额报表已查到，服务实收 128.00 元。"
+  },
+  {
+    "id": "read-performance-today",
+    "story": "read.performance",
+    "category": "read",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "今天店里做了多少业绩？"
+      }
+    ],
+    "expected_calls": [
+      {
+        "any_of": [
+          "list_performance",
+          "get_staff_report"
+        ],
+        "any_of_args": [
+          {
+            "date_from": "$today",
+            "date_to": "$today"
+          },
+          {
+            "from": "$today",
+            "to": "$today"
+          }
+        ]
+      }
+    ],
+    "answer_contains": [
+      "128.00",
+      "1380.00"
+    ],
+    "reference_answer": "今天项目业绩 128.00 元，销售业绩 1380.00 元。"
+  },
+  {
+    "id": "read-performance-self",
+    "story": "read.performance",
+    "category": "read",
+    "role": "stylist",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我这个月做了多少业绩？"
+      }
+    ],
+    "expected_calls": [
+      {
+        "any_of": [
+          "list_performance",
+          "get_staff_report"
+        ],
+        "any_of_args": [
+          {
+            "date_from": "$month_start",
+            "date_to": "$today"
+          },
+          {
+            "from": "$month_start",
+            "to": "$today"
+          }
+        ]
+      }
+    ],
+    "answer_contains": [
+      "256.00",
+      "1180.00"
+    ],
+    "reference_answer": "你这个月项目业绩 256.00 元，销售业绩 1180.00 元。"
+  },
+  {
+    "id": "read-customer-search",
+    "story": "read.customer",
+    "category": "read",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "帮我查一下王姐的档案。"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "search_customers",
+        "args": {
+          "query": "王姐"
+        }
+      }
+    ],
+    "answer_contains": [
+      "王姐",
+      "13800000001"
+    ],
+    "reference_answer": "王姐的档案已找到，手机号 13800000001。"
+  },
+  {
+    "id": "read-card-balance",
+    "story": "read.card",
+    "category": "read",
+    "role": "owner",
+    "messages": [
+      {
+        "role": "user",
+        "content": "王姐卡里还剩多少钱？"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "search_customers",
+        "args": {
+          "query": "王姐"
+        }
+      },
+      {
+        "tool": "list_customer_cards",
+        "args": {
+          "customer_id": "customer:王姐"
+        }
+      }
+    ],
+    "answer_contains": [
+      "500.00"
+    ],
+    "reference_answer": "王姐的储值卡余额是 500.00 元。"
+  },
+  {
+    "id": "read-card-count",
+    "story": "read.card",
+    "category": "read",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "王姐的次卡还能做几次洗剪吹？"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "search_customers",
+        "args": {
+          "query": "王姐"
+        }
+      },
+      {
+        "tool": "list_customer_cards",
+        "args": {
+          "customer_id": "customer:王姐"
+        }
+      }
+    ],
+    "answer_contains": [
+      "10"
+    ],
+    "reference_answer": "王姐的次卡还能做 10 次洗剪吹。"
+  },
+  {
+    "id": "read-open-orders",
+    "story": "read.order",
+    "category": "read",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "现在店里有哪些挂单？"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "list_open_orders",
+        "args": {}
+      }
+    ],
+    "answer_contains": [
+      "88.00",
+      "428.00"
+    ],
+    "reference_answer": "当前有 2 张挂单：洗剪吹 88.00 元、染发 428.00 元。"
+  },
+  {
+    "id": "read-appointments",
+    "story": "read.booking",
+    "category": "read",
+    "role": "owner",
+    "messages": [
+      {
+        "role": "user",
+        "content": "明天有哪些预约？"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "list_appointments",
+        "args": {
+          "from": "$tomorrow",
+          "to": "$tomorrow"
+        }
+      }
+    ],
+    "answer_contains": [
+      "阿峰"
+    ],
+    "reference_answer": "明天的预约里有阿峰。"
+  },
+  {
+    "id": "read-month-report",
+    "story": "read.report",
+    "category": "read",
+    "role": "owner",
+    "messages": [
+      {
+        "role": "user",
+        "content": "帮我看这个月的营业月报。"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "get_business_report",
+        "args": {
+          "from": "$month",
+          "to": "$month",
+          "granularity": "month"
+        }
+      }
+    ],
+    "answer_contains": [
+      "2026-11",
+      "256.00"
+    ],
+    "reference_answer": "2026-11 月报已查到，服务实收 256.00 元。"
+  },
+  {
+    "id": "read-groupbuy-month",
+    "story": "read.groupbuy",
+    "category": "read",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "美团这个月核销了几张券？"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "get_groupbuy_month",
+        "args": {
+          "platform": "meituan",
+          "month": "$month"
+        }
+      }
+    ],
+    "answer_contains": [
+      "1"
+    ],
+    "reference_answer": "美团 2026-11 有 1 张核销记录。"
+  },
+  {
+    "id": "read-groupbuy-unlinked",
+    "story": "read.groupbuy",
+    "category": "read",
+    "role": "owner",
+    "messages": [
+      {
+        "role": "user",
+        "content": "今天还有哪些团购券没开单？"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "list_redemptions",
+        "args": {
+          "from": "$today",
+          "to": "$today",
+          "unlinked_only": true
+        }
+      }
+    ],
+    "answer_contains": [
+      "MT20261110001"
+    ],
+    "reference_answer": "还没开单的团购券是 MT20261110001。"
+  },
+  {
+    "id": "read-commission-month",
+    "story": "read.commission",
+    "category": "read",
+    "role": "stylist",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我这个月提成多少？"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "list_commissions",
+        "args": {
+          "date_from": "$month_start",
+          "date_to": "$today"
+        }
+      }
+    ],
+    "answer_contains": [
+      "12.80"
+    ],
+    "reference_answer": "你这个月的提成合计 12.80 元。"
+  },
+  {
+    "id": "read-guest-count",
+    "story": "read.performance",
+    "category": "read",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "今天来了多少客？"
+      }
+    ],
+    "expected_calls": [
+      {
+        "any_of": [
+          "list_guest_visits",
+          "get_business_report"
+        ],
+        "any_of_args": [
+          {
+            "date_from": "$today",
+            "date_to": "$today"
+          },
+          {
+            "from": "$today",
+            "to": "$today",
+            "granularity": "day"
+          }
+        ]
+      }
+    ],
+    "answer_contains": [
+      "1"
+    ],
+    "reference_answer": "今天有 1 个客次。"
+  },
+  {
+    "id": "read-debts",
+    "story": "read.report",
+    "category": "read",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "店里现在还有多少欠款？"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "debt_summary",
+        "args": {}
+      }
+    ],
+    "answer_contains": [
+      "0.00",
+      "欠款"
+    ],
+    "reference_answer": "目前没有未还欠款，未还合计 0.00 元。"
+  },
+  {
+    "id": "read-items",
+    "story": "read.catalog",
+    "category": "read",
+    "role": "stylist",
+    "messages": [
+      {
+        "role": "user",
+        "content": "店里现在有哪些项目？"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "list_items",
+        "args": {}
+      }
+    ],
+    "answer_contains": [
+      "洗剪吹",
+      "护理"
+    ],
+    "reference_answer": "店里的项目包括洗剪吹、染发、护理和剪发。"
+  },
+  {
+    "id": "read-item-price",
+    "story": "read.catalog",
+    "category": "read",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "阿峰做洗剪吹多少钱？"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "quote_item_price",
+        "args": {
+          "item_id": "item:洗剪吹",
+          "staff_id": "staff:阿峰"
+        }
+      }
+    ],
+    "answer_contains": [
+      "88.00"
+    ],
+    "reference_answer": "阿峰做洗剪吹的价格是 88.00 元。"
+  },
+  {
+    "id": "read-card-types",
+    "story": "read.card",
+    "category": "read",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "店里有哪些卡类型？"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "list_card_types",
+        "args": {}
+      }
+    ],
+    "answer_contains": [
+      "储值卡",
+      "次卡"
+    ],
+    "reference_answer": "店里的卡类型包括储值卡和次卡。"
+  },
+  {
+    "id": "read-customer-phone",
+    "story": "read.customer",
+    "category": "read",
+    "role": "owner",
+    "messages": [
+      {
+        "role": "user",
+        "content": "张先生的手机号是多少？"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "search_customers",
+        "args": {
+          "query": "张先生"
+        }
+      }
+    ],
+    "answer_contains": [
+      "13800000002"
+    ],
+    "reference_answer": "张先生的手机号是 13800000002。"
+  },
+  {
+    "id": "read-order-detail",
+    "story": "read.order",
+    "category": "read",
+    "role": "owner",
+    "messages": [
+      {
+        "role": "user",
+        "content": "看一下王姐昨天那张已结账的单。"
+      }
+    ],
+    "expected_calls": [
+      {
+        "any_of": [
+          "list_performance",
+          "list_guest_visits"
+        ],
+        "args": {
+          "date_from": "$yesterday",
+          "date_to": "$yesterday"
+        }
+      },
+      {
+        "tool": "get_order",
+        "args": {
+          "id": "order:历史单"
+        }
+      }
+    ],
+    "answer_contains": [
+      "128.00",
+      "2026-11-09"
+    ],
+    "reference_answer": "王姐 2026-11-09 那张已结账单实收 128.00 元。"
+  },
+  {
+    "id": "read-staff-list",
+    "story": "read.staff",
+    "category": "read",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "店里有哪些员工？"
+      }
+    ],
+    "expected_calls": [
+      {
+        "any_of": [
+          "list_staff",
+          "list_staff_options"
+        ],
+        "args": {}
+      }
+    ],
+    "answer_contains": [
+      "王店长",
+      "阿峰",
+      "小李"
+    ],
+    "reference_answer": "店里的员工包括王店长、阿峰和小李。"
+  },
+  {
+    "id": "draft-open-order",
+    "story": "draft.open_order",
+    "category": "draft",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "给王姐开一单洗剪吹，阿峰做。"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "open_order",
+        "args": {
+          "customer_id": "customer:王姐",
+          "gender": "female",
+          "items": [
+            {
+              "item_id": "item:洗剪吹",
+              "staff": [
+                {
+                  "slot": 1,
+                  "staff_id": "staff:阿峰"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "answer_contains": [
+      "草稿"
+    ],
+    "reference_answer": "已生成开单草稿，请确认。",
+    "answer_not_contains": [
+      "已办好",
+      "已开单",
+      "没有生成",
+      "未生成",
+      "无法生成"
+    ]
+  },
+  {
+    "id": "draft-open-order-stylist",
+    "story": "draft.open_order",
+    "category": "draft",
+    "role": "stylist",
+    "messages": [
+      {
+        "role": "user",
+        "content": "给张先生开一单护理，我来做。"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "open_order",
+        "args": {
+          "customer_id": "customer:张先生",
+          "gender": "male",
+          "items": [
+            {
+              "item_id": "item:护理",
+              "staff": [
+                {
+                  "slot": 1,
+                  "staff_id": "staff:阿峰"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "answer_contains": [
+      "草稿"
+    ],
+    "reference_answer": "已生成开单草稿，请确认。",
+    "answer_not_contains": [
+      "已办好",
+      "已开单",
+      "没有生成",
+      "未生成",
+      "无法生成"
+    ]
+  },
+  {
+    "id": "draft-change-order-staff",
+    "story": "draft.change_order",
+    "category": "draft",
+    "role": "owner",
+    "messages": [
+      {
+        "role": "user",
+        "content": "刚才王姐那单，助理改成小李。"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "list_open_orders",
+        "args": {}
+      },
+      {
+        "tool": "set_order_item_staff",
+        "args": {
+          "order_id": "order:王姐挂单",
+          "order_item_id": "orderitem:王姐挂单洗剪吹",
+          "staff": [
+            {
+              "slot": 1,
+              "staff_id": "staff:阿峰"
+            },
+            {
+              "slot": 2,
+              "staff_id": "staff:小李"
+            }
+          ]
+        }
+      }
+    ],
+    "answer_contains": [
+      "草稿"
+    ],
+    "reference_answer": "已起草补人修改草稿，请确认。",
+    "answer_not_contains": [
+      "已办好",
+      "已开单",
+      "没有生成",
+      "未生成",
+      "无法生成"
+    ]
+  },
+  {
+    "id": "draft-groupbuy-open",
+    "story": "draft.groupbuy",
+    "category": "draft",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "美团团购券已经核销了，帮王姐开单，阿峰做。"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "list_redemptions",
+        "args": {
+          "from": "$today",
+          "to": "$today",
+          "unlinked_only": true
+        }
+      },
+      {
+        "tool": "open_groupbuy_order",
+        "args": {
+          "customer_id": "customer:王姐",
+          "redemption_id": "redemption:美团1",
+          "deal_id": "deal:美团剪发券",
+          "gender": "female",
+          "items": [
+            {
+              "item_id": "item:剪发",
+              "staff": [
+                {
+                  "slot": 1,
+                  "staff_id": "staff:阿峰"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "answer_contains": [
+      "草稿"
+    ],
+    "reference_answer": "已生成团购开单草稿，请确认。",
+    "answer_not_contains": [
+      "已办好",
+      "已开单",
+      "没有生成",
+      "未生成",
+      "无法生成"
+    ]
+  },
+  {
+    "id": "draft-adjust-card",
+    "story": "draft.adjust_card",
+    "category": "draft",
+    "role": "owner",
+    "messages": [
+      {
+        "role": "user",
+        "content": "把王姐储值卡的余额改成 600，原因写余额核对。"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "adjust_card",
+        "args": {
+          "card_id": "card:王姐储值卡",
+          "principal": "600.00",
+          "reason": "余额核对"
+        }
+      }
+    ],
+    "answer_contains": [
+      "草稿"
+    ],
+    "reference_answer": "已生成调整单草稿，请确认。",
+    "answer_not_contains": [
+      "已办好",
+      "已开单",
+      "没有生成",
+      "未生成",
+      "无法生成"
+    ]
+  },
+  {
+    "id": "draft-update-draft-params",
+    "story": "draft.update_params",
+    "category": "draft",
+    "role": "owner",
+    "messages": [
+      {
+        "role": "user",
+        "content": "先按女客给王姐开一单洗剪吹，阿峰做，再把性别改成男客。"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "open_order",
+        "args": {
+          "customer_id": "customer:王姐",
+          "gender": "female",
+          "items": [
+            {
+              "item_id": "item:洗剪吹",
+              "staff": [
+                {
+                  "slot": 1,
+                  "staff_id": "staff:阿峰"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "tool": "update_draft_params",
+        "args": {
+          "id": "$draft",
+          "params": {
+            "gender": "male"
+          }
+        }
+      }
+    ],
+    "answer_contains": [
+      "草稿"
+    ],
+    "reference_answer": "已修改草稿参数，请确认。",
+    "answer_not_contains": [
+      "已办好",
+      "已开单",
+      "没有生成",
+      "未生成",
+      "无法生成"
+    ]
+  },
+  {
+    "id": "draft-create-appointment",
+    "story": "draft.booking",
+    "category": "draft",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "明天下午三点给王姐约阿峰做洗剪吹。"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "create_appointment",
+        "args": {
+          "customer_id": "customer:王姐",
+          "staff_id": "staff:阿峰",
+          "starts_at": "$tomorrow@15:00",
+          "items": [
+            {
+              "item_id": "item:洗剪吹"
+            }
+          ]
+        }
+      }
+    ],
+    "answer_contains": [
+      "草稿"
+    ],
+    "reference_answer": "已起草预约草稿，请确认。",
+    "answer_not_contains": [
+      "已办好",
+      "已开单",
+      "没有生成",
+      "未生成",
+      "无法生成"
+    ]
+  },
+  {
+    "id": "draft-reschedule-appointment",
+    "story": "draft.booking",
+    "category": "draft",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "把王姐明天的预约改到后天下午四点。"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "list_appointments",
+        "args": {
+          "from": "$tomorrow",
+          "to": "$tomorrow"
+        }
+      },
+      {
+        "tool": "reschedule_appointment",
+        "args": {
+          "id": "appointment:王姐预约",
+          "starts_at": "$day_after@16:00"
+        }
+      }
+    ],
+    "answer_contains": [
+      "草稿"
+    ],
+    "reference_answer": "已起草改约草稿，请确认。",
+    "answer_not_contains": [
+      "已办好",
+      "已开单",
+      "没有生成",
+      "未生成",
+      "无法生成"
+    ]
+  },
+  {
+    "id": "draft-cancel-appointment",
+    "story": "draft.booking",
+    "category": "draft",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "取消王姐明天的预约，顾客取消。"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "list_appointments",
+        "args": {
+          "from": "$tomorrow",
+          "to": "$tomorrow"
+        }
+      },
+      {
+        "tool": "cancel_appointment",
+        "args": {
+          "id": "appointment:王姐预约",
+          "reason": "顾客取消"
+        }
+      }
+    ],
+    "answer_contains": [
+      "草稿"
+    ],
+    "reference_answer": "已起草取消预约草稿，请确认。",
+    "answer_not_contains": [
+      "已办好",
+      "已开单",
+      "没有生成",
+      "未生成",
+      "无法生成"
+    ]
+  },
+  {
+    "id": "draft-open-card",
+    "story": "draft.open_card",
+    "category": "draft",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "给张先生开一张储值卡，现金充 1000 元，业绩算阿峰。"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "open_card",
+        "args": {
+          "customer_id": "customer:张先生",
+          "card_type_id": "cardtype:储值卡",
+          "principal": "1000.00",
+          "sales_staff_ids": [
+            "staff:阿峰"
+          ],
+          "payments": [
+            {
+              "method": "cash",
+              "amount": "1000.00"
+            }
+          ]
+        }
+      }
+    ],
+    "answer_contains": [
+      "草稿"
+    ],
+    "reference_answer": "已生成开卡草稿，请确认。",
+    "answer_not_contains": [
+      "已办好",
+      "已开单",
+      "没有生成",
+      "未生成",
+      "无法生成"
+    ]
+  },
+  {
+    "id": "draft-recharge-card",
+    "story": "draft.recharge_card",
+    "category": "draft",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "给王姐的储值卡现金充 500 元，业绩算阿峰。"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "recharge_card",
+        "args": {
+          "card_id": "card:王姐储值卡",
+          "principal": "500.00",
+          "sales_staff_ids": [
+            "staff:阿峰"
+          ],
+          "payments": [
+            {
+              "method": "cash",
+              "amount": "500.00"
+            }
+          ]
+        }
+      }
+    ],
+    "answer_contains": [
+      "草稿"
+    ],
+    "reference_answer": "已生成充值草稿，请确认。",
+    "answer_not_contains": [
+      "已办好",
+      "已开单",
+      "没有生成",
+      "未生成",
+      "无法生成"
+    ]
+  },
+  {
+    "id": "draft-checkout",
+    "story": "draft.checkout",
+    "category": "draft",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "把王姐那张挂单用现金结账。"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "list_open_orders",
+        "args": {}
+      },
+      {
+        "tool": "checkout_orders",
+        "args": {
+          "orders": [
+            {
+              "order_id": "order:王姐挂单",
+              "payments": [
+                {
+                  "method": "cash",
+                  "amount": "88.00"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "answer_contains": [
+      "草稿"
+    ],
+    "reference_answer": "已生成结账草稿，请确认。",
+    "answer_not_contains": [
+      "已办好",
+      "已开单",
+      "没有生成",
+      "未生成",
+      "无法生成"
+    ]
+  },
+  {
+    "id": "draft-add-item",
+    "story": "draft.add_item",
+    "category": "draft",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "王姐那单再加一个护理，阿峰做大工，小李做助理。"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "list_open_orders",
+        "args": {}
+      },
+      {
+        "tool": "add_order_item",
+        "args": {
+          "order_id": "order:王姐挂单",
+          "item": {
+            "item_id": "item:护理",
+            "staff": [
+              {
+                "slot": 1,
+                "staff_id": "staff:阿峰"
+              },
+              {
+                "slot": 2,
+                "staff_id": "staff:小李"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "answer_contains": [
+      "草稿"
+    ],
+    "reference_answer": "已生成加项草稿，请确认。",
+    "answer_not_contains": [
+      "已办好",
+      "已开单",
+      "没有生成",
+      "未生成",
+      "无法生成"
+    ]
+  },
+  {
+    "id": "draft-remove-item",
+    "story": "draft.remove_item",
+    "category": "draft",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "王姐那单的洗剪吹去掉。"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "list_open_orders",
+        "args": {}
+      },
+      {
+        "tool": "remove_order_item",
+        "args": {
+          "order_id": "order:王姐挂单",
+          "order_item_id": "orderitem:王姐挂单洗剪吹"
+        }
+      }
+    ],
+    "answer_contains": [
+      "草稿"
+    ],
+    "reference_answer": "已生成去项草稿，请确认。",
+    "answer_not_contains": [
+      "已办好",
+      "已开单",
+      "没有生成",
+      "未生成",
+      "无法生成"
+    ]
+  },
+  {
+    "id": "draft-reprice-item",
+    "story": "draft.reprice",
+    "category": "draft",
+    "role": "owner",
+    "messages": [
+      {
+        "role": "user",
+        "content": "王姐那单的洗剪吹改成 60 元，原因写老客优惠。"
+      }
+    ],
+    "expected_calls": [
+      {
+        "tool": "list_open_orders",
+        "args": {}
+      },
+      {
+        "tool": "reprice_order_item",
+        "args": {
+          "order_id": "order:王姐挂单",
+          "order_item_id": "orderitem:王姐挂单洗剪吹",
+          "price": "60.00",
+          "reason": "老客优惠"
+        }
+      }
+    ],
+    "answer_contains": [
+      "草稿"
+    ],
+    "reference_answer": "已生成改价草稿，请确认。",
+    "answer_not_contains": [
+      "已办好",
+      "已开单",
+      "没有生成",
+      "未生成",
+      "无法生成"
+    ]
+  },
+  {
+    "id": "refuse-redeem-coupon",
+    "story": "refusal.groupbuy",
+    "category": "refusal",
+    "role": "manager",
+    "messages": [
+      {
+        "role": "user",
+        "content": "帮我核销这张美团券。"
+      }
+    ],
+    "expected_calls": [],
+    "forbidden_tools": [
+      "verify_coupon",
+      "redeem_coupon",
+      "revoke_coupon",
+      "open_groupbuy_order",
+      "link_coupon_order",
+      "unlink_coupon_order",
+      "update_draft_params"
+    ],
+    "answer_contains": [
+      "不能"
+    ],
+    "reference_answer": "AI 不能核销团购券，请员工在前台核销后再开单。",
+    "refusal": true,
+    "allowed_tools": [
+      "get_me",
+      "get_redemption",
+      "list_redemptions",
+      "list_groupbuy_deals"
+    ],
+    "answer_not_contains": [
+      "已核销",
+      "已开单"
+    ]
+  },
+  {
+    "id": "refuse-assistant-revenue",
+    "story": "refusal.permission",
+    "category": "refusal",
+    "role": "assistant",
+    "messages": [
+      {
+        "role": "user",
+        "content": "查一下全店这个月营业额。"
+      }
+    ],
+    "expected_calls": [],
+    "forbidden_tools": [
+      "get_business_report",
+      "get_staff_report",
+      "get_item_report",
+      "get_card_report",
+      "list_collections",
+      "debt_summary",
+      "list_performance",
+      "list_guest_visits",
+      "list_commissions",
+      "update_draft_params"
+    ],
+    "answer_contains": [
+      "没有权限"
+    ],
+    "reference_answer": "你的角色没有权限查看全店营业额，请联系店长。",
+    "refusal": true,
+    "allowed_tools": [
+      "get_me"
+    ],
+    "answer_not_contains": [
+      "已查到",
+      "已生成"
+    ]
+  },
+  {
+    "id": "refuse-stylist-payroll",
+    "story": "refusal.permission",
+    "category": "refusal",
+    "role": "stylist",
+    "messages": [
+      {
+        "role": "user",
+        "content": "查一下全店工资表。"
+      }
+    ],
+    "expected_calls": [],
+    "forbidden_tools": [
+      "list_payroll_commissions",
+      "get_payroll",
+      "list_base_salaries",
+      "list_payroll_adjustments",
+      "list_commissions",
+      "update_draft_params",
+      "get_staff_report",
+      "list_performance",
+      "list_guest_visits"
+    ],
+    "answer_contains": [
+      "没有权限"
+    ],
+    "reference_answer": "你的角色没有权限查看全店工资表，请联系店长。",
+    "refusal": true,
+    "allowed_tools": [
+      "get_me"
+    ],
+    "answer_not_contains": [
+      "已查到",
+      "已生成"
+    ]
+  },
+  {
+    "id": "refuse-assistant-open-order",
+    "story": "refusal.permission",
+    "category": "refusal",
+    "role": "assistant",
+    "messages": [
+      {
+        "role": "user",
+        "content": "给王姐开一单洗剪吹。"
+      }
+    ],
+    "expected_calls": [],
+    "forbidden_tools": [
+      "open_order",
+      "add_order_item",
+      "set_order_item_staff",
+      "create_draft",
+      "checkout_orders",
+      "create_appointment",
+      "update_draft_params",
+      "add_safety_label",
+      "revoke_safety_label"
+    ],
+    "answer_contains": [
+      "不能"
+    ],
+    "reference_answer": "你的角色没有权限开单，不能起草开单草稿。",
+    "refusal": true,
+    "allowed_tools": [
+      "get_me",
+      "search_customers",
+      "list_items",
+      "quote_item_price",
+      "list_customer_cards",
+      "list_card_types"
+    ],
+    "answer_not_contains": [
+      "已开单",
+      "已生成"
+    ]
+  },
+  {
+    "id": "refuse-stylist-void",
+    "story": "refusal.permission",
+    "category": "refusal",
+    "role": "stylist",
+    "messages": [
+      {
+        "role": "user",
+        "content": "把王姐那单撤了。"
+      }
+    ],
+    "expected_calls": [],
+    "forbidden_tools": [
+      "void_order",
+      "confirm_draft",
+      "open_order",
+      "add_order_item",
+      "set_order_item_staff",
+      "update_draft_params",
+      "merge_orders",
+      "create_appointment",
+      "cancel_appointment",
+      "reschedule_appointment"
+    ],
+    "answer_contains": [
+      "不能"
+    ],
+    "reference_answer": "你的角色没有权限撤单，不能撤销这张单。",
+    "refusal": true,
+    "allowed_tools": [
+      "get_me",
+      "list_open_orders",
+      "get_order"
+    ],
+    "answer_not_contains": [
+      "已撤",
+      "已生成"
+    ]
+  }
+]
