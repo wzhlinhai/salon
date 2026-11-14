@@ -44,6 +44,8 @@ mutchecks.py --since <git-ref> [--jobs N] 正式运行选中项（必须带 --si
 逐份输出选中、通过、失败、not run (environment) 数量和最终总计；失败或未运行均非零退出。
 PostgreSQL 容器启动签名出现时，基线按包重试一次；变异由 mutcheck.sh 重试一次，
 退出码 4 或同一签名只记 not run (environment)，绝不解析为 caught。
+mutcheck.sh 对迁移文件的变异发现 migrate up 失败时退出 2（变异让迁移无法执行），
+这里按清单错误记 FAIL，不再因为输出里有容器启动签名而改记 environment。
 正式运行默认给每个 go worker 启动一个 PostgreSQL 容器（镜像同 dbtest.Image），
 把该容器的 SALON_TEST_PG_DSN 传给基线和 worker；结束、失败、Ctrl-C 或 SIGTERM 时只删除本次创建的
 salon-mutcheck-pg-<run>-<n> 容器。启动失败时相关项记 not run (environment)。--no-shared-pg
@@ -1619,7 +1621,7 @@ def run_go(entry, logs, results, gocache=None, pg_dsn=None, keep_pg=False):
         with log.open('w') as output:
             code = subprocess.run(command, cwd=ROOT, env=env, stdout=output, stderr=subprocess.STDOUT).returncode
         content = log.read_text(errors='replace')
-        if ENVIRONMENT_SIGNATURE in content:
+        if code != 2 and ENVIRONMENT_SIGNATURE in content:
             code = ENVIRONMENT_EXIT
         if code != ENVIRONMENT_EXIT and 'caught by:\n' in content:
             caught = re.findall(r'^--- FAIL: ([^\s(]+)', content.split('caught by:\n', 1)[1], re.M)

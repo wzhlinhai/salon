@@ -27,6 +27,8 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 保护检查不写用户的默认 Go 构建缓存：`mutchecks.py` 每次正式运行（包括 `--jobs 1`）以及 `--since` 的 `go list` 在 `.dev/mutcheck-gocache/<run>/` 下建立独立 `GOCACHE`，并传给基线、`mutcheck.sh` 和每个副本；只有正式运行开始时清理残留运行目录，成功、失败、异常、Ctrl-C 或 SIGTERM 时删除本次缓存。`--locate` 不运行 go 命令时不创建缓存，也不清理残留目录。基线共享该缓存；每个变异副本另建缓存并硬链接基线条目（含 `xx/<hash>-d/` 可执行目录），跑完一项后删除该变异新增的条目，峰值只随并发副本数和一个变异的编译量增长。所有 `go test` 带 `-trimpath`，不同路径的副本因此共享编译结果。基线前和每项变异前检查缓存所在磁盘剩余空间，低于 20 GB 时用中文消息停止，未运行项计为 `environment` 并以非零码退出，不计为 caught；测试可用 `MUTCHECK_DISK_HEADROOM_BYTES` 调低该下限。单独运行 `mutcheck.sh`（含 `--restore`）且没有设置 `GOCACHE` 时，同样在 `.dev/` 下使用临时缓存并在退出时删除。
 
+`mutcheck.sh` 退出码：0 测试抓到了变异；1 没有抓到；2 用法、匹配、构建错误，或变异让迁移无法执行（清单错误，`mutchecks.py` 计为 failed）；3 测试失败但没有 `--- FAIL` 行（超时、panic 等）；4 PostgreSQL 容器等环境失败（重试一次后仍失败，计为 not run (environment)）。迁移文件被改坏后 `migrate up` 失败会报 `mutcheck: mutated migration does not apply:` 并退出 2，不再重试或计为环境失败。
+
 `serve` 的可选环境变量：`HTTP_ADDR`（默认 `:8080`）、`TOKEN_TTL`（默认 `12h`）。健康检查 `GET /healthz`，登录 `POST /api/auth/login`。AI 对话的环境变量：`AI_API_KEY`（设置后才启用 `/api/ai/chat`；未设置时返回 503「AI 未启用」）、`AI_BASE_URL`（默认 `https://api.deepseek.com`）、`AI_MODEL`（默认 `deepseek-flash`）。密钥不写日志，也不出现在错误或响应里。
 
 `bootstrap` 开一个新租户：门店、内置的老板角色、四个默认角色（初始权限见 ADR-0009）和第一名老板。
