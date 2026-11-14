@@ -11,7 +11,8 @@
 // 环境变量：DATABASE_URL（必填）；serve 还需要 JWT_SECRET（至少 32 字节），
 // 可选 HTTP_ADDR（默认 :8080）、TOKEN_TTL（默认 12h）。
 // AI 对话可选 AI_API_KEY（设置后启用）、AI_BASE_URL（默认 https://api.deepseek.com）、
-// AI_MODEL（默认 deepseek-flash）。GROUPBUY_FAKE_PLATFORMS=meituan,douyin 只在开发环境
+// AI_MODEL（默认 deepseek-flash）、AI_EXTRA_HEADERS（每次模型请求附加的 HTTP 头，JSON 对象）。
+// GROUPBUY_FAKE_PLATFORMS=meituan,douyin 只在开发环境
 // 注册内存假团购平台，生产必须不设置。
 // 顾客小程序登录用 WECHAT_APPID 和 WECHAT_SECRET 启用微信官方接口；WECHAT_FAKE=1 只在
 // 开发环境启用假登录，二者不能同时设置。
@@ -115,14 +116,13 @@ func serve(ctx context.Context, pool *pgxpool.Pool) error {
 	if addr == "" {
 		addr = ":8080"
 	}
+	cfg, err := ai.OpenAIConfigFromEnv()
+	if err != nil {
+		return err
+	}
 	var model func() ai.Model
-	if key := os.Getenv("AI_API_KEY"); key != "" {
-		m := ai.NewOpenAIModel(ai.OpenAIConfig{
-			BaseURL:    os.Getenv("AI_BASE_URL"),
-			APIKey:     key,
-			Model:      os.Getenv("AI_MODEL"),
-			HTTPClient: &http.Client{Timeout: 60 * time.Second},
-		})
+	if cfg.APIKey != "" {
+		m := ai.NewOpenAIModel(cfg)
 		model = func() ai.Model { return m }
 	}
 	providers, fakes := fakeGroupbuy(os.Getenv("GROUPBUY_FAKE_PLATFORMS"))
