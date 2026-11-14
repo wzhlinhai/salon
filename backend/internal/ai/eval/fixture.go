@@ -2,15 +2,13 @@ package eval
 
 import (
 	"crypto/sha256"
+	"embed"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/google/uuid"
 
 	"github.com/wzhlinhai/salon/backend/internal/groupbuy"
 	"github.com/wzhlinhai/salon/backend/internal/groupbuy/fakeprovider"
@@ -27,6 +25,9 @@ type Fixture struct {
 	Callers     map[string]ops.Caller
 	Fingerprint string
 }
+
+//go:embed fixture.go
+var fixtureSource embed.FS
 
 var fixtureNow = time.Date(2026, 11, 10, 12, 0, 0, 0, settings.Location)
 
@@ -153,96 +154,33 @@ func Seed(t testing.TB) *Fixture {
 		"stylist":   s.MustCaller(stylistToken),
 		"assistant": s.MustCaller(assistantToken),
 	}
-	f.Fingerprint = fixtureFingerprint(t, s, f)
+	f.Fingerprint = fixtureFingerprint(f)
 	return f
 }
 
-// fixtureFingerprint 是固定门店数据的稳定指纹：业务读取结果里的 UUID 按符号引用归一，
-// 未登记引用的 UUID 统一记为 <uuid>，因此名称、价格、次数、时间、订单/预约/核销内容变化都会改变指纹。
-func fixtureFingerprint(t testing.TB, s *optest.Shop, f *Fixture) string {
-	parts := fixtureFingerprintParts(t, s, f)
-	sum := sha256.Sum256([]byte(strings.Join(parts, "\n")))
-	return hex.EncodeToString(sum[:])
-}
-
-func fixtureFingerprintParts(t testing.TB, s *optest.Shop, f *Fixture) []string {
-	refName := map[string]string{}
+// fixtureFingerprint 是 fixture.go 源码和符号引用名的 sha256；不读取业务操作的输出。
+func fixtureFingerprint(f *Fixture) string {
+	source, err := fixtureSource.ReadFile("fixture.go")
+	if err != nil {
+		panic("eval: embedded fixture.go: " + err.Error())
+	}
 	keys := make([]string, 0, len(f.Refs))
-	for key, id := range f.Refs {
-		refName[id] = key
+	for key := range f.Refs {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
-	parts := []string{"refs=" + strings.Join(keys, ",")}
-	tomorrow := fixtureNow.AddDate(0, 0, 1).Format(settings.DateLayout)
-	monthStart := time.Date(fixtureNow.Year(), fixtureNow.Month(), 1, 0, 0, 0, 0, settings.Location).Format(settings.DateLayout)
-	today := fixtureNow.Format(settings.DateLayout)
-	queries := []struct {
-		operation string
-		args      any
-	}{
-		{"list_items", map[string]any{}},
-		{"list_card_types", map[string]any{}},
-		{"list_staff_options", map[string]any{}},
-		{"search_customers", map[string]any{"query": "", "include_unidentified": true}},
-		{"list_open_orders", map[string]any{}},
-		{"list_appointments", map[string]any{"from": tomorrow, "to": tomorrow}},
-		{"list_redemptions", map[string]any{"from": today, "to": today}},
-		{"list_groupbuy_deals", map[string]any{}},
-		{"list_performance", map[string]any{"date_from": monthStart, "date_to": today}},
-		{"list_commissions", map[string]any{"date_from": monthStart, "date_to": today}},
-	}
-	for _, query := range queries {
-		body := s.Call(t, s.Owner, query.operation, query.args, 200).Body
-		raw, err := json.Marshal(normalizeFixtureValue(body, refName))
-		if err != nil {
-			t.Fatalf("fixture fingerprint %s: %v", query.operation, err)
-		}
-		parts = append(parts, query.operation+"="+string(raw))
-	}
-	return parts
+	return fingerprintFixtureSource(source, keys)
 }
 
-var volatileFixtureKeys = map[string]bool{
-	"created_at": true, "updated_at": true, "opened_at": true, "added_at": true,
-	"redeemed_at": true, "revoked_at": true, "linked_at": true, "decided_at": true,
-	"settled_at": true, "at": true,
-}
-
-func normalizeFixtureValue(value any, refName map[string]string) any {
-	switch v := value.(type) {
-	case string:
-		if name, ok := refName[v]; ok {
-			return "@" + name
-		}
-		if _, err := uuid.Parse(v); err == nil {
-			return "<uuid>"
-		}
-		return v
-	case []any:
-		out := make([]any, len(v))
-		for i, item := range v {
-			out[i] = normalizeFixtureValue(item, refName)
-		}
-		sort.Slice(out, func(i, j int) bool {
-			left, _ := json.Marshal(out[i])
-			right, _ := json.Marshal(out[j])
-			return string(left) < string(right)
-		})
-		return out
-	case map[string]any:
-		out := make(map[string]any, len(v))
-		for key, item := range v {
-			if volatileFixtureKeys[key] {
-				out[key] = "<time>"
-				continue
-			}
-			out[key] = normalizeFixtureValue(item, refName)
-		}
-		return out
-	default:
-		return value
+// fingerprintFixtureSource 计算源码和引用名的指纹，供 fixture 指纹和测试共用。
+func fingerprintFixtureSource(source []byte, refNames []string) string {
+	h := sha256.New()
+	_, _ = h.Write(source)
+	for _, name := range refNames {
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write([]byte(name))
 	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // ResolveString 把引用、日期宏和草稿占位符替换成实际值。

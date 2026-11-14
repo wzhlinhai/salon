@@ -514,15 +514,22 @@ func TestEvalRefusalOfferedTools(t *testing.T) {
 func TestEvalFixtureFingerprintStable(t *testing.T) {
 	first := Seed(t)
 	second := Seed(t)
-	if first.Fingerprint == second.Fingerprint {
-		return
+	if first.Fingerprint != second.Fingerprint {
+		t.Fatalf("same fixture source produced different fingerprints: %s vs %s", first.Fingerprint, second.Fingerprint)
 	}
-	firstParts := fixtureFingerprintParts(t, first.Shop, first)
-	secondParts := fixtureFingerprintParts(t, second.Shop, second)
-	for i := 0; i < len(firstParts) && i < len(secondParts); i++ {
-		if firstParts[i] != secondParts[i] {
-			t.Errorf("fingerprint part %d differs:\nfirst:  %s\nsecond: %s", i, firstParts[i], secondParts[i])
-		}
+}
+
+func TestEvalFixtureFingerprintChangesWithSource(t *testing.T) {
+	source := []byte("package eval\n// fixture seed\n")
+	changed := []byte("package eval\n// fixture seed changed\n")
+	refs := []string{"customer:王姐", "item:洗剪吹"}
+	if fingerprintFixtureSource(source, refs) == fingerprintFixtureSource(changed, refs) {
+		t.Fatal("changed fixture source must change the fingerprint")
 	}
-	t.Fatalf("fixture fingerprints differ: %s vs %s", first.Fingerprint, second.Fingerprint)
+	if fingerprintFixtureSource(source, refs) == fingerprintFixtureSource(source, []string{"customer:王姐"}) {
+		t.Fatal("changed symbolic refs must change the fingerprint")
+	}
+	if fingerprintFixtureSource(source, refs) != fingerprintFixtureSource(source, []string{"customer:王姐", "item:洗剪吹"}) {
+		t.Fatal("fingerprint must be deterministic")
+	}
 }

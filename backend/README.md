@@ -542,7 +542,7 @@ go run ./cmd/aieval replay /tmp/cassette.json --out /tmp/ai-eval-replay.json
 go run ./cmd/aieval compare /tmp/ai-eval-before.json /tmp/ai-eval-after.json
 ```
 
-`run` 与 `salon serve` 使用同一组环境变量：`AI_API_KEY`（必填，缺失时给出明确错误）、`AI_BASE_URL`、`AI_MODEL`；报告只记录 base URL 的 host，不记录密钥或完整地址。`--record` 把每次模型响应按用例和调用顺序写入 cassette；`replay` 离线重放，校验消息数和工具列表名，并把录制时的符号引用 ID 换成本次 fixture 的 ID，不一致时明确失败。`compare` 输出各指标的变化和通过状态翻转的用例；两份报告的用例文件哈希不同时拒绝比较，确认用例一致后加 `--allow-different-cases`。
+`run` 与 `salon serve` 使用同一组环境变量：`AI_API_KEY`（必填，缺失时给出明确错误）、`AI_BASE_URL`、`AI_MODEL`；报告只记录 base URL 的 host，不记录密钥或完整地址。`--record` 把每次模型响应按用例和调用顺序写入 cassette；cassette 记录提示词指纹、fixture 指纹（`fixture.go` 源码和符号引用名的 sha256）以及每次 system/user 消息。`replay` 离线重放，校验消息数、工具列表名、指纹和 system/user 内容，并把录制时的符号引用 ID 换成本次 fixture 的 ID，不一致时明确失败。`compare` 输出各指标的变化和通过状态翻转的用例；两份报告的用例文件哈希不同时拒绝比较，确认用例一致后加 `--allow-different-cases`。
 
 指标：工具选择（期望工具按顺序出现、不出现禁止工具）、参数（逐次调用和逐条用例都看期望参数子集）、回答（`answer_contains` 全部出现）、工具成功（匹配到的调用没有报错）、总体（以上全部通过）。模型错误和超时按失败记录，不中断评测；报告包含每条用例的来源、草稿、差异、耗时和模型调用次数，以及按故事/类别的汇总。`known_gap` 用例照常评分但单独统计。
 
