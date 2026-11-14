@@ -87,37 +87,39 @@ type AiDraftEvent struct {
 }
 
 type Appointment struct {
-	TenantID   uuid.UUID
-	StoreID    uuid.UUID
-	ID         uuid.UUID
-	StaffID    uuid.UUID
-	CustomerID *uuid.UUID
-	Kind       string
-	StartsAt   pgtype.Timestamptz
-	EndsAt     pgtype.Timestamptz
-	Status     string
-	Note       *string
-	OrderID    *uuid.UUID
-	CreatedBy  uuid.UUID
-	CreatedAt  pgtype.Timestamptz
+	TenantID          uuid.UUID
+	StoreID           uuid.UUID
+	ID                uuid.UUID
+	StaffID           uuid.UUID
+	CustomerID        *uuid.UUID
+	Kind              string
+	StartsAt          pgtype.Timestamptz
+	EndsAt            pgtype.Timestamptz
+	Status            string
+	Note              *string
+	OrderID           *uuid.UUID
+	CreatedBy         *uuid.UUID
+	CreatedAt         pgtype.Timestamptz
+	CreatedByCustomer *uuid.UUID
 }
 
 type AppointmentEvent struct {
-	TenantID      uuid.UUID
-	StoreID       uuid.UUID
-	ID            uuid.UUID
-	AppointmentID uuid.UUID
-	Kind          string
-	FromStartsAt  pgtype.Timestamptz
-	FromEndsAt    pgtype.Timestamptz
-	ToStartsAt    pgtype.Timestamptz
-	ToEndsAt      pgtype.Timestamptz
-	FromStaffID   *uuid.UUID
-	ToStaffID     uuid.UUID
-	Reason        *string
-	Note          *string
-	ActorStaffID  uuid.UUID
-	CreatedAt     pgtype.Timestamptz
+	TenantID        uuid.UUID
+	StoreID         uuid.UUID
+	ID              uuid.UUID
+	AppointmentID   uuid.UUID
+	Kind            string
+	FromStartsAt    pgtype.Timestamptz
+	FromEndsAt      pgtype.Timestamptz
+	ToStartsAt      pgtype.Timestamptz
+	ToEndsAt        pgtype.Timestamptz
+	FromStaffID     *uuid.UUID
+	ToStaffID       uuid.UUID
+	Reason          *string
+	Note            *string
+	ActorStaffID    *uuid.UUID
+	CreatedAt       pgtype.Timestamptz
+	ActorCustomerID *uuid.UUID
 }
 
 type AppointmentItem struct {
@@ -1042,6 +1044,7 @@ type Staff struct {
 	TokenVersion  int32
 	FailedLogins  int32
 	LockedUntil   pgtype.Timestamptz
+	SelfBookable  bool
 }
 
 type StaffBaseSalary struct {

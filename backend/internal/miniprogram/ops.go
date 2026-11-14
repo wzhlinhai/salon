@@ -14,10 +14,11 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/settings"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 
-// Register 声明顾客本人可调用的只读操作。它们只认 CustomerSelf，不向 AI 开放。
+// Register 声明顾客本人可调用的操作。它们只认 CustomerSelf，不向 AI 开放。
 func Register(r *ops.Registry) {
 	ops.Register(r, ops.Operation[struct{}, MyProfile]{
 		Name: "my_profile", Summary: "查看本人的档案与门店", Kind: ops.Read,
@@ -38,6 +39,22 @@ func Register(r *ops.Registry) {
 	ops.Register(r, ops.Operation[struct{}, MyAppointments]{
 		Name: "my_appointments", Summary: "查看本人的预约", Kind: ops.Read,
 		Permission: ops.CustomerSelf, AI: ops.AINone, Handle: myAppointments,
+	})
+	ops.Register(r, ops.Operation[struct{}, MyBookingOptions]{
+		Name: "my_booking_options", Summary: "查看可自助预约的发型师、项目和门店规则", Kind: ops.Read,
+		Permission: ops.CustomerSelf, AI: ops.AINone, Handle: myBookingOptions,
+	})
+	ops.Register(r, ops.Operation[MyAvailableSlotsInput, MyAvailableSlots]{
+		Name: "my_available_slots", Summary: "查看某发型师某营业日的可自助预约开始时间", Kind: ops.Read,
+		Permission: ops.CustomerSelf, AI: ops.AINone, Handle: myAvailableSlots,
+	})
+	ops.Register(r, ops.Operation[BookAppointmentInput, MyAppointment]{
+		Name: "book_appointment", Summary: "顾客本人自助预约，新建待确认预约", Kind: ops.Write,
+		Permission: ops.CustomerSelf, AI: ops.AINone, Handle: bookAppointment,
+	})
+	ops.Register(r, ops.Operation[CancelMyAppointmentInput, MyAppointment]{
+		Name: "cancel_my_appointment", Summary: "取消本人尚未开始的预约", Kind: ops.Write,
+		Permission: ops.CustomerSelf, AI: ops.AINone, Handle: cancelMyAppointment,
 	})
 }
 
@@ -238,4 +255,77 @@ func myAppointments(ctx context.Context, env ops.Env, _ *struct{}) (*MyAppointme
 		out.Entries = append(out.Entries, MyAppointment{ID: a.ID, Status: a.Status, StartsAt: a.StartsAt, EndsAt: a.EndsAt, Staff: staff.Ref{ID: a.Staff.ID, Name: a.Staff.Name}, Items: a.Items})
 	}
 	return out, nil
+}
+
+func myAppointment(a booking.Appointment) MyAppointment {
+	return MyAppointment{ID: a.ID, Status: a.Status, StartsAt: a.StartsAt, EndsAt: a.EndsAt, Staff: staff.Ref{ID: a.Staff.ID, Name: a.Staff.Name}, Items: a.Items}
+}
+
+func myBookingOptions(ctx context.Context, env ops.Env, _ *struct{}) (*MyBookingOptions, error) {
+	if _, err := selfCustomer(ctx, env); err != nil {
+		return nil, err
+	}
+	staffList, err := booking.SelfBookableStaff(ctx, env)
+	if err != nil {
+		return nil, err
+	}
+	items, err := booking.SelfBookableItems(ctx, env)
+	if err != nil {
+		return nil, err
+	}
+	rules, err := booking.SelfBookingRules(ctx, env)
+	if err != nil {
+		return nil, err
+	}
+	return &MyBookingOptions{Staff: staffList, Items: items, Rules: rules}, nil
+}
+
+func myAvailableSlots(ctx context.Context, env ops.Env, in *MyAvailableSlotsInput) (*MyAvailableSlots, error) {
+	customer, err := selfCustomer(ctx, env)
+	if err != nil {
+		return nil, err
+	}
+	day, err := parseSlotDate(in.Date)
+	if err != nil {
+		return nil, err
+	}
+	slots, err := booking.SelfBookingSlots(ctx, env, customer.ID, in.StaffID, day, in.ItemIDs)
+	if err != nil {
+		return nil, err
+	}
+	return &MyAvailableSlots{Date: in.Date, Slots: slots}, nil
+}
+
+func bookAppointment(ctx context.Context, env ops.Env, in *BookAppointmentInput) (*MyAppointment, error) {
+	customer, err := selfCustomer(ctx, env)
+	if err != nil {
+		return nil, err
+	}
+	a, err := booking.CreateSelfAppointment(ctx, env, customer.ID, in.StaffID, in.StartsAt, in.ItemIDs, in.Note)
+	if err != nil {
+		return nil, err
+	}
+	out := myAppointment(*a)
+	return &out, nil
+}
+
+func cancelMyAppointment(ctx context.Context, env ops.Env, in *CancelMyAppointmentInput) (*MyAppointment, error) {
+	customer, err := selfCustomer(ctx, env)
+	if err != nil {
+		return nil, err
+	}
+	a, err := booking.CancelSelfAppointment(ctx, env, customer.ID, in.ID)
+	if err != nil {
+		return nil, err
+	}
+	out := myAppointment(*a)
+	return &out, nil
+}
+
+func parseSlotDate(value string) (time.Time, error) {
+	day, err := time.Parse(settings.DateLayout, value)
+	if err != nil {
+		return time.Time{}, ops.Rule("日期格式不正确")
+	}
+	return day, nil
 }

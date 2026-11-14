@@ -1,7 +1,10 @@
+-- CreateStaff 不写 self_bookable，RETURNING 只列 00053 之前的列：
+-- 历史迁移测试会在旧版本 schema 上调用 staff.Bootstrap，引用新列会让旧库升级前失败。
+-- 新建后需要开启自助预约时，由 create_staff 再调用 UpdateStaffProfile。
 -- name: CreateStaff :one
 INSERT INTO staff (tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING *;
+RETURNING id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until;
 
 -- name: GetStaff :one
 SELECT * FROM staff WHERE id = $1;
@@ -17,7 +20,7 @@ FROM staff WHERE id = $1 FOR NO KEY UPDATE;
 SELECT * FROM staff WHERE store_id = $1 ORDER BY active DESC, number, id;
 
 -- name: UpdateStaffProfile :one
-UPDATE staff SET name = $2, number = $3, level_id = $4, position_id = $5
+UPDATE staff SET name = $2, number = $3, level_id = $4, position_id = $5, self_bookable = $6
 WHERE id = $1
 RETURNING *;
 
@@ -50,3 +53,16 @@ SELECT id, name FROM staff WHERE store_id = @store_id AND id = ANY(@ids::uuid[])
 
 -- name: StaffLevels :many
 SELECT id, name, level_id FROM staff WHERE store_id = @store_id AND active AND id = ANY(@ids::uuid[]);
+
+-- name: GetSelfBookableStaff :one
+SELECT * FROM staff WHERE store_id = @store_id AND id = @id AND active AND self_bookable;
+
+-- name: LockSelfBookableStaff :one
+SELECT * FROM staff WHERE store_id = @store_id AND id = @id AND active AND self_bookable FOR SHARE;
+
+-- name: ListSelfBookableStaff :many
+SELECT s.id, s.name, l.name AS level_name
+FROM staff s
+LEFT JOIN levels l ON l.tenant_id = s.tenant_id AND l.id = s.level_id
+WHERE s.store_id = @store_id AND s.active AND s.self_bookable
+ORDER BY s.number, s.id;

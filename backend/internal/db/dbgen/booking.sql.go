@@ -13,24 +13,25 @@ import (
 )
 
 const addAppointmentEvent = `-- name: AddAppointmentEvent :exec
-INSERT INTO appointment_events (tenant_id, store_id, appointment_id, kind, from_starts_at, from_ends_at, to_starts_at, to_ends_at, from_staff_id, to_staff_id, reason, note, actor_staff_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+INSERT INTO appointment_events (tenant_id, store_id, appointment_id, kind, from_starts_at, from_ends_at, to_starts_at, to_ends_at, from_staff_id, to_staff_id, reason, note, actor_staff_id, actor_customer_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 `
 
 type AddAppointmentEventParams struct {
-	TenantID      uuid.UUID
-	StoreID       uuid.UUID
-	AppointmentID uuid.UUID
-	Kind          string
-	FromStartsAt  pgtype.Timestamptz
-	FromEndsAt    pgtype.Timestamptz
-	ToStartsAt    pgtype.Timestamptz
-	ToEndsAt      pgtype.Timestamptz
-	FromStaffID   *uuid.UUID
-	ToStaffID     uuid.UUID
-	Reason        *string
-	Note          *string
-	ActorStaffID  uuid.UUID
+	TenantID        uuid.UUID
+	StoreID         uuid.UUID
+	AppointmentID   uuid.UUID
+	Kind            string
+	FromStartsAt    pgtype.Timestamptz
+	FromEndsAt      pgtype.Timestamptz
+	ToStartsAt      pgtype.Timestamptz
+	ToEndsAt        pgtype.Timestamptz
+	FromStaffID     *uuid.UUID
+	ToStaffID       uuid.UUID
+	Reason          *string
+	Note            *string
+	ActorStaffID    *uuid.UUID
+	ActorCustomerID *uuid.UUID
 }
 
 func (q *Queries) AddAppointmentEvent(ctx context.Context, arg AddAppointmentEventParams) error {
@@ -48,6 +49,7 @@ func (q *Queries) AddAppointmentEvent(ctx context.Context, arg AddAppointmentEve
 		arg.Reason,
 		arg.Note,
 		arg.ActorStaffID,
+		arg.ActorCustomerID,
 	)
 	return err
 }
@@ -79,7 +81,7 @@ func (q *Queries) AddAppointmentItem(ctx context.Context, arg AddAppointmentItem
 const completeAppointment = `-- name: CompleteAppointment :one
 UPDATE appointments SET status='completed', order_id=$3
 WHERE store_id=$1 AND id=$2
-RETURNING tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at
+RETURNING tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at, created_by_customer
 `
 
 type CompleteAppointmentParams struct {
@@ -105,27 +107,50 @@ func (q *Queries) CompleteAppointment(ctx context.Context, arg CompleteAppointme
 		&i.OrderID,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.CreatedByCustomer,
 	)
 	return i, err
 }
 
+const countCustomerSelfBookings = `-- name: CountCustomerSelfBookings :one
+SELECT count(*) FROM appointments
+WHERE store_id=$1 AND customer_id=$2
+ AND created_by_customer IS NOT NULL
+ AND status IN ('pending','confirmed')
+ AND starts_at >= $3
+`
+
+type CountCustomerSelfBookingsParams struct {
+	StoreID    uuid.UUID
+	CustomerID *uuid.UUID
+	Now        pgtype.Timestamptz
+}
+
+func (q *Queries) CountCustomerSelfBookings(ctx context.Context, arg CountCustomerSelfBookingsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countCustomerSelfBookings, arg.StoreID, arg.CustomerID, arg.Now)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAppointment = `-- name: CreateAppointment :one
-INSERT INTO appointments (tenant_id, store_id, staff_id, customer_id, kind, starts_at, ends_at, status, note, created_by)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-RETURNING tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at
+INSERT INTO appointments (tenant_id, store_id, staff_id, customer_id, kind, starts_at, ends_at, status, note, created_by, created_by_customer)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+RETURNING tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at, created_by_customer
 `
 
 type CreateAppointmentParams struct {
-	TenantID   uuid.UUID
-	StoreID    uuid.UUID
-	StaffID    uuid.UUID
-	CustomerID *uuid.UUID
-	Kind       string
-	StartsAt   pgtype.Timestamptz
-	EndsAt     pgtype.Timestamptz
-	Status     string
-	Note       *string
-	CreatedBy  uuid.UUID
+	TenantID          uuid.UUID
+	StoreID           uuid.UUID
+	StaffID           uuid.UUID
+	CustomerID        *uuid.UUID
+	Kind              string
+	StartsAt          pgtype.Timestamptz
+	EndsAt            pgtype.Timestamptz
+	Status            string
+	Note              *string
+	CreatedBy         *uuid.UUID
+	CreatedByCustomer *uuid.UUID
 }
 
 func (q *Queries) CreateAppointment(ctx context.Context, arg CreateAppointmentParams) (Appointment, error) {
@@ -140,6 +165,7 @@ func (q *Queries) CreateAppointment(ctx context.Context, arg CreateAppointmentPa
 		arg.Status,
 		arg.Note,
 		arg.CreatedBy,
+		arg.CreatedByCustomer,
 	)
 	var i Appointment
 	err := row.Scan(
@@ -156,12 +182,13 @@ func (q *Queries) CreateAppointment(ctx context.Context, arg CreateAppointmentPa
 		&i.OrderID,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.CreatedByCustomer,
 	)
 	return i, err
 }
 
 const findOverlappingAppointment = `-- name: FindOverlappingAppointment :one
-SELECT tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at FROM appointments
+SELECT tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at, created_by_customer FROM appointments
 WHERE store_id=$1 AND staff_id=$2 AND status IN ('pending','confirmed')
  AND starts_at < $3 AND ends_at > $4
  AND ($5::uuid IS NULL OR id <> $5)
@@ -200,12 +227,13 @@ func (q *Queries) FindOverlappingAppointment(ctx context.Context, arg FindOverla
 		&i.OrderID,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.CreatedByCustomer,
 	)
 	return i, err
 }
 
 const getAppointment = `-- name: GetAppointment :one
-SELECT tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at FROM appointments WHERE store_id=$1 AND id=$2
+SELECT tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at, created_by_customer FROM appointments WHERE store_id=$1 AND id=$2
 `
 
 type GetAppointmentParams struct {
@@ -230,16 +258,17 @@ func (q *Queries) GetAppointment(ctx context.Context, arg GetAppointmentParams) 
 		&i.OrderID,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.CreatedByCustomer,
 	)
 	return i, err
 }
 
 const listAppointmentEvents = `-- name: ListAppointmentEvents :many
-SELECT e.tenant_id, e.store_id, e.id, e.appointment_id, e.kind, e.from_starts_at, e.from_ends_at, e.to_starts_at, e.to_ends_at, e.from_staff_id, e.to_staff_id, e.reason, e.note, e.actor_staff_id, e.created_at, actor.name AS actor_name, fs.name AS from_staff_name, ts.name AS to_staff_name
+SELECT e.tenant_id, e.store_id, e.id, e.appointment_id, e.kind, e.from_starts_at, e.from_ends_at, e.to_starts_at, e.to_ends_at, e.from_staff_id, e.to_staff_id, e.reason, e.note, e.actor_staff_id, e.created_at, e.actor_customer_id, actor.name AS actor_name, fs.name AS from_staff_name, ts.name AS to_staff_name
 FROM appointment_events e
-JOIN staff actor ON actor.id=e.actor_staff_id
+LEFT JOIN staff actor ON actor.id=e.actor_staff_id
 LEFT JOIN staff fs ON fs.id=e.from_staff_id
-JOIN staff ts ON ts.id=e.to_staff_id
+LEFT JOIN staff ts ON ts.id=e.to_staff_id
 WHERE e.store_id=$1 AND e.appointment_id=ANY($2::uuid[])
 ORDER BY e.appointment_id, e.created_at, e.id
 `
@@ -250,24 +279,25 @@ type ListAppointmentEventsParams struct {
 }
 
 type ListAppointmentEventsRow struct {
-	TenantID      uuid.UUID
-	StoreID       uuid.UUID
-	ID            uuid.UUID
-	AppointmentID uuid.UUID
-	Kind          string
-	FromStartsAt  pgtype.Timestamptz
-	FromEndsAt    pgtype.Timestamptz
-	ToStartsAt    pgtype.Timestamptz
-	ToEndsAt      pgtype.Timestamptz
-	FromStaffID   *uuid.UUID
-	ToStaffID     uuid.UUID
-	Reason        *string
-	Note          *string
-	ActorStaffID  uuid.UUID
-	CreatedAt     pgtype.Timestamptz
-	ActorName     string
-	FromStaffName *string
-	ToStaffName   string
+	TenantID        uuid.UUID
+	StoreID         uuid.UUID
+	ID              uuid.UUID
+	AppointmentID   uuid.UUID
+	Kind            string
+	FromStartsAt    pgtype.Timestamptz
+	FromEndsAt      pgtype.Timestamptz
+	ToStartsAt      pgtype.Timestamptz
+	ToEndsAt        pgtype.Timestamptz
+	FromStaffID     *uuid.UUID
+	ToStaffID       uuid.UUID
+	Reason          *string
+	Note            *string
+	ActorStaffID    *uuid.UUID
+	CreatedAt       pgtype.Timestamptz
+	ActorCustomerID *uuid.UUID
+	ActorName       *string
+	FromStaffName   *string
+	ToStaffName     *string
 }
 
 func (q *Queries) ListAppointmentEvents(ctx context.Context, arg ListAppointmentEventsParams) ([]ListAppointmentEventsRow, error) {
@@ -295,6 +325,7 @@ func (q *Queries) ListAppointmentEvents(ctx context.Context, arg ListAppointment
 			&i.Note,
 			&i.ActorStaffID,
 			&i.CreatedAt,
+			&i.ActorCustomerID,
 			&i.ActorName,
 			&i.FromStaffName,
 			&i.ToStaffName,
@@ -359,7 +390,7 @@ func (q *Queries) ListAppointmentItems(ctx context.Context, arg ListAppointmentI
 }
 
 const listAppointments = `-- name: ListAppointments :many
-SELECT tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at FROM appointments
+SELECT tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at, created_by_customer FROM appointments
 WHERE store_id=$1
  AND starts_at >= $2 AND starts_at < $3
  AND ($4::uuid IS NULL OR staff_id = $4)
@@ -401,6 +432,7 @@ func (q *Queries) ListAppointments(ctx context.Context, arg ListAppointmentsPara
 			&i.OrderID,
 			&i.CreatedBy,
 			&i.CreatedAt,
+			&i.CreatedByCustomer,
 		); err != nil {
 			return nil, err
 		}
@@ -413,7 +445,7 @@ func (q *Queries) ListAppointments(ctx context.Context, arg ListAppointmentsPara
 }
 
 const listCustomerAppointments = `-- name: ListCustomerAppointments :many
-SELECT tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at FROM appointments
+SELECT tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at, created_by_customer FROM appointments
 WHERE store_id=$1 AND customer_id=$2 AND kind='appointment'
  AND (
   (status IN ('pending','confirmed') AND ends_at >= $3)
@@ -458,6 +490,7 @@ func (q *Queries) ListCustomerAppointments(ctx context.Context, arg ListCustomer
 			&i.OrderID,
 			&i.CreatedBy,
 			&i.CreatedAt,
+			&i.CreatedByCustomer,
 		); err != nil {
 			return nil, err
 		}
@@ -469,8 +502,54 @@ func (q *Queries) ListCustomerAppointments(ctx context.Context, arg ListCustomer
 	return items, nil
 }
 
+const listStaffOccupied = `-- name: ListStaffOccupied :many
+SELECT id, starts_at, ends_at FROM appointments
+WHERE store_id=$1 AND staff_id=$2
+ AND status IN ('pending','confirmed')
+ AND starts_at < $3 AND ends_at > $4
+ORDER BY starts_at, id
+`
+
+type ListStaffOccupiedParams struct {
+	StoreID  uuid.UUID
+	StaffID  uuid.UUID
+	DayEnd   pgtype.Timestamptz
+	DayStart pgtype.Timestamptz
+}
+
+type ListStaffOccupiedRow struct {
+	ID       uuid.UUID
+	StartsAt pgtype.Timestamptz
+	EndsAt   pgtype.Timestamptz
+}
+
+func (q *Queries) ListStaffOccupied(ctx context.Context, arg ListStaffOccupiedParams) ([]ListStaffOccupiedRow, error) {
+	rows, err := q.db.Query(ctx, listStaffOccupied,
+		arg.StoreID,
+		arg.StaffID,
+		arg.DayEnd,
+		arg.DayStart,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListStaffOccupiedRow
+	for rows.Next() {
+		var i ListStaffOccupiedRow
+		if err := rows.Scan(&i.ID, &i.StartsAt, &i.EndsAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockAppointment = `-- name: LockAppointment :one
-SELECT tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at FROM appointments WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
+SELECT tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at, created_by_customer FROM appointments WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
 `
 
 type LockAppointmentParams struct {
@@ -495,8 +574,23 @@ func (q *Queries) LockAppointment(ctx context.Context, arg LockAppointmentParams
 		&i.OrderID,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.CreatedByCustomer,
 	)
 	return i, err
+}
+
+const lockCustomerSelfBooking = `-- name: LockCustomerSelfBooking :exec
+SELECT pg_advisory_xact_lock(hashtextextended(($1::uuid)::text || '/self_booking/' || ($2::uuid)::text, 0))
+`
+
+type LockCustomerSelfBookingParams struct {
+	StoreID    uuid.UUID
+	CustomerID uuid.UUID
+}
+
+func (q *Queries) LockCustomerSelfBooking(ctx context.Context, arg LockCustomerSelfBookingParams) error {
+	_, err := q.db.Exec(ctx, lockCustomerSelfBooking, arg.StoreID, arg.CustomerID)
+	return err
 }
 
 const occupiedStaff = `-- name: OccupiedStaff :many
@@ -551,7 +645,7 @@ func (q *Queries) OrderHasCompletedAppointment(ctx context.Context, arg OrderHas
 const rescheduleAppointment = `-- name: RescheduleAppointment :one
 UPDATE appointments SET staff_id=$3, starts_at=$4, ends_at=$5
 WHERE store_id=$1 AND id=$2
-RETURNING tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at
+RETURNING tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at, created_by_customer
 `
 
 type RescheduleAppointmentParams struct {
@@ -585,6 +679,7 @@ func (q *Queries) RescheduleAppointment(ctx context.Context, arg RescheduleAppoi
 		&i.OrderID,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.CreatedByCustomer,
 	)
 	return i, err
 }
@@ -592,7 +687,7 @@ func (q *Queries) RescheduleAppointment(ctx context.Context, arg RescheduleAppoi
 const setAppointmentStatus = `-- name: SetAppointmentStatus :one
 UPDATE appointments SET status=$3
 WHERE store_id=$1 AND id=$2
-RETURNING tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at
+RETURNING tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at, created_by_customer
 `
 
 type SetAppointmentStatusParams struct {
@@ -618,6 +713,7 @@ func (q *Queries) SetAppointmentStatus(ctx context.Context, arg SetAppointmentSt
 		&i.OrderID,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.CreatedByCustomer,
 	)
 	return i, err
 }

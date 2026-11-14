@@ -88,9 +88,23 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 | my_cards | 本店发行的卡、卡类型、余额、积分、有效期和剩余次数 |
 | my_card_ledger | 本人一张卡的余额变动；别人的卡按不存在处理 |
 | my_orders | 本人已结账和已撤单的单、项目、支付方式和金额 |
-| my_appointments | 本人待确认/已确认的未来预约，再列最近 90 天的其他预约 |
+| my_appointments | 本人待确认/已确认的未来预约（含顾客自助预约），再列最近 90 天的其他预约 |
+| my_booking_options | 可自助预约的发型师（含级别）、启用且可约的项目和预约规则；不含价格 |
+| my_available_slots | 某发型师某营业日按 30 分钟网格开始的可用时间 |
+| book_appointment | 顾客本人自助预约：新建待确认预约，受预约规则约束 |
+| cancel_my_appointment | 取消本人尚未开始的待确认或已确认预约 |
 
 - 卡和消费明细的读取按批查询，条数不随卡数、单数增长；消费明细不返回提成、业绩、员工内部字段，只保留服务岗位员工姓名。顾客合并后，绑定和本人的读取都跟随到保留的顾客，看到的是同一个人的数据。
+- 自助预约只接受在职、允许顾客自助预约（`staff.self_bookable`）且属于本店的发型师；`update_staff` 的 `self_bookable` 可修改，权限不变并照常记录改前改后。预约的“哪一天”统一取开始时间所属营业日（`settings.BusinessDate`）：当天执行的规则、班次、占用窗口、今天/可约天数比较和 slots 生成都按这一个营业日；营业时段校验不允许跨午夜，因此 slots 不生成午夜后的时段，凌晨 00:00 到该营业日结束之间的开始时间属于前一天，落在前一天的日历营业时段之外。`book_appointment` 与 `my_available_slots` 共用 `internal/booking` 的同一套判断，规则依次为：
+  - 发型师在职、可自助预约且在本店；
+  - 至少一个项目，项目启用且可约，不能重复（错误提示与前台代约相同）；
+  - 开始时间落在本地整点或半点（`:00`/`:30`）；
+  - 满足 `booking_min_lead_minutes` 的提前量（复用 `booking.CheckLeadTime`）；
+  - 满足营业时段、不能早于今天、不超过 `booking_max_days_ahead`、不能是已经过去的时段；
+  - 当天有执行班次时，整段预约落在班次上班到下班之间；没有班次只受营业时段限制；
+  - 不与同一发型师的待确认/已确认预约或私约占位重叠，相切允许；顾客看到的冲突提示不带其他记录 ID；
+  - 每位顾客在本店最多同时保留 3 个未来待到店的自助预约，按顾客咨询锁串行，并发也不能超过。
+- 规则拒绝为 409 并返回可直接展示的中文提示。`my_available_slots` 一次读取发型师、项目、当天规则、班次与当天占用，再在内存中逐槽过滤，查询数不随槽数或预约数增长；项目时长为所选项目之和，都为 0 时取 `booking_default_minutes`。`cancel_my_appointment` 只取消本人在本店、状态为待确认或已确认且尚未开始的预约；别人的、别的门店的和不存在的都按不存在处理。
 
 ## 门店设置（ADR-0002）
 
@@ -274,7 +288,7 @@ Reconcile 按 `collections.business_date`（补录单写入纸单日；为空的
 - `audit_log` 只追加，`salon_app` 只有 SELECT 和 INSERT 权限。日志与业务操作在同一事务里写入，任何一步失败都会一起回滚。同一员工或角色的修改用行锁排队，在读取改前快照前加锁，日志的改前才接得上前一次的改后。
 - 当前记录角色的新建、修改、删除，以及员工的新建、档案修改、登录设置、停用、恢复和角色分配；保留改前改后，删除角色时还保留持有员工的 ID、姓名。`list_audit_log` 需要操作日志权限，可按目标 ID 查询。每条日志记录目标种类及其关联顾客；`list_audit_log` 按调用者的顾客查看范围过滤关联顾客的日志。班次（`shift`）、员工班次（`staff_shift`，目标为员工 ID）、补卡与作废补卡（`punch`，目标为打卡 ID）、考勤核准与撤销（`attendance_approval`，目标为核准 ID）均不关联顾客，只需要操作日志权限即可查看；底薪（`base_salary`，目标为员工 ID）、加减项（`payroll_adjustment`，目标为加减项 ID）、工资锁月（`payroll_month`，目标为提成结算 ID，均不关联顾客）、提成方案（`commission_scheme`，不关联顾客）、团购商品（`groupbuy_deal`）、团购月结算（`groupbuy_settlement`）、预约（`appointment`，关联顾客）和私约占位（`appointment_block`，不关联顾客）、卡类型、开卡、充值、开单、加项目、去掉项目、换岗位员工、改价、合并单、结账已记录日志。员工本人打卡（`clock_in`）不写操作日志，打卡行本身即记录。新增关联顾客的种类（例如单）时，添加接收顾客 ID 的构造函数，并扩展迁移中的 CHECK 列表。
 - 新操作在成功路径末尾用同一个 `env` 调用 `audit.Record`，传入不含密码或密码哈希的返回值视图；新建前、删除后传 nil。手机号字段的 JSON 键名必须是 `phone`，`audit.Record` 遇到别的键名会拒绝写入（读取时只按这个键名打码）。
-- 操作者可以是员工或顾客本人：`audit_log.actor_id` 与 `actor_customer_id` 恰好一个非空。小程序登录新建顾客和首次绑定用顾客本人写日志；`list_audit_log` 对顾客操作者返回 `kind=customer`，没有姓名时显示「顾客本人」，手机号仍按调用者权限打码。
+- 操作者可以是员工或顾客本人：`audit_log.actor_id` 与 `actor_customer_id` 恰好一个非空。小程序登录新建顾客、首次绑定、顾客自助预约和自助取消都用顾客本人写日志；`list_audit_log` 对顾客操作者返回 `kind=customer`，没有姓名时显示「顾客本人」，手机号仍按调用者权限打码。
 
 ## 共享修改与引用检查
 
@@ -447,11 +461,13 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 ## 预约与占位
 
-`internal/booking` 管理预约和私约占位。`appointments` 同时保存两种记录：`kind=appointment` 是员工代顾客登记的预约，必须有顾客；`kind=block` 是员工自己登记的私约占位，不关联顾客。状态为 pending、confirmed、completed、cancelled、no_show；代约和私约占位新建即 confirmed，待确认留给 P0-19 顾客自助预约。状态只能按 pending → confirmed/cancelled、confirmed → completed/cancelled/no_show 变化，私约占位只能 confirmed → cancelled。
+`internal/booking` 管理预约和私约占位。`appointments` 同时保存两种记录：`kind=appointment` 是顾客预约（员工代约或顾客自助），必须有顾客；`kind=block` 是员工自己登记的私约占位，不关联顾客。状态为 pending、confirmed、completed、cancelled、no_show；员工代约和私约占位新建即 confirmed，顾客自助预约新建为 pending，由门店确认。状态只能按 pending → confirmed/cancelled、confirmed → completed/cancelled/no_show 变化，私约占位只能 confirmed → cancelled。
 
 营业时段复用 `business_hours`，另有三项设置：`booking_min_lead_minutes` 提前量（前台代约不检查，导出 `booking.CheckLeadTime` 供 P0-19）、`booking_max_days_ahead` 可约天数和 `booking_default_minutes` 未选项目时的默认时长。预约必须提供顾客、顾客手机号或姓名；三者都没有时拒绝。预约开始必须在今天及以后、不早于当前时刻 5 分钟以上，结束必须晚于开始且与开始同一天、完整落在营业时段内。结束时间默认取所选项目 `duration_minutes` 之和，未选项目或项目都未设时长时取门店默认时长，前台传 `ends_at` 可手改。项目新增 `duration_minutes`（0–600，0 表示未设置）和 `bookable`（默认可以）；预约只接受启用且可约的项目。
 
-私约占位只检查同一员工的时段冲突和 `ends_at > starts_at`，最长 24 小时，结束时间必须在当前时刻之后；不检查营业时段、可约天数或是否跨天，也不要求顾客。同一员工的 pending/confirmed 记录时段不能重叠，`appointments` 用 `tstzrange` 上的 PostgreSQL EXCLUDE 约束（btree_gist）兜底并发；写入前先查冲突，以便提示里带出冲突记录 ID。相切边界允许，已取消、已完成、爽约的记录不占时段。`appointment_items` 保存项目及顺序；`appointment_events` 只追加，每次创建、改约、确认、完成、取消、爽约都记录改前改后的时间、发型师、原因、说明和操作人。取消预约必须选择顾客取消、门店取消、改约或其他，选其他要写说明；取消私约占位不需要原因。
+私约占位只检查同一员工的时段冲突和 `ends_at > starts_at`，最长 24 小时，结束时间必须在当前时刻之后；不检查营业时段、可约天数或是否跨天，也不要求顾客。同一员工的 pending/confirmed 记录时段不能重叠，`appointments` 用 `tstzrange` 上的 PostgreSQL EXCLUDE 约束（btree_gist）兜底并发；写入前先查冲突，员工侧的提示里带出冲突记录 ID，顾客侧的提示不带 ID。相切边界允许，已取消、已完成、爽约的记录不占时段。`appointment_items` 保存项目及顺序；`appointment_events` 只追加，每次创建、改约、确认、完成、取消、爽约都记录改前改后的时间、发型师、原因、说明和操作人。取消预约必须选择顾客取消、门店取消、改约或其他，选其他要写说明；顾客自助取消固定记“顾客取消”；取消私约占位不需要原因。
+
+`appointments.created_by` 与 `created_by_customer` 恰好一个非空：员工创建记员工，顾客自助预约记顾客本人。`appointment_events.actor_staff_id` 与 `actor_customer_id` 同理。两者都是历史操作者，顾客合并时不改挂，只随 `appointments.customer_id` 改挂预约所属顾客。预约视图的 `created_by` 与事件 `actor` 返回 `kind=staff|customer`：顾客操作者在员工有顾客查看范围且顾客有姓名时显示姓名，否则显示「顾客本人」。顾客合并后仍能看到并取消保留顾客名下的自助预约。`staff.self_bookable` 默认为 false，只有开启的在职员工出现在顾客可预约列表中。
 
 | 操作 | 权限 | AI |
 | --- | --- | --- |

@@ -274,7 +274,7 @@ func (q *Queries) ListPayrollAdjustments(ctx context.Context, arg ListPayrollAdj
 }
 
 const listPayrollStaff = `-- name: ListPayrollStaff :many
-SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until FROM staff WHERE store_id = $1 ORDER BY number, id
+SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until, self_bookable FROM staff WHERE store_id = $1 ORDER BY number, id
 `
 
 func (q *Queries) ListPayrollStaff(ctx context.Context, storeID uuid.UUID) ([]Staff, error) {
@@ -302,6 +302,7 @@ func (q *Queries) ListPayrollStaff(ctx context.Context, storeID uuid.UUID) ([]St
 			&i.TokenVersion,
 			&i.FailedLogins,
 			&i.LockedUntil,
+			&i.SelfBookable,
 		); err != nil {
 			return nil, err
 		}

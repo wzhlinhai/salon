@@ -29,7 +29,28 @@ type CreateStaffParams struct {
 	PasswordHash *string
 }
 
-func (q *Queries) CreateStaff(ctx context.Context, arg CreateStaffParams) (Staff, error) {
+type CreateStaffRow struct {
+	ID            uuid.UUID
+	TenantID      uuid.UUID
+	StoreID       uuid.UUID
+	Name          string
+	Number        string
+	LevelID       *uuid.UUID
+	PositionID    *uuid.UUID
+	LoginAccount  *string
+	PasswordHash  *string
+	Active        bool
+	DeactivatedAt pgtype.Timestamptz
+	CreatedAt     pgtype.Timestamptz
+	TokenVersion  int32
+	FailedLogins  int32
+	LockedUntil   pgtype.Timestamptz
+}
+
+// CreateStaff 不写 self_bookable，RETURNING 只列 00053 之前的列：
+// 历史迁移测试会在旧版本 schema 上调用 staff.Bootstrap，引用新列会让旧库升级前失败。
+// 新建后需要开启自助预约时，由 create_staff 再调用 UpdateStaffProfile。
+func (q *Queries) CreateStaff(ctx context.Context, arg CreateStaffParams) (CreateStaffRow, error) {
 	row := q.db.QueryRow(ctx, createStaff,
 		arg.TenantID,
 		arg.StoreID,
@@ -40,7 +61,7 @@ func (q *Queries) CreateStaff(ctx context.Context, arg CreateStaffParams) (Staff
 		arg.LoginAccount,
 		arg.PasswordHash,
 	)
-	var i Staff
+	var i CreateStaffRow
 	err := row.Scan(
 		&i.ID,
 		&i.TenantID,
@@ -73,8 +94,41 @@ func (q *Queries) DeactivateStaff(ctx context.Context, id uuid.UUID) (int64, err
 	return result.RowsAffected(), nil
 }
 
+const getSelfBookableStaff = `-- name: GetSelfBookableStaff :one
+SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until, self_bookable FROM staff WHERE store_id = $1 AND id = $2 AND active AND self_bookable
+`
+
+type GetSelfBookableStaffParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) GetSelfBookableStaff(ctx context.Context, arg GetSelfBookableStaffParams) (Staff, error) {
+	row := q.db.QueryRow(ctx, getSelfBookableStaff, arg.StoreID, arg.ID)
+	var i Staff
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Name,
+		&i.Number,
+		&i.LevelID,
+		&i.PositionID,
+		&i.LoginAccount,
+		&i.PasswordHash,
+		&i.Active,
+		&i.DeactivatedAt,
+		&i.CreatedAt,
+		&i.TokenVersion,
+		&i.FailedLogins,
+		&i.LockedUntil,
+		&i.SelfBookable,
+	)
+	return i, err
+}
+
 const getStaff = `-- name: GetStaff :one
-SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until FROM staff WHERE id = $1
+SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until, self_bookable FROM staff WHERE id = $1
 `
 
 func (q *Queries) GetStaff(ctx context.Context, id uuid.UUID) (Staff, error) {
@@ -96,12 +150,47 @@ func (q *Queries) GetStaff(ctx context.Context, id uuid.UUID) (Staff, error) {
 		&i.TokenVersion,
 		&i.FailedLogins,
 		&i.LockedUntil,
+		&i.SelfBookable,
 	)
 	return i, err
 }
 
+const listSelfBookableStaff = `-- name: ListSelfBookableStaff :many
+SELECT s.id, s.name, l.name AS level_name
+FROM staff s
+LEFT JOIN levels l ON l.tenant_id = s.tenant_id AND l.id = s.level_id
+WHERE s.store_id = $1 AND s.active AND s.self_bookable
+ORDER BY s.number, s.id
+`
+
+type ListSelfBookableStaffRow struct {
+	ID        uuid.UUID
+	Name      string
+	LevelName *string
+}
+
+func (q *Queries) ListSelfBookableStaff(ctx context.Context, storeID uuid.UUID) ([]ListSelfBookableStaffRow, error) {
+	rows, err := q.db.Query(ctx, listSelfBookableStaff, storeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSelfBookableStaffRow
+	for rows.Next() {
+		var i ListSelfBookableStaffRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.LevelName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listStaff = `-- name: ListStaff :many
-SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until FROM staff WHERE store_id = $1 ORDER BY active DESC, number, id
+SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until, self_bookable FROM staff WHERE store_id = $1 ORDER BY active DESC, number, id
 `
 
 func (q *Queries) ListStaff(ctx context.Context, storeID uuid.UUID) ([]Staff, error) {
@@ -129,6 +218,7 @@ func (q *Queries) ListStaff(ctx context.Context, storeID uuid.UUID) ([]Staff, er
 			&i.TokenVersion,
 			&i.FailedLogins,
 			&i.LockedUntil,
+			&i.SelfBookable,
 		); err != nil {
 			return nil, err
 		}
@@ -140,8 +230,41 @@ func (q *Queries) ListStaff(ctx context.Context, storeID uuid.UUID) ([]Staff, er
 	return items, nil
 }
 
+const lockSelfBookableStaff = `-- name: LockSelfBookableStaff :one
+SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until, self_bookable FROM staff WHERE store_id = $1 AND id = $2 AND active AND self_bookable FOR SHARE
+`
+
+type LockSelfBookableStaffParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) LockSelfBookableStaff(ctx context.Context, arg LockSelfBookableStaffParams) (Staff, error) {
+	row := q.db.QueryRow(ctx, lockSelfBookableStaff, arg.StoreID, arg.ID)
+	var i Staff
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Name,
+		&i.Number,
+		&i.LevelID,
+		&i.PositionID,
+		&i.LoginAccount,
+		&i.PasswordHash,
+		&i.Active,
+		&i.DeactivatedAt,
+		&i.CreatedAt,
+		&i.TokenVersion,
+		&i.FailedLogins,
+		&i.LockedUntil,
+		&i.SelfBookable,
+	)
+	return i, err
+}
+
 const lockStaff = `-- name: LockStaff :one
-SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until FROM staff WHERE id = $1 FOR UPDATE
+SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until, self_bookable FROM staff WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) LockStaff(ctx context.Context, id uuid.UUID) (Staff, error) {
@@ -163,12 +286,13 @@ func (q *Queries) LockStaff(ctx context.Context, id uuid.UUID) (Staff, error) {
 		&i.TokenVersion,
 		&i.FailedLogins,
 		&i.LockedUntil,
+		&i.SelfBookable,
 	)
 	return i, err
 }
 
 const lockStaffNoKey = `-- name: LockStaffNoKey :one
-SELECT staff.id, staff.tenant_id, staff.store_id, staff.name, staff.number, staff.level_id, staff.position_id, staff.login_account, staff.password_hash, staff.active, staff.deactivated_at, staff.created_at, staff.token_version, staff.failed_logins, staff.locked_until, COALESCE(locked_until > clock_timestamp(), false)::boolean AS locked
+SELECT staff.id, staff.tenant_id, staff.store_id, staff.name, staff.number, staff.level_id, staff.position_id, staff.login_account, staff.password_hash, staff.active, staff.deactivated_at, staff.created_at, staff.token_version, staff.failed_logins, staff.locked_until, staff.self_bookable, COALESCE(locked_until > clock_timestamp(), false)::boolean AS locked
 FROM staff WHERE id = $1 FOR NO KEY UPDATE
 `
 
@@ -196,6 +320,7 @@ func (q *Queries) LockStaffNoKey(ctx context.Context, id uuid.UUID) (LockStaffNo
 		&i.Staff.TokenVersion,
 		&i.Staff.FailedLogins,
 		&i.Staff.LockedUntil,
+		&i.Staff.SelfBookable,
 		&i.Locked,
 	)
 	return i, err
@@ -276,7 +401,7 @@ func (q *Queries) SetStaffPassword(ctx context.Context, arg SetStaffPasswordPara
 }
 
 const shareStaffMany = `-- name: ShareStaffMany :many
-SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until FROM staff WHERE id = ANY($1::uuid[]) ORDER BY id FOR SHARE
+SELECT id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until, self_bookable FROM staff WHERE id = ANY($1::uuid[]) ORDER BY id FOR SHARE
 `
 
 func (q *Queries) ShareStaffMany(ctx context.Context, ids []uuid.UUID) ([]Staff, error) {
@@ -304,6 +429,7 @@ func (q *Queries) ShareStaffMany(ctx context.Context, ids []uuid.UUID) ([]Staff,
 			&i.TokenVersion,
 			&i.FailedLogins,
 			&i.LockedUntil,
+			&i.SelfBookable,
 		); err != nil {
 			return nil, err
 		}
@@ -385,17 +511,18 @@ func (q *Queries) StaffNames(ctx context.Context, arg StaffNamesParams) ([]Staff
 }
 
 const updateStaffProfile = `-- name: UpdateStaffProfile :one
-UPDATE staff SET name = $2, number = $3, level_id = $4, position_id = $5
+UPDATE staff SET name = $2, number = $3, level_id = $4, position_id = $5, self_bookable = $6
 WHERE id = $1
-RETURNING id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until
+RETURNING id, tenant_id, store_id, name, number, level_id, position_id, login_account, password_hash, active, deactivated_at, created_at, token_version, failed_logins, locked_until, self_bookable
 `
 
 type UpdateStaffProfileParams struct {
-	ID         uuid.UUID
-	Name       string
-	Number     string
-	LevelID    *uuid.UUID
-	PositionID *uuid.UUID
+	ID           uuid.UUID
+	Name         string
+	Number       string
+	LevelID      *uuid.UUID
+	PositionID   *uuid.UUID
+	SelfBookable bool
 }
 
 func (q *Queries) UpdateStaffProfile(ctx context.Context, arg UpdateStaffProfileParams) (Staff, error) {
@@ -405,6 +532,7 @@ func (q *Queries) UpdateStaffProfile(ctx context.Context, arg UpdateStaffProfile
 		arg.Number,
 		arg.LevelID,
 		arg.PositionID,
+		arg.SelfBookable,
 	)
 	var i Staff
 	err := row.Scan(
@@ -423,6 +551,7 @@ func (q *Queries) UpdateStaffProfile(ctx context.Context, arg UpdateStaffProfile
 		&i.TokenVersion,
 		&i.FailedLogins,
 		&i.LockedUntil,
+		&i.SelfBookable,
 	)
 	return i, err
 }
