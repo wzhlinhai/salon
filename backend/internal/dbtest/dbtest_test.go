@@ -1,10 +1,18 @@
 package dbtest
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/pressly/goose/v3"
 	"github.com/testcontainers/testcontainers-go"
 
@@ -48,6 +56,166 @@ func TestNewPoolDoesNotChangeTemplate(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("fresh clone has %d tenants, want 0", count)
+	}
+}
+
+func TestSetupErrorMarksSharedServerFailures(t *testing.T) {
+	t.Setenv(dsnEnv, "postgres://example")
+	if err := setupError(errors.New("boom")); !strings.Contains(err.Error(), environmentSignature) {
+		t.Fatalf("shared error %q lacks environment signature", err)
+	}
+	t.Setenv(dsnEnv, "")
+	if err := setupError(errors.New("boom")); err.Error() != "boom" {
+		t.Fatalf("container-mode error = %q, want boom", err)
+	}
+}
+
+func TestConcurrentProcessesShareOneServer(t *testing.T) {
+	if !janitorSupported() {
+		t.Skip("janitor is not supported on this platform")
+	}
+	NewPool(t)
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs := make([][]byte, 2)
+	failures := make([]error, len(outputs))
+	var wait sync.WaitGroup
+	for index := range outputs {
+		wait.Add(1)
+		go func(index int) {
+			defer wait.Done()
+			command := exec.Command(executable, "-test.run=^TestSharedServerHelper$")
+			command.Env = append(os.Environ(), "GO_WANT_SHARED_SERVER_HELPER=1", dsnEnv+"="+adminDSN)
+			outputs[index], failures[index] = command.CombinedOutput()
+		}(index)
+	}
+	wait.Wait()
+	var tags []string
+	for index, output := range outputs {
+		if failures[index] != nil {
+			t.Fatalf("child %d: %v\n%s", index, failures[index], output)
+		}
+		if !bytes.Contains(output, []byte("PASS")) {
+			t.Fatalf("child %d did not pass:\n%s", index, output)
+		}
+		for _, line := range strings.Split(string(output), "\n") {
+			if strings.HasPrefix(line, "TAG=") {
+				tags = append(tags, strings.TrimSpace(strings.TrimPrefix(line, "TAG=")))
+			}
+		}
+	}
+	if len(tags) != len(outputs) {
+		t.Fatalf("child tags = %v, want %d", tags, len(outputs))
+	}
+	for _, tag := range tags {
+		waitForNoDatabases(t, "salon_tpl_"+tag, "salon_test_"+tag+"_")
+	}
+}
+
+func TestSharedServerHelper(t *testing.T) {
+	if os.Getenv("GO_WANT_SHARED_SERVER_HELPER") != "1" {
+		return
+	}
+	fmt.Printf("TAG=%s\n", processTag)
+	first, second := NewPool(t), NewPool(t)
+	NewTenant(t, first, "并发进程")
+	var count int
+	if err := second.QueryRow(context.Background(), "SELECT count(*) FROM tenants").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("second database has %d tenants, want 0", count)
+	}
+}
+
+func TestSharedServerJanitorAfterSIGKILL(t *testing.T) {
+	if !janitorSupported() {
+		t.Skip("janitor is not supported on this platform")
+	}
+	once.Do(start)
+	if startErr != nil {
+		t.Fatal(startErr)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	marker := t.TempDir() + "/ready"
+	command := exec.Command(executable, "-test.run=^TestSharedServerSleeper$")
+	command.Env = append(os.Environ(), "GO_WANT_SHARED_SERVER_SLEEP=1",
+		"SHARED_SERVER_MARKER="+marker, dsnEnv+"="+adminDSN)
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Minute)
+	for {
+		if data, err := os.ReadFile(marker); err == nil {
+			tag := strings.TrimSpace(string(data))
+			if err := command.Process.Kill(); err != nil {
+				t.Fatal(err)
+			}
+			_ = command.Wait()
+			waitForNoDatabases(t, "salon_tpl_"+tag, "salon_test_"+tag+"_")
+			return
+		}
+		if time.Now().After(deadline) {
+			_ = command.Process.Kill()
+			_ = command.Wait()
+			t.Fatal("sleeper child never became ready")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func TestSharedServerSleeper(t *testing.T) {
+	if os.Getenv("GO_WANT_SHARED_SERVER_SLEEP") != "1" {
+		return
+	}
+	NewPool(t)
+	if err := os.WriteFile(os.Getenv("SHARED_SERVER_MARKER"), []byte(processTag), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(30 * time.Second)
+}
+
+func waitForNoDatabases(t *testing.T, patterns ...string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	conn, err := pgx.Connect(ctx, adminDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+	deadline := time.Now().Add(time.Minute)
+	for {
+		rows, err := conn.Query(ctx, "SELECT datname FROM pg_database")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var leftovers []string
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				rows.Close()
+				t.Fatal(err)
+			}
+			for _, pattern := range patterns {
+				if strings.HasPrefix(name, pattern) {
+					leftovers = append(leftovers, name)
+				}
+			}
+		}
+		rows.Close()
+		if len(leftovers) == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("janitor left databases %v", leftovers)
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 
