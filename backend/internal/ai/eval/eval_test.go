@@ -140,6 +140,7 @@ func TestEvalScorerFailures(t *testing.T) {
 		}, nil, "工具执行失败"},
 		{"answer missing", func(c *Case, o *Observed) { o.Reply = "不同" }, nil, "回答缺少关键词"},
 		{"model error", func(c *Case, o *Observed) { o.Reply = "" }, ai.ErrUnavailable, "模型不可用"},
+		{"model http error", func(c *Case, o *Observed) { o.Reply = "" }, &ai.ModelError{Status: 500}, "模型错误：HTTP 500"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c, observed := base, Observed{Reply: "OK"}

@@ -189,6 +189,10 @@ func modelFailureReason(err error) string {
 	case errors.Is(err, ai.ErrTimeout):
 		return "模型超时"
 	case errors.Is(err, ai.ErrUnavailable):
+		var modelErr *ai.ModelError
+		if errors.As(err, &modelErr) && modelErr.Status != 0 {
+			return fmt.Sprintf("模型错误：HTTP %d", modelErr.Status)
+		}
 		return "模型不可用"
 	case errors.Is(err, ai.ErrToolLimit):
 		return "工具调用次数超过上限"

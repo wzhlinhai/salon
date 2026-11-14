@@ -4,8 +4,10 @@
 //	aieval replay cassette.json [--out 报告.json]
 //	aieval compare 旧报告.json 新报告.json [--allow-different-cases]
 //
-// run 未指定 --replay 时读取 AI_API_KEY、AI_BASE_URL、AI_MODEL，与 salon serve 相同；
+// run 未指定 --replay 时读取 AI_API_KEY、AI_BASE_URL、AI_MODEL、AI_EXTRA_HEADERS，与 salon serve 相同；
 // 数据库使用 dbtest（SALON_TEST_PG_DSN 或 testcontainers），不连接开发库。
+// OpenCode Go 网关（https://opencode.ai/inference/go/openai/v1）需要 AI_EXTRA_HEADERS 提供
+// {"x-opencode-session":"salon"}；未设置时不会根据 base URL 自动猜测，报告也不记录头的名称或值。
 package main
 
 import (
@@ -14,7 +16,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net/http"
 	"net/url"
 	"os"
 	"sort"
@@ -101,16 +102,14 @@ func runSuite(outPath, recordPath, replayPath string) error {
 		host = "offline"
 		factory = func(c eval.Case, f *eval.Fixture) ai.Model { return replay.Model(c, f) }
 	default:
-		key := os.Getenv("AI_API_KEY")
-		if key == "" {
+		cfg, err := ai.OpenAIConfigFromEnv()
+		if err != nil {
+			return err
+		}
+		if cfg.APIKey == "" {
 			return errors.New("AI_API_KEY 未设置；请配置后用 aieval run，或使用 --replay 离线重放")
 		}
-		model := ai.NewOpenAIModel(ai.OpenAIConfig{
-			BaseURL:    baseURL,
-			APIKey:     key,
-			Model:      modelName,
-			HTTPClient: &http.Client{Timeout: 60 * time.Second},
-		})
+		model := ai.NewOpenAIModel(cfg)
 		factory = func(_ eval.Case, _ *eval.Fixture) ai.Model { return model }
 		if recordPath != "" {
 			recorder = eval.NewRecorder()
