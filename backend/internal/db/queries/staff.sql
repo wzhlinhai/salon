@@ -47,3 +47,6 @@ SELECT * FROM staff WHERE id = ANY(sqlc.arg(ids)::uuid[]) ORDER BY id FOR SHARE;
 
 -- name: StaffNames :many
 SELECT id, name FROM staff WHERE store_id = @store_id AND id = ANY(@ids::uuid[]);
+
+-- name: StaffLevels :many
+SELECT id, name, level_id FROM staff WHERE store_id = @store_id AND active AND id = ANY(@ids::uuid[]);

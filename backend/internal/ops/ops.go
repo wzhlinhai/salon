@@ -200,6 +200,8 @@ type Operation[I, O any] struct {
 	Summary    string
 	Kind       Kind
 	Permission Permission
-	AI         AIMode
-	Handle     func(ctx context.Context, env Env, in *I) (*O, error)
+	// AlsoRequires 是除 Permission 之外还必须同时拥有的权限。
+	AlsoRequires []Permission
+	AI           AIMode
+	Handle       func(ctx context.Context, env Env, in *I) (*O, error)
 }

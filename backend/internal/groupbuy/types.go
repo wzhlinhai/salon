@@ -6,6 +6,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 	"github.com/wzhlinhai/salon/backend/internal/money"
+	"github.com/wzhlinhai/salon/backend/internal/orders"
 )
 
 // Deal 是本店为某个平台商品登记的门店标价对应项目和平台购买价。
@@ -124,4 +125,20 @@ type ListRedemptionsInput struct {
 // RedemptionList 是本店某段营业日内的团购核销记录。
 type RedemptionList struct {
 	Items []Redemption `json:"items"`
+}
+
+// OpenGroupbuyOrderInput 是核销记录、团购商品和开单项目的参数。
+type OpenGroupbuyOrderInput struct {
+	CustomerID   *uuid.UUID              `json:"customer_id,omitempty"`
+	RedemptionID uuid.UUID               `json:"redemption_id"`
+	DealID       uuid.UUID               `json:"deal_id"`
+	Gender       string                  `json:"gender" enum:"male,female"`
+	Designated   bool                    `json:"designated"`
+	Items        []orders.OrderItemInput `json:"items" maxItems:"30"`
+}
+
+// OpenGroupbuyOrderOutput 是团购开单后的单据和已关联的核销记录。
+type OpenGroupbuyOrderOutput struct {
+	Order      orders.Order `json:"order"`
+	Redemption Redemption   `json:"redemption"`
 }

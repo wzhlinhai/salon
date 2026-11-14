@@ -1,16 +1,20 @@
-// Package ai 是 AI 对话的模型适配与只读工具循环。
+// Package ai 是 AI 对话的模型适配与工具循环。
 //
 // 模型只通过 Model 接口访问；生产实现使用 openai-go 访问 DeepSeek 的 OpenAI 兼容接口，
-// 测试使用脚本化的假模型，不访问网络。对话只向模型提供 Read + AIDirect 工具（ADR-0001、ADR-0004）。
+// 测试使用脚本化的假模型，不访问网络。对话提供读工具、有权限的起草工具和修改草稿参数（ADR-0001、ADR-0004）。
 package ai
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"time"
 	"unicode/utf8"
 
+	"github.com/google/uuid"
+
+	"github.com/wzhlinhai/salon/backend/internal/drafts"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
@@ -30,6 +34,8 @@ const (
 	MaxToolCallsPerTurn = 8
 	// MaxToolResultRunes 是一次工具结果放入模型上下文前最多保留的字符数。
 	MaxToolResultRunes = 16000
+	// MaxDraftCallsPerAsk 是一次对话最多起草或修改草稿的次数，包括失败的调用。
+	MaxDraftCallsPerAsk = 5
 	// AskTimeout 是一次对话的总期限，覆盖提示构造、模型调用和全部工具执行。
 	AskTimeout = 120 * time.Second
 	// toolResultTruncated 是工具结果被截断时追加的说明。
@@ -94,13 +100,21 @@ type Source struct {
 	Error     string         `json:"error,omitempty"`
 }
 
-// Answer 是一次对话的最终回答及按顺序记录的全部工具调用来源。
-type Answer struct {
-	Reply   string   `json:"reply"`
-	Sources []Source `json:"sources"`
+// DraftView 是本次对话创建或修改的草稿及其只读预览。
+type DraftView struct {
+	drafts.Draft
+	Preview      json.RawMessage `json:"preview,omitempty"`
+	PreviewError string          `json:"preview_error,omitempty"`
 }
 
-// Chat 执行只读工具循环。模型由 provider 提供，未配置时返回 ErrNotConfigured。
+// Answer 是一次对话的最终回答、按顺序记录的全部工具调用来源和本次创建或修改的草稿。
+type Answer struct {
+	Reply   string      `json:"reply"`
+	Sources []Source    `json:"sources"`
+	Drafts  []DraftView `json:"drafts"`
+}
+
+// Chat 执行工具循环（读、起草和修改草稿参数）。模型由 provider 提供，未配置时返回 ErrNotConfigured。
 type Chat struct {
 	registry     *ops.Registry
 	model        func() Model
@@ -135,11 +149,15 @@ func (c *Chat) Ask(ctx context.Context, caller ops.Caller, history []Message) (A
 		}
 		day = d
 	}
-	tools := c.registry.ReadTools(caller)
+	tools := c.registry.ChatTools(caller)
 	messages := make([]Message, 0, len(history)+1)
 	messages = append(messages, Message{Role: RoleSystem, Content: systemPrompt(caller, day)})
 	messages = append(messages, history...)
 	sources := []Source{}
+	answerDrafts := []DraftView{}
+	draftIndex := map[uuid.UUID]int{}
+	allowedDrafts := map[uuid.UUID]bool{}
+	draftCalls := 0
 	for range MaxModelCalls {
 		message, err := model.Chat(ctx, messages, tools)
 		if err != nil {
@@ -151,14 +169,32 @@ func (c *Chat) Ask(ctx context.Context, caller ops.Caller, history []Message) (A
 		message.Role = RoleAssistant
 		messages = append(messages, message)
 		if len(message.ToolCalls) == 0 {
-			return Answer{Reply: message.Content, Sources: sources}, nil
+			return Answer{Reply: message.Content, Sources: sources, Drafts: answerDrafts}, nil
 		}
 		if len(message.ToolCalls) > MaxToolCallsPerTurn {
 			return Answer{}, ErrToolLimit
 		}
 		for _, call := range message.ToolCalls {
 			source := Source{Tool: call.Name, Arguments: objectArguments(call.Arguments)}
-			raw, err := c.registry.CallReadTool(ctx, caller, call.Name, []byte(call.Arguments))
+			draftCall := call.Name == "update_draft_params" || c.registry.DraftTool(call.Name)
+			var raw json.RawMessage
+			var err error
+			if draftCall {
+				draftCalls++
+			}
+			switch {
+			case draftCall && draftCalls > MaxDraftCallsPerAsk:
+				err = ops.Rule("一次对话最多起草 5 张草稿")
+			case call.Name == "update_draft_params":
+				draftID, ok := draftIDFromArguments(call.Arguments)
+				if !ok || !allowedDrafts[draftID] {
+					err = ops.Rule("只能修改本次对话起草的草稿")
+				} else {
+					raw, err = c.registry.CallChatTool(ctx, caller, call.Name, []byte(call.Arguments))
+				}
+			default:
+				raw, err = c.registry.CallChatTool(ctx, caller, call.Name, []byte(call.Arguments))
+			}
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				return Answer{}, ErrTimeout
 			}
@@ -173,11 +209,52 @@ func (c *Chat) Ask(ctx context.Context, caller ops.Caller, history []Message) (A
 			if source.Error != "" {
 				result = source.Error
 			}
+			if draftCall && err == nil {
+				if view, ok := c.draftView(ctx, caller, now, raw); ok {
+					allowedDrafts[view.ID] = true
+					if i, exists := draftIndex[view.ID]; exists {
+						answerDrafts[i] = view
+					} else {
+						draftIndex[view.ID] = len(answerDrafts)
+						answerDrafts = append(answerDrafts, view)
+					}
+				}
+			}
 			sources = append(sources, source)
 			messages = append(messages, Message{Role: RoleTool, Content: truncateToolResult(result), ToolCallID: call.ID})
 		}
 	}
 	return Answer{}, ErrToolLimit
+}
+
+func draftIDFromArguments(raw string) (uuid.UUID, bool) {
+	var in struct {
+		ID uuid.UUID `json:"id"`
+	}
+	if json.Unmarshal([]byte(raw), &in) != nil || in.ID == uuid.Nil {
+		return uuid.Nil, false
+	}
+	return in.ID, true
+}
+
+func (c *Chat) draftView(ctx context.Context, caller ops.Caller, now time.Time, raw json.RawMessage) (DraftView, bool) {
+	var d drafts.Draft
+	if json.Unmarshal(raw, &d) != nil {
+		return DraftView{}, false
+	}
+	view := DraftView{Draft: d}
+	preview, err := c.registry.PreviewDraft(ctx, ops.Env{Now: now, Caller: caller}, d.Operation, d.Params)
+	if err != nil {
+		if ops.StatusOf(err) >= 500 {
+			slog.Error("draft preview failed", "err", err, "draft_id", d.ID, "operation", d.Operation)
+			view.PreviewError = "预览生成失败"
+		} else {
+			view.PreviewError = err.Error()
+		}
+	} else {
+		view.Preview = preview
+	}
+	return view, true
 }
 
 func askError(ctx context.Context, err error) error {

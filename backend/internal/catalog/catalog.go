@@ -470,18 +470,17 @@ func Quote(ctx context.Context, q *dbgen.Queries, storeID, itemID uuid.UUID, sta
 		}
 		employee = rows[*staffID]
 	}
-	out := &ItemPrice{Price: item.Price, Source: "standard"}
+	var levelPrice *money.Amount
 	if staffID != nil && employee.LevelID != nil {
-		levelPrice, err := q.GetItemLevelPrice(ctx, dbgen.GetItemLevelPriceParams{ItemID: itemID, LevelID: *employee.LevelID})
+		row, err := q.GetItemLevelPrice(ctx, dbgen.GetItemLevelPriceParams{ItemID: itemID, LevelID: *employee.LevelID})
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
 		}
 		if err == nil {
-			out.Price = levelPrice.Price
-			out.LevelID = employee.LevelID
-			out.Source = "level"
+			levelPrice = &row.Price
 		}
 	}
+	var memberPrice *money.Amount
 	if cardTypeID != nil {
 		if _, err := q.ShareCardType(ctx, dbgen.ShareCardTypeParams{StoreID: storeID, ID: *cardTypeID}); err != nil {
 			return nil, rowError(err)
@@ -490,19 +489,29 @@ func Quote(ctx context.Context, q *dbgen.Queries, storeID, itemID uuid.UUID, sta
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
 		}
-		var memberPrice *money.Amount
 		if err == nil {
 			memberPrice = &member.Price
 		}
-		if UseMemberPrice(item.Discountable, memberPrice, out.Price, rules.MemberPriceRule()) {
-			out.Price = member.Price
-			out.Source = "member"
-			out.CardTypeID = cardTypeID
-			out.LevelID = nil
-		}
 	}
+	out := PriceFor(item, employee.LevelID, levelPrice, memberPrice, cardTypeID, rules.MemberPriceRule())
+	return &out, nil
+}
 
-	return out, nil
+// PriceFor 用已读取的项目、级别价和会员价计算适用价格，不加锁，供只读预览复用。
+func PriceFor(item dbgen.Item, levelID *uuid.UUID, levelPrice, memberPrice *money.Amount, cardTypeID *uuid.UUID, memberPriceRule string) ItemPrice {
+	out := ItemPrice{Price: item.Price, Source: "standard"}
+	if levelID != nil && levelPrice != nil {
+		out.Price = *levelPrice
+		out.LevelID = levelID
+		out.Source = "level"
+	}
+	if cardTypeID != nil && UseMemberPrice(item.Discountable, memberPrice, out.Price, memberPriceRule) {
+		out.Price = *memberPrice
+		out.Source = "member"
+		out.CardTypeID = cardTypeID
+		out.LevelID = nil
+	}
+	return out
 }
 
 // UseMemberPrice 判断项目是否按会员价规则取会员价。

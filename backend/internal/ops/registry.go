@@ -25,24 +25,26 @@ const PathPrefix = "/api/ops/"
 var namePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
 type entry struct {
-	name       string
-	summary    string
-	kind       Kind
-	permission Permission
-	ai         AIMode
-	phased     bool
-	locking    bool
+	name         string
+	summary      string
+	kind         Kind
+	permission   Permission
+	alsoRequires []Permission
+	ai           AIMode
+	phased       bool
+	locking      bool
 	// call 把 JSON 参数解码为 I 并执行操作，返回 *O。
 	call func(ctx context.Context, env Env, args []byte) (any, error)
 }
 
 // Registry 保存所有已声明的操作。
 type Registry struct {
-	pool         *pgxpool.Pool
-	now          func() time.Time
-	api          huma.API
-	ops          map[string]*entry
-	draftCreator func(context.Context, Env, string, json.RawMessage, string, string) (any, error)
+	pool          *pgxpool.Pool
+	now           func() time.Time
+	api           huma.API
+	ops           map[string]*entry
+	draftCreator  func(context.Context, Env, string, json.RawMessage, string, string) (any, error)
+	draftPreviews map[string]func(context.Context, Env, json.RawMessage) (any, error)
 }
 
 // NewRegistry 返回一个空的 Registry。注册的操作会挂到 api 上。
@@ -62,13 +64,14 @@ func Register[I, O any](r *Registry, op Operation[I, O]) {
 		panic(fmt.Sprintf("ops: duplicate operation %q", op.Name))
 	}
 	e := &entry{
-		name:       op.Name,
-		summary:    op.Summary,
-		kind:       op.Kind,
-		permission: op.Permission,
-		ai:         op.AI,
-		phased:     op.Phased,
-		locking:    op.Locking,
+		name:         op.Name,
+		summary:      op.Summary,
+		kind:         op.Kind,
+		permission:   op.Permission,
+		alsoRequires: append([]Permission{}, op.AlsoRequires...),
+		ai:           op.AI,
+		phased:       op.Phased,
+		locking:      op.Locking,
 		call: func(ctx context.Context, env Env, args []byte) (any, error) {
 			in := new(I)
 			if err := json.Unmarshal(args, in); err != nil {
@@ -165,7 +168,7 @@ func (r *Registry) invoke(ctx context.Context, caller Caller, e *entry, run func
 	if caller.Channel == ChannelAI && e.ai == AINone {
 		return nil, ErrUnknownOperation
 	}
-	if err := checkPermission(caller, e.permission); err != nil {
+	if err := checkOperationPermission(caller, e); err != nil {
 		return nil, err
 	}
 	now := r.now()
@@ -207,9 +210,11 @@ func (r *Registry) Permissions() []Permission {
 	seen := map[Permission]bool{}
 	var out []Permission
 	for _, e := range r.ops {
-		if e.permission != LoggedIn && !seen[e.permission] {
-			seen[e.permission] = true
-			out = append(out, e.permission)
+		for _, p := range append([]Permission{e.permission}, e.alsoRequires...) {
+			if p != LoggedIn && !seen[p] {
+				seen[p] = true
+				out = append(out, p)
+			}
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })

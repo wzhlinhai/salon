@@ -39,11 +39,8 @@ func linkCouponOrder(ctx context.Context, env ops.Env, in *LinkCouponOrderInput)
 			}
 			return err
 		}
-		if row.Status != "redeemed" {
-			return ops.Rule("只有已核销的团购券可以关联订单")
-		}
-		if row.OrderID != nil {
-			return ops.Rule("团购券已关联其他单")
+		if err := checkRedemptionLinkable(row); err != nil {
+			return err
 		}
 		deal, item, err := dealForLink(ctx, env, in.DealID, row.Platform)
 		if err != nil {
