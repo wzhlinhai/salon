@@ -95,7 +95,7 @@ func TestConcurrentCustomerCreation(t *testing.T) {
 	if err := q.LockCustomerPhone(ctx, phone); err != nil {
 		t.Fatal(err)
 	}
-	row, err := q.CreateCustomer(ctx, dbgen.CreateCustomerParams{TenantID: s.Res.TenantID, StoreID: s.Res.StoreID, CreatedBy: s.Res.OwnerID, Phone: &phone})
+	row, err := q.CreateCustomer(ctx, dbgen.CreateCustomerParams{TenantID: s.Res.TenantID, StoreID: s.Res.StoreID, CreatedBy: &s.Res.OwnerID, Phone: &phone})
 	if err != nil {
 		t.Fatal(err)
 	}

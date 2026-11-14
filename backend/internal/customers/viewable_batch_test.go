@@ -28,7 +28,7 @@ func TestCheckViewableBatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	foreign, err := q.CreateCustomer(context.Background(), dbgen.CreateCustomerParams{TenantID: s.Res.TenantID, StoreID: store.ID, CreatedBy: s.Res.OwnerID})
+	foreign, err := q.CreateCustomer(context.Background(), dbgen.CreateCustomerParams{TenantID: s.Res.TenantID, StoreID: store.ID, CreatedBy: &s.Res.OwnerID})
 	if err != nil {
 		t.Fatal(err)
 	}

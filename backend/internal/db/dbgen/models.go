@@ -144,18 +144,19 @@ type AttendanceApproval struct {
 }
 
 type AuditLog struct {
-	ID         uuid.UUID
-	TenantID   uuid.UUID
-	StoreID    uuid.UUID
-	Action     string
-	TargetID   uuid.UUID
-	Before     []byte
-	After      []byte
-	ActorID    uuid.UUID
-	At         pgtype.Timestamptz
-	TargetKind string
-	CustomerID *uuid.UUID
-	DraftID    *uuid.UUID
+	ID              uuid.UUID
+	TenantID        uuid.UUID
+	StoreID         uuid.UUID
+	Action          string
+	TargetID        uuid.UUID
+	Before          []byte
+	After           []byte
+	ActorID         *uuid.UUID
+	At              pgtype.Timestamptz
+	TargetKind      string
+	CustomerID      *uuid.UUID
+	DraftID         *uuid.UUID
+	ActorCustomerID *uuid.UUID
 }
 
 type Card struct {
@@ -452,8 +453,21 @@ type Customer struct {
 	ResponsibleStaffID *uuid.UUID
 	Note               *string
 	MergedInto         *uuid.UUID
-	CreatedBy          uuid.UUID
+	CreatedBy          *uuid.UUID
 	CreatedAt          pgtype.Timestamptz
+	CreatedByCustomer  *uuid.UUID
+}
+
+type CustomerLogin struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	ID           uuid.UUID
+	Openid       string
+	Unionid      *string
+	CustomerID   uuid.UUID
+	TokenVersion int32
+	CreatedAt    pgtype.Timestamptz
+	LastLoginAt  pgtype.Timestamptz
 }
 
 type CustomerSafetyLabel struct {

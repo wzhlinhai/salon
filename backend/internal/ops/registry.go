@@ -211,7 +211,7 @@ func (r *Registry) Permissions() []Permission {
 	var out []Permission
 	for _, e := range r.ops {
 		for _, p := range append([]Permission{e.permission}, e.alsoRequires...) {
-			if p != LoggedIn && !seen[p] {
+			if p != LoggedIn && p != CustomerSelf && !seen[p] {
 				seen[p] = true
 				out = append(out, p)
 			}
@@ -219,6 +219,33 @@ func (r *Registry) Permissions() []Permission {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out
+}
+
+// OperationInfo 描述一个已注册操作的权限和调用方式，供权限审查使用。
+type OperationInfo struct {
+	Name       string
+	Kind       Kind
+	Permission Permission
+	AI         AIMode
+}
+
+// Operations 返回全部已注册操作，按名称排序。
+func (r *Registry) Operations() []OperationInfo {
+	out := make([]OperationInfo, 0, len(r.ops))
+	for _, e := range r.ops {
+		out = append(out, OperationInfo{Name: e.name, Kind: e.kind, Permission: e.permission, AI: e.ai})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// Authorize 只检查调用者是否有权调用某个已注册操作，不执行操作；供权限审查使用。
+func (r *Registry) Authorize(caller Caller, name string) error {
+	e, ok := r.ops[name]
+	if !ok {
+		return ErrUnknownOperation
+	}
+	return checkOperationPermission(caller, e)
 }
 
 // StatusOf 把操作返回的错误对应到 HTTP 状态码。HTTP 接口按它返回；AI 路径的测试也按它比较两条路径的结果。

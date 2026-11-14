@@ -145,7 +145,7 @@ func TestCustomerProtection(t *testing.T) {
 	s := open(t)
 	store := s.otherStore()
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	other, err := dbgen.New(tx).CreateCustomer(context.Background(), dbgen.CreateCustomerParams{TenantID: s.Res.TenantID, StoreID: store, CreatedBy: s.Res.OwnerID})
+	other, err := dbgen.New(tx).CreateCustomer(context.Background(), dbgen.CreateCustomerParams{TenantID: s.Res.TenantID, StoreID: store, CreatedBy: &s.Res.OwnerID})
 	if err != nil {
 		t.Fatal(err)
 	}
