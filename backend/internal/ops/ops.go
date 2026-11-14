@@ -51,6 +51,9 @@ const (
 // LoggedIn 表示只要是已登录的在职员工就可以调用，例如查看自己的信息。
 const LoggedIn Permission = "logged_in"
 
+// CustomerSelf 表示顾客本人，只能由带 CustomerID 的小程序登录凭证调用。
+const CustomerSelf Permission = "customer.self"
+
 // Scope 是权限的数据范围（ADR-0009）。
 type Scope string
 
@@ -100,6 +103,10 @@ type Caller struct {
 	TenantID uuid.UUID
 	StoreID  uuid.UUID
 	StaffID  uuid.UUID
+	// CustomerID 是顾客小程序登录的顾客本人；员工调用时为空，StaffID 为零值。
+	CustomerID *uuid.UUID
+	// LoginID 是顾客登录绑定的 ID，用于凭证版本校验；员工调用时为空。
+	LoginID *uuid.UUID
 	// Name 和 Roles 只用于面向 AI 的系统提示，不参与权限判断。
 	Name  string
 	Roles []string
@@ -111,8 +118,11 @@ type Caller struct {
 
 // Has 报告调用者是否有权限 p。
 func (c Caller) Has(p Permission) bool {
-	if p == LoggedIn {
+	switch p {
+	case LoggedIn:
 		return c.StaffID != uuid.Nil
+	case CustomerSelf:
+		return c.CustomerID != nil
 	}
 	_, ok := c.Permissions[p]
 	return ok

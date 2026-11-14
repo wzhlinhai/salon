@@ -434,7 +434,7 @@ func resolveCustomer(ctx context.Context, env ops.Env, row dbgen.ImportBatchRow,
 			}
 		}
 	}
-	created, err := env.Q.CreateCustomer(ctx, dbgen.CreateCustomerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Name: row.Name, Phone: row.Phone, Gender: row.Gender, CreatedBy: env.Caller.StaffID})
+	created, err := env.Q.CreateCustomer(ctx, dbgen.CreateCustomerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Name: row.Name, Phone: row.Phone, Gender: row.Gender, CreatedBy: &env.Caller.StaffID})
 	if errors.Is(err, pgx.ErrNoRows) && row.Phone != nil {
 		found, findErr := env.Q.FindCustomersByPhones(ctx, []string{*row.Phone})
 		if findErr != nil {

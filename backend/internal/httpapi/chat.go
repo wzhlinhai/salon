@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/google/uuid"
 
 	"github.com/wzhlinhai/salon/backend/internal/ai"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
@@ -41,9 +42,13 @@ func registerChat(api huma.API, chat *ai.Chat) {
 		Method:      http.MethodPost,
 		Path:        "/api/ai/chat",
 		Summary:     "AI 对话：按本人权限查询营业数据、会员余额和提成",
-	}, func(ctx context.Context, in *chatInput) (*chatOutput, error) {
+	}, chatHandler(chat))
+}
+
+func chatHandler(chat *ai.Chat) func(context.Context, *chatInput) (*chatOutput, error) {
+	return func(ctx context.Context, in *chatInput) (*chatOutput, error) {
 		caller, ok := ops.CallerFrom(ctx)
-		if !ok {
+		if !ok || caller.StaffID == uuid.Nil {
 			return nil, huma.Error401Unauthorized("unauthenticated")
 		}
 		history, err := chatHistory(in)
@@ -62,7 +67,7 @@ func registerChat(api huma.API, chat *ai.Chat) {
 			return nil, huma.Error502BadGateway("AI 暂时不可用，请稍后再试")
 		}
 		return &chatOutput{Body: answer}, nil
-	})
+	}
 }
 
 func chatHistory(in *chatInput) ([]ai.Message, error) {

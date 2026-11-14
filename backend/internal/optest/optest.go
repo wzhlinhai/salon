@@ -19,7 +19,10 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/auth"
 	"github.com/wzhlinhai/salon/backend/internal/groupbuy"
 	"github.com/wzhlinhai/salon/backend/internal/httpapi"
+	"github.com/wzhlinhai/salon/backend/internal/miniprogram"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/wechat"
+	"github.com/wzhlinhai/salon/backend/internal/wechat/fakewechat"
 )
 
 // App 是一个完整的后端实例。调用者可以用真实的账号密码登录，也可以由测试直接指定。
@@ -38,13 +41,26 @@ type App struct {
 
 // New 用 pool 组装后端。
 func New(t testing.TB, pool *pgxpool.Pool) *App {
+	return newApp(t, pool, fakewechat.New())
+}
+
+// NewWithoutWechat 组装后端但不配置微信登录，用于验证 503。
+func NewWithoutWechat(t testing.TB, pool *pgxpool.Pool) *App {
+	return newApp(t, pool, nil)
+}
+
+func newApp(t testing.TB, pool *pgxpool.Pool, provider wechat.Provider) *App {
 	t.Helper()
 	svc, err := auth.NewService(pool, []byte("test secret that is at least 32 bytes long"), time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
 	a := &App{Groupbuy: &groupbuy.Providers{}, Auth: svc, callers: map[string]ops.Caller{}}
-	a.Handler, a.Registry = httpapi.New(pool, httpapi.Config{Groupbuy: a.Groupbuy, Authenticate: a.authenticate, Login: svc.Login, Now: a.Now, AIModel: a.currentAIModel})
+	customerLogin := miniprogram.NewLoginService(pool, svc, provider)
+	a.Handler, a.Registry = httpapi.New(pool, httpapi.Config{
+		Groupbuy: a.Groupbuy, Authenticate: a.authenticate, AuthenticateCustomer: svc.AuthenticateCustomer,
+		Login: svc.Login, CustomerLogin: customerLogin.Login, Now: a.Now, AIModel: a.currentAIModel,
+	})
 	return a
 }
 
@@ -92,6 +108,31 @@ func (a *App) Login(t testing.TB, account, password string) (int, string) {
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &out)
 	return rec.Code, out.Token
+}
+
+// CustomerLogin 通过 HTTP 用微信 code 登录顾客小程序，返回状态码和响应体。
+func (a *App) CustomerLogin(t testing.TB, storeID uuid.UUID, code, phoneCode string) (int, map[string]any) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]any{"store_id": storeID, "code": code, "phone_code": phoneCode})
+	req := httptest.NewRequest(http.MethodPost, "/api/customer/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	a.Handler.ServeHTTP(rec, req)
+	var out map[string]any
+	if rec.Body.Len() > 0 {
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatalf("decode customer login response %q: %v", rec.Body.String(), err)
+		}
+	}
+	return rec.Code, out
+}
+
+// CustomerCallerFor 用顾客登录凭证识别顾客本人。
+func (a *App) CustomerCallerFor(t testing.TB, token string) (ops.Caller, bool) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	return a.Auth.AuthenticateCustomer(req)
 }
 
 // HTTPWithToken 用登录凭证通过 HTTP 调用操作。

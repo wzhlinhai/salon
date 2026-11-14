@@ -68,10 +68,19 @@ func Record(ctx context.Context, env ops.Env, action string, target Target, befo
 			return err
 		}
 	}
-	return env.Q.AddAuditLog(ctx, dbgen.AddAuditLogParams{
+	params := dbgen.AddAuditLogParams{
 		TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID,
-		DraftID: env.DraftID, Action: action, TargetID: target.id, TargetKind: target.kind, CustomerID: target.customerID, Before: oldJSON, After: newJSON, ActorID: env.Caller.StaffID,
-	})
+		DraftID: env.DraftID, Action: action, TargetID: target.id, TargetKind: target.kind, CustomerID: target.customerID, Before: oldJSON, After: newJSON,
+	}
+	switch {
+	case env.Caller.StaffID != uuid.Nil:
+		params.ActorID = &env.Caller.StaffID
+	case env.Caller.CustomerID != nil:
+		params.ActorCustomerID = env.Caller.CustomerID
+	default:
+		return fmt.Errorf("audit: caller has no actor")
+	}
+	return env.Q.AddAuditLog(ctx, params)
 }
 
 // checkPhoneKeys 遍历日志值，确保手机号字段使用读取时会打码的 phone 键名。
@@ -149,10 +158,11 @@ func checkPhoneValue(v reflect.Value, depth int) error {
 	return nil
 }
 
-// Actor 是操作的发起员工。
+// Actor 是操作的发起员工或顾客本人。
 type Actor struct {
 	ID   uuid.UUID `json:"id"`
 	Name string    `json:"name"`
+	Kind string    `json:"kind" enum:"staff,customer"`
 }
 
 // Entry 是一次操作的记录，改前改后按调用者权限打码手机号。
@@ -211,7 +221,15 @@ func Register(r *ops.Registry) {
 						return nil, err
 					}
 				}
-				out.Entries = append(out.Entries, Entry{DraftID: a.DraftID, ID: a.ID, Action: a.Action, TargetID: a.TargetID, TargetKind: a.TargetKind, Before: a.Before, After: a.After, Actor: Actor{ID: a.ActorID, Name: row.ActorName}, At: a.At.Time})
+				actorID := a.ActorCustomerID
+				if actorID == nil {
+					actorID = a.ActorID
+				}
+				var id uuid.UUID
+				if actorID != nil {
+					id = *actorID
+				}
+				out.Entries = append(out.Entries, Entry{DraftID: a.DraftID, ID: a.ID, Action: a.Action, TargetID: a.TargetID, TargetKind: a.TargetKind, Before: a.Before, After: a.After, Actor: Actor{ID: id, Name: row.ActorName, Kind: row.ActorKind}, At: a.At.Time})
 			}
 			return out, nil
 		},

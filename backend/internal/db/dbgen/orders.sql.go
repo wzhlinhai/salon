@@ -481,6 +481,61 @@ func (q *Queries) ListCheckoutOrders(ctx context.Context, arg ListCheckoutOrders
 	return items, nil
 }
 
+const listCustomerOrders = `-- name: ListCustomerOrders :many
+SELECT o.tenant_id, o.store_id, o.id, o.customer_id, o.gender, o.designated, o.status, o.settings_snapshot_id, o.business_date, o.opened_by, o.opened_at, o.merged_into, o.checkout_id, o.backfill FROM orders o
+WHERE o.store_id=$1 AND o.customer_id=$2
+ AND o.status IN ('paid','voided')
+ AND ($3::uuid IS NULL OR (o.opened_at,o.id) < (SELECT opened_at,id FROM orders WHERE id=$3 AND store_id=$1))
+ORDER BY o.opened_at DESC,o.id DESC LIMIT $4
+`
+
+type ListCustomerOrdersParams struct {
+	StoreID    uuid.UUID
+	CustomerID uuid.UUID
+	BeforeID   *uuid.UUID
+	RowLimit   int32
+}
+
+func (q *Queries) ListCustomerOrders(ctx context.Context, arg ListCustomerOrdersParams) ([]Order, error) {
+	rows, err := q.db.Query(ctx, listCustomerOrders,
+		arg.StoreID,
+		arg.CustomerID,
+		arg.BeforeID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Order
+	for rows.Next() {
+		var i Order
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ID,
+			&i.CustomerID,
+			&i.Gender,
+			&i.Designated,
+			&i.Status,
+			&i.SettingsSnapshotID,
+			&i.BusinessDate,
+			&i.OpenedBy,
+			&i.OpenedAt,
+			&i.MergedInto,
+			&i.CheckoutID,
+			&i.Backfill,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOpenOrders = `-- name: ListOpenOrders :many
 SELECT tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into, checkout_id, backfill FROM orders WHERE store_id=$1 AND status='open' ORDER BY opened_at,id
 `
@@ -609,10 +664,12 @@ func (q *Queries) ListOrderItems(ctx context.Context, arg ListOrderItemsParams) 
 }
 
 const listOrderPayments = `-- name: ListOrderPayments :many
-SELECT p.tenant_id, p.store_id, p.id, p.checkout_id, p.order_id, p.method, p.amount, p.card_id, p.card_ledger_id, p.order_item_id, p.card_count_ledger_id, p.red_packet_id, p.coupon_redemption_id, d.id AS debt_id, (-l.principal_delta)::numeric AS principal, (-l.bonus_delta)::numeric AS bonus, c.item_id AS count_item_id, (-COALESCE(c.paid_delta,0))::int AS paid, (-COALESCE(c.gift_delta,0))::int AS gift, ci.unit_price::numeric AS count_unit_price
+SELECT p.tenant_id, p.store_id, p.id, p.checkout_id, p.order_id, p.method, p.amount, p.card_id, p.card_ledger_id, p.order_item_id, p.card_count_ledger_id, p.red_packet_id, p.coupon_redemption_id, d.id AS debt_id, (-l.principal_delta)::numeric AS principal, (-l.bonus_delta)::numeric AS bonus, c.item_id AS count_item_id, (-COALESCE(c.paid_delta,0))::int AS paid, (-COALESCE(c.gift_delta,0))::int AS gift, ci.unit_price::numeric AS count_unit_price, ct.name AS card_name
 FROM order_payments p LEFT JOIN card_ledger l ON l.id = p.card_ledger_id
 LEFT JOIN card_count_ledger c ON c.id = p.card_count_ledger_id
 LEFT JOIN card_items ci ON ci.card_id=p.card_id AND ci.item_id=c.item_id
+LEFT JOIN cards card ON card.tenant_id=p.tenant_id AND card.id=p.card_id
+LEFT JOIN card_types ct ON ct.tenant_id=card.tenant_id AND ct.id=card.card_type_id
 LEFT JOIN debts d ON d.order_payment_id=p.id
 WHERE p.store_id=$1 AND p.order_id=ANY($2::uuid[]) ORDER BY p.id
 `
@@ -643,6 +700,7 @@ type ListOrderPaymentsRow struct {
 	Paid               int32
 	Gift               int32
 	CountUnitPrice     *money.Amount
+	CardName           *string
 }
 
 func (q *Queries) ListOrderPayments(ctx context.Context, arg ListOrderPaymentsParams) ([]ListOrderPaymentsRow, error) {
@@ -675,6 +733,7 @@ func (q *Queries) ListOrderPayments(ctx context.Context, arg ListOrderPaymentsPa
 			&i.Paid,
 			&i.Gift,
 			&i.CountUnitPrice,
+			&i.CardName,
 		); err != nil {
 			return nil, err
 		}

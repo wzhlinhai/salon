@@ -18,3 +18,49 @@ func TestFakeGroupbuyRegistry(t *testing.T) {
 		t.Fatal("registered platforms do not match")
 	}
 }
+
+func TestWechatLoginProviderSelection(t *testing.T) {
+	t.Run("unconfigured", func(t *testing.T) {
+		t.Setenv("WECHAT_APPID", "")
+		t.Setenv("WECHAT_SECRET", "")
+		t.Setenv("WECHAT_FAKE", "")
+		provider, err := wechatLoginProvider()
+		if err != nil || provider != nil {
+			t.Fatalf("provider = %v, err = %v", provider, err)
+		}
+	})
+	t.Run("fake", func(t *testing.T) {
+		t.Setenv("WECHAT_APPID", "")
+		t.Setenv("WECHAT_SECRET", "")
+		t.Setenv("WECHAT_FAKE", "1")
+		provider, err := wechatLoginProvider()
+		if err != nil || provider == nil {
+			t.Fatalf("provider = %v, err = %v", provider, err)
+		}
+	})
+	t.Run("real", func(t *testing.T) {
+		t.Setenv("WECHAT_APPID", "app")
+		t.Setenv("WECHAT_SECRET", "secret")
+		t.Setenv("WECHAT_FAKE", "")
+		provider, err := wechatLoginProvider()
+		if err != nil || provider == nil {
+			t.Fatalf("provider = %v, err = %v", provider, err)
+		}
+	})
+	t.Run("both", func(t *testing.T) {
+		t.Setenv("WECHAT_APPID", "app")
+		t.Setenv("WECHAT_SECRET", "secret")
+		t.Setenv("WECHAT_FAKE", "1")
+		if _, err := wechatLoginProvider(); err == nil {
+			t.Fatal("want refusal with both fake and real")
+		}
+	})
+	t.Run("incomplete real", func(t *testing.T) {
+		t.Setenv("WECHAT_APPID", "app")
+		t.Setenv("WECHAT_SECRET", "")
+		t.Setenv("WECHAT_FAKE", "")
+		if _, err := wechatLoginProvider(); err == nil {
+			t.Fatal("want refusal with only appid")
+		}
+	})
+}

@@ -12,21 +12,22 @@ import (
 )
 
 const addAuditLog = `-- name: AddAuditLog :exec
-INSERT INTO audit_log (tenant_id, store_id, action, target_id, before, after, actor_id, target_kind, customer_id, draft_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+INSERT INTO audit_log (tenant_id, store_id, action, target_id, before, after, actor_id, actor_customer_id, target_kind, customer_id, draft_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 `
 
 type AddAuditLogParams struct {
-	TenantID   uuid.UUID
-	StoreID    uuid.UUID
-	Action     string
-	TargetID   uuid.UUID
-	Before     []byte
-	After      []byte
-	ActorID    uuid.UUID
-	TargetKind string
-	CustomerID *uuid.UUID
-	DraftID    *uuid.UUID
+	TenantID        uuid.UUID
+	StoreID         uuid.UUID
+	Action          string
+	TargetID        uuid.UUID
+	Before          []byte
+	After           []byte
+	ActorID         *uuid.UUID
+	ActorCustomerID *uuid.UUID
+	TargetKind      string
+	CustomerID      *uuid.UUID
+	DraftID         *uuid.UUID
 }
 
 func (q *Queries) AddAuditLog(ctx context.Context, arg AddAuditLogParams) error {
@@ -38,6 +39,7 @@ func (q *Queries) AddAuditLog(ctx context.Context, arg AddAuditLogParams) error 
 		arg.Before,
 		arg.After,
 		arg.ActorID,
+		arg.ActorCustomerID,
 		arg.TargetKind,
 		arg.CustomerID,
 		arg.DraftID,
@@ -46,8 +48,10 @@ func (q *Queries) AddAuditLog(ctx context.Context, arg AddAuditLogParams) error 
 }
 
 const listAuditLog = `-- name: ListAuditLog :many
-SELECT a.id, a.tenant_id, a.store_id, a.action, a.target_id, a.before, a.after, a.actor_id, a.at, a.target_kind, a.customer_id, a.draft_id, s.name AS actor_name
-FROM audit_log a JOIN staff s ON s.id = a.actor_id
+SELECT a.id, a.tenant_id, a.store_id, a.action, a.target_id, a.before, a.after, a.actor_id, a.at, a.target_kind, a.customer_id, a.draft_id, a.actor_customer_id, COALESCE(s.name, ac.name, '顾客本人')::text AS actor_name,
+    CASE WHEN a.actor_customer_id IS NULL THEN 'staff' ELSE 'customer' END::text AS actor_kind
+FROM audit_log a LEFT JOIN staff s ON s.id = a.actor_id
+LEFT JOIN customers ac ON ac.id = a.actor_customer_id
 LEFT JOIN customers c ON c.id = a.customer_id
 WHERE a.store_id = $1 AND ($2::uuid IS NULL OR a.target_id = $2)
     AND (a.target_kind NOT IN ('base_salary','payroll_adjustment','payroll_month') OR $3::boolean)
@@ -72,6 +76,7 @@ type ListAuditLogParams struct {
 type ListAuditLogRow struct {
 	AuditLog  AuditLog
 	ActorName string
+	ActorKind string
 }
 
 func (q *Queries) ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]ListAuditLogRow, error) {
@@ -105,7 +110,9 @@ func (q *Queries) ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]L
 			&i.AuditLog.TargetKind,
 			&i.AuditLog.CustomerID,
 			&i.AuditLog.DraftID,
+			&i.AuditLog.ActorCustomerID,
 			&i.ActorName,
+			&i.ActorKind,
 		); err != nil {
 			return nil, err
 		}

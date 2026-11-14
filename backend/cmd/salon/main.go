@@ -13,6 +13,8 @@
 // AI 对话可选 AI_API_KEY（设置后启用）、AI_BASE_URL（默认 https://api.deepseek.com）、
 // AI_MODEL（默认 deepseek-flash）。GROUPBUY_FAKE_PLATFORMS=meituan,douyin 只在开发环境
 // 注册内存假团购平台，生产必须不设置。
+// 顾客小程序登录用 WECHAT_APPID 和 WECHAT_SECRET 启用微信官方接口；WECHAT_FAKE=1 只在
+// 开发环境启用假登录，二者不能同时设置。
 package main
 
 import (
@@ -38,8 +40,11 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/groupbuy"
 	"github.com/wzhlinhai/salon/backend/internal/groupbuy/fakeprovider"
 	"github.com/wzhlinhai/salon/backend/internal/httpapi"
+	"github.com/wzhlinhai/salon/backend/internal/miniprogram"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
+	"github.com/wzhlinhai/salon/backend/internal/wechat"
+	"github.com/wzhlinhai/salon/backend/internal/wechat/fakewechat"
 )
 
 const usage = "usage: salon serve | salon openapi | salon migrate up|down|status | salon bootstrap -tenant <名称> -store <名称> -owner-name <姓名> -owner-number <编号> -owner-account <账号>"
@@ -124,9 +129,38 @@ func serve(ctx context.Context, pool *pgxpool.Pool) error {
 	if len(fakes) > 0 {
 		slog.Warn("dev-only fake groupbuy platforms enabled; never set GROUPBUY_FAKE_PLATFORMS in production", "platforms", fakes)
 	}
-	e, _ := httpapi.New(pool, httpapi.Config{Authenticate: authn.Authenticate, Login: authn.Login, AIModel: model, Groupbuy: providers})
+	wechatProvider, err := wechatLoginProvider()
+	if err != nil {
+		return err
+	}
+	customerLogin := miniprogram.NewLoginService(pool, authn, wechatProvider)
+	e, _ := httpapi.New(pool, httpapi.Config{
+		Authenticate: authn.Authenticate, AuthenticateCustomer: authn.AuthenticateCustomer,
+		Login: authn.Login, CustomerLogin: customerLogin.Login, AIModel: model, Groupbuy: providers,
+	})
 	sc := echo.StartConfig{Address: addr, HideBanner: true}
 	return sc.Start(ctx, e)
+}
+
+// wechatLoginProvider 按环境变量选择真实或开发假微信登录；二者同时配置时拒绝启动。
+func wechatLoginProvider() (wechat.Provider, error) {
+	appID, secret := os.Getenv("WECHAT_APPID"), os.Getenv("WECHAT_SECRET")
+	real := appID != "" || secret != ""
+	fake := os.Getenv("WECHAT_FAKE") == "1"
+	if fake && real {
+		return nil, errors.New("WECHAT_FAKE and WECHAT_APPID/WECHAT_SECRET cannot both be set")
+	}
+	if fake {
+		slog.Warn("dev-only fake WeChat login enabled; never set WECHAT_FAKE in production")
+		return fakewechat.New(), nil
+	}
+	if real {
+		if appID == "" || secret == "" {
+			return nil, errors.New("WECHAT_APPID and WECHAT_SECRET must both be set")
+		}
+		return wechat.NewClient(wechat.Config{AppID: appID, Secret: secret, Now: time.Now})
+	}
+	return nil, nil
 }
 
 // fakeGroupbuy 按逗号分隔的平台名注册内存假适配器；空值不注册任何平台。

@@ -14,13 +14,26 @@ UPDATE customer_sources SET name = $2, active = $3 WHERE id = $1
 RETURNING *;
 
 -- name: CreateCustomer :one
-INSERT INTO customers (tenant_id, store_id, name, phone, gender, source_id, note, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO customers (tenant_id, store_id, name, phone, gender, source_id, note, created_by, created_by_customer)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (tenant_id, phone) WHERE phone IS NOT NULL AND merged_into IS NULL DO NOTHING
+RETURNING *;
+
+-- name: CreateCustomerAsCustomer :one
+-- 顾客本人通过小程序建档：新建时还不知道自己的 ID，先分配 ID 再把同一 ID 记作创建人。
+INSERT INTO customers (id, tenant_id, store_id, name, phone, created_by_customer)
+VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (tenant_id, phone) WHERE phone IS NOT NULL AND merged_into IS NULL DO NOTHING
 RETURNING *;
 
 -- name: FindCustomerByPhone :one
 SELECT * FROM customers WHERE phone = $1 AND merged_into IS NULL;
+
+-- name: FindStoreCustomerByPhone :one
+SELECT * FROM customers
+WHERE store_id = $1 AND phone = $2
+ORDER BY (merged_into IS NULL) DESC, created_at DESC, id
+LIMIT 1;
 
 -- name: LockCustomerPhone :exec
 SELECT pg_advisory_xact_lock(hashtextextended(current_setting('app.tenant_id') || sqlc.arg(phone)::text, 0));
@@ -95,3 +108,30 @@ SELECT * FROM customers WHERE store_id=sqlc.arg(store_id) AND id=ANY(sqlc.arg(id
 
 -- name: LockCardOpeningCustomer :one
 SELECT * FROM customers WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE;
+
+-- name: MergeCustomerLogins :exec
+UPDATE customer_logins SET customer_id=sqlc.arg(keep_id) WHERE customer_id=sqlc.arg(merged_id);
+
+-- name: LockCustomerLogin :exec
+SELECT pg_advisory_xact_lock(hashtextextended(sqlc.arg(store_id)::text || sqlc.arg(openid)::text, 0));
+
+-- name: GetCustomerLoginByOpenID :one
+SELECT * FROM customer_logins WHERE store_id=$1 AND openid=$2;
+
+-- name: GetCustomerLogin :one
+SELECT * FROM customer_logins WHERE id=$1;
+
+-- name: CreateCustomerLogin :one
+INSERT INTO customer_logins (tenant_id, store_id, openid, unionid, customer_id, last_login_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (store_id, openid) DO UPDATE
+SET unionid=COALESCE(EXCLUDED.unionid, customer_logins.unionid), last_login_at=EXCLUDED.last_login_at
+RETURNING *;
+
+-- name: TouchCustomerLogin :exec
+UPDATE customer_logins
+SET unionid=COALESCE($3, unionid), last_login_at=$4
+WHERE store_id=$1 AND id=$2;
+
+-- name: MoveCustomerLoginCustomer :exec
+UPDATE customer_logins SET customer_id=$3 WHERE store_id=$1 AND id=$2;
