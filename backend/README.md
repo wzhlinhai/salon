@@ -507,4 +507,24 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 系统提示要求模型：写操作只会生成草稿，必须由有权限的人确认后才生效，不得说「已办好/已开单」；开单前先用 search_customers、list_items、quote_item_price、list_customer_cards 查清顾客、项目和价格，查不到或有歧义时先问员工；团购开单只针对已核销且未关联单据的核销记录（list_redemptions 的 unlinked_only），AI 不能核销。一次对话最多 6 次模型调用、每次响应最多 8 个 `tool_calls`，超过都返回 502；工具结果仍按 16000 字截断，整个请求仍有 120 秒期限。
 
-本接口不保存会话、不做流式输出；评测集和管理端/小程序界面分别在 P0-32 和后续任务中实现。`explain_commission` 专门支持「解释一笔提成的来源」（用户故事 130）。
+本接口不保存会话、不做流式输出；评测集见 `internal/ai/eval`（P0-32），管理端/小程序界面在后续任务中实现。`explain_commission` 专门支持「解释一笔提成的来源」（用户故事 130）。
+
+## AI 评测
+
+`internal/ai/eval` 是自建评测集（P0-32，ADR-0007）：40 条真实店务问题，覆盖营业额、业绩、顾客、卡余额/次数、预约、挂单、报表、团购核销，以及开单、改单补人、团购开单、调整单、修改草稿参数、预约起草和拒绝类问题。每条用例带标准答案、有序的期望工具调用（参数按子集匹配，支持 `any_of`）、禁止工具和回答关键词。期望参数用 `customer:王姐`、`staff:阿峰`、`item:洗剪吹`、`order:王姐挂单`、`card:王姐储值卡`、`redemption:美团1` 等符号引用，`$today`、`$tomorrow@15:00`、`$month` 等日期宏在固定门店 seed 后解析。
+
+评测门店只通过业务操作（optest/ops）建立：老板、店长、发型师、助理，项目级别价和会员价，储值卡和次卡，王姐/张先生等顾客，挂单、已结账单、预约，以及 fake provider 核销后未关联的美团券。时钟固定在 `2026-11-10 12:00`（`settings.Location`）。每条用例用 `dbtest` 新建一个隔离数据库（`SALON_TEST_PG_DSN` 或 testcontainers），不连接开发库；用例之间不共享草稿或业务数据。
+
+```bash
+cd backend
+AI_API_KEY=... AI_BASE_URL=... AI_MODEL=... go run ./cmd/aieval run --out /tmp/ai-eval.json
+go run ./cmd/aieval run --record /tmp/cassette.json --out /tmp/ai-eval.json
+go run ./cmd/aieval replay /tmp/cassette.json --out /tmp/ai-eval-replay.json
+go run ./cmd/aieval compare /tmp/ai-eval-before.json /tmp/ai-eval-after.json
+```
+
+`run` 与 `salon serve` 使用同一组环境变量：`AI_API_KEY`（必填，缺失时给出明确错误）、`AI_BASE_URL`、`AI_MODEL`；报告只记录 base URL 的 host，不记录密钥或完整地址。`--record` 把每次模型响应按用例和调用顺序写入 cassette；`replay` 离线重放，校验消息数和工具列表名，并把录制时的符号引用 ID 换成本次 fixture 的 ID，不一致时明确失败。`compare` 输出各指标的变化和通过状态翻转的用例；两份报告的用例文件哈希不同时拒绝比较，确认用例一致后加 `--allow-different-cases`。
+
+指标：工具选择（期望工具按顺序出现、不出现禁止工具）、参数（逐次调用和逐条用例都看期望参数子集）、回答（`answer_contains` 全部出现）、工具成功（匹配到的调用没有报错）、总体（以上全部通过）。模型错误和超时按失败记录，不中断评测；报告包含每条用例的来源、草稿、差异、耗时和模型调用次数，以及按故事/类别的汇总。`known_gap` 用例照常评分但单独统计。
+
+规则：换模型、改提示词或改工具集前后各跑一次 `run`，再用 `compare` 比较；真实基线报告存档在 `docs/ai-eval/`。CI 用 oracle 模型跑全部用例并断言 100%，再重放提交的 `internal/ai/eval/testdata/baseline.cassette.json`；cassette 过期时测试会提示用 `go test ./internal/ai/eval -run TestEvalOracleScoresPerfect -update-cassette` 重新生成。
