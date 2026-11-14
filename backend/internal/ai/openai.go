@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	openai "github.com/openai/openai-go/v2"
@@ -25,6 +26,7 @@ type OpenAIConfig struct {
 	APIKey     string
 	Model      string
 	HTTPClient *http.Client
+	Headers    map[string]string
 }
 
 // OpenAI 用 openai-go 访问 OpenAI 兼容的 Chat Completions + tools 接口。
@@ -48,6 +50,12 @@ func NewOpenAIModel(cfg OpenAIConfig) *OpenAI {
 	}
 	if cfg.HTTPClient != nil {
 		opts = append(opts, option.WithHTTPClient(cfg.HTTPClient))
+	}
+	for key, value := range cfg.Headers {
+		if forbiddenHeader(key) {
+			continue
+		}
+		opts = append(opts, option.WithHeader(key, value))
 	}
 	return &OpenAI{client: openai.NewClient(opts...), model: cfg.Model}
 }
@@ -132,9 +140,8 @@ func toOpenAIMessages(messages []Message) []openai.ChatCompletionMessageParamUni
 
 func modelError(err error) error {
 	var apiErr *openai.Error
-	status := 0
-	if errors.As(err, &apiErr) {
-		status = apiErr.StatusCode
+	if errors.As(err, &apiErr) && apiErr.StatusCode != 0 {
+		return &ModelError{Status: apiErr.StatusCode, Err: fmt.Errorf("HTTP %d", apiErr.StatusCode)}
 	}
-	return &ModelError{Status: status, Err: err}
+	return &ModelError{Err: err}
 }

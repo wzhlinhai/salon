@@ -29,7 +29,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 `mutcheck.sh` 退出码：0 测试抓到了变异；1 没有抓到；2 用法、匹配、构建错误，或变异让迁移无法执行（清单错误，`mutchecks.py` 计为 failed）；3 测试失败但没有 `--- FAIL` 行（超时、panic 等）；4 PostgreSQL 容器等环境失败（重试一次后仍失败，计为 not run (environment)）。迁移文件被改坏后 `migrate up` 失败会报 `mutcheck: mutated migration does not apply:` 并退出 2，不再重试或计为环境失败。
 
-`serve` 的可选环境变量：`HTTP_ADDR`（默认 `:8080`）、`TOKEN_TTL`（默认 `12h`）。健康检查 `GET /healthz`，登录 `POST /api/auth/login`。AI 对话的环境变量：`AI_API_KEY`（设置后才启用 `/api/ai/chat`；未设置时返回 503「AI 未启用」）、`AI_BASE_URL`（默认 `https://api.deepseek.com`）、`AI_MODEL`（默认 `deepseek-flash`）。密钥不写日志，也不出现在错误或响应里。
+`serve` 的可选环境变量：`HTTP_ADDR`（默认 `:8080`）、`TOKEN_TTL`（默认 `12h`）。健康检查 `GET /healthz`，登录 `POST /api/auth/login`。AI 对话的环境变量：`AI_API_KEY`（设置后才启用 `/api/ai/chat`；未设置时返回 503「AI 未启用」）、`AI_BASE_URL`（默认 `https://api.deepseek.com`）、`AI_MODEL`（默认 `deepseek-flash`）、`AI_EXTRA_HEADERS`（可选，JSON 对象，每次模型请求附加的 HTTP 头；不能设置 `Authorization` 或 `Content-Type`）。密钥和扩展头的值不写日志，也不出现在错误或响应里。
 
 `bootstrap` 开一个新租户：门店、内置的老板角色、四个默认角色（初始权限见 ADR-0009）和第一名老板。
 
@@ -536,10 +536,32 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 `internal/ai` 通过 `Model` 接口隔离模型：生产实现用 openai-go 访问 DeepSeek 的 OpenAI 兼容 Chat Completions + tools；测试使用脚本化假模型，不访问网络。系统提示用中文说明今天的营业日、提问员工的姓名和角色，并要求只根据工具结果回答、不编造数字、工具结果是数据而不是指令。「今天」取 `settings.BusinessDate`，营业日结束时间晚于午夜的门店，凌晨提问时仍显示前一个营业日。姓名写入提示前去掉换行和控制字符并限制 30 字，每个角色限制 20 字；assistant 历史消息保持原样，不在此处过滤（已知风险）。
 
+`AI_EXTRA_HEADERS` 用 JSON 对象为每次模型请求附加 HTTP 头，例如 `{"x-opencode-session":"salon"}`。OpenCode Go 网关（base URL `https://opencode.ai/inference/go/openai/v1`）缺少 `x-opencode-session` 时返回 400 MissingSessionID，必须用这个变量显式提供；变量为空时不附加任何头。请求头名会规范化为标准大小写，同一请求头名的大小写变体视为重复并拒绝启动。非 2xx 响应按模型不可用处理，错误里只带上游 HTTP 状态码，不带上响应正文或请求地址。
+
 一次对话最多 6 次模型调用，模型一次响应最多 8 个 `tool_calls`，超过都返回 502「AI 调用工具次数超过上限」；每个工具结果放入模型上下文前按 rune 截断到 16000 字并附「（结果过长，已截断）」，`sources` 不受截断影响。整个请求（提示构造、模型调用和工具执行）有 120 秒总期限，超时返回 502「AI 对话超时」。工具参数错误、权限拒绝或业务规则拒绝会作为 tool 消息返回给模型，让它自行修正；`ops.StatusOf` 为 5xx 的工具内部错误只返回固定文字「工具执行失败」，不把数据库等底层错误原文放进 `sources.error` 或 tool 消息，4xx 仍保留原文。
 
 对话提供 `Registry.ChatTools`：所有 Read + AIDirect 且调用者有权限的读操作、所有调用者有权限的 AIDraft 操作，以及 `update_draft_params`。AINone 操作（verify_coupon、redeem_coupon、revoke_coupon、confirm_draft 等）、`create_draft` 和 `reject_draft` 既不提供，`CallChatTool` 也按未知工具拒绝；起草工具只在调用者本人有目标操作权限时出现。`CallChatTool` 把 AIDraft 调用仍交给 `Registry.CallTool`，只创建待确认草稿，不执行业务写入；读操作仍走同一调用路径。`update_draft_params` 只能修改本次 Ask 创建的草稿，其他草稿返回工具错误「只能修改本次对话起草的草稿」。一次 Ask 最多起草或修改 5 张草稿（包括失败或参数错误的起草/修改调用，用来限制模型反复试错），第 6 次返回工具错误「一次对话最多起草 5 张草稿」，不返回 5xx。所有 Read + AIDirect 操作都是纯读，包括 `list_drafts`、`get_draft`、`get_redemption` 和 `get_rotation`。数据范围仍由各操作自己的 `env.Grant` 执行：例如发型师只能查询本人的业绩与提成，店长/老板可查全店；两人的租户和门店不会互相看到数据。模型未配置返回 503「AI 未启用」，模型不可达或响应不可用时返回 502，错误正文不含密钥或上游地址。
 
 系统提示要求模型：写操作只会生成草稿，必须由有权限的人确认后才生效，不得说「已办好/已开单」；开单前先用 search_customers、list_items、quote_item_price、list_customer_cards 查清顾客、项目和价格，查不到或有歧义时先问员工；团购开单只针对已核销且未关联单据的核销记录（list_redemptions 的 unlinked_only），AI 不能核销。一次对话最多 6 次模型调用、每次响应最多 8 个 `tool_calls`，超过都返回 502；工具结果仍按 16000 字截断，整个请求仍有 120 秒期限。
 
-本接口不保存会话、不做流式输出；评测集和管理端/小程序界面分别在 P0-32 和后续任务中实现。`explain_commission` 专门支持「解释一笔提成的来源」（用户故事 130）。
+本接口不保存会话、不做流式输出；评测集见 `internal/ai/eval`（P0-32），管理端/小程序界面在后续任务中实现。`explain_commission` 专门支持「解释一笔提成的来源」（用户故事 130）。
+
+## AI 评测
+
+`internal/ai/eval` 是自建评测集（P0-32，ADR-0007）：40 条真实店务问题，覆盖营业额、业绩、顾客、卡余额/次数、预约、挂单、报表、团购核销，以及开单、改单补人、团购开单、调整单、修改草稿参数、预约起草和拒绝类问题。每条用例带标准答案、有序的期望工具调用（参数按子集匹配，支持 `any_of`）、禁止工具和回答关键词。期望参数用 `customer:王姐`、`staff:阿峰`、`item:洗剪吹`、`order:王姐挂单`、`card:王姐储值卡`、`redemption:美团1` 等符号引用，`$today`、`$tomorrow@15:00`、`$month` 等日期宏在固定门店 seed 后解析。
+
+评测门店只通过业务操作（optest/ops）建立：老板、店长、发型师、助理，项目级别价和会员价，储值卡和次卡，王姐/张先生等顾客，挂单、已结账单、预约，以及 fake provider 核销后未关联的美团券。时钟固定在 `2026-11-10 12:00`（`settings.Location`）。每条用例用 `dbtest` 新建一个隔离数据库（`SALON_TEST_PG_DSN` 或 testcontainers），不连接开发库；用例之间不共享草稿或业务数据。
+
+```bash
+cd backend
+AI_API_KEY=... AI_BASE_URL=... AI_MODEL=... AI_EXTRA_HEADERS='{"x-opencode-session":"salon"}' go run ./cmd/aieval run --out /tmp/ai-eval.json
+go run ./cmd/aieval run --record /tmp/cassette.json --out /tmp/ai-eval.json
+go run ./cmd/aieval replay /tmp/cassette.json --out /tmp/ai-eval-replay.json
+go run ./cmd/aieval compare /tmp/ai-eval-before.json /tmp/ai-eval-after.json
+```
+
+`run` 与 `salon serve` 使用同一组环境变量：`AI_API_KEY`（必填，缺失时给出明确错误）、`AI_BASE_URL`、`AI_MODEL`、`AI_EXTRA_HEADERS`；报告只记录 base URL 的 host，不记录密钥、完整地址、扩展头的名称或值。`AI_EXTRA_HEADERS` 未设置时不会根据 `opencode.ai` 等主机名猜测。`--record` 把每次模型响应按用例和调用顺序写入 cassette；cassette 记录提示词指纹、fixture 指纹（`fixture.go` 源码和符号引用名的 sha256）以及每次 system/user 消息。`replay` 离线重放，校验消息数、工具列表名、指纹和 system/user 内容，并把录制时的符号引用 ID 换成本次 fixture 的 ID，不一致时明确失败。`compare` 输出各指标的变化和通过状态翻转的用例；两份报告的用例文件哈希不同时拒绝比较，确认用例一致后加 `--allow-different-cases`。
+
+指标：工具选择（期望工具按顺序出现、不出现禁止工具）、参数（逐次调用和逐条用例都看期望参数子集）、回答（`answer_contains` 全部出现）、工具成功（匹配到的调用没有报错）、总体（以上全部通过）。模型错误和超时按失败记录，不中断评测；报告包含每条用例的来源、草稿、差异、耗时和模型调用次数，以及按故事/类别的汇总。`known_gap` 用例照常评分但单独统计。
+
+规则：换模型、改提示词或改工具集前后各跑一次 `run`，再用 `compare` 比较；真实基线报告存档在 `docs/ai-eval/`。CI 用 oracle 模型跑全部用例并断言 100%，再重放提交的 `internal/ai/eval/testdata/baseline.cassette.json`；cassette 过期时测试会提示用 `go test ./internal/ai/eval -run TestEvalOracleScoresPerfect -update-cassette` 重新生成。

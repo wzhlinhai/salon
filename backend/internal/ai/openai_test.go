@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -93,10 +94,11 @@ func TestOpenAIRejectsMalformedToolArguments(t *testing.T) {
 }
 
 func TestOpenAIHTTPErrorsAreTyped(t *testing.T) {
+	const body = `{"error":{"message":"upstream-body-secret","type":"server_error","param":null,"code":null}}`
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`{"error":{"message":"boom","type":"server_error","param":null,"code":null}}`))
+		_, _ = w.Write([]byte(body))
 	}))
 	defer server.Close()
 	model := ai.NewOpenAIModel(ai.OpenAIConfig{BaseURL: server.URL, APIKey: "test-key"})
@@ -104,6 +106,61 @@ func TestOpenAIHTTPErrorsAreTyped(t *testing.T) {
 	var modelErr *ai.ModelError
 	if !errors.As(err, &modelErr) || modelErr.Status != http.StatusInternalServerError || !errors.Is(err, ai.ErrUnavailable) {
 		t.Fatalf("err = %v", err)
+	}
+	if !strings.Contains(modelErr.Err.Error(), "HTTP 500") {
+		t.Fatalf("wrapped err = %v, want HTTP status", modelErr.Err)
+	}
+	for _, text := range []string{"upstream-body-secret", server.URL} {
+		if strings.Contains(modelErr.Err.Error(), text) || strings.Contains(err.Error(), text) {
+			t.Fatalf("err = %v, must not contain %q", err, text)
+		}
+	}
+}
+
+func TestOpenAIExtraHeaders(t *testing.T) {
+	var headers http.Header
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headers = r.Header.Clone()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"x","object":"chat.completion","created":1,"model":"deepseek-flash","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"完成"}}]}`))
+	}))
+	defer server.Close()
+	model := ai.NewOpenAIModel(ai.OpenAIConfig{
+		BaseURL: server.URL,
+		APIKey:  "test-key",
+		Headers: map[string]string{
+			"x-opencode-session": "salon",
+			"Authorization":      "Bearer override",
+			"content-type":       "text/plain",
+		},
+	})
+	if _, err := model.Chat(context.Background(), []ai.Message{{Role: ai.RoleUser, Content: "x"}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := headers.Get("x-opencode-session"); got != "salon" {
+		t.Fatalf("x-opencode-session = %q", got)
+	}
+	if got := headers.Get("Authorization"); got != "Bearer test-key" {
+		t.Fatalf("Authorization = %q, extra headers must not override it", got)
+	}
+	if got := headers.Get("Content-Type"); got != "application/json" {
+		t.Fatalf("Content-Type = %q, extra headers must not override it", got)
+	}
+}
+
+func TestOpenAIReasoningContentAndFinishReason(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"x","object":"chat.completion","created":1,"model":"deepseek-v4.1-flash","choices":[{"index":0,"finish_reason":"gateway_completed","message":{"role":"assistant","content":"","reasoning_content":"先查一下","tool_calls":[{"id":"call_1","type":"function","function":{"name":"get_me","arguments":"{}"}}]}}]}`))
+	}))
+	defer server.Close()
+	model := ai.NewOpenAIModel(ai.OpenAIConfig{BaseURL: server.URL, APIKey: "test-key", Model: "deepseek-v4.1-flash"})
+	message, err := model.Chat(context.Background(), []ai.Message{{Role: ai.RoleUser, Content: "x"}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if message.Content != "" || len(message.ToolCalls) != 1 || message.ToolCalls[0].ID != "call_1" || message.ToolCalls[0].Name != "get_me" || message.ToolCalls[0].Arguments != "{}" {
+		t.Fatalf("message = %+v", message)
 	}
 }
 
