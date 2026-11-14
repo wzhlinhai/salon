@@ -207,7 +207,12 @@ func listCustomerCards(ctx context.Context, env ops.Env, in *ListCustomerCardsIn
 	if err := customers.CheckViewable(ctx, env, in.CustomerID); err != nil {
 		return nil, err
 	}
-	rows, err := env.Q.ListCustomerCards(ctx, dbgen.ListCustomerCardsParams{StoreID: env.Caller.StoreID, CustomerID: in.CustomerID})
+	return ListForCustomer(ctx, env, in.CustomerID)
+}
+
+// ListForCustomer 读取一位顾客在本店发行门店的卡及剩余次数；调用方负责确认这位顾客就是本人。
+func ListForCustomer(ctx context.Context, env ops.Env, customerID uuid.UUID) (*CardList, error) {
+	rows, err := env.Q.ListCustomerCards(ctx, dbgen.ListCustomerCardsParams{StoreID: env.Caller.StoreID, CustomerID: customerID})
 	if err != nil {
 		return nil, err
 	}

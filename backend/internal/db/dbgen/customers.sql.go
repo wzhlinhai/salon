@@ -43,21 +43,22 @@ func (q *Queries) AddSafetyLabel(ctx context.Context, arg AddSafetyLabelParams) 
 }
 
 const createCustomer = `-- name: CreateCustomer :one
-INSERT INTO customers (tenant_id, store_id, name, phone, gender, source_id, note, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO customers (tenant_id, store_id, name, phone, gender, source_id, note, created_by, created_by_customer)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (tenant_id, phone) WHERE phone IS NOT NULL AND merged_into IS NULL DO NOTHING
-RETURNING id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at
+RETURNING id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer
 `
 
 type CreateCustomerParams struct {
-	TenantID  uuid.UUID
-	StoreID   uuid.UUID
-	Name      *string
-	Phone     *string
-	Gender    *string
-	SourceID  *uuid.UUID
-	Note      *string
-	CreatedBy uuid.UUID
+	TenantID          uuid.UUID
+	StoreID           uuid.UUID
+	Name              *string
+	Phone             *string
+	Gender            *string
+	SourceID          *uuid.UUID
+	Note              *string
+	CreatedBy         *uuid.UUID
+	CreatedByCustomer *uuid.UUID
 }
 
 func (q *Queries) CreateCustomer(ctx context.Context, arg CreateCustomerParams) (Customer, error) {
@@ -70,6 +71,7 @@ func (q *Queries) CreateCustomer(ctx context.Context, arg CreateCustomerParams) 
 		arg.SourceID,
 		arg.Note,
 		arg.CreatedBy,
+		arg.CreatedByCustomer,
 	)
 	var i Customer
 	err := row.Scan(
@@ -85,6 +87,93 @@ func (q *Queries) CreateCustomer(ctx context.Context, arg CreateCustomerParams) 
 		&i.MergedInto,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.CreatedByCustomer,
+	)
+	return i, err
+}
+
+const createCustomerAsCustomer = `-- name: CreateCustomerAsCustomer :one
+INSERT INTO customers (id, tenant_id, store_id, name, phone, created_by_customer)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (tenant_id, phone) WHERE phone IS NOT NULL AND merged_into IS NULL DO NOTHING
+RETURNING id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer
+`
+
+type CreateCustomerAsCustomerParams struct {
+	ID                uuid.UUID
+	TenantID          uuid.UUID
+	StoreID           uuid.UUID
+	Name              *string
+	Phone             *string
+	CreatedByCustomer *uuid.UUID
+}
+
+// 顾客本人通过小程序建档：新建时还不知道自己的 ID，先分配 ID 再把同一 ID 记作创建人。
+func (q *Queries) CreateCustomerAsCustomer(ctx context.Context, arg CreateCustomerAsCustomerParams) (Customer, error) {
+	row := q.db.QueryRow(ctx, createCustomerAsCustomer,
+		arg.ID,
+		arg.TenantID,
+		arg.StoreID,
+		arg.Name,
+		arg.Phone,
+		arg.CreatedByCustomer,
+	)
+	var i Customer
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Name,
+		&i.Phone,
+		&i.Gender,
+		&i.SourceID,
+		&i.ResponsibleStaffID,
+		&i.Note,
+		&i.MergedInto,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.CreatedByCustomer,
+	)
+	return i, err
+}
+
+const createCustomerLogin = `-- name: CreateCustomerLogin :one
+INSERT INTO customer_logins (tenant_id, store_id, openid, unionid, customer_id, last_login_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (store_id, openid) DO UPDATE
+SET unionid=COALESCE(EXCLUDED.unionid, customer_logins.unionid), last_login_at=EXCLUDED.last_login_at
+RETURNING tenant_id, store_id, id, openid, unionid, customer_id, token_version, created_at, last_login_at
+`
+
+type CreateCustomerLoginParams struct {
+	TenantID    uuid.UUID
+	StoreID     uuid.UUID
+	Openid      string
+	Unionid     *string
+	CustomerID  uuid.UUID
+	LastLoginAt pgtype.Timestamptz
+}
+
+func (q *Queries) CreateCustomerLogin(ctx context.Context, arg CreateCustomerLoginParams) (CustomerLogin, error) {
+	row := q.db.QueryRow(ctx, createCustomerLogin,
+		arg.TenantID,
+		arg.StoreID,
+		arg.Openid,
+		arg.Unionid,
+		arg.CustomerID,
+		arg.LastLoginAt,
+	)
+	var i CustomerLogin
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.Openid,
+		&i.Unionid,
+		&i.CustomerID,
+		&i.TokenVersion,
+		&i.CreatedAt,
+		&i.LastLoginAt,
 	)
 	return i, err
 }
@@ -115,7 +204,7 @@ func (q *Queries) CreateCustomerSource(ctx context.Context, arg CreateCustomerSo
 }
 
 const findCustomerByPhone = `-- name: FindCustomerByPhone :one
-SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at FROM customers WHERE phone = $1 AND merged_into IS NULL
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer FROM customers WHERE phone = $1 AND merged_into IS NULL
 `
 
 func (q *Queries) FindCustomerByPhone(ctx context.Context, phone *string) (Customer, error) {
@@ -134,12 +223,46 @@ func (q *Queries) FindCustomerByPhone(ctx context.Context, phone *string) (Custo
 		&i.MergedInto,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.CreatedByCustomer,
+	)
+	return i, err
+}
+
+const findStoreCustomerByPhone = `-- name: FindStoreCustomerByPhone :one
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer FROM customers
+WHERE store_id = $1 AND phone = $2
+ORDER BY (merged_into IS NULL) DESC, created_at DESC, id
+LIMIT 1
+`
+
+type FindStoreCustomerByPhoneParams struct {
+	StoreID uuid.UUID
+	Phone   *string
+}
+
+func (q *Queries) FindStoreCustomerByPhone(ctx context.Context, arg FindStoreCustomerByPhoneParams) (Customer, error) {
+	row := q.db.QueryRow(ctx, findStoreCustomerByPhone, arg.StoreID, arg.Phone)
+	var i Customer
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Name,
+		&i.Phone,
+		&i.Gender,
+		&i.SourceID,
+		&i.ResponsibleStaffID,
+		&i.Note,
+		&i.MergedInto,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.CreatedByCustomer,
 	)
 	return i, err
 }
 
 const getCustomer = `-- name: GetCustomer :one
-SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at FROM customers WHERE id = $1
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer FROM customers WHERE id = $1
 `
 
 func (q *Queries) GetCustomer(ctx context.Context, id uuid.UUID) (Customer, error) {
@@ -158,12 +281,60 @@ func (q *Queries) GetCustomer(ctx context.Context, id uuid.UUID) (Customer, erro
 		&i.MergedInto,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.CreatedByCustomer,
+	)
+	return i, err
+}
+
+const getCustomerLogin = `-- name: GetCustomerLogin :one
+SELECT tenant_id, store_id, id, openid, unionid, customer_id, token_version, created_at, last_login_at FROM customer_logins WHERE id=$1
+`
+
+func (q *Queries) GetCustomerLogin(ctx context.Context, id uuid.UUID) (CustomerLogin, error) {
+	row := q.db.QueryRow(ctx, getCustomerLogin, id)
+	var i CustomerLogin
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.Openid,
+		&i.Unionid,
+		&i.CustomerID,
+		&i.TokenVersion,
+		&i.CreatedAt,
+		&i.LastLoginAt,
+	)
+	return i, err
+}
+
+const getCustomerLoginByOpenID = `-- name: GetCustomerLoginByOpenID :one
+SELECT tenant_id, store_id, id, openid, unionid, customer_id, token_version, created_at, last_login_at FROM customer_logins WHERE store_id=$1 AND openid=$2
+`
+
+type GetCustomerLoginByOpenIDParams struct {
+	StoreID uuid.UUID
+	Openid  string
+}
+
+func (q *Queries) GetCustomerLoginByOpenID(ctx context.Context, arg GetCustomerLoginByOpenIDParams) (CustomerLogin, error) {
+	row := q.db.QueryRow(ctx, getCustomerLoginByOpenID, arg.StoreID, arg.Openid)
+	var i CustomerLogin
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.Openid,
+		&i.Unionid,
+		&i.CustomerID,
+		&i.TokenVersion,
+		&i.CreatedAt,
+		&i.LastLoginAt,
 	)
 	return i, err
 }
 
 const getCustomers = `-- name: GetCustomers :many
-SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at FROM customers WHERE store_id=$1 AND id=ANY($2::uuid[])
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer FROM customers WHERE store_id=$1 AND id=ANY($2::uuid[])
 `
 
 type GetCustomersParams struct {
@@ -193,6 +364,7 @@ func (q *Queries) GetCustomers(ctx context.Context, arg GetCustomersParams) ([]C
 			&i.MergedInto,
 			&i.CreatedBy,
 			&i.CreatedAt,
+			&i.CreatedByCustomer,
 		); err != nil {
 			return nil, err
 		}
@@ -332,7 +504,7 @@ func (q *Queries) ListCustomerViewStaff(ctx context.Context, ids []uuid.UUID) ([
 }
 
 const lockCardOpeningCustomer = `-- name: LockCardOpeningCustomer :one
-SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at FROM customers WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer FROM customers WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
 `
 
 type LockCardOpeningCustomerParams struct {
@@ -356,12 +528,13 @@ func (q *Queries) LockCardOpeningCustomer(ctx context.Context, arg LockCardOpeni
 		&i.MergedInto,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.CreatedByCustomer,
 	)
 	return i, err
 }
 
 const lockCustomer = `-- name: LockCustomer :one
-SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at FROM customers WHERE id = $1 FOR NO KEY UPDATE
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer FROM customers WHERE id = $1 FOR NO KEY UPDATE
 `
 
 func (q *Queries) LockCustomer(ctx context.Context, id uuid.UUID) (Customer, error) {
@@ -380,8 +553,23 @@ func (q *Queries) LockCustomer(ctx context.Context, id uuid.UUID) (Customer, err
 		&i.MergedInto,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.CreatedByCustomer,
 	)
 	return i, err
+}
+
+const lockCustomerLogin = `-- name: LockCustomerLogin :exec
+SELECT pg_advisory_xact_lock(hashtextextended($1::text || $2::text, 0))
+`
+
+type LockCustomerLoginParams struct {
+	StoreID string
+	Openid  string
+}
+
+func (q *Queries) LockCustomerLogin(ctx context.Context, arg LockCustomerLoginParams) error {
+	_, err := q.db.Exec(ctx, lockCustomerLogin, arg.StoreID, arg.Openid)
+	return err
 }
 
 const lockCustomerPhone = `-- name: LockCustomerPhone :exec
@@ -411,7 +599,7 @@ func (q *Queries) LockCustomerSource(ctx context.Context, id uuid.UUID) (Custome
 }
 
 const lockResponsibleCustomers = `-- name: LockResponsibleCustomers :many
-SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at FROM customers
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer FROM customers
 WHERE responsible_staff_id = $1 AND merged_into IS NULL
 ORDER BY id FOR NO KEY UPDATE
 `
@@ -438,6 +626,7 @@ func (q *Queries) LockResponsibleCustomers(ctx context.Context, responsibleStaff
 			&i.MergedInto,
 			&i.CreatedBy,
 			&i.CreatedAt,
+			&i.CreatedByCustomer,
 		); err != nil {
 			return nil, err
 		}
@@ -463,6 +652,20 @@ func (q *Queries) MergeCustomerAppointments(ctx context.Context, arg MergeCustom
 	return err
 }
 
+const mergeCustomerLogins = `-- name: MergeCustomerLogins :exec
+UPDATE customer_logins SET customer_id=$1 WHERE customer_id=$2
+`
+
+type MergeCustomerLoginsParams struct {
+	KeepID   uuid.UUID
+	MergedID uuid.UUID
+}
+
+func (q *Queries) MergeCustomerLogins(ctx context.Context, arg MergeCustomerLoginsParams) error {
+	_, err := q.db.Exec(ctx, mergeCustomerLogins, arg.KeepID, arg.MergedID)
+	return err
+}
+
 const mergeCustomerSafetyLabels = `-- name: MergeCustomerSafetyLabels :exec
 UPDATE customer_safety_labels SET customer_id = $1 WHERE customer_id = $2
 `
@@ -474,6 +677,21 @@ type MergeCustomerSafetyLabelsParams struct {
 
 func (q *Queries) MergeCustomerSafetyLabels(ctx context.Context, arg MergeCustomerSafetyLabelsParams) error {
 	_, err := q.db.Exec(ctx, mergeCustomerSafetyLabels, arg.KeepID, arg.MergedID)
+	return err
+}
+
+const moveCustomerLoginCustomer = `-- name: MoveCustomerLoginCustomer :exec
+UPDATE customer_logins SET customer_id=$3 WHERE store_id=$1 AND id=$2
+`
+
+type MoveCustomerLoginCustomerParams struct {
+	StoreID    uuid.UUID
+	ID         uuid.UUID
+	CustomerID uuid.UUID
+}
+
+func (q *Queries) MoveCustomerLoginCustomer(ctx context.Context, arg MoveCustomerLoginCustomerParams) error {
+	_, err := q.db.Exec(ctx, moveCustomerLoginCustomer, arg.StoreID, arg.ID, arg.CustomerID)
 	return err
 }
 
@@ -530,7 +748,7 @@ func (q *Queries) SaveCustomer(ctx context.Context, arg SaveCustomerParams) erro
 }
 
 const searchCustomers = `-- name: SearchCustomers :many
-SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at FROM customers
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer FROM customers
 WHERE merged_into IS NULL
     AND ($1::boolean OR phone IS NOT NULL)
     AND ($2::uuid IS NULL OR responsible_staff_id = $2)
@@ -583,6 +801,7 @@ func (q *Queries) SearchCustomers(ctx context.Context, arg SearchCustomersParams
 			&i.MergedInto,
 			&i.CreatedBy,
 			&i.CreatedAt,
+			&i.CreatedByCustomer,
 		); err != nil {
 			return nil, err
 		}
@@ -595,7 +814,7 @@ func (q *Queries) SearchCustomers(ctx context.Context, arg SearchCustomersParams
 }
 
 const shareCustomer = `-- name: ShareCustomer :one
-SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at FROM customers WHERE store_id=$1 AND id=$2 FOR SHARE
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer FROM customers WHERE store_id=$1 AND id=$2 FOR SHARE
 `
 
 type ShareCustomerParams struct {
@@ -619,6 +838,7 @@ func (q *Queries) ShareCustomer(ctx context.Context, arg ShareCustomerParams) (C
 		&i.MergedInto,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.CreatedByCustomer,
 	)
 	return i, err
 }
@@ -639,6 +859,29 @@ func (q *Queries) ShareCustomerSource(ctx context.Context, id uuid.UUID) (Custom
 		&i.Active,
 	)
 	return i, err
+}
+
+const touchCustomerLogin = `-- name: TouchCustomerLogin :exec
+UPDATE customer_logins
+SET unionid=COALESCE($3, unionid), last_login_at=$4
+WHERE store_id=$1 AND id=$2
+`
+
+type TouchCustomerLoginParams struct {
+	StoreID     uuid.UUID
+	ID          uuid.UUID
+	Unionid     *string
+	LastLoginAt pgtype.Timestamptz
+}
+
+func (q *Queries) TouchCustomerLogin(ctx context.Context, arg TouchCustomerLoginParams) error {
+	_, err := q.db.Exec(ctx, touchCustomerLogin,
+		arg.StoreID,
+		arg.ID,
+		arg.Unionid,
+		arg.LastLoginAt,
+	)
+	return err
 }
 
 const updateCustomerSource = `-- name: UpdateCustomerSource :one

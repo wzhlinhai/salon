@@ -32,8 +32,9 @@ func TestEveryCustomerReferenceIsMerged(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	// 日志只追加，关联写入时的顾客，不随合并改挂；其余外键仍须全部登记。
-	expected := []string{"audit_log.customer_id"}
+	// 日志只追加，关联写入时的顾客和操作者，不随合并改挂；创建人也是历史记录。
+	// 其余外键仍须全部登记。
+	expected := []string{"audit_log.customer_id", "audit_log.actor_customer_id", "customers.created_by_customer"}
 	for _, ref := range customerReferences {
 		expected = append(expected, ref.table+"."+ref.column)
 	}

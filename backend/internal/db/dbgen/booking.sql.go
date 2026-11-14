@@ -412,6 +412,63 @@ func (q *Queries) ListAppointments(ctx context.Context, arg ListAppointmentsPara
 	return items, nil
 }
 
+const listCustomerAppointments = `-- name: ListCustomerAppointments :many
+SELECT tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at FROM appointments
+WHERE store_id=$1 AND customer_id=$2 AND kind='appointment'
+ AND (
+  (status IN ('pending','confirmed') AND ends_at >= $3)
+  OR (status IN ('completed','cancelled','no_show') AND starts_at >= $3 - interval '90 days')
+ )
+ORDER BY (status NOT IN ('pending','confirmed')), CASE WHEN status IN ('pending','confirmed') THEN starts_at END, starts_at DESC, id DESC
+LIMIT $4
+`
+
+type ListCustomerAppointmentsParams struct {
+	StoreID    uuid.UUID
+	CustomerID *uuid.UUID
+	Now        pgtype.Timestamptz
+	RowLimit   int32
+}
+
+func (q *Queries) ListCustomerAppointments(ctx context.Context, arg ListCustomerAppointmentsParams) ([]Appointment, error) {
+	rows, err := q.db.Query(ctx, listCustomerAppointments,
+		arg.StoreID,
+		arg.CustomerID,
+		arg.Now,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Appointment
+	for rows.Next() {
+		var i Appointment
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ID,
+			&i.StaffID,
+			&i.CustomerID,
+			&i.Kind,
+			&i.StartsAt,
+			&i.EndsAt,
+			&i.Status,
+			&i.Note,
+			&i.OrderID,
+			&i.CreatedBy,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockAppointment = `-- name: LockAppointment :one
 SELECT tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at FROM appointments WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
 `

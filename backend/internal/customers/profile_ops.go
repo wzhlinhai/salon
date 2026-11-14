@@ -10,6 +10,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
+	"github.com/wzhlinhai/salon/backend/internal/privacy"
 )
 
 // CreateCustomerInput 是顾客建档资料，全空表示未识别顾客。
@@ -125,7 +126,7 @@ func updatePhone(ctx context.Context, env ops.Env, in *CustomerPhoneInput, add b
 
 // CreateUnidentified 为开单创建未识别顾客并记新建日志；由开单权限覆盖，无需 customer.edit 权限。
 func CreateUnidentified(ctx context.Context, env ops.Env, gender string) (uuid.UUID, error) {
-	row, err := env.Q.CreateCustomer(ctx, dbgen.CreateCustomerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Gender: &gender, CreatedBy: env.Caller.StaffID})
+	row, err := env.Q.CreateCustomer(ctx, dbgen.CreateCustomerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Gender: &gender, CreatedBy: &env.Caller.StaffID})
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -168,7 +169,7 @@ func findOrCreate(ctx context.Context, env ops.Env, in customerLookup) (dbgen.Cu
 	if err := checkSource(ctx, env, in.SourceID, nil); err != nil {
 		return dbgen.Customer{}, false, err
 	}
-	row, err := env.Q.CreateCustomer(ctx, dbgen.CreateCustomerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Name: in.Name, Phone: phone, Gender: in.Gender, SourceID: in.SourceID, Note: in.Note, CreatedBy: env.Caller.StaffID})
+	row, err := env.Q.CreateCustomer(ctx, dbgen.CreateCustomerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Name: in.Name, Phone: phone, Gender: in.Gender, SourceID: in.SourceID, Note: in.Note, CreatedBy: &env.Caller.StaffID})
 	if err != nil {
 		return dbgen.Customer{}, false, rowError(err)
 	}
@@ -182,4 +183,78 @@ func findOrCreate(ctx context.Context, env ops.Env, in customerLookup) (dbgen.Cu
 // 供开单、预约等需要顾客但不必具备顾客建档权限的业务复用同一套查重与查看范围检查。
 func FindOrCreate(ctx context.Context, env ops.Env, name, phone, gender *string) (dbgen.Customer, bool, error) {
 	return findOrCreate(ctx, env, customerLookup{Name: name, Phone: phone, Gender: gender})
+}
+
+// FindOrCreateForCustomerLogin 按手机号查找或新建顾客，供小程序登录自动关联档案；新建顾客以顾客本人为操作者。
+func FindOrCreateForCustomerLogin(ctx context.Context, env ops.Env, rawPhone string) (dbgen.Customer, bool, error) {
+	phone, err := normalizePhone(&rawPhone)
+	if err != nil {
+		return dbgen.Customer{}, false, err
+	}
+	if err := env.Q.LockCustomerPhone(ctx, *phone); err != nil {
+		return dbgen.Customer{}, false, err
+	}
+	row, err := env.Q.FindStoreCustomerByPhone(ctx, dbgen.FindStoreCustomerByPhoneParams{StoreID: env.Caller.StoreID, Phone: phone})
+	if err == nil {
+		row, err = SurvivingCustomer(ctx, env.Q, row.ID)
+		if err == nil && row.StoreID != env.Caller.StoreID {
+			return dbgen.Customer{}, false, ops.Rule("该顾客已合并到其他门店的档案，不能登录")
+		}
+		return row, true, err
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return dbgen.Customer{}, false, err
+	}
+	id := uuid.New()
+	row, err = env.Q.CreateCustomerAsCustomer(ctx, dbgen.CreateCustomerAsCustomerParams{
+		ID: id, TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Phone: phone, CreatedByCustomer: &id,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		// 同手机号已被并发的另一次登录创建，重新按本店手机号读取。
+		row, err = env.Q.FindStoreCustomerByPhone(ctx, dbgen.FindStoreCustomerByPhoneParams{StoreID: env.Caller.StoreID, Phone: phone})
+		if err == nil {
+			row, err = SurvivingCustomer(ctx, env.Q, row.ID)
+			return row, true, err
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			if other, findErr := env.Q.FindCustomerByPhone(ctx, phone); findErr == nil && other.StoreID != env.Caller.StoreID {
+				return dbgen.Customer{}, false, ops.Rule("这个手机号已属于其他门店的顾客")
+			}
+		}
+	}
+	if err != nil {
+		return dbgen.Customer{}, false, rowError(err)
+	}
+	env.Caller.CustomerID = &id
+	if _, err := created(ctx, env, "create_customer", row); err != nil {
+		return dbgen.Customer{}, false, err
+	}
+	return row, false, nil
+}
+
+// SurvivingCustomer 沿 merged_into 找到合并后保留的顾客。
+func SurvivingCustomer(ctx context.Context, q *dbgen.Queries, id uuid.UUID) (dbgen.Customer, error) {
+	for range 100 {
+		row, err := q.GetCustomer(ctx, id)
+		if err != nil {
+			return dbgen.Customer{}, err
+		}
+		if row.MergedInto == nil {
+			return row, nil
+		}
+		if *row.MergedInto == id {
+			return dbgen.Customer{}, errors.New("customer merged into itself")
+		}
+		id = *row.MergedInto
+	}
+	return dbgen.Customer{}, errors.New("customer merge chain too long")
+}
+
+// MaskPhone 返回顾客本人看到的打码手机号。
+func MaskPhone(phone *string) *string {
+	if phone == nil {
+		return nil
+	}
+	masked := privacy.MaskPhone(*phone)
+	return &masked
 }

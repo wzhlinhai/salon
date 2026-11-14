@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/customer/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 顾客微信登录 */
+        post: operations["customer_login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/add_customer_phone": {
         parameters: {
             query?: never;
@@ -2146,6 +2163,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/my_appointments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看本人的预约 */
+        post: operations["my_appointments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/my_card_ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看本人一张卡的余额变动 */
+        post: operations["my_card_ledger"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/my_cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看本人在本店的卡、余额和剩余次数 */
+        post: operations["my_cards"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/my_orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看本人的消费明细 */
+        post: operations["my_orders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/my_profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看本人的档案与门店 */
+        post: operations["my_profile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/open_card": {
         parameters: {
             query?: never;
@@ -3172,6 +3274,8 @@ export interface components {
     schemas: {
         Actor: {
             id: string;
+            /** @enum {string} */
+            kind: "staff" | "customer";
             name: string;
         };
         AddOrderItemInput: {
@@ -4198,6 +4302,17 @@ export interface components {
         CustomerList: {
             items: components["schemas"]["Customer"][];
         };
+        CustomerLoginInputBody: {
+            /** @description 微信小程序登录 code */
+            code: string;
+            /** @description 微信手机号 code；不填时已有绑定仍可登录 */
+            phone_code?: string;
+            /**
+             * Format: uuid
+             * @description 门店 ID
+             */
+            store_id: string;
+        };
         CustomerPhoneInput: {
             id: string;
             phone: string;
@@ -4978,6 +5093,13 @@ export interface components {
         LogList: {
             entries: components["schemas"]["Entry"][];
         };
+        LoginCustomer: {
+            id: string;
+            name: string | null;
+            /** @description 按小程序规则打码 */
+            phone: string | null;
+            phone_masked: boolean;
+        };
         LoginInputBody: {
             account: string;
             password: string;
@@ -4985,6 +5107,11 @@ export interface components {
         LoginOutputBody: {
             /** @description 登录凭证，放在 Authorization: Bearer 头里 */
             token: string;
+        };
+        LoginResult: {
+            customer?: components["schemas"]["LoginCustomer"];
+            need_phone: boolean;
+            token?: string;
         };
         LookupInput: {
             key: string;
@@ -5031,6 +5158,105 @@ export interface components {
         MonthInput: {
             month: string;
         };
+        MyAppointment: {
+            /** Format: date-time */
+            ends_at: string;
+            id: string;
+            items: components["schemas"]["AppointmentItem"][];
+            staff: components["schemas"]["Ref"];
+            /** Format: date-time */
+            starts_at: string;
+            status: string;
+        };
+        MyAppointments: {
+            entries: components["schemas"]["MyAppointment"][];
+        };
+        MyCard: {
+            balance: string;
+            bonus: string;
+            card_type_name: string;
+            expires_on: string | null;
+            id: string;
+            items: components["schemas"]["MyCardItem"][];
+            kind: string;
+            /** Format: date-time */
+            opened_at: string;
+            /** Format: int32 */
+            points: number;
+            principal: string;
+            status: string;
+        };
+        MyCardItem: {
+            /** Format: int32 */
+            gift_remaining: number;
+            item_id: string;
+            item_name: string;
+            /** Format: int32 */
+            paid_remaining: number;
+            unit_price: string;
+        };
+        MyCardLedger: {
+            entries: components["schemas"]["MyCardLedgerEntry"][];
+        };
+        MyCardLedgerEntry: {
+            bonus_after: string;
+            bonus_delta: string;
+            business_date: string;
+            id: string;
+            kind: string;
+            order_id: string | null;
+            principal_after: string;
+            principal_delta: string;
+        };
+        MyCardLedgerInput: {
+            /** @description 上一页最后一条的 ID */
+            before_id?: string;
+            card_id: string;
+            /** Format: int32 */
+            limit?: number;
+        };
+        MyCards: {
+            items: components["schemas"]["MyCard"][];
+        };
+        MyOrder: {
+            business_date: string;
+            id: string;
+            items: components["schemas"]["MyOrderItem"][];
+            paid_amount: string;
+            payments: components["schemas"]["MyOrderPayment"][];
+            status: string;
+            voided: boolean;
+        };
+        MyOrderItem: {
+            item_name: string;
+            price: string;
+            /** @description 服务岗位员工姓名 */
+            staff_names: string[];
+        };
+        MyOrderPayment: {
+            amount: string;
+            card_name: string | null;
+            method: string;
+        };
+        MyOrders: {
+            entries: components["schemas"]["MyOrder"][];
+        };
+        MyOrdersInput: {
+            /** @description 上一页最后一条的 ID */
+            before_id?: string;
+            /** Format: int32 */
+            limit?: number;
+        };
+        MyProfile: {
+            name: string | null;
+            /** @description 打码手机号 */
+            phone: string | null;
+            phone_masked: boolean;
+            store_name: string;
+        };
+        My_appointmentsRequest: Record<string, never>;
+        My_cardsRequest: Record<string, never>;
+        My_profileRequest: Record<string, never>;
         OK: {
             ok: boolean;
         };
@@ -6308,6 +6534,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LoginOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    customer_login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerLoginInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResult"];
                 };
             };
             /** @description Error */
@@ -10400,6 +10659,171 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Order"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    my_appointments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["My_appointmentsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyAppointments"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    my_card_ledger: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MyCardLedgerInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyCardLedger"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    my_cards: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["My_cardsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyCards"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    my_orders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MyOrdersInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyOrders"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    my_profile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["My_profileRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyProfile"];
                 };
             };
             /** @description Error */

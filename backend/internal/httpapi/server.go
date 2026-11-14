@@ -5,10 +5,12 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
@@ -31,6 +33,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/debts"
 	"github.com/wzhlinhai/salon/backend/internal/drafts"
 	"github.com/wzhlinhai/salon/backend/internal/groupbuy"
+	"github.com/wzhlinhai/salon/backend/internal/miniprogram"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/orders"
 	"github.com/wzhlinhai/salon/backend/internal/payroll"
@@ -49,6 +52,9 @@ type Authenticator func(r *http.Request) (ops.Caller, bool)
 // LoginFunc 校验账号密码并返回登录凭证。
 type LoginFunc func(ctx context.Context, account, password string) (string, error)
 
+// CustomerLoginFunc 用微信 code 和可选的手机号 code 登录顾客小程序。
+type CustomerLoginFunc func(ctx context.Context, storeID uuid.UUID, code, phoneCode string) (miniprogram.LoginResult, error)
+
 // Config 是组装 HTTP 接口所需的依赖。
 type Config struct {
 	// Groupbuy 保存已配置的平台实现；未配置的平台拒绝操作。
@@ -56,7 +62,10 @@ type Config struct {
 	// Now 提供每次业务调用的时刻，nil 时使用真实时钟。
 	Now          func() time.Time
 	Authenticate Authenticator
-	Login        LoginFunc
+	// AuthenticateCustomer 识别顾客小程序凭证；与员工 Authenticate 互不通用。
+	AuthenticateCustomer Authenticator
+	Login                LoginFunc
+	CustomerLogin        CustomerLoginFunc
 	// AIModel 返回 AI 对话使用的模型；返回 nil 时 /api/ai/chat 返回 503。
 	AIModel func() ai.Model
 }
@@ -74,7 +83,14 @@ func New(pool *pgxpool.Pool, cfg Config) (*echo.Echo, *ops.Registry) {
 
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
-			if caller, ok := cfg.Authenticate(c.Request()); ok {
+			caller, ok := ops.Caller{}, false
+			if cfg.Authenticate != nil {
+				caller, ok = cfg.Authenticate(c.Request())
+			}
+			if !ok && strings.HasPrefix(c.Request().URL.Path, ops.PathPrefix) && cfg.AuthenticateCustomer != nil {
+				caller, ok = cfg.AuthenticateCustomer(c.Request())
+			}
+			if ok {
 				c.SetRequest(c.Request().WithContext(ops.WithCaller(c.Request().Context(), caller)))
 			}
 			return next(c)
@@ -86,6 +102,7 @@ func New(pool *pgxpool.Pool, cfg Config) (*echo.Echo, *ops.Registry) {
 	hc.CreateHooks = nil
 	api := humaecho.New(e, hc)
 	registerLogin(api, cfg.Login)
+	registerCustomerLogin(api, cfg.CustomerLogin)
 
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -123,6 +140,7 @@ func New(pool *pgxpool.Pool, cfg Config) (*echo.Echo, *ops.Registry) {
 	redpackets.Register(reg)
 	cards.Register(reg)
 	customers.Register(reg)
+	miniprogram.Register(reg)
 	dataio.Register(reg)
 	settings.Register(reg)
 	audit.Register(reg)
@@ -164,6 +182,47 @@ func registerLogin(api huma.API, login LoginFunc) {
 		out := &loginOutput{}
 		out.Body.Token = token
 		return out, nil
+	})
+}
+
+type customerLoginInput struct {
+	Body struct {
+		StoreID   uuid.UUID `json:"store_id" format:"uuid" doc:"门店 ID"`
+		Code      string    `json:"code" minLength:"1" maxLength:"200" doc:"微信小程序登录 code"`
+		PhoneCode string    `json:"phone_code,omitempty" maxLength:"200" doc:"微信手机号 code；不填时已有绑定仍可登录"`
+	}
+}
+
+type customerLoginOutput struct {
+	Body miniprogram.LoginResult
+}
+
+func registerCustomerLogin(api huma.API, login CustomerLoginFunc) {
+	huma.Register(api, huma.Operation{
+		OperationID: "customer_login",
+		Method:      http.MethodPost,
+		Path:        "/api/customer/login",
+		Summary:     "顾客微信登录",
+	}, func(ctx context.Context, in *customerLoginInput) (*customerLoginOutput, error) {
+		if login == nil {
+			return nil, huma.Error503ServiceUnavailable(miniprogram.ErrDisabled.Error())
+		}
+		result, err := login(ctx, in.Body.StoreID, in.Body.Code, in.Body.PhoneCode)
+		switch {
+		case errors.Is(err, miniprogram.ErrDisabled):
+			return nil, huma.Error503ServiceUnavailable(miniprogram.ErrDisabled.Error())
+		case errors.Is(err, miniprogram.ErrStoreNotFound):
+			return nil, huma.Error404NotFound(miniprogram.ErrStoreNotFound.Error())
+		case errors.Is(err, miniprogram.ErrWechatLoginFailed):
+			return nil, huma.Error401Unauthorized(miniprogram.ErrWechatLoginFailed.Error())
+		case err != nil:
+			var rule *ops.RuleError
+			if errors.As(err, &rule) {
+				return nil, huma.NewError(http.StatusConflict, rule.Message)
+			}
+			return nil, err
+		}
+		return &customerLoginOutput{Body: result}, nil
 	})
 }
 

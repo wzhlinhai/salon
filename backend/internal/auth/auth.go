@@ -58,9 +58,14 @@ func NewService(pool *pgxpool.Pool, secret []byte, ttl time.Duration) (*Service,
 	return &Service{pool: pool, secret: secret, ttl: ttl, now: time.Now}, nil
 }
 
+// Now 返回服务当前使用的时刻，供顾客登录记录最后登录时间。
+func (s *Service) Now() time.Time { return s.now() }
+
 type claims struct {
 	TenantID     uuid.UUID `json:"tid"`
 	TokenVersion *int32    `json:"ver"`
+	// Typ 区分员工凭证和顾客小程序凭证；员工凭证不写这个字段。
+	Typ string `json:"typ,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -163,11 +168,120 @@ func (s *Service) parse(token string) (staffID, tenantID uuid.UUID, version int3
 	if err != nil {
 		return uuid.Nil, uuid.Nil, 0, err
 	}
+	if c.Typ != "" {
+		return uuid.Nil, uuid.Nil, 0, errors.New("not a staff token")
+	}
 	staffID, err = uuid.Parse(c.Subject)
 	if err != nil || c.TenantID == uuid.Nil || c.TokenVersion == nil {
 		return uuid.Nil, uuid.Nil, 0, errors.New("invalid token subject")
 	}
 	return staffID, c.TenantID, *c.TokenVersion, nil
+}
+
+// customerTokenTTL 是顾客小程序登录凭证的有效期。
+const customerTokenTTL = 30 * 24 * time.Hour
+
+// IssueCustomerToken 签发顾客小程序登录凭证。Subject 是 customer_logins.id，typ=customer 与员工凭证区分。
+func (s *Service) IssueCustomerToken(tenantID, loginID uuid.UUID, tokenVersion int32) (string, error) {
+	now := s.now()
+	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims{
+		TenantID:     tenantID,
+		TokenVersion: &tokenVersion,
+		Typ:          "customer",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   loginID.String(),
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(customerTokenTTL)),
+		},
+	})
+	return tok.SignedString(s.secret)
+}
+
+func (s *Service) parseCustomer(token string) (loginID, tenantID uuid.UUID, version int32, err error) {
+	var c claims
+	_, err = jwt.ParseWithClaims(token, &c, func(*jwt.Token) (any, error) { return s.secret, nil },
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithExpirationRequired(),
+		jwt.WithTimeFunc(s.now),
+	)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, 0, err
+	}
+	if c.Typ != "customer" {
+		return uuid.Nil, uuid.Nil, 0, errors.New("not a customer token")
+	}
+	loginID, err = uuid.Parse(c.Subject)
+	if err != nil || c.TenantID == uuid.Nil || c.TokenVersion == nil {
+		return uuid.Nil, uuid.Nil, 0, errors.New("invalid token subject")
+	}
+	return loginID, c.TenantID, *c.TokenVersion, nil
+}
+
+// AuthenticateCustomer 从请求的 Bearer 凭证识别顾客本人。
+// 每次请求都读取绑定和凭证版本；顾客合并后跟随到保留的顾客，绑定失效或顾客不存在时返回 false。
+func (s *Service) AuthenticateCustomer(r *http.Request) (ops.Caller, bool) {
+	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok {
+		return ops.Caller{}, false
+	}
+	loginID, tenantID, version, err := s.parseCustomer(token)
+	if err != nil {
+		return ops.Caller{}, false
+	}
+	var caller ops.Caller
+	ok = true
+	err = db.InTenant(r.Context(), s.pool, tenantID, func(q *dbgen.Queries) error {
+		login, err := q.GetCustomerLogin(r.Context(), loginID)
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && login.TokenVersion != version) {
+			ok = false
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		customerID := login.CustomerID
+		for range 100 {
+			customer, err := q.GetCustomer(r.Context(), customerID)
+			if errors.Is(err, pgx.ErrNoRows) {
+				ok = false
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if customer.MergedInto == nil {
+				if customer.StoreID != login.StoreID {
+					ok = false
+					return nil
+				}
+				if customer.ID != login.CustomerID {
+					if err := q.MoveCustomerLoginCustomer(r.Context(), dbgen.MoveCustomerLoginCustomerParams{StoreID: login.StoreID, ID: login.ID, CustomerID: customer.ID}); err != nil {
+						return err
+					}
+				}
+				caller = ops.Caller{TenantID: login.TenantID, StoreID: login.StoreID, CustomerID: &customer.ID, LoginID: &login.ID, Name: valueOrEmpty(customer.Name)}
+				return nil
+			}
+			if *customer.MergedInto == customerID {
+				ok = false
+				return nil
+			}
+			customerID = *customer.MergedInto
+		}
+		ok = false
+		return nil
+	})
+	if err != nil || !ok {
+		return ops.Caller{}, false
+	}
+	return caller, true
+}
+
+func valueOrEmpty(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }
 
 // Authenticate 从请求的 Bearer 凭证识别员工，并从数据库读取其当前权限。

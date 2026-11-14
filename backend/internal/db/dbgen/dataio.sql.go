@@ -795,7 +795,7 @@ func (q *Queries) ExportStoredCardsPage(ctx context.Context, arg ExportStoredCar
 }
 
 const findCustomersByPhones = `-- name: FindCustomersByPhones :many
-SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at FROM customers
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer FROM customers
 WHERE merged_into IS NULL AND phone = ANY($1::text[])
 `
 
@@ -822,6 +822,7 @@ func (q *Queries) FindCustomersByPhones(ctx context.Context, phones []string) ([
 			&i.MergedInto,
 			&i.CreatedBy,
 			&i.CreatedAt,
+			&i.CreatedByCustomer,
 		); err != nil {
 			return nil, err
 		}

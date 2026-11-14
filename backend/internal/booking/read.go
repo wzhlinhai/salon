@@ -189,3 +189,17 @@ func listAppointments(ctx context.Context, env ops.Env, in *ListAppointmentsInpu
 	out.Entries = views
 	return out, nil
 }
+
+// ListForCustomer 读取顾客本人的预约：待确认和已确认的在未来先列，其余最近 90 天按时间倒序。
+func ListForCustomer(ctx context.Context, env ops.Env, customerID uuid.UUID, now time.Time, limit int32) ([]Appointment, error) {
+	if limit == 0 {
+		limit = 100
+	}
+	rows, err := env.Q.ListCustomerAppointments(ctx, dbgen.ListCustomerAppointmentsParams{
+		StoreID: env.Caller.StoreID, CustomerID: &customerID, Now: timestamptz(now), RowLimit: limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return loadAppointments(ctx, env, rows, false)
+}

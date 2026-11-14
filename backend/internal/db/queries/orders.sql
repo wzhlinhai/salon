@@ -69,12 +69,21 @@ VALUES ($1,$2,$3,$4) RETURNING *;
 
 
 -- name: ListOrderPayments :many
-SELECT p.*, d.id AS debt_id, (-l.principal_delta)::numeric AS principal, (-l.bonus_delta)::numeric AS bonus, c.item_id AS count_item_id, (-COALESCE(c.paid_delta,0))::int AS paid, (-COALESCE(c.gift_delta,0))::int AS gift, ci.unit_price::numeric AS count_unit_price
+SELECT p.*, d.id AS debt_id, (-l.principal_delta)::numeric AS principal, (-l.bonus_delta)::numeric AS bonus, c.item_id AS count_item_id, (-COALESCE(c.paid_delta,0))::int AS paid, (-COALESCE(c.gift_delta,0))::int AS gift, ci.unit_price::numeric AS count_unit_price, ct.name AS card_name
 FROM order_payments p LEFT JOIN card_ledger l ON l.id = p.card_ledger_id
 LEFT JOIN card_count_ledger c ON c.id = p.card_count_ledger_id
 LEFT JOIN card_items ci ON ci.card_id=p.card_id AND ci.item_id=c.item_id
+LEFT JOIN cards card ON card.tenant_id=p.tenant_id AND card.id=p.card_id
+LEFT JOIN card_types ct ON ct.tenant_id=card.tenant_id AND ct.id=card.card_type_id
 LEFT JOIN debts d ON d.order_payment_id=p.id
 WHERE p.store_id=$1 AND p.order_id=ANY(sqlc.arg(order_ids)::uuid[]) ORDER BY p.id;
+
+-- name: ListCustomerOrders :many
+SELECT o.* FROM orders o
+WHERE o.store_id=sqlc.arg(store_id) AND o.customer_id=sqlc.arg(customer_id)
+ AND o.status IN ('paid','voided')
+ AND (sqlc.narg(before_id)::uuid IS NULL OR (o.opened_at,o.id) < (SELECT opened_at,id FROM orders WHERE id=sqlc.narg(before_id) AND store_id=sqlc.arg(store_id)))
+ORDER BY o.opened_at DESC,o.id DESC LIMIT sqlc.arg(row_limit);
 
 -- name: MarkOrderPaid :exec
 UPDATE orders SET status='paid', checkout_id=sqlc.arg(checkout_id) WHERE store_id=sqlc.arg(store_id) AND id=sqlc.arg(id);

@@ -67,12 +67,30 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 - 新权限加进 `perm.DefaultRoles` 只影响以后开的店，已有租户的角色不会补上。本地跑端到端测试前先 `scripts/dev.sh reset`。
 - 授权规则在 `internal/staff`：只有老板能授予或去掉老板角色；其他人授予、收回的角色和编辑的权限不能超过自己；不能修改权限比自己大的员工的档案、账号或在职状态；在职老板不能变成 0 人（用老板角色的行锁串行检查）。修改另一名员工的操作一律经过 `change`：先锁老板角色排队，再锁员工行，然后做可管理检查、老板底线和改前改后日志。新建员工、编辑或删除角色也先锁同一老板角色排队，确保授权检查期间角色权限不会改变。
 - 员工记录不能删除：`salon_app` 没有 `staff` 表的 DELETE 权限。
-- 登录时查找账号是唯一不经过 `db.InTenant` 的数据访问：此时还不知道租户，`auth.Service.Login` 以 `salon_app` 角色调用 `auth_find_login`（SECURITY DEFINER 函数，只返回登录所需的字段）。这条查询是手写的，因为 sqlc 推断不出函数返回的列。找到账号后，在 `db.InTenant` 事务里锁住员工并校验密码、更新失败计数。
+- 登录时还不知道租户，因此有两条不经过 `db.InTenant` 的数据访问：员工登录由 `auth.Service.Login` 以 `salon_app` 角色调用 `auth_find_login` 按账号找员工；顾客登录由 `miniprogram.LoginService` 调用 `customer_login_store` 按门店找租户。两个函数都是 SECURITY DEFINER，只返回登录所需的字段；这两条查询是手写的，因为 sqlc 推断不出函数返回的列。找到账号或租户后，后续读写都在 `db.InTenant` 事务里进行。
+- 顾客小程序使用另一种凭证：同一个 JWT 密钥，但 `typ=customer`、Subject 为 `customer_logins.id`，有效期 30 天。员工 `Authenticate` 拒绝带 `typ` 的凭证，顾客 `AuthenticateCustomer` 只接受 `typ=customer`，两种凭证不能互用。顾客没有角色，权限只有 `ops.CustomerSelf`；`ops.LoggedIn` 仍要求员工 ID，因此所有员工操作都会拒绝顾客。
 - 角色列表分两个操作：`list_roles` 含权限配置，需要角色权限管理；`list_role_options` 只有名称，需要员工档案管理，用于给员工分配角色。
 
 ## 顾客档案
 
 修改已有顾客的操作一律经过 `internal/customers` 的 `change`（按 ID 或按负责人选中），由它负责加锁、查看范围、已合并检查、改前改后日志和手机号打码。新建顾客用 `created`。
+
+## 顾客小程序
+
+- 登录入口是 `POST /api/customer/login`，不经过 ops：请求体 `{store_id, code, phone_code?}`。先按门店找租户（`customer_login_store`，SECURITY DEFINER）；门店不存在返回 404「门店不存在」。没有配置微信实现时返回 503「小程序登录未启用」。
+- `internal/wechat.Provider` 隔离微信接口：`Session` 用 `jscode2session` 换 openid，`PhoneNumber` 用 `getuserphonenumber` 读手机号；真实实现缓存 `cgi-bin/token`，提前刷新，errcode 转成不含密钥、令牌或 session_key 的错误。开发环境 `WECHAT_FAKE=1` 启用 `fakewechat`（`fake-openid:<openid>`、`fake-phone:<11 位手机号>`）；`WECHAT_APPID` + `WECHAT_SECRET` 启用真实接口；两者同时配置时拒绝启动。
+- 登录先按 `(store_id, openid)` 找绑定。已有绑定直接签发凭证，并沿 `merged_into` 找到合并后保留的顾客；没有绑定且没传 `phone_code` 返回 `{need_phone:true}`。传了 `phone_code` 时按手机号查找本店顾客：找到就绑定（已合并则绑到保留的顾客），没有就按顾客建档规则新建，操作者记为顾客本人（`customers.created_by_customer`）。同一 openid 的并发登录用咨询锁排队，绑定表另有 `UNIQUE (store_id, openid)` 兜底。
+- 顾客操作都是 Read / `ops.CustomerSelf` / `AINone`，只从 `env.Caller.CustomerID` 和 `env.Caller.StoreID` 取范围，不接受 `customer_id` 参数：
+
+| 操作 | 返回 |
+| --- | --- |
+| my_profile | 本人姓名、打码手机号、门店名称 |
+| my_cards | 本店发行的卡、卡类型、余额、积分、有效期和剩余次数 |
+| my_card_ledger | 本人一张卡的余额变动；别人的卡按不存在处理 |
+| my_orders | 本人已结账和已撤单的单、项目、支付方式和金额 |
+| my_appointments | 本人待确认/已确认的未来预约，再列最近 90 天的其他预约 |
+
+- 卡和消费明细的读取按批查询，条数不随卡数、单数增长；消费明细不返回提成、业绩、员工内部字段，只保留服务岗位员工姓名。顾客合并后，绑定和本人的读取都跟随到保留的顾客，看到的是同一个人的数据。
 
 ## 门店设置（ADR-0002）
 
@@ -256,6 +274,7 @@ Reconcile 按 `collections.business_date`（补录单写入纸单日；为空的
 - `audit_log` 只追加，`salon_app` 只有 SELECT 和 INSERT 权限。日志与业务操作在同一事务里写入，任何一步失败都会一起回滚。同一员工或角色的修改用行锁排队，在读取改前快照前加锁，日志的改前才接得上前一次的改后。
 - 当前记录角色的新建、修改、删除，以及员工的新建、档案修改、登录设置、停用、恢复和角色分配；保留改前改后，删除角色时还保留持有员工的 ID、姓名。`list_audit_log` 需要操作日志权限，可按目标 ID 查询。每条日志记录目标种类及其关联顾客；`list_audit_log` 按调用者的顾客查看范围过滤关联顾客的日志。班次（`shift`）、员工班次（`staff_shift`，目标为员工 ID）、补卡与作废补卡（`punch`，目标为打卡 ID）、考勤核准与撤销（`attendance_approval`，目标为核准 ID）均不关联顾客，只需要操作日志权限即可查看；底薪（`base_salary`，目标为员工 ID）、加减项（`payroll_adjustment`，目标为加减项 ID）、工资锁月（`payroll_month`，目标为提成结算 ID，均不关联顾客）、提成方案（`commission_scheme`，不关联顾客）、团购商品（`groupbuy_deal`）、团购月结算（`groupbuy_settlement`）、预约（`appointment`，关联顾客）和私约占位（`appointment_block`，不关联顾客）、卡类型、开卡、充值、开单、加项目、去掉项目、换岗位员工、改价、合并单、结账已记录日志。员工本人打卡（`clock_in`）不写操作日志，打卡行本身即记录。新增关联顾客的种类（例如单）时，添加接收顾客 ID 的构造函数，并扩展迁移中的 CHECK 列表。
 - 新操作在成功路径末尾用同一个 `env` 调用 `audit.Record`，传入不含密码或密码哈希的返回值视图；新建前、删除后传 nil。手机号字段的 JSON 键名必须是 `phone`，`audit.Record` 遇到别的键名会拒绝写入（读取时只按这个键名打码）。
+- 操作者可以是员工或顾客本人：`audit_log.actor_id` 与 `actor_customer_id` 恰好一个非空。小程序登录新建顾客和首次绑定用顾客本人写日志；`list_audit_log` 对顾客操作者返回 `kind=customer`，没有姓名时显示「顾客本人」，手机号仍按调用者权限打码。
 
 ## 共享修改与引用检查
 

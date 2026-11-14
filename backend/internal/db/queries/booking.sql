@@ -24,6 +24,16 @@ WHERE store_id=sqlc.arg(store_id)
  AND (sqlc.narg(staff_id)::uuid IS NULL OR staff_id = sqlc.narg(staff_id))
 ORDER BY starts_at, id;
 
+-- name: ListCustomerAppointments :many
+SELECT * FROM appointments
+WHERE store_id=sqlc.arg(store_id) AND customer_id=sqlc.arg(customer_id) AND kind='appointment'
+ AND (
+  (status IN ('pending','confirmed') AND ends_at >= sqlc.arg(now))
+  OR (status IN ('completed','cancelled','no_show') AND starts_at >= sqlc.arg(now) - interval '90 days')
+ )
+ORDER BY (status NOT IN ('pending','confirmed')), CASE WHEN status IN ('pending','confirmed') THEN starts_at END, starts_at DESC, id DESC
+LIMIT sqlc.arg(row_limit);
+
 -- name: RescheduleAppointment :one
 UPDATE appointments SET staff_id=$3, starts_at=$4, ends_at=$5
 WHERE store_id=$1 AND id=$2
