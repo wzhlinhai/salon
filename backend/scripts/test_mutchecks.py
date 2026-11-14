@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import signal
+import socket
 import sys
 import time
 from pathlib import Path
@@ -19,6 +20,22 @@ mutchecks = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(mutchecks)
 
 TEST_TEMP_ROOT = None
+
+
+class FakeSharedServers:
+    """Record worker servers without starting Docker in tooling tests."""
+
+    def __init__(self, count):
+        self.dsns = [f'postgres://test/{index}' for index in range(count)]
+
+    def start(self, timeout=60):
+        return self
+
+    def dsn(self, index):
+        return self.dsns[index % len(self.dsns)]
+
+    def close(self):
+        pass
 
 
 def setUpModule():
@@ -52,6 +69,31 @@ def init_repo(root):
 
 def stage_fixture(root):
     git(root, 'add', '.')
+
+
+def commit_fixture(root):
+    stage_fixture(root)
+    subprocess.check_output(
+        ['git', '-c', 'user.email=test@example.com', '-c', 'user.name=Test', 'commit', '-q', '-m', 'initial'],
+        cwd=root)
+
+
+def write(path, content):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content)
+
+
+def bin_dir_env(binary):
+    return {'PATH': str(binary) + os.pathsep + os.environ['PATH']}
+
+
+def migration_entry(name, file, original):
+    return dict(kind='go', step='1', name=name, file=file, original=original,
+                replacement=original + ' -- mutated', guards=['TestGuard'], packages=['a'])
+
+
+def query_entry(name, file, original):
+    return migration_entry(name, file, original)
 
 
 class ManifestTests(unittest.TestCase):
@@ -195,7 +237,7 @@ class AllManifestTests(unittest.TestCase):
         usage = (patch.object(mutchecks.shutil, 'disk_usage', side_effect=disk_usage)
                  if disk_usage is not None else
                  patch.object(mutchecks.shutil, 'disk_usage', return_value=Mock(free=free)))
-        with patch.object(mutchecks, 'ROOT', root), patch.object(sys, 'argv', ['mutchecks.py', *args]), patch('sys.stdout', new=io.StringIO()) as output, patch('sys.stderr', new=io.StringIO()) as error, usage:
+        with patch.object(mutchecks, 'ROOT', root), patch.object(mutchecks, 'SharedServers', FakeSharedServers), patch.object(sys, 'argv', ['mutchecks.py', *args]), patch('sys.stdout', new=io.StringIO()) as output, patch('sys.stderr', new=io.StringIO()) as error, usage:
             code = mutchecks.main()
         return code, output.getvalue(), error.getvalue()
 
@@ -220,11 +262,11 @@ class AllManifestTests(unittest.TestCase):
                 manifests.append(manifest)
             seen = []
 
-            def select(entries, ref):
+            def select(entries, ref, **kwargs):
                 self.assertEqual(ref, 'main')
                 return [] if entries[0]['name'] == 'empty' else entries[:1]
 
-            def run(groups, jobs):
+            def run(groups, jobs, **kwargs):
                 self.assertEqual(jobs, 8)
                 for entries, manifest, logs, results in groups:
                     self.assertEqual(logs.parent, manifest.parent)
@@ -268,7 +310,7 @@ class AllManifestTests(unittest.TestCase):
                 mutchecks.result_line('1 browser exit=1/0 caught=Guard restored=True PASS', results)
                 return True, True
 
-            with patch.object(mutchecks, 'affected_entries', side_effect=lambda entries, ref: entries), patch.object(mutchecks, 'baseline', return_value=True) as baseline, patch.object(mutchecks, 'run_e2e', side_effect=e2e):
+            with patch.object(mutchecks, 'affected_entries', side_effect=lambda entries, ref, **kwargs: entries), patch.object(mutchecks, 'baseline', return_value=True) as baseline, patch.object(mutchecks, 'run_e2e', side_effect=e2e):
                 code, output, error = self.invoke(root, '--since', 'main', '--jobs', '1')
             baseline.assert_called_once()
             logs = next(manifest.parent.glob('mutchecks-*'))
@@ -317,7 +359,7 @@ class AllManifestTests(unittest.TestCase):
             manifest.write_text('ENTRIES = ' + repr([entry]))
             observed = []
 
-            def run_baseline(entries, logs, results):
+            def run_baseline(entries, logs, results, **kwargs):
                 observed.append((stale.exists(),
                                  Path(os.environ['GOCACHE']).parent == root / '.dev/mutcheck-gocache'))
                 return False
@@ -364,6 +406,238 @@ class AllManifestTests(unittest.TestCase):
             self.assertEqual([path.name for path in (root / '.dev/mutcheck-gocache').iterdir()],
                              ['run-existing'])
             self.assertIn('total selected=1 passed=1 failed=0', output)
+
+
+class SelectionTests(unittest.TestCase):
+    def setUp(self):
+        self.folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        self.root = Path(self.folder.name)
+        init_repo(self.root)
+        self.migrations = self.root / 'backend/internal/db/migrations'
+        self.queries = self.root / 'backend/internal/db/queries'
+        write(self.migrations / '00001_alpha.sql',
+              '-- +goose Up\nCREATE TABLE alpha (id int);\nCREATE TABLE beta (id int);\n'
+              '-- +goose Down\nDROP TABLE beta;\nDROP TABLE alpha;\n')
+        write(self.queries / 'alpha.sql',
+              '-- name: GetAlpha :one\nSELECT * FROM alpha;\n'
+              '-- name: AddAlpha :one\nINSERT INTO alpha (id) VALUES ($1) RETURNING *;\n')
+        write(self.queries / 'beta.sql', '-- name: GetBeta :one\nSELECT * FROM beta;\n')
+        self.entries = [
+            migration_entry('m-alpha', 'backend/internal/db/migrations/00001_alpha.sql',
+                            'CREATE TABLE alpha (id int);'),
+            migration_entry('m-beta', 'backend/internal/db/migrations/00001_alpha.sql',
+                            'CREATE TABLE beta (id int);'),
+            query_entry('q-alpha', 'backend/internal/db/queries/alpha.sql', 'SELECT * FROM alpha;'),
+            query_entry('q-alpha-insert', 'backend/internal/db/queries/alpha.sql',
+                        'INSERT INTO alpha (id) VALUES ($1) RETURNING *;'),
+            query_entry('q-beta', 'backend/internal/db/queries/beta.sql', 'SELECT * FROM beta;'),
+        ]
+        commit_fixture(self.root)
+
+    def affected(self):
+        with patch.object(mutchecks, 'ROOT', self.root), patch('sys.stderr', new=io.StringIO()) as error:
+            selected = mutchecks.affected_entries(self.entries, 'HEAD')
+        return {entry['name'] for entry in selected}, error.getvalue()
+
+    def test_changed_migration_table_selects_only_related_entries(self):
+        write(self.migrations / '00002_change.sql', 'ALTER TABLE alpha ADD COLUMN name text;\n')
+        selected, error = self.affected()
+        self.assertEqual(selected, {'m-alpha', 'q-alpha', 'q-alpha-insert'})
+        self.assertIn('changed tables: alpha;', error)
+        self.assertIn('skipped 2 migration/query entries', error)
+
+    def test_own_migration_file_change_selects_all_its_entries(self):
+        write(self.migrations / '00001_alpha.sql',
+              (self.migrations / '00001_alpha.sql').read_text() + '-- changed\n')
+        selected, _ = self.affected()
+        self.assertIn('m-alpha', selected)
+        self.assertIn('m-beta', selected)
+
+    def test_another_query_file_does_not_select_a_query(self):
+        write(self.queries / 'beta.sql', (self.queries / 'beta.sql').read_text() + '-- changed\n')
+        selected, _ = self.affected()
+        self.assertEqual(selected, {'q-beta'})
+
+    def test_unattributable_statement_selects_every_migration_and_query(self):
+        write(self.migrations / '00002_function.sql',
+              'CREATE FUNCTION one() RETURNS int LANGUAGE sql AS $$ SELECT 1; $$;\n')
+        selected, error = self.affected()
+        self.assertEqual(selected, {entry['name'] for entry in self.entries})
+        self.assertIn('changed tables: all', error)
+
+    def test_entry_without_a_determinable_table_is_selected(self):
+        odd = migration_entry('m-odd', 'backend/internal/db/migrations/00003_odd.sql',
+                              "COMMENT ON COLUMN missing.column IS 'x';")
+        write(self.migrations / '00003_odd.sql', "COMMENT ON COLUMN missing.column IS 'x';\n")
+        commit_fixture(self.root)
+        write(self.migrations / '00002_change.sql', 'ALTER TABLE alpha ADD COLUMN name text;\n')
+        with patch.object(mutchecks, 'ROOT', self.root), patch('sys.stderr', new=io.StringIO()):
+            selected = mutchecks.affected_entries(self.entries + [odd], 'HEAD')
+        self.assertIn('m-odd', {entry['name'] for entry in selected})
+
+    def test_down_section_tables_count(self):
+        delta = migration_entry('m-delta', 'backend/internal/db/migrations/00001_alpha.sql',
+                                'DROP TABLE beta;')
+        write(self.migrations / '00002_change.sql',
+              '-- +goose Up\nCREATE TABLE gamma (id int);\n-- +goose Down\nDROP TABLE beta;\n')
+        with patch.object(mutchecks, 'ROOT', self.root), patch('sys.stderr', new=io.StringIO()):
+            selected = mutchecks.affected_entries([delta], 'HEAD')
+        self.assertEqual([entry['name'] for entry in selected], ['m-delta'])
+
+    def test_drop_table_named_in_the_original_is_used(self):
+        drop = migration_entry('m-drop', 'backend/internal/db/migrations/00004_drop.sql', 'DROP TABLE beta;')
+        write(self.migrations / '00004_drop.sql', 'DROP TABLE beta;\n')
+        commit_fixture(self.root)
+        write(self.migrations / '00005_change.sql', 'ALTER TABLE alpha ADD COLUMN name text;\n')
+        with patch.object(mutchecks, 'ROOT', self.root), patch('sys.stderr', new=io.StringIO()):
+            selected = mutchecks.affected_entries([drop], 'HEAD')
+        self.assertEqual(selected, [])
+
+    def test_reference_target_selects_a_foreign_key_protection(self):
+        fk = migration_entry(
+            'm-fk', 'backend/internal/db/migrations/00006_fk.sql',
+            'ADD CONSTRAINT fk FOREIGN KEY (order_id) REFERENCES orders (id);')
+        write(self.migrations / '00006_fk.sql',
+              'ALTER TABLE order_items ADD CONSTRAINT fk FOREIGN KEY (order_id) REFERENCES orders (id);\n')
+        commit_fixture(self.root)
+        write(self.migrations / '00007_change.sql', 'ALTER TABLE orders ADD COLUMN name text;\n')
+        with patch.object(mutchecks, 'ROOT', self.root), patch('sys.stderr', new=io.StringIO()):
+            selected = mutchecks.affected_entries([fk], 'HEAD')
+        self.assertEqual([entry['name'] for entry in selected], ['m-fk'])
+
+
+class TableExtractionTests(unittest.TestCase):
+    def test_query_join(self):
+        self.assertEqual(mutchecks.query_tables('SELECT * FROM orders o JOIN customers c ON c.id=o.id'),
+                         {'orders', 'customers'})
+
+    def test_query_update(self):
+        self.assertEqual(mutchecks.query_tables('UPDATE orders SET status=$1 WHERE id=$2'), {'orders'})
+
+    def test_query_delete_from(self):
+        self.assertEqual(mutchecks.query_tables('DELETE FROM orders WHERE id=$1'), {'orders'})
+
+    def test_query_delete_using(self):
+        self.assertEqual(mutchecks.query_tables('DELETE FROM orders USING customers WHERE customers.id=orders.cid'),
+                         {'orders', 'customers'})
+
+    def test_query_comma_from(self):
+        self.assertEqual(mutchecks.query_tables('SELECT * FROM orders o, customers c WHERE c.id=o.cid'),
+                         {'orders', 'customers'})
+
+    def test_query_update_from(self):
+        self.assertEqual(mutchecks.query_tables('UPDATE orders SET x=1 FROM customers WHERE customers.id=orders.cid'),
+                         {'orders', 'customers'})
+
+    def test_query_function_in_from_is_unknown(self):
+        self.assertIsNone(mutchecks.query_tables('SELECT * FROM generate_series(1, 10)'))
+
+    def test_quoted_identifiers(self):
+        self.assertEqual(mutchecks.query_tables('SELECT * FROM "public"."orders" o JOIN "customers" c ON true'),
+                         {'orders', 'customers'})
+
+    def test_references_targets(self):
+        category, tables = mutchecks.statement_tables(
+            'ALTER TABLE order_items ADD CONSTRAINT fk FOREIGN KEY (order_id) REFERENCES orders (id)')
+        self.assertEqual(category, 'alter_table')
+        self.assertEqual(tables, {'order_items', 'orders'})
+
+    def test_create_index_on(self):
+        self.assertEqual(mutchecks.statement_tables('CREATE UNIQUE INDEX IF NOT EXISTS orders_key ON ONLY orders (id)')[1],
+                         {'orders'})
+
+    def test_policy_using_subquery(self):
+        self.assertEqual(
+            mutchecks.statement_tables(
+                'CREATE POLICY tenant_isolation ON orders USING '
+                '(EXISTS (SELECT 1 FROM customers c WHERE c.id=orders.customer_id))')[1],
+            {'orders', 'customers'})
+        self.assertEqual(
+            mutchecks.statement_tables(
+                'CREATE POLICY tenant_isolation ON orders WITH CHECK '
+                '(EXISTS (SELECT 1 FROM stores s WHERE s.id=orders.store_id))')[1],
+            {'orders', 'stores'})
+
+    def test_trigger_on(self):
+        self.assertEqual(mutchecks.statement_tables(
+            'CREATE TRIGGER audit AFTER UPDATE ON orders FOR EACH ROW EXECUTE FUNCTION log()')[1], {'orders'})
+
+    def test_drop_trigger_on(self):
+        self.assertEqual(mutchecks.statement_tables('DROP TRIGGER IF EXISTS audit ON orders')[1], {'orders'})
+
+    def test_grant_on(self):
+        self.assertEqual(mutchecks.statement_tables('GRANT SELECT ON "orders", public.customers TO salon_app')[1],
+                         {'orders', 'customers'})
+        self.assertEqual(mutchecks.statement_tables('GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO salon_app')[1],
+                         set())
+
+    def test_rename_to_keeps_both_names(self):
+        self.assertEqual(mutchecks.statement_tables('ALTER TABLE orders RENAME TO sales')[1], {'orders', 'sales'})
+
+    def test_all_tables_fallbacks(self):
+        for statement in ('CREATE FUNCTION f() RETURNS int LANGUAGE sql AS $$ SELECT 1 $$',
+                          'DO $$ BEGIN PERFORM 1; END $$',
+                          'DROP FUNCTION f(int)',
+                          'CREATE VIEW order_summary AS SELECT * FROM orders',
+                          'ALTER VIEW order_summary RENAME TO other',
+                          'DROP VIEW order_summary',
+                          'CREATE RULE r AS ON INSERT TO orders DO NOTHING',
+                          'ALTER PUBLICATION p ADD TABLE orders'):
+            with self.subTest(statement=statement):
+                self.assertIsNone(mutchecks.statement_tables(statement)[1])
+
+    def test_migration_entry_includes_enclosing_statement_tables(self):
+        source = ('ALTER TABLE order_items ADD CONSTRAINT fk FOREIGN KEY (order_id) '
+                  'REFERENCES orders (id);\n')
+        entry = dict(file='m.sql', original='ADD CONSTRAINT fk FOREIGN KEY (order_id) REFERENCES orders (id)')
+        statements = mutchecks.expanded_statements(source)
+        self.assertEqual(mutchecks.migration_entry_tables(entry, source, statements), {'order_items', 'orders'})
+
+    def test_query_entry_using_a_view_is_selected(self):
+        source = '-- name: GetSummary :many\nSELECT * FROM order_summary;\n'
+        entry = dict(file='q.sql', original='SELECT * FROM order_summary;')
+        positions = mutchecks.name_positions(source)
+        self.assertIsNone(mutchecks.query_entry_tables(entry, source, positions, {'order_summary'}))
+
+
+class ChangedMigrationTests(unittest.TestCase):
+    def setUp(self):
+        self.folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        self.root = Path(self.folder.name)
+        init_repo(self.root)
+        self.path = 'backend/internal/db/migrations/00001_tables.sql'
+        write(self.root / self.path, 'CREATE TABLE orders (id int);\n')
+        commit_fixture(self.root)
+
+    def changed(self, paths):
+        with patch.object(mutchecks, 'ROOT', self.root):
+            return mutchecks.changed_migration_tables(set(paths), 'HEAD')
+
+    def test_old_and_worktree_revisions_are_unioned(self):
+        write(self.root / self.path, 'CREATE TABLE customers (id int);\n')
+        self.assertEqual(self.changed({self.path}), (False, {'orders', 'customers'}, None))
+
+    def test_deleted_migration_uses_the_ref_revision(self):
+        (self.root / self.path).unlink()
+        self.assertEqual(self.changed({self.path}), (False, {'orders'}, None))
+
+    def test_path_missing_in_both_is_all_tables(self):
+        all_tables, tables, reason = self.changed({'backend/internal/db/migrations/ghost.sql'})
+        self.assertTrue(all_tables)
+        self.assertEqual(tables, set())
+        self.assertIn('missing', reason)
+
+    def test_rename_counts_both_sides(self):
+        new_path = 'backend/internal/db/migrations/00002_tables.sql'
+        git(self.root, 'mv', self.path, new_path)
+        write(self.root / new_path, 'CREATE TABLE sales (id int);\n')
+        with patch.object(mutchecks, 'ROOT', self.root):
+            paths = mutchecks.changed_paths('HEAD')
+        self.assertIn(self.path, paths)
+        self.assertIn(new_path, paths)
+        self.assertEqual(self.changed({self.path, new_path}), (False, {'orders', 'sales'}, None))
 
 
 class PartitionTests(unittest.TestCase):
@@ -565,6 +839,202 @@ class BaselineTests(unittest.TestCase):
             self.assertEqual(results.getvalue(), 'baseline a exit=1 FAIL\n')
             self.assertEqual(error.getvalue(), 'baseline fixture failed\n')
 
+
+
+class SharedServerTests(unittest.TestCase):
+    def test_container_image_matches_dbtest(self):
+        source = (mutchecks.ROOT / 'backend/internal/dbtest/dbtest.go').read_text()
+        self.assertIn(f'Image = "{mutchecks.POSTGRES_IMAGE}"', source)
+
+    def fake_docker(self, root):
+        binary = root / 'bin'
+        binary.mkdir(exist_ok=True)
+        log = root / 'docker.log'
+        script = binary / 'docker'
+        script.write_text(
+            '#!' + sys.executable + '\n'
+            "import os, pathlib, sys\n"
+            f"log = pathlib.Path({str(log)!r})\n"
+            "with log.open('a') as output: output.write(' '.join(sys.argv[1:]) + '\\n')\n"
+            "args = sys.argv[1:]\n"
+            "if args[:2] == ['run', '-d']:\n"
+            "    name = args[args.index('--name') + 1]\n"
+            "    count = sum(line.startswith('run -d') for line in log.read_text().splitlines())\n"
+            "    if os.environ.get('DOCKER_FAIL_INDEX') == str(count):\n"
+            "        print('boom', file=sys.stderr); sys.exit(1)\n"
+            "    print('container-' + name); sys.exit(0)\n"
+            "if args[0] == 'port':\n"
+            "    print('127.0.0.1:' + str(55000 + int(args[1].rsplit('-', 1)[-1]))); sys.exit(0)\n"
+            "if args[0] in ('exec', 'rm'):\n"
+            "    sys.exit(0)\n"
+            "sys.exit(0)\n")
+        script.chmod(0o755)
+        return bin_dir_env(binary), log
+
+    def test_start_waits_for_readiness_and_removes_only_its_own_containers(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            env, log = self.fake_docker(root)
+            with patch.dict(os.environ, env, clear=False):
+                servers = mutchecks.SharedServers(2).start()
+                self.assertEqual(len(servers.dsns), 2)
+                self.assertIn('127.0.0.1:55000', servers.dsn(0))
+                self.assertIn('127.0.0.1:55001', servers.dsn(1))
+                servers.close()
+            calls = log.read_text().splitlines()
+            self.assertTrue(any(call.startswith('run -d') and '--tmpfs /var/lib/postgresql/data' in call for call in calls))
+            self.assertTrue(all('-c max_connections=300' in call for call in calls if call.startswith('run -d')))
+            self.assertTrue(all(call.startswith('exec ') for call in calls if 'pg_isready' in call))
+            removed = [call for call in calls if call.startswith('rm -f')]
+            self.assertEqual(len(removed), 2)
+            self.assertTrue(all(call.startswith('rm -f salon-mutcheck-pg-') for call in removed))
+            self.assertFalse(any('salon-dev-db' in call for call in removed))
+
+    def test_failed_start_removes_the_containers_it_created(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            env, log = self.fake_docker(root)
+            env['DOCKER_FAIL_INDEX'] = '2'
+            with patch.dict(os.environ, env, clear=False):
+                with self.assertRaises(mutchecks.SharedPGError):
+                    mutchecks.SharedServers(2).start()
+            removed = [call for call in log.read_text().splitlines() if call.startswith('rm -f')]
+            self.assertEqual(len(removed), 1)
+            self.assertTrue(all(call.startswith('rm -f salon-mutcheck-pg-') for call in removed))
+
+    def test_each_worker_receives_its_own_dsn_and_servers_are_removed(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            init_repo(root)
+            (root / 'guard').write_text('original')
+            script = root / 'backend/scripts/mutchecks.py'
+            script.parent.mkdir(parents=True)
+            script.write_text(
+                "import os, pathlib, sys\n"
+                "logs = pathlib.Path(sys.argv[sys.argv.index('--worker-logs') + 1])\n"
+                "name = sys.argv[-1].split('/')[1]\n"
+                "(logs.parent / ('used-' + name)).write_text(os.environ.get('SALON_TEST_PG_DSN', ''))\n"
+                "(logs / 'results.log').write_text(f'1 {name} exit=0 caught=TestGuard restored=True PASS\\n')\n")
+            stage_fixture(root)
+            manifest = root / 'manifest.py'
+            manifest.write_text('ENTRIES = []')
+            logs = root / 'logs'
+            logs.mkdir()
+            env, docker_log = self.fake_docker(root)
+            entries = [dict(kind='go', step='1', name=name, file='guard', original='original',
+                            replacement='mutated', packages=['a'], guards=['TestGuard'])
+                       for name in ('a', 'b')]
+            with patch.object(mutchecks, 'ROOT', root), patch.dict(os.environ, env, clear=False), \
+                    patch.object(mutchecks, 'baseline', return_value=True), \
+                    patch.object(mutchecks.shutil, 'disk_usage', return_value=Mock(free=1 << 40)), \
+                    patch('sys.stdout', new=io.StringIO()):
+                self.assertEqual(mutchecks.run_parallel(entries, manifest, 2, logs, io.StringIO(), shared_pg=True), 0)
+            used = {name: (logs / f'used-{name}').read_text() for name in ('a', 'b')}
+            self.assertEqual(len(set(used.values())), 2)
+            self.assertTrue(all(value.startswith('postgres://salon:salon@127.0.0.1:5500') for value in used.values()))
+            removed = [call for call in docker_log.read_text().splitlines() if call.startswith('rm -f')]
+            self.assertEqual(len(removed), 2)
+
+    def test_baseline_and_worker_receive_the_worker_dsn(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            init_repo(root)
+            (root / 'backend').mkdir()
+            (root / 'guard').write_text('original')
+            seen = root / 'dsn.log'
+            (root / 'bin').mkdir()
+            go = root / 'bin/go'
+            go.write_text('#!/bin/bash\nprintf "%s\\n" "$SALON_TEST_PG_DSN" >> "' + str(seen) + '"\nexit 0\n')
+            go.chmod(0o755)
+            script = root / 'backend/scripts/mutchecks.py'
+            script.parent.mkdir(parents=True)
+            script.write_text(
+                "import os, pathlib, sys\n"
+                f"pathlib.Path({str(seen)!r}).open('a').write(os.environ.get('SALON_TEST_PG_DSN', '') + '\\n')\n"
+                "logs = pathlib.Path(sys.argv[sys.argv.index('--worker-logs') + 1])\n"
+                "(logs / 'results.log').write_text('1 guard exit=0 caught=TestGuard restored=True PASS\\n')\n")
+            stage_fixture(root)
+            manifest = root / 'manifest.py'
+            manifest.write_text('ENTRIES = []')
+            logs = root / 'logs'
+            logs.mkdir()
+            env, _ = self.fake_docker(root)
+            entry = dict(kind='go', step='1', name='guard', file='guard', original='original',
+                         replacement='mutated', packages=['a'], guards=['TestGuard'])
+            with patch.object(mutchecks, 'ROOT', root), patch.dict(os.environ, env, clear=False), \
+                    patch.object(mutchecks.shutil, 'disk_usage', return_value=Mock(free=1 << 40)), \
+                    patch('sys.stdout', new=io.StringIO()):
+                self.assertEqual(mutchecks.run_parallel([entry], manifest, 1, logs, io.StringIO(), shared_pg=True), 0)
+            self.assertEqual(set(seen.read_text().splitlines()),
+                             {'postgres://salon:salon@127.0.0.1:55000/salon?sslmode=disable'})
+
+    def test_worker_server_failure_is_environment_not_caught(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / 'guard').write_text('original')
+            manifest = root / 'manifest.py'
+            manifest.write_text('ENTRIES = []')
+            logs = root / 'logs'
+            logs.mkdir()
+            entry = dict(kind='go', step='1', name='guard', file='guard', original='original',
+                         replacement='mutated', packages=['a'], guards=['TestGuard'])
+            results = io.StringIO()
+            with patch.object(mutchecks, 'ROOT', root), \
+                    patch.object(mutchecks.SharedServers, 'start', side_effect=mutchecks.SharedPGError('boom')), \
+                    patch.object(mutchecks.shutil, 'disk_usage', return_value=Mock(free=1 << 40)), \
+                    patch('sys.stderr', new=io.StringIO()) as error:
+                self.assertEqual(mutchecks.run_parallel([entry], manifest, 1, logs, results, shared_pg=True), 1)
+            self.assertIn('not run (environment)', results.getvalue())
+            self.assertIn('启动 PostgreSQL 测试服务器失败', error.getvalue())
+
+    def test_sigterm_removes_shared_servers(self):
+        with tempfile.TemporaryDirectory(dir=mutchecks.ROOT / '.dev') as folder:
+            root = Path(folder)
+            init_repo(root)
+            script = root / 'backend/scripts/mutchecks.py'
+            script.parent.mkdir(parents=True)
+            text = Path(mutchecks.__file__).read_text()
+            text = text.replace('selected = affected_entries(selected, args.since, summary=summary)', 'selected = selected')
+            text = text.replace('selected = affected_entries(selected, args.since)', 'selected = selected')
+            script.write_text(text)
+            (root / 'backend/scripts/mutcheck.sh').write_text(
+                '#!/bin/bash\nprintf mutated > "$3"\nmkdir -p .dev\ntouch .dev/ready\nsleep 30\n')
+            (root / 'backend/scripts/mutcheck.sh').chmod(0o755)
+            (root / 'guard').write_text('original')
+            stage_fixture(root)
+            commit_fixture(root)
+            (root / 'bin').mkdir()
+            (root / 'bin/go').write_text('#!/bin/sh\nexit 0\n')
+            (root / 'bin/go').chmod(0o755)
+            env, docker_log = self.fake_docker(root)
+            entry = dict(kind='go', step='1', name='guard', file='guard',
+                         original='original', replacement='mutated', packages=['a'], guards=['TestGuard'])
+            manifest = root / '.dev/codex/a/manifest.py'
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text('ENTRIES = ' + repr([entry]))
+            with relaxed_disk_headroom():
+                process = subprocess.Popen([sys.executable, str(script), '--since', 'HEAD', '--jobs', '2'],
+                                           cwd=root, env={**os.environ, **env}, stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE, start_new_session=True)
+            try:
+                ready = root / '.dev/mutcheck-worktrees/0/.dev/ready'
+                deadline = time.monotonic() + 10
+                while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                if not ready.exists():
+                    output, error = process.communicate(timeout=5)
+                    self.fail(f'fixture never reached mutation: {output!r} {error!r}')
+                process.send_signal(signal.SIGTERM)
+                process.communicate(timeout=15)
+                self.assertEqual(process.returncode, 130)
+                calls = docker_log.read_text().splitlines()
+                removed = [call for call in calls if call.startswith('rm -f')]
+                self.assertEqual(len(removed), 1)
+                self.assertTrue(all(call.startswith('rm -f salon-mutcheck-pg-') for call in removed))
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate()
 
 
 class WorkerTests(unittest.TestCase):
@@ -887,7 +1357,7 @@ class WorkerTests(unittest.TestCase):
                                 original='original', replacement=value, packages=[str(root)], guards=['TestGuard'])
                            for i, value in enumerate(replacements)]
                 manifest.write_text('ENTRIES = ' + repr(entries))
-            with patch.object(mutchecks, 'affected_entries', side_effect=lambda entries, ref: entries), patch.object(mutchecks, 'baseline', return_value=True) as baseline, relaxed_disk_headroom():
+            with patch.object(mutchecks, 'affected_entries', side_effect=lambda entries, ref, **kwargs: entries), patch.object(mutchecks, 'baseline', return_value=True) as baseline, relaxed_disk_headroom():
                 code, output, _ = AllManifestTests().invoke(root, '--since', 'main', '--jobs', '2')
             self.assertEqual(code, 1, output)
             baseline.assert_called_once()
@@ -908,7 +1378,10 @@ class WorkerTests(unittest.TestCase):
                 init_repo(root)
                 script = root / 'backend/scripts/mutchecks.py'
                 script.parent.mkdir(parents=True)
-                script.write_text(Path(mutchecks.__file__).read_text().replace('selected = affected_entries(selected, args.since)', 'selected = selected'))
+                text = Path(mutchecks.__file__).read_text()
+                text = text.replace('selected = affected_entries(selected, args.since, summary=summary)', 'selected = selected')
+                text = text.replace('selected = affected_entries(selected, args.since)', 'selected = selected')
+                script.write_text(text)
                 (root / 'backend/scripts/mutcheck.sh').write_text(
                     '#!/bin/bash\nprintf mutated > "$3"\nmkdir -p .dev\ntouch .dev/ready\nsleep 30\n')
                 (root / 'backend/scripts/mutcheck.sh').chmod(0o755)
@@ -927,7 +1400,7 @@ class WorkerTests(unittest.TestCase):
                 second.write_text('ENTRIES = ' + repr([entry]))
                 with relaxed_disk_headroom():
                     env = dict(os.environ, PATH=str(root / 'bin') + os.pathsep + os.environ['PATH'])
-                    process = subprocess.Popen([sys.executable, str(script), '--since', 'HEAD', '--jobs', '4'],
+                    process = subprocess.Popen([sys.executable, str(script), '--since', 'HEAD', '--jobs', '4', '--no-shared-pg'],
                                                cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                                start_new_session=True)
                 try:
@@ -1257,7 +1730,7 @@ class EnvironmentTests(unittest.TestCase):
             entries = [dict(kind='go', step='1', name=name, guards=['TestGuard'], packages=['a']) for name in ('one', 'two')]
             manifest.write_text('ENTRIES = ' + repr(entries))
 
-            def baseline(entries, logs, results):
+            def baseline(entries, logs, results, **kwargs):
                 mutchecks.result_line('baseline a exit=4 not run (environment)', results)
                 (logs / 'baseline-outcomes.json').write_text(json.dumps({'a': {'code': 4, 'environment': True}}))
                 return False
@@ -1298,6 +1771,7 @@ class EnvironmentTests(unittest.TestCase):
                 content = result.stdout + result.stderr
                 self.assertEqual(result.returncode, expected, content)
                 self.assertEqual((root / 'attempts').read_text(), '2')
+
                 self.assertEqual(target.read_text(), 'original')
                 self.assertFalse((root / '.dev/mutcheck-backup').exists())
                 self.assertEqual('caught by:' in content, outcome == 'caught')
@@ -1307,6 +1781,64 @@ class EnvironmentTests(unittest.TestCase):
                 else:
                     self.assertNotIn(mutchecks.ENVIRONMENT_SIGNATURE, content)
 
+    def test_shell_exits_environment_when_shared_server_is_unreachable(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            scripts = root / 'backend/scripts'
+            scripts.mkdir(parents=True)
+            shutil.copy(Path(__file__).with_name('mutcheck.sh'), scripts / 'mutcheck.sh')
+            target = root / 'guard.go'
+            target.write_text('original')
+            result = subprocess.run(
+                ['bash', str(scripts / 'mutcheck.sh'), str(target), 'original', 'mutated', './internal/example'],
+                env={**os.environ, 'SALON_TEST_PG_DSN': 'postgres://salon:salon@127.0.0.1:1/salon'},
+                text=True, capture_output=True)
+            self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
+            self.assertIn('not run (environment)', result.stderr)
+            self.assertEqual(target.read_text(), 'original')
+
+    def test_shell_reprobes_after_a_failed_mutated_run(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            scripts = root / 'backend/scripts'
+            scripts.mkdir(parents=True)
+            shutil.copy(Path(__file__).with_name('mutcheck.sh'), scripts / 'mutcheck.sh')
+            target = root / 'guard.go'
+            target.write_text('original')
+            (root / 'bin').mkdir()
+            marker = root / 'running'
+            go = root / 'bin/go'
+            go.write_text('#!/bin/bash\n'
+                          'if [[ $* == *"-run ^$"* ]]; then exit 0; fi\n'
+                          f'touch {str(marker)!r}\n'
+                          'sleep 1\n'
+                          "echo '--- FAIL: TestGuard (0.00s)'\n"
+                          'exit 1\n')
+            go.chmod(0o755)
+            listener = socket.socket()
+            listener.bind(('127.0.0.1', 0))
+            listener.listen()
+            port = listener.getsockname()[1]
+            process = subprocess.Popen(
+                ['bash', str(scripts / 'mutcheck.sh'), str(target), 'original', 'mutated', './internal/example'],
+                env={**os.environ, 'PATH': str(root / 'bin') + os.pathsep + os.environ['PATH'],
+                     'SALON_TEST_PG_DSN': f'postgres://salon:salon@127.0.0.1:{port}/salon'},
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            try:
+                deadline = time.monotonic() + 10
+                while not marker.exists() and process.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                self.assertTrue(marker.exists(), 'mutated test never ran')
+                listener.close()
+                output, error = process.communicate(timeout=15)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate()
+                listener.close()
+            self.assertEqual(process.returncode, 4, output + error)
+            self.assertIn('became unreachable', error)
+            self.assertEqual(target.read_text(), 'original')
 
 if __name__ == '__main__':
     unittest.main()

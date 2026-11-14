@@ -23,7 +23,16 @@ e2e 项另有 spec，即相对 admin/ 的测试文件，
 原文必须恰好出现一次。--locate 只检查匹配，不修改文件、不运行测试。
 --since 将名称选择进一步缩小到 git-ref 与工作树（含未跟踪文件）之间受影响的项：
 保护文件、所在包中定义 guard 的 _test.go，或 e2e 的 spec 改动都会选中；
-查询或迁移目录中任意文件改动也会选中该目录的保护。选中名称逐行输出到 stderr。
+迁移项只在其自身文件改动、或改动的迁移涉及它保护的表时选中；查询项只在其自身 .sql 文件改动、
+或改动的迁移涉及它查询的表时选中。表从迁移中的 CREATE/ALTER/DROP TABLE、CREATE [UNIQUE] INDEX … ON、
+REFERENCES、INSERT INTO、UPDATE、DELETE FROM、DELETE … USING、逗号 FROM、UPDATE … FROM、
+CREATE/DROP TRIGGER … ON、CREATE POLICY … ON（含 USING/WITH CHECK 里的 FROM/JOIN）、GRANT … ON、
+ALTER TABLE … RENAME TO 的前后两个名字读取；带引号的名字按表名解析，解析不了的表位置保守选中。
+改动的迁移同时解析该 ref 的版本和工作树版本（重命名按删除加新增），任何一个来源里含
+CREATE/REPLACE FUNCTION、DO、DROP FUNCTION、CREATE/ALTER/DROP VIEW、CREATE RULE、
+ALTER DEFAULT PRIVILEGES 或无法归属到表的语句时，选中全部迁移和查询项；查询用到迁移里
+CREATE VIEW 创建的名字时也保守选中。选中名称逐行输出到 stderr；另输出一行改动表和按表规则
+跳过的迁移/查询项数量。
 无 --since 的 --locate 始终检查名称选择范围（不指定名称时为整份清单）。
 省略清单时按路径排序处理 .dev/codex/*/manifest.py：
 mutchecks.py --locate [--since <git-ref>] 只定位；
@@ -31,6 +40,10 @@ mutchecks.py --since <git-ref> [--jobs N] 正式运行选中项（必须带 --si
 逐份输出选中、通过、失败、not run (environment) 数量和最终总计；失败或未运行均非零退出。
 PostgreSQL 容器启动签名出现时，基线按包重试一次；变异由 mutcheck.sh 重试一次，
 退出码 4 或同一签名只记 not run (environment)，绝不解析为 caught。
+正式运行默认给每个 go worker 启动一个 PostgreSQL 容器（镜像同 dbtest.Image），
+把该容器的 SALON_TEST_PG_DSN 传给基线和 worker；结束、失败、Ctrl-C 或 SIGTERM 时只删除本次创建的
+salon-mutcheck-pg-<run>-<n> 容器。启动失败时相关项记 not run (environment)。--no-shared-pg
+恢复每个 go test 自启容器的旧行为，用于诊断。
 正式运行先按包合并选中 go 项的 guards，以 go test -count=1 -run '^(GuardA|GuardB|...)$'
 运行这些顶层守护测试（含子测试）；--jobs 1 串行，N > 1 时主工作树至多 N 个包并发，全部通过后
 才允许任何变异；基线失败时打印测试输出并退出，避免把已有故障算成保护生效。
@@ -57,6 +70,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shutil
 import signal
 import shlex
@@ -74,6 +88,712 @@ DISK_EXIT = 5
 DISK_HEADROOM = 20 * 1000 ** 3
 DISK_HEADROOM_ENV = 'MUTCHECK_DISK_HEADROOM_BYTES'
 CACHE_DIRNAME = 'mutcheck-gocache'
+POSTGRES_IMAGE = 'postgres:18-alpine'
+SHARED_PG_PREFIX = 'salon-mutcheck-pg'
+PG_DSN_ENV = 'SALON_TEST_PG_DSN'
+
+IDENTIFIER = r'(?:"[^"]+"|[A-Za-z_][A-Za-z0-9_$]*)'
+QUALIFIED = rf'(?:{IDENTIFIER}\s*\.\s*)?{IDENTIFIER}'
+# 这些词出现在 UPDATE 之后时不是表名（ON CONFLICT DO UPDATE SET、ON UPDATE CASCADE 等）。
+NOT_TABLES = {'set', 'of', 'nowait', 'skip', 'cascade', 'restrict', 'no', 'action', 'null',
+              'default', 'where', 'returning', 'only', 'key', 'share'}
+CONTEXT_STATEMENTS = {'create_table', 'alter_table', 'create_index', 'create_policy'}
+
+
+def mask_sql(source):
+    """Blank comments, string literals and dollar-quoted bodies, keeping offsets."""
+    chars = list(source)
+    size = len(source)
+    index = 0
+    while index < size:
+        if source.startswith('--', index):
+            end = source.find('\n', index + 2)
+            end = size if end < 0 else end
+        elif source.startswith('/*', index):
+            end = source.find('*/', index + 2)
+            end = size if end < 0 else end + 2
+        elif source[index] == "'":
+            end = index + 1
+            while end < size:
+                if source[end] == "'":
+                    if end + 1 < size and source[end + 1] == "'":
+                        end += 2
+                        continue
+                    end += 1
+                    break
+                end += 1
+        elif source[index] == '"':
+            end = index + 1
+            while end < size:
+                if source[end] == '"':
+                    if end + 1 < size and source[end + 1] == '"':
+                        end += 2
+                        continue
+                    end += 1
+                    break
+                end += 1
+            index = end
+            continue
+        elif source[index] == '$':
+            match = re.match(r'\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$', source[index:])
+            if match is None:
+                index += 1
+                continue
+            tag = match.group(0)
+            end = source.find(tag, index + len(tag))
+            end = size if end < 0 else end + len(tag)
+        else:
+            index += 1
+            continue
+        chars[index:end] = ' ' * max(0, end - index)
+        index = end
+    return ''.join(chars)
+
+
+def split_statements(source):
+    """Split SQL on semicolons outside strings, comments and dollar quotes."""
+    statements = []
+    start = 0
+    size = len(source)
+    index = 0
+    while index < size:
+        if source.startswith('--', index):
+            end = source.find('\n', index + 2)
+            index = size if end < 0 else end + 1
+        elif source.startswith('/*', index):
+            end = source.find('*/', index + 2)
+            index = size if end < 0 else end + 2
+        elif source[index] in ("'", '"'):
+            quote = source[index]
+            index += 1
+            while index < size:
+                if source[index] == quote:
+                    if index + 1 < size and source[index + 1] == quote:
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                index += 1
+        elif source[index] == '$':
+            match = re.match(r'\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$', source[index:])
+            if match is None:
+                index += 1
+                continue
+            tag = match.group(0)
+            end = source.find(tag, index + len(tag))
+            index = size if end < 0 else end + len(tag)
+        elif source[index] == ';':
+            statements.append((start, index))
+            start = index + 1
+            index += 1
+        else:
+            index += 1
+    if start < size:
+        statements.append((start, size))
+    return statements
+
+
+def strip_leading_space(source):
+    """Drop leading whitespace and comments, returning the remaining text."""
+    index = 0
+    size = len(source)
+    while index < size:
+        if source[index].isspace():
+            index += 1
+        elif source.startswith('--', index):
+            end = source.find('\n', index + 2)
+            index = size if end < 0 else end + 1
+        elif source.startswith('/*', index):
+            end = source.find('*/', index + 2)
+            index = size if end < 0 else end + 2
+        else:
+            break
+    return source[index:]
+
+
+def normalize_table(token):
+    """Strip quotes and a schema prefix from a table reference; None if invalid."""
+    parts = []
+    index = 0
+    size = len(token)
+    while True:
+        while index < size and token[index].isspace():
+            index += 1
+        if index >= size:
+            return None
+        if token[index] == '"':
+            index += 1
+            value = []
+            while index < size:
+                if token[index] == '"':
+                    if index + 1 < size and token[index + 1] == '"':
+                        value.append('"')
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                value.append(token[index])
+                index += 1
+            else:
+                return None
+            parts.append(''.join(value))
+        else:
+            match = re.match(r'[A-Za-z_][A-Za-z0-9_$]*', token[index:])
+            if match is None:
+                return None
+            parts.append(match.group(0))
+            index += match.end()
+        while index < size and token[index].isspace():
+            index += 1
+        if index < size and token[index] == '.':
+            index += 1
+            continue
+        break
+    if index < size or not parts:
+        return None
+    return parts[-1].lower()
+
+
+def table_token(text):
+    """Return the table name at the start of text, or None."""
+    match = re.match(rf'\s*(?:ONLY\s+|LATERAL\s+)?({QUALIFIED})', text, re.I)
+    if match is None:
+        return None
+    name = normalize_table(match.group(1))
+    return None if name is None or name in NOT_TABLES else name
+
+
+def table_list(text):
+    """Parse a comma-separated table list, stopping at the next SQL clause."""
+    cut = re.split(r'(?i)\b(?:TO|FROM|CASCADE|RESTRICT|WHERE|SET|USING|WITH)\b', text, maxsplit=1)[0]
+    names = set()
+    for item in cut.split(','):
+        name = table_token(item)
+        if name is None:
+            if item.strip():
+                return None
+        else:
+            names.add(name)
+    return names
+
+
+def top_level_keyword(masked, keyword):
+    """Find a keyword outside parentheses, strings and quoted identifiers."""
+    depth = 0
+    size = len(masked)
+    index = 0
+    wanted = keyword.lower()
+    while index < size:
+        char = masked[index]
+        if char == '"':
+            index += 1
+            while index < size:
+                if masked[index] == '"':
+                    if index + 1 < size and masked[index + 1] == '"':
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                index += 1
+        elif char == '(':
+            depth += 1
+            index += 1
+        elif char == ')':
+            depth = max(0, depth - 1)
+            index += 1
+        elif depth == 0 and char.isalpha() and (index == 0 or not (masked[index - 1].isalnum() or masked[index - 1] in '_$')):
+            end = index + 1
+            while end < size and (masked[end].isalnum() or masked[end] in '_$'):
+                end += 1
+            if masked[index:end].lower() == wanted:
+                return index
+            index = end
+        else:
+            index += 1
+    return None
+
+
+def referenced_tables(masked):
+    """Collect tables from REFERENCES clauses anywhere in a statement."""
+    names = set()
+    for match in re.finditer(rf'(?i)\bREFERENCES\s+({QUALIFIED})', masked):
+        name = normalize_table(match.group(1))
+        if name is None:
+            return None
+        names.add(name)
+    return names
+
+
+def write_tables(masked):
+    """Collect tables that a statement writes or defines."""
+    names = referenced_tables(masked)
+    if names is None:
+        return None
+    for pattern in (rf'(?i)\bINSERT\s+INTO\s+(?:ONLY\s+)?({QUALIFIED})',
+                    rf'(?i)\bDELETE\s+FROM\s+(?:ONLY\s+)?({QUALIFIED})'):
+        for match in re.finditer(pattern, masked):
+            name = normalize_table(match.group(1))
+            if name is None:
+                return None
+            names.add(name)
+    for match in re.finditer(rf'(?i)\bUPDATE\s+({QUALIFIED})', masked):
+        name = normalize_table(match.group(1))
+        if name is None:
+            return None
+        if name not in NOT_TABLES:
+            names.add(name)
+    return names
+
+
+def fragment_tables(source):
+    """Return tables named by a SQL fragment, or None when it is unattributable."""
+    category, tables = statement_tables(source)
+    if category == 'unknown':
+        written = write_tables(mask_sql(source))
+        queried = query_tables(source)
+        if written is None or queried is None:
+            return None
+        return written | queried
+    return tables
+
+
+def statement_tables(source):
+    """Classify one statement and return (category, tables); tables None means all."""
+    masked = mask_sql(source)
+    code = strip_leading_space(masked)
+    if not code.strip():
+        return 'empty', set()
+    if re.match(r'(?is)CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\b', code):
+        return 'all', None
+    if re.match(r'(?is)DO\b', code):
+        return 'all', None
+    if re.match(r'(?is)ALTER\s+DEFAULT\s+PRIVILEGES\b', code):
+        return 'all', None
+    if re.match(r'(?is)(?:DROP\s+FUNCTION|(?:CREATE|ALTER|DROP)\s+VIEW|CREATE\s+(?:OR\s+REPLACE\s+)?RULE)\b', code):
+        return 'all', None
+    if re.match(r'(?is)(?:GRANT|REVOKE)\b', code):
+        position = top_level_keyword(code, 'ON')
+        if position is None:
+            return 'grant', None
+        target = strip_leading_space(code[position + 2:])
+        target = re.sub(r'(?is)^TABLE\s+', '', target)
+        if re.match(r'(?is)ALL\s+TABLES\s+IN\s+SCHEMA\b', target):
+            return 'grant', None
+        if re.match(r'(?is)ALL\s+(?:SEQUENCES|FUNCTIONS|PROCEDURES|ROUTINES)\s+IN\s+SCHEMA\b', target):
+            return 'grant', set()
+        if re.match(r'(?is)(?:SCHEMA|FUNCTION|SEQUENCE|DATABASE|TYPE|LANGUAGE|ROLE|TABLESPACE|DOMAIN)\b', target):
+            return 'grant', set()
+        return 'grant', table_list(target)
+    match = re.match(rf'(?is)CREATE\s+(?:UNLOGGED\s+|TEMP(?:ORARY)?\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?({QUALIFIED})', code)
+    if match is not None:
+        names = write_tables(code)
+        if names is None:
+            return 'create_table', None
+        name = normalize_table(match.group(1))
+        if name is None:
+            return 'create_table', None
+        names.add(name)
+        return 'create_table', names
+    match = re.match(rf'(?is)ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?({QUALIFIED})', code)
+    if match is not None:
+        names = write_tables(code)
+        if names is None:
+            return 'alter_table', None
+        name = normalize_table(match.group(1))
+        if name is None:
+            return 'alter_table', None
+        names.add(name)
+        rename = re.search(rf'(?i)\bRENAME\s+TO\s+({QUALIFIED})', code)
+        if rename is not None:
+            target = normalize_table(rename.group(1))
+            if target is None:
+                return 'alter_table', None
+            names.add(target)
+        elif re.search(r'(?i)\bRENAME\s+TO\b', code):
+            return 'alter_table', None
+        return 'alter_table', names
+    match = re.match(rf'(?is)CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?{QUALIFIED}\s+ON\s+(?:ONLY\s+)?({QUALIFIED})', code)
+    if match is not None:
+        names = write_tables(code)
+        if names is None:
+            return 'create_index', None
+        name = normalize_table(match.group(1))
+        if name is None:
+            return 'create_index', None
+        names.add(name)
+        return 'create_index', names
+    match = re.match(rf'(?is)(?:CREATE|ALTER|DROP)\s+POLICY\s+{IDENTIFIER}\s+ON\s+({QUALIFIED})', code)
+    if match is not None:
+        names = write_tables(code)
+        if names is None:
+            return 'create_policy', None
+        name = normalize_table(match.group(1))
+        if name is None:
+            return 'create_policy', None
+        names.add(name)
+        referenced = query_tables(code)
+        if referenced is None:
+            return 'create_policy', None
+        names |= referenced
+        return 'create_policy', names
+    match = re.match(rf'(?is)CREATE\s+(?:OR\s+REPLACE\s+)?(?:CONSTRAINT\s+)?TRIGGER\s+{IDENTIFIER}\b', code)
+    if match is not None:
+        position = top_level_keyword(code, 'ON')
+        if position is None:
+            return 'create_trigger', None
+        name = table_token(code[position + 2:])
+        return 'create_trigger', None if name is None else {name}
+    match = re.match(rf'(?is)DROP\s+TRIGGER\s+(?:IF\s+EXISTS\s+)?{IDENTIFIER}\s+ON\s+({QUALIFIED})', code)
+    if match is not None:
+        name = normalize_table(match.group(1))
+        return 'drop_trigger', None if name is None else {name}
+    if re.match(r'(?is)DROP\s+TRIGGER\b', code):
+        return 'drop_trigger', None
+    match = re.match(rf'(?is)DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(.*)', code)
+    if match is not None:
+        return 'drop_table', table_list(match.group(1))
+    if re.match(r'(?is)(?:SET|RESET|BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE|SELECT|WITH|ANALYZE|VACUUM)\b', code):
+        return 'neutral', write_tables(code)
+    if re.match(r'(?is)(?:DROP\s+(?:INDEX|SEQUENCE|TYPE|ROLE|SCHEMA)|CREATE\s+(?:EXTENSION|SCHEMA|ROLE|SEQUENCE|TYPE|DATABASE)|ALTER\s+(?:SEQUENCE|TYPE|FUNCTION|ROLE|SCHEMA|DATABASE)|COMMENT\s+ON)\b', code):
+        return 'neutral', set()
+    names = write_tables(code)
+    if names is None:
+        return 'unknown', None
+    if names:
+        return 'write', names
+    # 认不出的语句可能间接改表，按影响全部表处理。
+    return 'unknown', None
+
+
+def expanded_statements(source):
+    """Return (start, end, category, tables) for each statement in a SQL file."""
+    result = []
+    for start, end in split_statements(source):
+        text = source[start:end]
+        code = strip_leading_space(text)
+        if not code.strip():
+            continue
+        category, tables = statement_tables(text)
+        result.append((start + len(text) - len(code), end, category, tables))
+    return result
+
+
+def name_positions(source):
+    """Return the offsets of sqlc `-- name:` lines in a query file."""
+    return [match.start() for match in re.finditer(r'(?m)^\s*--\s*name:\s*\S+', source)]
+
+
+def previous_word(masked, position):
+    """Return the word immediately before position."""
+    index = position - 1
+    while index >= 0 and masked[index].isspace():
+        index -= 1
+    end = index + 1
+    while index >= 0 and (masked[index].isalnum() or masked[index] in '_$'):
+        index -= 1
+    return masked[index + 1:end].lower()
+
+
+def enclosing_functions(masked, position):
+    """Return the names of function calls whose parentheses enclose position."""
+    stack = []
+    index = 0
+    while index < position:
+        char = masked[index]
+        if char == '"':
+            index += 1
+            while index < position:
+                if masked[index] == '"':
+                    if index + 1 < position and masked[index + 1] == '"':
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                index += 1
+        elif char == '(':
+            stack.append(previous_word(masked, index))
+            index += 1
+        elif char == ')':
+            if stack:
+                stack.pop()
+            index += 1
+        else:
+            index += 1
+    return stack
+
+
+def top_level_words(source):
+    """Return (word, start, end) outside parentheses and quoted identifiers."""
+    words = []
+    depth = 0
+    index = 0
+    size = len(source)
+    while index < size:
+        char = source[index]
+        if char == '"':
+            index += 1
+            while index < size:
+                if source[index] == '"':
+                    if index + 1 < size and source[index + 1] == '"':
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                index += 1
+        elif char == '(':
+            depth += 1
+            index += 1
+        elif char == ')':
+            depth = max(0, depth - 1)
+            index += 1
+        elif depth == 0 and char.isalpha():
+            end = index + 1
+            while end < size and (source[end].isalnum() or source[end] in '_$'):
+                end += 1
+            words.append((source[index:end].upper(), index, end))
+            index = end
+        else:
+            index += 1
+    return words
+
+
+def split_top_level(source, separator=','):
+    """Split on separator outside parentheses and quoted identifiers."""
+    parts = []
+    depth = 0
+    start = 0
+    index = 0
+    size = len(source)
+    while index < size:
+        char = source[index]
+        if char == '"':
+            index += 1
+            while index < size:
+                if source[index] == '"':
+                    if index + 1 < size and source[index + 1] == '"':
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                index += 1
+        elif char == '(':
+            depth += 1
+            index += 1
+        elif char == ')':
+            depth = max(0, depth - 1)
+            index += 1
+        elif depth == 0 and char == separator:
+            parts.append(source[start:index])
+            start = index + 1
+            index += 1
+        else:
+            index += 1
+    parts.append(source[start:])
+    return parts
+
+
+FROM_END = {'WHERE', 'GROUP', 'ORDER', 'LIMIT', 'OFFSET', 'UNION', 'INTERSECT',
+            'EXCEPT', 'WINDOW', 'RETURNING', 'FOR', 'FETCH'}
+
+
+def from_clause(source):
+    """Cut a FROM clause before its next top-level clause."""
+    for word, start, _ in top_level_words(source):
+        if word in FROM_END:
+            return source[:start]
+    return source
+
+
+def resolve_source_item(item, function_parens=True):
+    """Resolve the first table of one FROM/JOIN/USING item."""
+    item = item.strip()
+    item = re.sub(r'(?is)^ONLY\s+', '', item)
+    if item.startswith('(') or re.match(r'(?is)^LATERAL\s*\(', item):
+        return 'subquery'
+    item = re.sub(r'(?is)^LATERAL\s+', '', item)
+    match = re.match(rf'({QUALIFIED})', item)
+    if match is None:
+        return 'unresolved'
+    if function_parens and item[match.end():].lstrip().startswith('('):
+        return 'function'
+    name = normalize_table(match.group(1))
+    if name is None:
+        return 'unresolved'
+    return None if name in NOT_TABLES else name
+
+
+def add_source_list(text, tables):
+    """Add comma-separated FROM/USING items; return False when unresolved."""
+    for item in split_top_level(from_clause(text)):
+        name = resolve_source_item(item)
+        if name == 'subquery':
+            continue
+        if name in {'function', 'unresolved'}:
+            return False
+        if name is not None:
+            tables.add(name)
+    return True
+
+
+def query_tables(source):
+    """Return tables read or written by a query; None when a FROM item is unknown."""
+    masked = mask_sql(source)
+    tables = set()
+    pattern = rf'(?i)\b(FROM|JOIN|INTO|UPDATE|DELETE\s+FROM)\b\s*'
+    for match in re.finditer(pattern, masked):
+        keyword = ' '.join(match.group(1).upper().split())
+        if keyword == 'FROM' and any(
+                name in {'extract', 'substring', 'trim', 'overlay', 'position'}
+                for name in enclosing_functions(masked, match.start())):
+            continue
+        if keyword == 'FROM' and previous_word(masked, match.start()) == 'distinct':
+            continue
+        if keyword == 'UPDATE' and previous_word(masked, match.start()) in {'do', 'for', 'no', 'key'}:
+            continue
+        rest = masked[match.end():]
+        if keyword == 'FROM':
+            if not add_source_list(rest, tables):
+                return None
+        elif keyword in {'JOIN', 'INTO', 'UPDATE', 'DELETE FROM'}:
+            name = resolve_source_item(rest, function_parens=keyword != 'INTO')
+            if name == 'subquery':
+                continue
+            if name in {'function', 'unresolved'}:
+                return None
+            if name is not None:
+                tables.add(name)
+        if keyword == 'DELETE FROM':
+            words = top_level_words(rest)
+            for word, start, _ in words:
+                if word == 'USING':
+                    if not add_source_list(rest[start + len('USING'):], tables):
+                        return None
+                    break
+                if word in FROM_END:
+                    break
+    return tables
+
+
+def migration_entry_tables(entry, source, statements):
+    """Return a migration entry's tables, or None when they cannot be determined."""
+    position = source.find(entry['original'])
+    if position < 0:
+        return None
+    tables = fragment_tables(entry['original'])
+    if tables is None:
+        return None
+    enclosing = [names for start, end, _, names in statements if start <= position < end]
+    if enclosing:
+        if enclosing[0] is None:
+            return tables or None
+        tables |= enclosing[0]
+    else:
+        contexts = [(start, names) for start, _, category, names in statements
+                    if category in CONTEXT_STATEMENTS and start <= position]
+        if contexts:
+            _, context = max(contexts, key=lambda item: item[0])
+            if context is None:
+                return None
+            tables |= context
+    return tables or None
+
+
+def query_entry_tables(entry, source, positions, views=frozenset()):
+    """Return a query entry's tables, or None when they cannot be determined."""
+    position = source.find(entry['original'])
+    if position < 0:
+        return None
+    starts = [start for start in positions if start <= position]
+    if not starts:
+        return None
+    start = max(starts)
+    ends = [end for end in positions if end > position]
+    tables = query_tables(source[start:min(ends) if ends else len(source)])
+    if tables is None or tables & views:
+        return None
+    return tables or None
+
+
+def migration_view_names():
+    """Return every view name created anywhere in the migrations."""
+    names = set()
+    for path in sorted((ROOT / 'backend/internal/db/migrations').glob('*.sql')):
+        masked = mask_sql(path.read_text())
+        for match in re.finditer(
+                rf'(?i)\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:MATERIALIZED\s+)?VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?({QUALIFIED})',
+                masked):
+            name = normalize_table(match.group(1))
+            if name is not None:
+                names.add(name)
+    return names
+
+
+def changed_paths(ref):
+    """Return changed paths, including both sides of renames and copies."""
+    result = subprocess.run(['git', 'diff', '--name-status', '-z', ref, '--'],
+                            cwd=ROOT, capture_output=True, check=True)
+    tokens = [os.fsdecode(token) for token in result.stdout.split(b'\0') if token]
+    paths = set()
+    index = 0
+    while index < len(tokens):
+        status = tokens[index]
+        index += 1
+        if status.startswith(('R', 'C')):
+            paths.update(tokens[index:index + 2])
+            index += 2
+        else:
+            paths.add(tokens[index])
+            index += 1
+    untracked = subprocess.run(['git', 'ls-files', '--others', '--exclude-standard', '-z'],
+                               cwd=ROOT, capture_output=True, check=True)
+    paths.update(os.fsdecode(path) for path in untracked.stdout.split(b'\0') if path)
+    return paths
+
+
+def ref_file(ref, path):
+    """Return ('present'|'absent'|'error', source) for a path at ref."""
+    tree = subprocess.run(['git', 'ls-tree', '-z', ref, '--', path],
+                          cwd=ROOT, capture_output=True)
+    if tree.returncode:
+        return 'error', None
+    if not tree.stdout:
+        return 'absent', None
+    shown = subprocess.run(['git', 'show', f'{ref}:{path}'],
+                           cwd=ROOT, capture_output=True)
+    if shown.returncode:
+        return 'error', None
+    return 'present', shown.stdout.decode('utf-8')
+
+
+def changed_migration_tables(changed, ref):
+    """Return (all_tables, tables, reason) for changed migration files."""
+    tables = set()
+    reason = None
+    for path in sorted(changed):
+        if not path.startswith('backend/internal/db/migrations/') or not path.endswith('.sql'):
+            continue
+        file = ROOT / path
+        ref_state, ref_source = ref_file(ref, path)
+        if ref_state == 'error':
+            return True, set(), f'{path} (cannot read {ref})'
+        sources = []
+        if file.is_file():
+            try:
+                sources.append(file.read_text())
+            except OSError:
+                return True, set(), f'{path} (cannot read working tree)'
+        if ref_state == 'present':
+            sources.append(ref_source)
+        if not sources:
+            return True, set(), f'{path} (missing in {ref} and working tree)'
+        for source in sources:
+            for start, _, _, names in expanded_statements(source):
+                if names is None:
+                    line = source.count('\n', 0, start) + 1
+                    return True, set(), f'{path}:{line}'
+                tables |= names
+    return False, tables, reason
+
 
 def load_manifest(path):
     """Interpret literal data without executing manifest code."""
@@ -198,6 +918,79 @@ def remove_tree(folder):
 
 def cleanup_workers(folder):
     remove_tree(folder)
+
+
+class SharedPGError(Exception):
+    """A PostgreSQL container for the worker pool could not be started."""
+
+
+class SharedServers:
+    """Own one PostgreSQL container per worker and remove only those containers."""
+
+    def __init__(self, count):
+        self.run_id = secrets.token_hex(6)
+        self.names = [f'{SHARED_PG_PREFIX}-{self.run_id}-{index}' for index in range(count)]
+        self.dsns = []
+        self.created = []
+
+    def _docker(self, *args, check=False):
+        return subprocess.run(['docker', *args], capture_output=True, text=True, check=check)
+
+    def start(self, timeout=60):
+        try:
+            for name in self.names:
+                result = self._docker(
+                    'run', '-d', '--rm', '--name', name,
+                    '--tmpfs', '/var/lib/postgresql/data',
+                    '-e', 'PGDATA=/var/lib/postgresql/data',
+                    '-e', 'POSTGRES_DB=salon', '-e', 'POSTGRES_USER=salon',
+                    '-e', 'POSTGRES_PASSWORD=salon',
+                    '-p', '127.0.0.1::5432', POSTGRES_IMAGE, '-c', 'max_connections=300')
+                if result.returncode:
+                    raise SharedPGError(result.stderr.strip() or f'docker run {name} failed')
+                self.created.append(name)
+                port = self._docker('port', name, '5432/tcp', check=True).stdout.strip()
+                port = port.splitlines()[0].rsplit(':', 1)[-1]
+                deadline = time.monotonic() + timeout
+                while True:
+                    ready = self._docker('exec', name, 'pg_isready', '-U', 'salon', '-d', 'salon')
+                    if ready.returncode == 0:
+                        break
+                    if time.monotonic() >= deadline:
+                        raise SharedPGError(f'{name} did not accept connections within {timeout}s')
+                    time.sleep(0.2)
+                self.dsns.append(f'postgres://salon:salon@127.0.0.1:{port}/salon?sslmode=disable')
+        except SharedPGError:
+            self.close()
+            raise
+        except (OSError, subprocess.CalledProcessError) as exc:
+            self.close()
+            raise SharedPGError(str(exc)) from exc
+        return self
+
+    def dsn(self, index):
+        return self.dsns[index % len(self.dsns)]
+
+    def close(self):
+        for name in self.created:
+            try:
+                self._docker('rm', '-f', name)
+            except OSError:
+                pass
+        self.created.clear()
+        self.dsns.clear()
+
+
+def test_env(pg_dsn=None, keep_pg=False):
+    """Build the environment for a go test run, overriding the shared server DSN."""
+    env = dict(os.environ)
+    # 清除继承的 GOFLAGS，避免它悄悄过滤守护测试。
+    env.pop('GOFLAGS', None)
+    if not keep_pg:
+        env.pop(PG_DSN_ENV, None)
+    if pg_dsn:
+        env[PG_DSN_ENV] = pg_dsn
+    return env
 
 
 def cache_root():
@@ -345,11 +1138,11 @@ def stop_processes(processes):
     processes.clear()
 
 
-def run_parallel(selected, manifest, jobs, logs, results):
-    return run_queue([(selected, manifest, logs, results)], jobs)
+def run_parallel(selected, manifest, jobs, logs, results, shared_pg=False):
+    return run_queue([(selected, manifest, logs, results)], jobs, shared_pg=shared_pg)
 
 
-def run_queue(groups, jobs):
+def run_queue(groups, jobs, shared_pg=False):
     """Baseline the union, then reuse each copy for the next queued entry."""
     folder = ROOT / '.dev/mutcheck-worktrees'
     processes, previous = [], {}
@@ -362,6 +1155,7 @@ def run_queue(groups, jobs):
     worker_caches = {}
     reported = set()
     ready = False
+    servers = None
 
     def interrupted(signum, frame):
         raise KeyboardInterrupt
@@ -380,8 +1174,19 @@ def run_queue(groups, jobs):
         free = free_space(cache)
         if free is not None and free < disk_headroom():
             return stop_for_disk(free)
+        if shared_pg and go:
+            servers = SharedServers(min(jobs, len(go)))
+            try:
+                servers.start()
+            except SharedPGError as exc:
+                print(f'启动 PostgreSQL 测试服务器失败：{exc}', file=sys.stderr)
+                servers = None
+                for entry in go + serial:
+                    lines[owners[id(entry)]].append(environment_line(entry))
+                return 1
         # Preserve the serial baseline calling convention as well.
-        clean = baseline(selected, logs, results, jobs=jobs) if jobs > 1 else baseline(selected, logs, results)
+        clean = (baseline(selected, logs, results, jobs=jobs, servers=servers) if jobs > 1
+                 else baseline(selected, logs, results, servers=servers))
         outcomes = logs / 'baseline-outcomes.json'
         if outcomes.exists():
             for _, _, output_dir, _ in groups[1:]:
@@ -458,7 +1263,7 @@ def run_queue(groups, jobs):
                     result.unlink(missing_ok=True)
                     command = [sys.executable, str(path / 'backend/scripts/mutchecks.py'), str(manifest),
                                '--worker-logs', str(worker_logs), entry['step'] + '/' + entry['name']]
-                    env = dict(os.environ)
+                    env = test_env(servers.dsn(int(path.name)) if servers is not None else None)
                     if path in worker_caches:
                         env['GOCACHE'] = str(worker_caches[path][0])
                     with (worker_logs / 'worker.log').open('a') as output:
@@ -505,6 +1310,8 @@ def run_queue(groups, jobs):
                     else:
                         result_line(line, output)
         finally:
+            if servers is not None:
+                servers.close()
             for sig, handler in previous.items():
                 signal.signal(sig, handler)
 
@@ -516,27 +1323,50 @@ def select_entries(entries, names):
     return [e for e in entries if not names or e['name'] in names or e['step'] + '/' + e['name'] in names]
 
 
-def affected_entries(entries, ref):
-    changed = set()
-    for command in (['git', 'diff', '--name-only', '-z', ref, '--'],
-                    ['git', 'ls-files', '--others', '--exclude-standard', '-z']):
-        result = subprocess.run(command, cwd=ROOT, capture_output=True, check=True)
-        changed.update(os.fsdecode(path) for path in result.stdout.split(b'\0') if path)
-    changed_dirs = {str(Path(path).parent) for path in changed}
+def affected_entries(entries, ref, summary=None):
+    changed = changed_paths(ref)
+    changed_sql = any(path.startswith(('backend/internal/db/queries/', 'backend/internal/db/migrations/'))
+                      for path in changed)
+    all_tables, changed_tables, reason = changed_migration_tables(changed, ref)
+    views = migration_view_names()
     tests = {}
     for path in changed:
         if path.endswith('_test.go') and (ROOT / path).is_file():
             tests[ROOT / Path(path).parent] = tests.get(ROOT / Path(path).parent, set()) | set(
                 re.findall(r'^\s*func\s+(\w+)\s*\(', (ROOT / path).read_text(), re.M))
     package_dirs = {}
+    migration_sources, query_sources = {}, {}
     selected = []
+    skipped = 0
     env = dict(os.environ)
     env.pop('GOFLAGS', None)
     for entry in entries:
         path = entry['file']
         affected = path in changed
         if path.startswith(('backend/internal/db/queries/', 'backend/internal/db/migrations/')):
-            affected |= str(Path(path).parent) in changed_dirs
+            if not affected:
+                if all_tables:
+                    affected = True
+                elif path.startswith('backend/internal/db/migrations/'):
+                    if path not in migration_sources:
+                        try:
+                            source = (ROOT / path).read_text()
+                        except OSError:
+                            source = None
+                        migration_sources[path] = (source, expanded_statements(source) if source else [])
+                    source, statements = migration_sources[path]
+                    tables = None if source is None else migration_entry_tables(entry, source, statements)
+                    affected = tables is None or bool(tables & changed_tables)
+                else:
+                    if path not in query_sources:
+                        try:
+                            source = (ROOT / path).read_text()
+                        except OSError:
+                            source = None
+                        query_sources[path] = (source, name_positions(source) if source else [])
+                    source, positions = query_sources[path]
+                    tables = None if source is None else query_entry_tables(entry, source, positions, views)
+                    affected = tables is None or bool(tables & changed_tables)
         if entry['kind'] == 'e2e':
             affected |= 'admin/' + entry['spec'] in changed
         elif not affected and tests:
@@ -548,8 +1378,23 @@ def affected_entries(entries, ref):
                     package_dirs[package] = [Path(line) for line in result.stdout.splitlines()]
                 affected |= any(set(entry['guards']) & tests.get(directory, set())
                                 for directory in package_dirs[package])
+        if changed_sql and not affected and path.startswith(('backend/internal/db/queries/', 'backend/internal/db/migrations/')):
+            skipped += 1
         if affected:
             selected.append(entry)
+    if summary is None:
+        if all_tables:
+            found = f'all (unattributable statement in {reason})'
+        else:
+            found = ', '.join(sorted(changed_tables)) or '(none)'
+        print(f'--since: changed tables: {found}; skipped {skipped} migration/query entries by table rule',
+              file=sys.stderr)
+    else:
+        summary['skipped'] += skipped
+        summary['tables'] |= changed_tables
+        summary['all'] |= all_tables
+        if all_tables and summary['reason'] is None:
+            summary['reason'] = reason
     return selected
 
 
@@ -598,7 +1443,7 @@ def guard_pattern(guards):
     return '^(' + '|'.join(re.escape(guard) for guard in guards) + ')$'
 
 
-def baseline(entries, logs, results, jobs=1):
+def baseline(entries, logs, results, jobs=1, servers=None):
     packages = {}
     for entry in entries:
         if entry['kind'] == 'go':
@@ -606,9 +1451,7 @@ def baseline(entries, logs, results, jobs=1):
                 packages.setdefault(package, {}).update(dict.fromkeys(entry['guards']))
     commands = [['go', 'test', '-count=1', '-trimpath', '-run', guard_pattern(guards), package]
                 for package, guards in packages.items()]
-    env = dict(os.environ)
-    env.pop('GOFLAGS', None)
-    processes, handles, running, codes = [], [], {}, {}
+    processes, handles, running, codes, envs = [], [], {}, {}, {}
     next_index = 0
     retried = set()
     environment = set()
@@ -624,8 +1467,9 @@ def baseline(entries, logs, results, jobs=1):
                     json.dumps(command, ensure_ascii=False, indent=2) + '\n')
                 output = log.open('w')
                 handles.append(output)
+                envs[index] = test_env(servers.dsn(index) if servers is not None else None)
                 try:
-                    process = subprocess.Popen(command, cwd=ROOT / 'backend', env=env,
+                    process = subprocess.Popen(command, cwd=ROOT / 'backend', env=envs[index],
                                                stdout=output, stderr=subprocess.STDOUT,
                                                start_new_session=True)
                     processes.append(process)
@@ -645,7 +1489,7 @@ def baseline(entries, logs, results, jobs=1):
                             output = (logs / f'baseline-{index}-retry.log').open('w')
                             handles.append(output)
                             try:
-                                retry = subprocess.Popen(commands[index], cwd=ROOT / 'backend', env=env,
+                                retry = subprocess.Popen(commands[index], cwd=ROOT / 'backend', env=envs[index],
                                                          stdout=output, stderr=subprocess.STDOUT,
                                                          start_new_session=True)
                                 processes.append(retry)
@@ -684,7 +1528,7 @@ def baseline(entries, logs, results, jobs=1):
     return not failed
 
 
-def run_go(entry, logs, results, gocache=None):
+def run_go(entry, logs, results, gocache=None, pg_dsn=None, keep_pg=False):
     code, caught, restored, error = 'not-run', [], True, None
     before = {}
     try:
@@ -695,9 +1539,7 @@ def run_go(entry, logs, results, gocache=None):
                    entry['file'], entry['original'], entry['replacement'], *entry['packages']]
         log = logs / (entry['step'] + '-' + entry['name'] + '.log')
         (logs / (entry['step'] + '-' + entry['name'] + '.command.json')).write_text(json.dumps(command, ensure_ascii=False, indent=2) + '\n')
-        # 清除继承的 GOFLAGS，避免它悄悄过滤守护测试。
-        env = dict(os.environ)
-        env.pop('GOFLAGS', None)
+        env = test_env(pg_dsn, keep_pg=keep_pg)
         if gocache is not None:
             env['GOCACHE'] = str(gocache)
         with log.open('w') as output:
@@ -852,13 +1694,15 @@ def main():
     edits.add_argument('--append', nargs=2, metavar=('MANIFEST', 'ENTRIES_JSON_FILE'))
     parser.add_argument('manifest', type=Path, nargs='?')
     parser.add_argument('--jobs', type=int, default=1)
+    parser.add_argument('--no-shared-pg', action='store_true',
+                        help='每个 go test 自启 PostgreSQL 容器（诊断用，默认每个 worker 共用一个）')
     parser.add_argument('--worker-logs', type=Path, help=argparse.SUPPRESS)
     parser.add_argument('--locate', action='store_true')
     parser.add_argument('--since', metavar='git-ref')
     parser.add_argument('names', nargs='*')
     args = parser.parse_intermixed_args()
     if args.set or args.append:
-        if args.manifest or args.names or args.locate or args.since or args.worker_logs or args.jobs != 1:
+        if args.manifest or args.names or args.locate or args.since or args.worker_logs or args.jobs != 1 or args.no_shared_pg:
             parser.error('editing commands cannot be combined with run options')
         try:
             if args.set:
@@ -909,12 +1753,13 @@ def execute(args, parser):
         failed = False
         total_selected = total_passed = total_failed = total_environment = 0
         selections = []
+        summary = {'skipped': 0, 'tables': set(), 'all': False, 'reason': None}
         for manifest in sorted((ROOT / '.dev/codex').glob('*/manifest.py')):
             try:
                 entries = load_manifest(manifest)['ENTRIES']
                 selected = entries
                 if args.since is not None:
-                    selected = affected_entries(selected, args.since)
+                    selected = affected_entries(selected, args.since, summary=summary)
             except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as exc:
                 print(f'{manifest.relative_to(ROOT)}: {exc}', file=sys.stderr)
                 failed = True
@@ -922,6 +1767,13 @@ def execute(args, parser):
                 print(f'{manifest.relative_to(ROOT)} selected=0 passed=0 failed=1 environment=0', flush=True)
                 continue
             selections.append((selected, manifest))
+        if args.since is not None:
+            if summary['all']:
+                found = f"all (unattributable statement in {summary['reason']})"
+            else:
+                found = ', '.join(sorted(summary['tables'])) or '(none)'
+            print(f"--since: changed tables: {found}; skipped {summary['skipped']} migration/query entries by table rule",
+                  file=sys.stderr)
         if not args.locate:
             counts, code = run_manifests(selections, args)
             if code == 130:
@@ -978,7 +1830,7 @@ def run_manifests(selections, args):
             handles.append(output)
             groups.append((selected, manifest, logs, output))
         if groups:
-            code = run_queue(groups, args.jobs)
+            code = run_queue(groups, args.jobs, shared_pg=not getattr(args, 'no_shared_pg', True))
     except KeyboardInterrupt:
         code = 130
     finally:
@@ -1029,50 +1881,71 @@ def run_selected(selected, manifest, args, logs):
     cache = current_cache()
     mutation = cache / 'entry' if cache is not None and not args.worker_logs and not args.locate else None
     seeded = set()
+    shared_pg = (not args.locate and not args.worker_logs
+                 and not getattr(args, 'no_shared_pg', True)
+                 and any(entry['kind'] == 'go' for entry in selected))
+    servers = None
     with (logs / 'results.log').open('w') as results:
-        if args.jobs > 1 and not args.locate:
-            try:
-                return run_parallel(selected, manifest, args.jobs, logs, results)
-            except KeyboardInterrupt:
-                return 130
-        if not args.locate:
-            free = free_space(cache)
-            if free is not None and free < disk_headroom():
-                print(disk_message(free), file=sys.stderr)
-                for entry in selected:
-                    result_line(environment_line(entry), results)
-                return DISK_EXIT
-        if not args.locate and not args.worker_logs and not baseline(selected, logs, results):
-            return 1
-        if mutation is not None:
-            seeded = seed_cache(cache, mutation)
-        for index, entry in enumerate(selected):
-            if args.locate:
+        try:
+            if args.jobs > 1 and not args.locate:
                 try:
-                    locate(entry)
-                    passed = True
-                except (OSError, ValueError) as exc:
-                    passed = False
-                    print(exc, file=sys.stderr)
-                line = f"{entry['step']} {entry['name']} exit={0 if passed else 2} caught=- restored=True {'PASS' if passed else 'FAIL'}"
-                result_line(line, results)
-                restored = True
-            else:
+                    return run_parallel(selected, manifest, args.jobs, logs, results,
+                                        shared_pg=not getattr(args, 'no_shared_pg', True))
+                except KeyboardInterrupt:
+                    return 130
+            if not args.locate:
                 free = free_space(cache)
                 if free is not None and free < disk_headroom():
                     print(disk_message(free), file=sys.stderr)
-                    for remaining in selected[index:]:
-                        result_line(environment_line(remaining), results)
+                    for entry in selected:
+                        result_line(environment_line(entry), results)
                     return DISK_EXIT
-                if entry['kind'] == 'go':
-                    passed, restored = run_go(entry, logs, results, mutation)
-                    if mutation is not None:
-                        prune_cache(mutation, seeded)
+            if shared_pg:
+                servers = SharedServers(1)
+                try:
+                    servers.start()
+                except SharedPGError as exc:
+                    print(f'启动 PostgreSQL 测试服务器失败：{exc}', file=sys.stderr)
+                    servers = None
+                    for entry in selected:
+                        result_line(environment_line(entry), results)
+                    return 1
+            if not args.locate and not args.worker_logs and not baseline(selected, logs, results, servers=servers):
+                return 1
+            if mutation is not None:
+                seeded = seed_cache(cache, mutation)
+            for index, entry in enumerate(selected):
+                if args.locate:
+                    try:
+                        locate(entry)
+                        passed = True
+                    except (OSError, ValueError) as exc:
+                        passed = False
+                        print(exc, file=sys.stderr)
+                    line = f"{entry['step']} {entry['name']} exit={0 if passed else 2} caught=- restored=True {'PASS' if passed else 'FAIL'}"
+                    result_line(line, results)
+                    restored = True
                 else:
-                    passed, restored = run_e2e(entry, logs, results)
-            failed |= not passed
-            if not restored:
-                break
+                    free = free_space(cache)
+                    if free is not None and free < disk_headroom():
+                        print(disk_message(free), file=sys.stderr)
+                        for remaining in selected[index:]:
+                            result_line(environment_line(remaining), results)
+                        return DISK_EXIT
+                    if entry['kind'] == 'go':
+                        passed, restored = run_go(entry, logs, results, mutation,
+                                                  pg_dsn=servers.dsn(0) if servers is not None else None,
+                                                  keep_pg=bool(args.worker_logs))
+                        if mutation is not None:
+                            prune_cache(mutation, seeded)
+                    else:
+                        passed, restored = run_e2e(entry, logs, results)
+                failed |= not passed
+                if not restored:
+                    break
+        finally:
+            if servers is not None:
+                servers.close()
     return int(failed)
 
 
