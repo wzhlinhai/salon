@@ -19,6 +19,23 @@ set -euo pipefail
 
 backend=$(cd "$(dirname "$0")/.." && pwd -P)
 slot="$backend/../.dev/mutcheck-backup"
+heavy_lock() {
+  local path=${GATE_HEAVY_LOCK:-$backend/../.dev/heavy.lock}
+  local resolved
+  mkdir -p "$(dirname "$path")"
+  resolved=$(realpath -m "$path")
+  if [ -n "${SALON_HEAVY_LOCK_HELD:-}" ] &&
+     [ "$(realpath -m "$SALON_HEAVY_LOCK_HELD")" = "$resolved" ]; then
+    return 0
+  fi
+  exec 9>"$path"
+  if ! flock -n 9; then
+    echo "waiting for heavy lock $resolved" >&2
+    flock 9
+  fi
+  export SALON_HEAVY_LOCK_HELD=$resolved
+}
+heavy_lock
 discard_incomplete() {
   if [ -d "$slot" ] && [ ! -f "$slot/original" ]; then
     rm -f "$slot/path" "$slot/original.tmp"
@@ -108,6 +125,11 @@ if [ "${1:-}" = --run ]; then
   test_selection=(-run "$2")
   shift 2
 fi
+go_parallel=()
+if [ -n "${MUTCHECK_GO_PARALLEL:-}" ]; then
+  go_parallel=(-p "$MUTCHECK_GO_PARALLEL")
+  export GOMAXPROCS=${GOMAXPROCS:-$MUTCHECK_GO_PARALLEL}
+fi
 [ $# -ge 3 ] || { echo "usage: backend/scripts/mutcheck.sh [--run <regex>] <file> <old> <new> [go test args] | --restore" >&2; exit 2; }
 file=$(realpath "$1") old=$2 new=$3; shift 3
 [ -f "$file" ] || { echo "mutcheck: no such file: $file" >&2; exit 2; }
@@ -149,7 +171,7 @@ if $regen && ! go tool sqlc generate; then
 fi
 
 # 只编译、不运行测试，确认改坏后的代码仍能构建（例如查询的参数没变）。
-if ! build=$(go test -count=1 -trimpath -run '^$' "$@" 2>&1); then
+if ! build=$(go test -count=1 -trimpath "${go_parallel[@]}" -run '^$' "$@" 2>&1); then
   echo "mutcheck: mutated code does not build:" >&2
   head -5 <<<"$build" >&2
   exit 2
@@ -157,7 +179,7 @@ fi
 
 for attempt in 1 2; do
   status=0
-  out=$(go test -count=1 -trimpath "${test_selection[@]}" "$@" 2>&1) || status=$?
+  out=$(go test -count=1 -trimpath "${go_parallel[@]}" "${test_selection[@]}" "$@" 2>&1) || status=$?
   if [[ "$out" == *"启动 PostgreSQL 测试容器失败"* ]]; then
     echo "mutcheck: environment failure (attempt $attempt/2):" >&2
     if [ "$attempt" -eq 1 ]; then
