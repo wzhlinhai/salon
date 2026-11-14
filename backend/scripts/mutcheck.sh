@@ -74,6 +74,30 @@ setup_cache
 trap cleanup_cache EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+# 共用测试服务器时先确认可达；连不上按环境失败处理，绝不把超时算成捕获。
+probe_test_server() {
+  [ -n "${SALON_TEST_PG_DSN:-}" ] || return 0
+  python3 - "$SALON_TEST_PG_DSN" <<'PY'
+import socket
+import sys
+import urllib.parse
+
+dsn = sys.argv[1]
+if '://' in dsn:
+    address = urllib.parse.urlparse(dsn)
+    host = address.hostname or '127.0.0.1'
+    port = address.port or 5432
+else:
+    fields = dict(item.split('=', 1) for item in dsn.split() if '=' in item)
+    host = fields.get('host', '127.0.0.1').split(',')[0]
+    port = int(fields.get('port', 5432))
+socket.create_connection((host, port), timeout=3).close()
+PY
+}
+if ! probe_test_server; then
+  echo "not run (environment): SALON_TEST_PG_DSN server is unreachable" >&2
+  exit 4
+fi
 if [ -d "$slot" ] && ! discard_incomplete; then
   echo "mutcheck: backup occupied for $(cat "$slot/path" 2>/dev/null || echo unknown); restore with: $backend/scripts/mutcheck.sh --restore" >&2
   exit 2
@@ -150,6 +174,10 @@ for attempt in 1 2; do
   fi
   break
 done
+if [ "$status" -ne 0 ] && ! probe_test_server; then
+  echo "not run (environment): SALON_TEST_PG_DSN server became unreachable during the run" >&2
+  exit 4
+fi
 fails=$(grep -E '^--- FAIL' <<<"$out" | sed 's/ (.*//' || true)
 if [ -n "$fails" ]; then
   echo "caught by:"
