@@ -118,8 +118,8 @@ func dealForLink(ctx context.Context, env ops.Env, dealID uuid.UUID, platform st
 	if err != nil {
 		return dbgen.GroupbuyDeal{}, dbgen.Item{}, dealError(err)
 	}
-	if !deal.Active {
-		return dbgen.GroupbuyDeal{}, dbgen.Item{}, ops.Rule("团购商品已停用")
+	if err := checkDealActive(deal); err != nil {
+		return dbgen.GroupbuyDeal{}, dbgen.Item{}, err
 	}
 	if deal.Platform != platform {
 		return dbgen.GroupbuyDeal{}, dbgen.Item{}, ops.Rule("团购平台不一致")

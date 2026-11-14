@@ -65,6 +65,7 @@ func Register(r *ops.Registry, providers *Providers) {
 	registerDeals(r)
 	registerSettlements(r)
 	registerLink(r)
+	registerOpenGroupbuyOrder(r)
 	ops.Register(r, ops.Operation[CouponRequest, CouponResult]{Name: "verify_coupon", Summary: "验团购券", Kind: ops.Read, Permission: perm.GroupBuyRedeem, AI: ops.AINone, Phased: true,
 		Handle: func(ctx context.Context, env ops.Env, in *CouponRequest) (*CouponResult, error) {
 			in.TenantID = env.Caller.TenantID

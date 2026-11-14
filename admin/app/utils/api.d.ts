@@ -2163,6 +2163,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/open_groupbuy_order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按已核销且未关联的团购券开单并关联 */
+        post: operations["open_groupbuy_order"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/open_order": {
         parameters: {
             query?: never;
@@ -3244,6 +3261,7 @@ export interface components {
             method: string;
         };
         Answer: {
+            drafts: components["schemas"]["DraftView"][];
             reply: string;
             sources: components["schemas"]["Source"][];
         };
@@ -4326,6 +4344,8 @@ export interface components {
             operation: string;
             original_params: unknown;
             params: unknown;
+            preview?: unknown;
+            preview_error?: string;
             reject_reason: string | null;
             status: string;
             summary: string;
@@ -4345,6 +4365,27 @@ export interface components {
             operation: string;
             original_params: unknown;
             params: unknown;
+            reject_reason: string | null;
+            status: string;
+            summary: string;
+            utterance: string;
+        };
+        DraftView: {
+            business_date: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            decided_at: string | null;
+            decided_by: string;
+            /** Format: date-time */
+            expires_at: string;
+            id: string;
+            initiator: string;
+            operation: string;
+            original_params: unknown;
+            params: unknown;
+            preview?: unknown;
+            preview_error?: string;
             reject_reason: string | null;
             status: string;
             summary: string;
@@ -5000,6 +5041,19 @@ export interface components {
             payments: components["schemas"]["Payment"][];
             principal: string;
             sales_staff_ids: string[];
+        };
+        OpenGroupbuyOrderInput: {
+            customer_id?: string;
+            deal_id: string;
+            designated: boolean;
+            /** @enum {string} */
+            gender: "male" | "female";
+            items: components["schemas"]["OrderItemInput"][];
+            redemption_id: string;
+        };
+        OpenGroupbuyOrderOutput: {
+            order: components["schemas"]["Order"];
+            redemption: components["schemas"]["Redemption"];
         };
         OpenOrderInput: {
             customer_id?: string;
@@ -10379,6 +10433,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Card"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    open_groupbuy_order: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenGroupbuyOrderInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenGroupbuyOrderOutput"];
                 };
             };
             /** @description Error */

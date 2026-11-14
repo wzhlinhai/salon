@@ -315,6 +315,41 @@ func (q *Queries) ShareStaffMany(ctx context.Context, ids []uuid.UUID) ([]Staff,
 	return items, nil
 }
 
+const staffLevels = `-- name: StaffLevels :many
+SELECT id, name, level_id FROM staff WHERE store_id = $1 AND active AND id = ANY($2::uuid[])
+`
+
+type StaffLevelsParams struct {
+	StoreID uuid.UUID
+	Ids     []uuid.UUID
+}
+
+type StaffLevelsRow struct {
+	ID      uuid.UUID
+	Name    string
+	LevelID *uuid.UUID
+}
+
+func (q *Queries) StaffLevels(ctx context.Context, arg StaffLevelsParams) ([]StaffLevelsRow, error) {
+	rows, err := q.db.Query(ctx, staffLevels, arg.StoreID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StaffLevelsRow
+	for rows.Next() {
+		var i StaffLevelsRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.LevelID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const staffNames = `-- name: StaffNames :many
 SELECT id, name FROM staff WHERE store_id = $1 AND id = ANY($2::uuid[])
 `

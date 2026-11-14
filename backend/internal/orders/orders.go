@@ -34,6 +34,18 @@ func Register(r *ops.Registry) {
 	ops.Register(r, ops.Operation[AddOrderItemInput, Order]{Name: "add_order_item", Summary: "向单添加项目行", Kind: ops.Write, Permission: perm.OrderCreate, AI: ops.AIDraft, Handle: addOrderItem})
 	ops.Register(r, ops.Operation[ListOpenOrdersInput, OrderList]{Name: "list_open_orders", Summary: "列出本店挂单", Kind: ops.Read, Permission: perm.OrderCreate, AI: ops.AIDirect, Handle: listOpenOrders})
 	ops.Register(r, ops.Operation[GetOrderInput, Order]{Name: "get_order", Summary: "查看本店单据", Kind: ops.Read, Permission: perm.OrderCreate, AI: ops.AIDirect, Handle: getOrder})
+	r.SetDraftPreview("open_order", previewOpenOrder)
+	r.SetDraftPreview("add_order_item", previewAddOrderItem)
+}
+
+// OpenOrder 在调用者事务中按 open_order 的规则开单，供团购核销后开单复用。
+func OpenOrder(ctx context.Context, env ops.Env, in *OpenOrderInput) (*Order, error) {
+	return openOrder(ctx, env, in)
+}
+
+// GetOrder 在调用者事务中读取一张本店单据，供团购开单返回关联后的完整视图。
+func GetOrder(ctx context.Context, env ops.Env, in *GetOrderInput) (*Order, error) {
+	return getOrder(ctx, env, in)
 }
 
 func rowError(err error) error {
@@ -91,33 +103,42 @@ func openOrder(ctx context.Context, env ops.Env, in *OpenOrderInput) (*Order, er
 
 // paperSnapshot 校验补录日期，并取下纸单营业日生效的规则快照。
 func paperSnapshot(ctx context.Context, env ops.Env, paperDate string) (settings.Snapshot, error) {
-	day, err := time.Parse(settings.DateLayout, paperDate)
+	day, err := backfillDay(ctx, env, paperDate)
 	if err != nil {
-		// rule-untested: OpenOrderInput.PaperDate 的 schema format=date 在调用前校验
-		return settings.Snapshot{}, ops.Rule("补录日期的格式是 YYYY-MM-DD")
-	}
-	today, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, env.Now)
-	if err != nil {
-		return settings.Snapshot{}, err
-	}
-	if day.After(today) {
-		return settings.Snapshot{}, ops.Rule("补录日期不能晚于今天")
-	}
-	todayRules, err := settings.Effective(ctx, env.Q, env.Caller.StoreID, today)
-	if err != nil {
-		return settings.Snapshot{}, err
-	}
-	days := int(today.Sub(day).Hours() / 24)
-	if days > todayRules.BackfillMaxDays() {
-		return settings.Snapshot{}, ops.Rule("只能补录最近 " + strconv.Itoa(todayRules.BackfillMaxDays()) + " 个营业日的单")
-	}
-	if err := closingguard.Guard(ctx, env.Q, env.Caller.StoreID, day); err != nil {
-		return settings.Snapshot{}, err
-	}
-	if err := payrollmonth.Guard(ctx, env.Q, env.Caller.StoreID, payrollmonth.Of(day), "补录"); err != nil {
 		return settings.Snapshot{}, err
 	}
 	return settings.TakeSnapshotForDay(ctx, env.Q, env.Caller.TenantID, env.Caller.StoreID, day)
+}
+
+// backfillDay 校验纸单日期并返回营业日，供补录开单和只读预览共用。
+func backfillDay(ctx context.Context, env ops.Env, paperDate string) (time.Time, error) {
+	day, err := time.Parse(settings.DateLayout, paperDate)
+	if err != nil {
+		// rule-untested: OpenOrderInput.PaperDate 的 schema format=date 在调用前校验
+		return time.Time{}, ops.Rule("补录日期的格式是 YYYY-MM-DD")
+	}
+	today, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, env.Now)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if day.After(today) {
+		return time.Time{}, ops.Rule("补录日期不能晚于今天")
+	}
+	todayRules, err := settings.Effective(ctx, env.Q, env.Caller.StoreID, today)
+	if err != nil {
+		return time.Time{}, err
+	}
+	days := int(today.Sub(day).Hours() / 24)
+	if days > todayRules.BackfillMaxDays() {
+		return time.Time{}, ops.Rule("只能补录最近 " + strconv.Itoa(todayRules.BackfillMaxDays()) + " 个营业日的单")
+	}
+	if err := closingguard.Guard(ctx, env.Q, env.Caller.StoreID, day); err != nil {
+		return time.Time{}, err
+	}
+	if err := payrollmonth.Guard(ctx, env.Q, env.Caller.StoreID, payrollmonth.Of(day), "补录"); err != nil {
+		return time.Time{}, err
+	}
+	return day, nil
 }
 
 func addOrderItem(ctx context.Context, env ops.Env, in *AddOrderItemInput) (*Order, error) {

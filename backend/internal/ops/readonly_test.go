@@ -89,3 +89,23 @@ func TestReadOperationsUseRepeatableRead(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestDraftPreviewRunsInReadOnlyTransaction 证明 get_draft 的预览钩子在只读事务里执行：预览里的写查询被 PostgreSQL 拒绝。
+func TestDraftPreviewRunsInReadOnlyTransaction(t *testing.T) {
+	s := optest.OpenShop(t)
+	ops.Register(s.Registry, ops.Operation[in, out]{Name: "preview_write_probe", Summary: "测试预览只读事务", Kind: ops.Write, Permission: ops.LoggedIn, AI: ops.AIDraft,
+		Handle: func(context.Context, ops.Env, *in) (*out, error) { return &out{}, nil }})
+	s.Registry.SetDraftPreview("preview_write_probe", func(ctx context.Context, env ops.Env, _ json.RawMessage) (any, error) {
+		err := env.Q.ExpireStoreDrafts(ctx, dbgen.ExpireStoreDraftsParams{StoreID: env.Caller.StoreID, Now: pgtype.Timestamptz{Time: env.Now, Valid: true}, ActorID: env.Caller.StaffID})
+		return nil, err
+	})
+	draft := s.Call(t, s.Owner, "create_draft", map[string]any{"operation": "preview_write_probe", "params": map[string]any{}, "summary": "", "utterance": ""}, 200).Body
+	args, err := json.Marshal(map[string]any{"id": draft["id"]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Registry.CallTool(context.Background(), s.MustCaller(s.Owner), "get_draft", args)
+	if err == nil || !strings.Contains(err.Error(), "read-only transaction") {
+		t.Fatalf("err = %v, want read-only transaction rejection", err)
+	}
+}

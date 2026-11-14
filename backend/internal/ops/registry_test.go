@@ -240,3 +240,63 @@ func TestDraftToolSchemaAndValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestChatToolsExcludeNonChatOperations(t *testing.T) {
+	r := newRegistry(t)
+	for _, spec := range []struct {
+		name string
+		kind ops.Kind
+		ai   ops.AIMode
+	}{
+		{"read_thing", ops.Read, ops.AIDirect},
+		{"draft_thing", ops.Write, ops.AIDraft},
+		{"hidden_thing", ops.Write, ops.AINone},
+		{"create_draft", ops.Write, ops.AIManageDraft},
+		{"update_draft_params", ops.Write, ops.AIManageDraft},
+		{"reject_draft", ops.Write, ops.AIManageDraft},
+		{"confirm_draft", ops.Write, ops.AINone},
+	} {
+		op := valid()
+		op.Name, op.Kind, op.AI = spec.name, spec.kind, spec.ai
+		ops.Register(r, op)
+	}
+	caller := ops.Caller{Permissions: map[ops.Permission]ops.Grant{"thing.view": {}}}
+	got := map[string]bool{}
+	for _, tool := range r.ChatTools(caller) {
+		got[tool.Name] = true
+	}
+	want := map[string]bool{"read_thing": true, "draft_thing": true, "update_draft_params": true}
+	if len(got) != len(want) {
+		t.Fatalf("ChatTools = %v, want %v", got, want)
+	}
+	for name := range want {
+		if !got[name] {
+			t.Fatalf("ChatTools missing %s: %v", name, got)
+		}
+	}
+	for _, name := range []string{"hidden_thing", "create_draft", "reject_draft", "confirm_draft", "no_such_tool"} {
+		if _, err := r.CallChatTool(context.Background(), caller, name, nil); !errors.Is(err, ops.ErrUnknownOperation) {
+			t.Fatalf("CallChatTool(%q) err = %v, want ErrUnknownOperation", name, err)
+		}
+	}
+	without := ops.Caller{Permissions: map[ops.Permission]ops.Grant{}}
+	for _, tool := range r.ChatTools(without) {
+		if tool.Name == "draft_thing" {
+			t.Fatal("draft tool offered without permission")
+		}
+	}
+	if _, err := r.CallChatTool(context.Background(), without, "draft_thing", nil); !errors.Is(err, ops.ErrUnknownOperation) {
+		t.Fatalf("unpermitted draft err = %v, want ErrUnknownOperation", err)
+	}
+}
+
+func TestPermissionsIncludesAlsoRequires(t *testing.T) {
+	r := newRegistry(t)
+	op := valid()
+	op.Name, op.Permission, op.AlsoRequires = "multi_permission", "a.view", []ops.Permission{"b.edit"}
+	ops.Register(r, op)
+	got := r.Permissions()
+	if len(got) != 2 || got[0] != "a.view" || got[1] != "b.edit" {
+		t.Fatalf("Permissions() = %v, want [a.view b.edit]", got)
+	}
+}

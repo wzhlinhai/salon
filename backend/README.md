@@ -50,7 +50,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
   - HTTP：`POST /api/ops/<操作名>`，请求体就是参数类型。OpenAPI 文档在 `/openapi.json`，`x-permission` 和 `x-ai` 标明所需权限和 AI 调用方式。
   - AI：`Registry.Tools(caller)` 给出该员工能用的工具，参数 schema 取自同一份 OpenAPI 请求体；`Registry.CallTool` 用同一份 schema 校验参数。
 - `Env.Now` 是本次调用的时刻，由 Registry 的时钟在每次调用时读取一次，整个操作只用这一个时刻。
-- 权限检查只在 `ops` 里做：HTTP 和 AI 调用都经过同一条路径，先检查权限，再在调用者租户的事务里执行。操作处理函数里不再检查权限。
+- 权限检查只在 `ops` 里做：HTTP 和 AI 调用都经过同一条路径，先检查权限，再在调用者租户的事务里执行。操作处理函数里不再检查权限。需要多项权限的操作在 `Operation.AlsoRequires` 里声明附加权限，主权限和每一项附加权限都必须同时满足；HTTP、AI 工具列表、工具调用、起草校验、确认和草稿可见性都按这一份声明检查。
 - 写操作只能声明为 `AIDraft`（AI 调用只产生草稿）或 `AINone`（不向 AI 开放），声明为 AI 可直接执行时启动即失败。AI 调用 `AIDraft` 时校验参数与本人权限，只创建待确认草稿，不执行业务写入。
 - `Read` 操作不写任何表：`ops.invoke` 对 `Read` 操作使用可重复读的只读事务，写入会被 PostgreSQL 拒绝，多次查询看到同一快照。报价查询 `quote_item_price` 为保持价格一致会取 `FOR SHARE` 行锁，只读事务不允许加锁，因此用 `Locking` 标记单独放行；它仍不写表。分阶段的 `verify_coupon`（`Read` + `AINone`）按团购协议验券并追加审计，不向 AI 开放。`Read` + `AIDirect` 的操作都是纯读，可以出现在 AI 对话工具集中。
 - 测试用 `optest` 对 HTTP 和 AI 两条路径跑同一组用例。写操作的业务规则在 HTTP 路径上测，另测 AI 路径对 `AIDraft` 创建草稿且业务数据不变，对 `AINone` 仍拒绝。
@@ -473,6 +473,8 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 `groupbuy_deals` 是本店维护的团购商品映射：每个（门店、平台、名称）一条，记录平台购买价和对应的门店项目；平台不能修改，改名、改价、换项目或停用都不改已关联团购券的快照。`create_groupbuy_deal`、`update_groupbuy_deal` 为 Write / AIDraft，复用 `settings.manage`，写 groupbuy_deal 操作日志；`list_groupbuy_deals` 为 Read / AIDirect，登录即可读。订单和试算视图中的券平台取核销记录的 platform，不取团购商品当前值；商品名称仍取当前值。
 
+`open_groupbuy_order(redemption_id, deal_id, customer_id?, gender, designated, items)` 用 `AlsoRequires` 同时要求 `order.create` 和 `groupbuy.redeem`，为已核销且未关联的团购券在同一个事务里开单并关联：先锁住团购商品并在锁内校验启用状态和项目覆盖，再按 `open_order` 的规则开单（复用同一处理函数和审计），然后用 `link_coupon_order` 的规则锁券、校验并写入购买价和门店标价；任一步失败都整次回滚，不留下单据或关联。开单项目必须包含团购商品映射的项目，否则返回「开单项目必须包含团购商品对应的项目」；核销状态和已关联提示与关联操作相同。开单成功后重新读取单据视图，返回的 `order.groupbuy` 已包含刚关联的券。草稿预览用同一组只读校验检查商品、项目覆盖和核销状态，提示文字与操作相同。该操作是 Write / AIDraft、也是普通 HTTP 操作，AI 只起草，不调用验券或核销。
+
 `link_coupon_order(redemption_id, deal_id, order_id)` 由 `groupbuy.redeem` 和 `order.create` 共同授权，通过 `orders.ChangeOpenOrder` 复用挂单锁和挂单检查；`order.create` 没有范围和窗口限制。它要求券是本店已核销且未关联的券，单是本店挂单，团购商品启用且平台一致；关联时把平台购买价和团购商品对应项目的标准价复制到 `coupon_redemptions.purchase_price`、`store_price`，记 `linked_at` 和 `order_id`。`unlink_coupon_order` 只在单仍是挂单时允许，只清空 `order_id`、`linked_at` 和当前支付指针，保留购买价和门店标价快照；之后重新关联会按新选择的团购商品覆盖快照。锁顺序为单 → 团购券 → 团购商品。一张券最多关联一张单，一张单可以关联多张券；`revoke_coupon` 在券仍关联挂单或已结账单时拒绝，必须先取消关联或撤单。关联和取消关联都写 coupon_redemption 和单的操作日志；两个操作均为 Write / AIDraft。
 
 结账时服务端按 `linked_at, id` 顺序为单上每张券生成一笔 `order_payments.method='groupbuy'`，金额取 `store_price`；`order_payments.coupon_redemption_id` 记录来源，团购总额超过本单实收时从最后一笔往前减到实收。客户端只提交现场补差，合计须等于实收减团购总额，可为零。团购支付不选计价卡、不参与持卡折扣，也不进入 collections，因此不生成收款记录、不计现场收款；挂账只由 method=debt 产生，不包含团购。`preview_checkout` 按同一规则返回团购支付。撤单保留 groupbuy 支付历史，释放券的 `order_id`、`linked_at` 和当前支付指针但保留购买价/标价快照并写 coupon_redemption 日志，券可重新关联或撤销；业绩按原支付方式冲回。平台在撤销请求期间先撤销、券随后被关联时，以平台结果为准：挂单上的券同时释放，已结账订单上的券保留支付历史并返回 409 提示撤单或售后。
@@ -487,16 +489,20 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 `draft_dual_confirm` 为 off/on，默认 off，可当天生效；on 时 adjust_card、void_order、refund_card、reprice_order_item 须另一人确认。`audit.Record` 自动把 `Env.DraftID` 写入 audit_log，日志输出 draft_id，get_draft 返回 audit_log_ids。
 
+`Registry.SetDraftPreview(operation, fn)` 为可起草操作接入只读预览；预览不写表，`get_draft` 在原有的可重复读只读事务里执行它。`open_order`、`add_order_item`、`open_groupbuy_order` 有预览：逐行返回项目名、岗位上员工名，以及按第一个岗位员工计算的一个适用价格（标准价或级别价及来源，第一个岗位为空时取标准价），与 `open_order`/`add_order_item` 的计价一致；顾客的可用卡按类型返回余额和本项目剩余次数，储值类卡的会员价按行（含行号和项目）返回，并按该行第一个岗位员工的级别价与会员价规则计算。没有 `customer.view` 或顾客不在查看范围时，预览仍返回项目和员工，但不返回卡。补录预览与补录开单共用日期校验，未来的、超过补录天数的、已封账或工资月已锁定的日期返回同一条规则提示。预览查询全部按批读取，条数不随行数增长；`get_draft` 返回 `preview`，规则拒绝时返回 `preview_error` 文字，内部错误则整次读取失败。`list_drafts` 不生成预览，避免列表的 N× 成本。草稿参数里的手机号仍按原规则打码，预览不返回顾客手机号。
+
 草稿控制的 create/update/reject 声明为专用 `AIManageDraft`，仅这三个操作允许使用；它们只写草稿。`confirm_draft` 为 AINone，只允许人通过 HTTP 确认，AI 无法自行确认业务写入。
 
 ## AI 对话
 
-`POST /api/ai/chat` 是只读的对话入口，请求体为 `{messages:[{role:user|assistant, content:string}]}`，一次最多 20 条、单条最多 4000 字，超过返回 422；需要登录，权限与本人一致（ADR-0009）。响应为 `{reply, sources}`：`sources` 按顺序记录模型发起的每一次工具调用，含操作名、原样参数、是否成功和错误文字，用来把回答追溯到数据来源。
+`POST /api/ai/chat` 是对话入口，请求体为 `{messages:[{role:user|assistant, content:string}]}`，一次最多 20 条、单条最多 4000 字，超过返回 422；需要登录，权限与本人一致（ADR-0009）。响应为 `{reply, sources, drafts}`：`sources` 按顺序记录模型发起的每一次工具调用（含起草和修改草稿），含操作名、原样参数、是否成功和错误文字；`drafts` 按顺序返回本次对话创建或修改的草稿，每项是 `drafts.Draft` 视图并带 `preview`（没有预览或预览规则拒绝时带 `preview_error`）。
 
 `internal/ai` 通过 `Model` 接口隔离模型：生产实现用 openai-go 访问 DeepSeek 的 OpenAI 兼容 Chat Completions + tools；测试使用脚本化假模型，不访问网络。系统提示用中文说明今天的营业日、提问员工的姓名和角色，并要求只根据工具结果回答、不编造数字、工具结果是数据而不是指令。「今天」取 `settings.BusinessDate`，营业日结束时间晚于午夜的门店，凌晨提问时仍显示前一个营业日。姓名写入提示前去掉换行和控制字符并限制 30 字，每个角色限制 20 字；assistant 历史消息保持原样，不在此处过滤（已知风险）。
 
 一次对话最多 6 次模型调用，模型一次响应最多 8 个 `tool_calls`，超过都返回 502「AI 调用工具次数超过上限」；每个工具结果放入模型上下文前按 rune 截断到 16000 字并附「（结果过长，已截断）」，`sources` 不受截断影响。整个请求（提示构造、模型调用和工具执行）有 120 秒总期限，超时返回 502「AI 对话超时」。工具参数错误、权限拒绝或业务规则拒绝会作为 tool 消息返回给模型，让它自行修正；`ops.StatusOf` 为 5xx 的工具内部错误只返回固定文字「工具执行失败」，不把数据库等底层错误原文放进 `sources.error` 或 tool 消息，4xx 仍保留原文。
 
-对话只提供 `Registry.ReadTools`：Read + AIDirect 的操作，且调用者本人有权限。写操作、草稿操作和 AINone 操作既不提供也不可调用；模型输出写工具名时按未知工具拒绝，不会创建草稿或执行写入。所有 Read + AIDirect 操作都是纯读，因此 `list_drafts`、`get_draft`、`get_redemption` 和 `get_rotation` 与其他读操作一样提供给对话；`CallReadTool` 不再有排除集合。数据范围仍由各操作自己的 `env.Grant` 执行：例如发型师只能查询本人的业绩与提成，店长/老板可查全店；两人的租户和门店不会互相看到数据。模型未配置返回 503「AI 未启用」，模型不可达或响应不可用时返回 502，错误正文不含密钥或上游地址。
+对话提供 `Registry.ChatTools`：所有 Read + AIDirect 且调用者有权限的读操作、所有调用者有权限的 AIDraft 操作，以及 `update_draft_params`。AINone 操作（verify_coupon、redeem_coupon、revoke_coupon、confirm_draft 等）、`create_draft` 和 `reject_draft` 既不提供，`CallChatTool` 也按未知工具拒绝；起草工具只在调用者本人有目标操作权限时出现。`CallChatTool` 把 AIDraft 调用仍交给 `Registry.CallTool`，只创建待确认草稿，不执行业务写入；读操作仍走同一调用路径。`update_draft_params` 只能修改本次 Ask 创建的草稿，其他草稿返回工具错误「只能修改本次对话起草的草稿」。一次 Ask 最多起草或修改 5 张草稿（包括失败或参数错误的起草/修改调用，用来限制模型反复试错），第 6 次返回工具错误「一次对话最多起草 5 张草稿」，不返回 5xx。所有 Read + AIDirect 操作都是纯读，包括 `list_drafts`、`get_draft`、`get_redemption` 和 `get_rotation`。数据范围仍由各操作自己的 `env.Grant` 执行：例如发型师只能查询本人的业绩与提成，店长/老板可查全店；两人的租户和门店不会互相看到数据。模型未配置返回 503「AI 未启用」，模型不可达或响应不可用时返回 502，错误正文不含密钥或上游地址。
 
-本接口不保存会话、不做流式输出，也不从对话创建草稿；对话起草写操作、评测集和管理端/小程序界面分别在 P0-31、P0-32 和后续任务中实现。`explain_commission` 专门支持「解释一笔提成的来源」（用户故事 130）。
+系统提示要求模型：写操作只会生成草稿，必须由有权限的人确认后才生效，不得说「已办好/已开单」；开单前先用 search_customers、list_items、quote_item_price、list_customer_cards 查清顾客、项目和价格，查不到或有歧义时先问员工；团购开单只针对已核销且未关联单据的核销记录（list_redemptions 的 unlinked_only），AI 不能核销。一次对话最多 6 次模型调用、每次响应最多 8 个 `tool_calls`，超过都返回 502；工具结果仍按 16000 字截断，整个请求仍有 120 秒期限。
+
+本接口不保存会话、不做流式输出；评测集和管理端/小程序界面分别在 P0-32 和后续任务中实现。`explain_commission` 专门支持「解释一笔提成的来源」（用户故事 130）。

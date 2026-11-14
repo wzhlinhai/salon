@@ -45,11 +45,13 @@ type Event struct {
 	At           time.Time       `json:"at"`
 }
 
-// Detail 包含草稿、完整变更历史和产生的业务日志标识。
+// Detail 包含草稿、完整变更历史、产生的业务日志标识和只读预览。
 type Detail struct {
 	Draft
-	Events      []Event     `json:"events"`
-	AuditLogIDs []uuid.UUID `json:"audit_log_ids"`
+	Events       []Event         `json:"events"`
+	AuditLogIDs  []uuid.UUID     `json:"audit_log_ids"`
+	Preview      json.RawMessage `json:"preview,omitempty"`
+	PreviewError string          `json:"preview_error,omitempty"`
 }
 
 // CreateInput 是人工或模型提供的原始起草内容。
@@ -169,8 +171,11 @@ func save(ctx context.Context, env ops.Env, d dbgen.AiDraft) (dbgen.AiDraft, err
 }
 
 func (s service) visible(env ops.Env, d dbgen.AiDraft) bool {
-	p, err := s.registry.DraftPermission(d.Operation)
-	return d.Initiator == env.Caller.StaffID || (err == nil && env.Caller.Has(p))
+	if d.Initiator == env.Caller.StaffID {
+		return true
+	}
+	ok, err := s.registry.DraftAllowed(env.Caller, d.Operation)
+	return err == nil && ok
 }
 
 // lock 在锁内重读并持久化过期；不可见目标不泄露内容。
@@ -255,6 +260,13 @@ func (s service) get(ctx context.Context, env ops.Env, in *IDInput) (*Detail, er
 		return nil, err
 	}
 	out := &Detail{Draft: *item, Events: []Event{}, AuditLogIDs: append([]uuid.UUID{}, ids...)}
+	out.Preview, err = s.registry.PreviewDraft(ctx, env, d.Operation, d.Params)
+	if err != nil {
+		if ops.StatusOf(err) >= 500 {
+			return nil, err
+		}
+		out.PreviewError = err.Error()
+	}
 	for _, e := range rows {
 		e.BeforeParams, err = redact(env, e.BeforeParams)
 		if err != nil {

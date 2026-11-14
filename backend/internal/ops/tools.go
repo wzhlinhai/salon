@@ -25,11 +25,11 @@ type ToolError struct{ Messages []string }
 
 func (e *ToolError) Error() string { return "invalid arguments: " + strings.Join(e.Messages, "; ") }
 
-// Tools 返回 caller 可以让 AI 调用的工具：操作向 AI 开放，且 caller 本人有权限。
+// Tools 返回 caller 可以让 AI 调用的工具：操作向 AI 开放，且 caller 本人有全部所需权限。
 func (r *Registry) Tools(caller Caller) []Tool {
 	var tools []Tool
 	for _, e := range r.ops {
-		if e.ai == AINone || !caller.Has(e.permission) {
+		if e.ai == AINone || !r.allowed(caller, e) {
 			continue
 		}
 		desc := e.summary
@@ -49,7 +49,7 @@ func (r *Registry) Tools(caller Caller) []Tool {
 }
 
 // ReadTools 返回 caller 可以让 AI 直接读取的工具：只包括 Read + AIDirect 的操作。
-// 写操作、草稿操作和 AINone 操作都不会出现在对话可用的工具列表里。
+// 写操作、草稿操作和 AINone 操作都不会出现在只读工具列表里。
 func (r *Registry) ReadTools(caller Caller) []Tool {
 	tools := r.Tools(caller)
 	out := tools[:0]
@@ -70,6 +70,63 @@ func (r *Registry) CallReadTool(ctx context.Context, caller Caller, name string,
 		return nil, ErrUnknownOperation
 	}
 	return r.CallTool(ctx, caller, name, args)
+}
+
+// ChatTools 返回 AI 对话可用的工具：Read + AIDirect 的读操作、调用者有权限的 AIDraft 操作，以及修改草稿参数的 update_draft_params。
+func (r *Registry) ChatTools(caller Caller) []Tool {
+	var tools []Tool
+	for _, e := range r.ops {
+		switch {
+		case e.kind == Read && e.ai == AIDirect:
+			if !r.allowed(caller, e) {
+				continue
+			}
+			tools = append(tools, Tool{Name: e.name, Description: e.summary, Parameters: r.toolSchema(e)})
+		case e.ai == AIDraft:
+			if !r.allowed(caller, e) {
+				continue
+			}
+			tools = append(tools, Tool{Name: e.name, Description: e.summary + "（只创建草稿，须由人确认后执行）", Parameters: r.toolSchema(e), Draft: true})
+		}
+	}
+	if e, ok := r.ops["update_draft_params"]; ok && caller.Has(e.permission) {
+		tools = append(tools, Tool{Name: e.name, Description: e.summary, Parameters: r.toolSchema(e)})
+	}
+	sort.Slice(tools, func(i, j int) bool { return tools[i].Name < tools[j].Name })
+	return tools
+}
+
+// CallChatTool 执行 AI 对话中的一次工具调用：只读、起草或修改草稿参数；其他操作按未知工具拒绝。
+func (r *Registry) CallChatTool(ctx context.Context, caller Caller, name string, args json.RawMessage) (json.RawMessage, error) {
+	e, ok := r.ops[name]
+	if !ok {
+		return nil, ErrUnknownOperation
+	}
+	switch {
+	case e.kind == Read && e.ai == AIDirect:
+		if !caller.Has(e.permission) {
+			return r.CallTool(ctx, caller, name, args)
+		}
+		if !r.allowed(caller, e) {
+			return nil, ErrUnknownOperation
+		}
+		return r.CallTool(ctx, caller, name, args)
+	case e.ai == AIDraft:
+		if !r.allowed(caller, e) {
+			return nil, ErrUnknownOperation
+		}
+		return r.CallTool(ctx, caller, name, args)
+	case name == "update_draft_params":
+		return r.CallTool(ctx, caller, name, args)
+	default:
+		return nil, ErrUnknownOperation
+	}
+}
+
+// DraftTool 报告 name 是否是 AIDraft 操作，供对话统计起草次数。
+func (r *Registry) DraftTool(name string) bool {
+	e, ok := r.ops[name]
+	return ok && e.ai == AIDraft
 }
 
 // CallTool 以 caller 本人的权限执行 AI 的一次工具调用。args 是模型给出的 JSON 参数。

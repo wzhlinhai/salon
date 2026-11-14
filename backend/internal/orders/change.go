@@ -26,31 +26,15 @@ func change(ctx context.Context, env ops.Env, action, requiredStatus string, ids
 		if err != nil {
 			return nil, rowError(err)
 		}
-		if row.Status == "merged" {
-			return nil, ops.Rule("单已合并，请在合并后的单上操作")
-		}
-		if row.Status == "voided" {
-			return nil, ops.Rule("单已撤")
-		}
-		if row.Status == "paid" && requiredStatus != "paid" {
-			return nil, ops.Rule("单已结账")
-		}
-		if row.Status != requiredStatus {
-			if requiredStatus == "paid" {
-				return nil, ops.Rule("只能撤已结账的单")
-			}
-			// rule-untested: orders.status CHECK 仅有 open、paid、merged、voided；requiredStatus 仅为 open 或 paid，其他状态已在上方拒绝
-			return nil, ops.Rule("单当前状态不允许操作")
+		if err := checkOrderState(row, requiredStatus); err != nil {
+			return nil, err
 		}
 		locked[id] = row
 	}
 	rows := make([]dbgen.Order, len(ids))
 	for i, id := range ids {
 		rows[i] = locked[id]
-		if err := closingguard.Guard(ctx, env.Q, env.Caller.StoreID, rows[i].BusinessDate.Time); err != nil {
-			return nil, err
-		}
-		if err := checkEdit(ctx, env, rows[i], now); err != nil {
+		if err := checkOrderChange(ctx, env, rows[i], now); err != nil {
 			return nil, err
 		}
 	}
@@ -71,6 +55,33 @@ func change(ctx context.Context, env ops.Env, action, requiredStatus string, ids
 		}
 	}
 	return after, nil
+}
+
+func checkOrderState(row dbgen.Order, requiredStatus string) error {
+	if row.Status == "merged" {
+		return ops.Rule("单已合并，请在合并后的单上操作")
+	}
+	if row.Status == "voided" {
+		return ops.Rule("单已撤")
+	}
+	if row.Status == "paid" && requiredStatus != "paid" {
+		return ops.Rule("单已结账")
+	}
+	if row.Status != requiredStatus {
+		if requiredStatus == "paid" {
+			return ops.Rule("只能撤已结账的单")
+		}
+		// rule-untested: orders.status CHECK 仅有 open、paid、merged、voided；requiredStatus 仅为 open 或 paid，其他状态已在上方拒绝
+		return ops.Rule("单当前状态不允许操作")
+	}
+	return nil
+}
+
+func checkOrderChange(ctx context.Context, env ops.Env, order dbgen.Order, now time.Time) error {
+	if err := closingguard.Guard(ctx, env.Q, env.Caller.StoreID, order.BusinessDate.Time); err != nil {
+		return err
+	}
+	return checkEdit(ctx, env, order, now)
 }
 
 func checkEdit(ctx context.Context, env ops.Env, order dbgen.Order, now time.Time) error {
