@@ -112,3 +112,16 @@ func (GroupbuyMonth) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Sche
 	s.Properties["difference"] = &huma.Schema{AnyOf: []*huma.Schema{s.Properties["difference"], {Type: "null"}}}
 	return s
 }
+
+// ListRedemptionsInput 是按营业日范围查看本店团购核销记录的参数。
+type ListRedemptionsInput struct {
+	From         string `json:"from" format:"date"`
+	To           string `json:"to" format:"date"`
+	Status       string `json:"status,omitempty"`
+	UnlinkedOnly bool   `json:"unlinked_only,omitempty"`
+}
+
+// RedemptionList 是本店某段营业日内的团购核销记录。
+type RedemptionList struct {
+	Items []Redemption `json:"items"`
+}

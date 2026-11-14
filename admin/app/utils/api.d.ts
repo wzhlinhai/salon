@@ -1908,6 +1908,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_redemptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按营业日范围列出本店团购核销记录 */
+        post: operations["list_redemptions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_role_options": {
         parameters: {
             query?: never;
@@ -4886,6 +4903,14 @@ export interface components {
             limit?: number;
             staff_id?: string;
         };
+        ListRedemptionsInput: {
+            /** Format: date */
+            from: string;
+            status?: string;
+            /** Format: date */
+            to: string;
+            unlinked_only?: boolean;
+        };
         ListRotationEventsInput: {
             /** Format: date */
             from: string;
@@ -5486,6 +5511,9 @@ export interface components {
             revoked_at: string | null;
             status: string;
             store_price: string | null;
+        };
+        RedemptionList: {
+            items: components["schemas"]["Redemption"][];
         };
         Ref: {
             id: string;
@@ -9856,6 +9884,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PositionList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_redemptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListRedemptionsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RedemptionList"];
                 };
             };
             /** @description Error */
