@@ -10,9 +10,13 @@ guards/packages 的文件为 JSON 列表；其他字段为原文：仅当文件�
 只为删掉后行为会变的保护写条目；op 的 Kind、Summary 这类没有运行时效果的声明不写，变异抓不到它们。
 --jobs N（默认 1）将所有清单的 go 项按包排序放入同一个队列，空闲副本领取下一项，使用 .dev/mutcheck-worktrees/<n>/ 的
 临时文件副本；所有清单合并各包的守护测试基线在主工作树至多 N 个并发运行，通过后才创建副本并运行变异。
+--jobs 最多 4（MUTCHECK_MAX_JOBS 可调低），超过时打印提示并按上限运行。
 e2e 在所有 go 项之后于主工作树串行运行。副本包含磁盘上的跟踪文件和未忽略的未跟踪文件，
 首次变异前逐字节核对所有保护文件；只读 git 命令列出文件，不写 .git。
 开始时清理残留副本，结束、失败、Ctrl-C 或 SIGTERM 时删除副本目录。
+正式运行（--locate 和内部 --worker-logs 进程除外）持有与 scripts/gate.py 相同的
+flock 重锁：路径取 GATE_HEAVY_LOCK，否则 .dev/heavy.lock；等待时打印 waiting for heavy lock。
+由 gate.py 启动时它通过 SALON_HEAVY_LOCK_HELD 标记已持有的锁，子进程据此跳过加锁。
 清单是定义 ENTRIES 的 Python 文件：它是由字典组成的列表；可选的 SKIPPED
 用 (step, name, reason) 元组列出跳过的保护及原因。
 每项包含 kind（go 或 e2e）、step、name、file（相对仓库根目录）、original、
@@ -57,6 +61,8 @@ go 项要求 mutcheck.sh 退出 0 且命中所有 guards；e2e 项要求守护�
 异常、Ctrl-C 或 SIGTERM 时删除本次目录。--locate 不运行 go 命令时不创建缓存，也不清理残留目录。
 基线在主工作树共享这个缓存；每个变异副本另建缓存并硬链接基线条目（含 xx/<hash>-d/ 可执行目录），
 跑完一项后只删除该变异新增的条目，峰值只与并发副本数和一个变异的编译量有关。
+--jobs N > 1 时每个 go worker 用 -p max(1, CPU/N) 和同样的 GOMAXPROCS 限制编译并行度，
+使所有 worker 合计接近 CPU 数；--jobs 1 保持原行为。
 所有 go test 都带 -trimpath，让不同路径的副本共享编译结果。基线前和每项变异前检查缓存所在
 磁盘的剩余空间，低于 20 GB 时用中文消息停止，未运行项计为 environment（非零退出），绝不计为 caught。
 测试可用 MUTCHECK_DISK_HEADROOM_BYTES 调低该下限。单独运行 mutcheck.sh（含 --restore）且未设置
@@ -65,6 +71,7 @@ GOCACHE 时，使用 .dev/ 下的临时缓存并在退出时删除。
 import argparse
 import ast
 from collections import deque
+import fcntl
 import io
 import json
 import os
@@ -74,6 +81,7 @@ import secrets
 import shutil
 import signal
 import shlex
+import socket
 import subprocess
 import sys
 import tempfile
@@ -91,6 +99,11 @@ CACHE_DIRNAME = 'mutcheck-gocache'
 POSTGRES_IMAGE = 'postgres:18-alpine'
 SHARED_PG_PREFIX = 'salon-mutcheck-pg'
 PG_DSN_ENV = 'SALON_TEST_PG_DSN'
+HEAVY_LOCK_ENV = 'GATE_HEAVY_LOCK'
+HEAVY_LOCK_MARKER = 'SALON_HEAVY_LOCK_HELD'
+MAX_JOBS_ENV = 'MUTCHECK_MAX_JOBS'
+DEFAULT_MAX_JOBS = 4
+GO_PARALLEL_ENV = 'MUTCHECK_GO_PARALLEL'
 
 IDENTIFIER = r'(?:"[^"]+"|[A-Za-z_][A-Za-z0-9_$]*)'
 QUALIFIED = rf'(?:{IDENTIFIER}\s*\.\s*)?{IDENTIFIER}'
@@ -920,6 +933,33 @@ def cleanup_workers(folder):
     remove_tree(folder)
 
 
+def cpu_count():
+    """Return the CPUs available for sizing Go's build parallelism."""
+    return os.cpu_count() or 1
+
+
+def heavy_lock_path():
+    """Return the heavy-command lock shared with scripts/gate.py."""
+    return Path(os.environ.get(HEAVY_LOCK_ENV) or ROOT / '.dev/heavy.lock')
+
+
+def acquire_heavy_lock():
+    """Hold the heavy lock for this run unless a parent already holds it."""
+    path = heavy_lock_path().resolve()
+    marker = os.environ.get(HEAVY_LOCK_MARKER)
+    if marker and Path(marker).resolve() == path:
+        return None
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock = path.open('w')
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print(f'waiting for heavy lock {path}', file=sys.stderr, flush=True)
+        fcntl.flock(lock, fcntl.LOCK_EX)
+    os.environ[HEAVY_LOCK_MARKER] = str(path)
+    return lock
+
+
 class SharedPGError(Exception):
     """A PostgreSQL container for the worker pool could not be started."""
 
@@ -935,6 +975,15 @@ class SharedServers:
 
     def _docker(self, *args, check=False):
         return subprocess.run(['docker', *args], capture_output=True, text=True, check=check)
+
+    @staticmethod
+    def _host_accepts_tcp(port, timeout=1.0):
+        """Return whether the published host port accepts a TCP connection."""
+        try:
+            with socket.create_connection(('127.0.0.1', int(port)), timeout=timeout):
+                return True
+        except OSError:
+            return False
 
     def start(self, timeout=60):
         try:
@@ -952,12 +1001,24 @@ class SharedServers:
                 port = self._docker('port', name, '5432/tcp', check=True).stdout.strip()
                 port = port.splitlines()[0].rsplit(':', 1)[-1]
                 deadline = time.monotonic() + timeout
+                stable = 0
                 while True:
-                    ready = self._docker('exec', name, 'pg_isready', '-U', 'salon', '-d', 'salon')
-                    if ready.returncode == 0:
-                        break
+                    # The image entrypoint first runs a temporary init server
+                    # with listen_addresses='' that answers on the Unix socket
+                    # only. A socket probe would therefore succeed too early,
+                    # so require TCP inside the container and through the
+                    # published host port before declaring the server ready.
+                    probe = self._docker(
+                        'exec', name, 'pg_isready', '-h', '127.0.0.1', '-p', '5432',
+                        '-U', 'salon', '-d', 'salon')
+                    if probe.returncode == 0 and self._host_accepts_tcp(port):
+                        stable += 1
+                        if stable >= 2:
+                            break
+                    else:
+                        stable = 0
                     if time.monotonic() >= deadline:
-                        raise SharedPGError(f'{name} did not accept connections within {timeout}s')
+                        raise SharedPGError(f'{name} did not accept TCP connections within {timeout}s')
                     time.sleep(0.2)
                 self.dsns.append(f'postgres://salon:salon@127.0.0.1:{port}/salon?sslmode=disable')
         except SharedPGError:
@@ -1146,6 +1207,7 @@ def run_queue(groups, jobs, shared_pg=False):
     """Baseline the union, then reuse each copy for the next queued entry."""
     folder = ROOT / '.dev/mutcheck-worktrees'
     processes, previous = [], {}
+    previous_env = {}
     selected = [entry for entries, _, _, _ in groups for entry in entries]
     logs, results = groups[0][2:]
     lines = [[] for _ in groups]
@@ -1156,6 +1218,11 @@ def run_queue(groups, jobs, shared_pg=False):
     reported = set()
     ready = False
     servers = None
+    if jobs > 1:
+        parallel = max(1, cpu_count() // jobs)
+        for key, value in ((GO_PARALLEL_ENV, str(parallel)), ('GOMAXPROCS', str(parallel))):
+            previous_env[key] = os.environ.get(key)
+            os.environ[key] = value
 
     def interrupted(signum, frame):
         raise KeyboardInterrupt
@@ -1310,6 +1377,11 @@ def run_queue(groups, jobs, shared_pg=False):
                     else:
                         result_line(line, output)
         finally:
+            for key, value in previous_env.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
             if servers is not None:
                 servers.close()
             for sig, handler in previous.items():
@@ -1449,7 +1521,9 @@ def baseline(entries, logs, results, jobs=1, servers=None):
         if entry['kind'] == 'go':
             for package in entry['packages']:
                 packages.setdefault(package, {}).update(dict.fromkeys(entry['guards']))
-    commands = [['go', 'test', '-count=1', '-trimpath', '-run', guard_pattern(guards), package]
+    parallel = os.environ.get(GO_PARALLEL_ENV)
+    parallel_flags = ['-p', parallel] if parallel else []
+    commands = [['go', 'test', '-count=1', '-trimpath', *parallel_flags, '-run', guard_pattern(guards), package]
                 for package, guards in packages.items()]
     processes, handles, running, codes, envs = [], [], {}, {}, {}
     next_index = 0
@@ -1717,10 +1791,23 @@ def main():
         return 0
     if args.jobs < 1:
         parser.error('--jobs must be positive')
+    requested_jobs = args.jobs
+    cap_value = os.environ.get(MAX_JOBS_ENV)
+    if cap_value is None:
+        cap = DEFAULT_MAX_JOBS
+    else:
+        try:
+            cap = int(cap_value)
+        except ValueError:
+            parser.error(f'{MAX_JOBS_ENV} must be a positive integer')
+        if cap < 1:
+            parser.error(f'{MAX_JOBS_ENV} must be a positive integer')
+    args.jobs = min(requested_jobs, cap)
+    if args.jobs != requested_jobs:
+        print(f'--jobs {requested_jobs} 超过上限 {cap}，按 {args.jobs} 运行', file=sys.stderr, flush=True)
     cache, previous_gocache, handlers = None, None, {}
-    # Locate-only runs execute no Go command; --since needs go list.
-    if args.worker_logs is None and (not args.locate or args.since is not None):
-        cache, previous_gocache = create_run_cache(clean_stale=not args.locate)
+    heavy = None
+    previous_marker = os.environ.get(HEAVY_LOCK_MARKER)
 
     def interrupted(signum, frame):
         raise KeyboardInterrupt
@@ -1729,6 +1816,12 @@ def main():
         for sig in (signal.SIGINT, signal.SIGTERM):
             handlers[sig] = signal.signal(sig, interrupted)
         try:
+            # Locate and worker processes are cheap; the outer run owns the lock.
+            if args.worker_logs is None and not args.locate:
+                heavy = acquire_heavy_lock()
+            # Locate-only runs execute no Go command; --since needs go list.
+            if args.worker_logs is None and (not args.locate or args.since is not None):
+                cache, previous_gocache = create_run_cache(clean_stale=not args.locate)
             return execute(args, parser)
         except KeyboardInterrupt:
             return 130
@@ -1740,6 +1833,12 @@ def main():
             if cache is not None:
                 cleanup_run_cache(cache, previous_gocache)
         finally:
+            if heavy is not None:
+                heavy.close()
+                if previous_marker is None:
+                    os.environ.pop(HEAVY_LOCK_MARKER, None)
+                else:
+                    os.environ[HEAVY_LOCK_MARKER] = previous_marker
             for sig, handler in handlers.items():
                 signal.signal(sig, handler)
 
