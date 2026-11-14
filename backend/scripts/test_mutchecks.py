@@ -1909,6 +1909,38 @@ class EnvironmentTests(unittest.TestCase):
                 self.assertIn('.dev/codex/a/manifest.py selected=1 passed=0 failed=0 environment=1', output)
                 self.assertIn('total selected=1 passed=0 failed=0 environment=1', output)
 
+    def test_entry_exit_two_stays_failed_even_with_environment_signature(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            init_repo(root)
+            scripts = root / 'backend/scripts'
+            scripts.mkdir(parents=True)
+            (scripts / 'mutchecks.py').write_text(Path(mutchecks.__file__).read_text())
+            worker = scripts / 'mutcheck.sh'
+            worker.write_text(
+                '#!' + sys.executable + '\nimport sys\n' +
+                f'print({mutchecks.ENVIRONMENT_SIGNATURE!r})\n' +
+                "print('mutcheck: mutated migration does not apply:')\n" +
+                "print('    test.go:1: migrate up: boom')\n" +
+                'sys.exit(2)\n')
+            worker.chmod(0o755)
+            (root / 'guard').write_text('original')
+            stage_fixture(root)
+            manifest = root / '.dev/codex/a/manifest.py'
+            manifest.parent.mkdir(parents=True)
+            entry = dict(kind='go', step='1', name='guard', file='guard', guards=['TestGuard'],
+                         packages=['a'], original='original', replacement='mutated')
+            manifest.write_text('ENTRIES = ' + repr([entry]))
+
+            with patch.object(mutchecks, 'affected_entries', return_value=[entry]), \
+                    patch.object(mutchecks, 'baseline', return_value=True), relaxed_disk_headroom():
+                status, output, _ = AllManifestTests().invoke(root, '--since', 'main')
+            self.assertEqual(status, 1)
+            self.assertIn('exit=2 caught=- restored=True FAIL', output)
+            self.assertIn('.dev/codex/a/manifest.py selected=1 passed=0 failed=1 environment=0', output)
+            self.assertNotIn('not run (environment)', output)
+            self.assertEqual((root / 'guard').read_text(), 'original')
+
     def test_baseline_environment_counts_whole_unrun_manifest(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
@@ -1967,6 +1999,44 @@ class EnvironmentTests(unittest.TestCase):
                     self.assertIn('not run (environment)', content)
                 else:
                     self.assertNotIn(mutchecks.ENVIRONMENT_SIGNATURE, content)
+
+    def test_shell_classifies_mutated_migration_apply_as_build_error(self):
+        cases = [
+            ('backend/internal/db/migrations/00099_example.sql', 'migrate up', 2, 1, True),
+            ('backend/internal/db/migrations/00099_example.sql', 'connection refused', 4, 2, False),
+            ('guard.go', 'migrate up', 4, 2, False),
+        ]
+        for target_name, detail, expected, attempts, classified in cases:
+            with self.subTest(target=target_name, detail=detail), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                scripts = root / 'backend/scripts'
+                scripts.mkdir(parents=True)
+                shutil.copy(Path(__file__).with_name('mutcheck.sh'), scripts / 'mutcheck.sh')
+                target = root / target_name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text('original')
+                (root / 'bin').mkdir()
+                marker = root / 'attempts'
+                go = root / 'bin/go'
+                go.write_text('#!/bin/bash\n' +
+                              'if [[ $* == *"-run ^$"* ]]; then exit 0; fi\n' +
+                              f'echo attempt >> {str(marker)!r}\n' +
+                              f'echo {mutchecks.ENVIRONMENT_SIGNATURE!r} >&2\n' +
+                              f'echo "    test.go:1: {detail}" >&2\n' +
+                              'exit 1\n')
+                go.chmod(0o755)
+                result = subprocess.run(
+                    ['bash', str(scripts / 'mutcheck.sh'), str(target), 'original', 'mutated',
+                     './internal/example'],
+                    env={**os.environ, 'PATH': str(root / 'bin') + os.pathsep + os.environ['PATH']},
+                    text=True, capture_output=True)
+                content = result.stdout + result.stderr
+                self.assertEqual(result.returncode, expected, content)
+                self.assertEqual(marker.read_text(), 'attempt\n' * attempts)
+                self.assertEqual('mutcheck: mutated migration does not apply:' in content, classified)
+                self.assertEqual('not run (environment)' in content, not classified)
+                self.assertEqual(target.read_text(), 'original')
+                self.assertFalse((root / '.dev/mutcheck-backup').exists())
 
     def test_shell_exits_environment_when_shared_server_is_unreachable(self):
         with tempfile.TemporaryDirectory() as folder:
