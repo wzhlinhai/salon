@@ -13,7 +13,7 @@ import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 SPEC = importlib.util.spec_from_file_location('mutchecks', Path(__file__).with_name('mutchecks.py'))
 mutchecks = importlib.util.module_from_spec(SPEC)
@@ -267,7 +267,7 @@ class AllManifestTests(unittest.TestCase):
                 return [] if entries[0]['name'] == 'empty' else entries[:1]
 
             def run(groups, jobs, **kwargs):
-                self.assertEqual(jobs, 8)
+                self.assertEqual(jobs, 4)
                 for entries, manifest, logs, results in groups:
                     self.assertEqual(logs.parent, manifest.parent)
                     seen.append(manifest)
@@ -283,6 +283,44 @@ class AllManifestTests(unittest.TestCase):
             self.assertIn('.dev/codex/empty/manifest.py selected=0 passed=0 failed=0', output)
             self.assertEqual(error.count('logs='), 2)
             self.assertNotIn('1/unselected', error)
+            self.assertIn('--jobs 8 超过上限 4，按 4 运行', error)
+
+    def test_jobs_are_clamped_to_four(self):
+        cases = [(None, '8', 4, '--jobs 8 超过上限 4，按 4 运行'),
+                 ('2', '8', 2, '--jobs 8 超过上限 2，按 2 运行'),
+                 ('8', '8', 8, None),
+                 (None, '4', 4, None),
+                 (None, '2', 2, None)]
+        for cap, requested, expected, notice in cases:
+            with self.subTest(cap=cap, requested=requested), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                manifest = root / '.dev/codex/a/manifest.py'
+                manifest.parent.mkdir(parents=True)
+                entry = dict(kind='go', step='1', name='guard', file='guard',
+                             original='original', replacement='mutated',
+                             guards=['TestGuard'], packages=['a'])
+                manifest.write_text('ENTRIES = ' + repr([entry]))
+                seen = []
+
+                def queue(groups, jobs, **kwargs):
+                    seen.append(jobs)
+                    for entries, manifest, logs, results in groups:
+                        for entry in entries:
+                            mutchecks.result_line(
+                                f"{entry['step']} {entry['name']} exit=0 PASS", results)
+                    return 0
+
+                env = {} if cap is None else {mutchecks.MAX_JOBS_ENV: cap}
+                with patch.dict(os.environ, env, clear=True), \
+                        patch.object(mutchecks, 'affected_entries', return_value=[entry]), \
+                        patch.object(mutchecks, 'run_queue', side_effect=queue):
+                    code, output, error = self.invoke(root, '--since', 'main', '--jobs', requested)
+                self.assertEqual(seen, [expected])
+                self.assertEqual(code, 0, error)
+                if notice:
+                    self.assertIn(notice, error)
+                else:
+                    self.assertNotIn('超过上限', error)
 
     def single_manifest_fixture(self, worker_exit):
         with tempfile.TemporaryDirectory() as folder:
@@ -406,6 +444,25 @@ class AllManifestTests(unittest.TestCase):
             self.assertEqual([path.name for path in (root / '.dev/mutcheck-gocache').iterdir()],
                              ['run-existing'])
             self.assertIn('total selected=1 passed=1 failed=0', output)
+
+    def test_locate_does_not_take_the_heavy_lock(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with patch.object(mutchecks, 'acquire_heavy_lock') as acquire:
+                code, output, error = self.invoke(Path(folder), '--locate')
+            acquire.assert_not_called()
+            self.assertEqual(code, 0, error)
+
+    def test_worker_logs_does_not_take_the_heavy_lock(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            manifest = root / 'manifest.py'
+            manifest.write_text('ENTRIES = []')
+            logs = root / 'logs'
+            logs.mkdir()
+            with patch.object(mutchecks, 'acquire_heavy_lock') as acquire:
+                code, output, error = self.invoke(root, str(manifest), '--worker-logs', str(logs))
+            acquire.assert_not_called()
+            self.assertEqual(code, 0, error)
 
 
 class SelectionTests(unittest.TestCase):
@@ -841,6 +898,98 @@ class BaselineTests(unittest.TestCase):
 
 
 
+class ParallelismTests(unittest.TestCase):
+    def test_baseline_uses_per_worker_p_flag_from_env(self):
+        entries = [dict(kind='go', step='1', name='guard', packages=['a'], guards=['TestGuard'])]
+        with tempfile.TemporaryDirectory() as folder, \
+                patch.dict(os.environ, {mutchecks.GO_PARALLEL_ENV: '4', 'GOMAXPROCS': '4'}), \
+                patch.object(mutchecks.subprocess, 'Popen') as start, \
+                patch.object(mutchecks, 'stop_processes'):
+            start.return_value.poll.return_value = 0
+            self.assertTrue(mutchecks.baseline(entries, Path(folder), io.StringIO()))
+        self.assertEqual(start.call_args.args[0],
+                         ['go', 'test', '-count=1', '-trimpath', '-p', '4',
+                          '-run', '^(TestGuard)$', 'a'])
+        self.assertEqual(start.call_args.kwargs['env']['GOMAXPROCS'], '4')
+
+    def test_shell_passes_p_flag_to_every_go_test(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            scripts = root / 'backend/scripts'
+            scripts.mkdir(parents=True)
+            shutil.copy(Path(__file__).with_name('mutcheck.sh'), scripts / 'mutcheck.sh')
+            target = root / 'guard.go'
+            target.write_text('original')
+            bin_dir = root / 'bin'
+            bin_dir.mkdir()
+            calls = root / 'calls'
+            go = bin_dir / 'go'
+            go.write_text('#!/bin/bash\n'
+                          'echo "$*" >> "$CALLS"\n'
+                          'if [[ $* == *"-run ^$"* ]]; then exit 0; fi\n'
+                          "echo '--- FAIL: TestGuard (0.00s)'\n"
+                          'exit 1\n')
+            go.chmod(0o755)
+            env = {key: value for key, value in os.environ.items()
+                   if key not in ('GOCACHE', 'GATE_HEAVY_LOCK', 'SALON_HEAVY_LOCK_HELD',
+                                  mutchecks.GO_PARALLEL_ENV)}
+            env.update(PATH=str(bin_dir) + os.pathsep + env['PATH'],
+                       CALLS=str(calls), **{mutchecks.GO_PARALLEL_ENV: '4'})
+            result = subprocess.run(
+                ['bash', str(scripts / 'mutcheck.sh'), str(target),
+                 'original', 'mutated', './internal/example'],
+                env=env, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            commands = calls.read_text().splitlines()
+            self.assertGreaterEqual(len(commands), 2, commands)
+            self.assertTrue(all('-p 4' in command for command in commands), commands)
+
+
+class HeavyLockTests(unittest.TestCase):
+    def test_path_uses_gate_env_or_repo_dev(self):
+        with patch.object(mutchecks, 'ROOT', Path('/repo')):
+            with patch.dict(os.environ, {mutchecks.HEAVY_LOCK_ENV: '/tmp/shared.lock'}, clear=True):
+                self.assertEqual(mutchecks.heavy_lock_path(), Path('/tmp/shared.lock'))
+            with patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(mutchecks.heavy_lock_path(), Path('/repo/.dev/heavy.lock'))
+
+    def test_acquires_lock_and_prints_waiting_when_busy(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = (Path(folder) / 'heavy.lock').resolve()
+            with patch.dict(os.environ, {mutchecks.HEAVY_LOCK_ENV: str(path)}, clear=True), \
+                    patch.object(mutchecks.fcntl, 'flock',
+                                 side_effect=[BlockingIOError(), None]) as flock, \
+                    patch('sys.stderr', new=io.StringIO()) as error:
+                lock = mutchecks.acquire_heavy_lock()
+                self.assertIsNotNone(lock)
+                lock.close()
+                self.assertEqual(os.environ[mutchecks.HEAVY_LOCK_MARKER], str(path))
+                self.assertIn(f'waiting for heavy lock {path}', error.getvalue())
+            self.assertEqual(flock.call_args_list[0].args[1],
+                             mutchecks.fcntl.LOCK_EX | mutchecks.fcntl.LOCK_NB)
+            self.assertEqual(flock.call_args_list[1].args[1], mutchecks.fcntl.LOCK_EX)
+
+    def test_skips_lock_when_marker_matches(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = (Path(folder) / 'heavy.lock').resolve()
+            env = {mutchecks.HEAVY_LOCK_ENV: str(path), mutchecks.HEAVY_LOCK_MARKER: str(path)}
+            with patch.dict(os.environ, env, clear=True), \
+                    patch.object(mutchecks.fcntl, 'flock') as flock:
+                self.assertIsNone(mutchecks.acquire_heavy_lock())
+            flock.assert_not_called()
+
+    def test_marker_for_another_path_does_not_skip(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = (Path(folder) / 'heavy.lock').resolve()
+            env = {mutchecks.HEAVY_LOCK_ENV: str(path),
+                   mutchecks.HEAVY_LOCK_MARKER: str(path) + '.other'}
+            with patch.dict(os.environ, env, clear=True), \
+                    patch.object(mutchecks.fcntl, 'flock') as flock:
+                lock = mutchecks.acquire_heavy_lock()
+                lock.close()
+            self.assertTrue(flock.called)
+
+
 class SharedServerTests(unittest.TestCase):
     def test_container_image_matches_dbtest(self):
         source = (mutchecks.ROOT / 'backend/internal/dbtest/dbtest.go').read_text()
@@ -865,7 +1014,14 @@ class SharedServerTests(unittest.TestCase):
             "    print('container-' + name); sys.exit(0)\n"
             "if args[0] == 'port':\n"
             "    print('127.0.0.1:' + str(55000 + int(args[1].rsplit('-', 1)[-1]))); sys.exit(0)\n"
-            "if args[0] in ('exec', 'rm'):\n"
+            "if args[0] == 'exec':\n"
+            "    if '-h' not in args:\n"
+            "        sys.exit(0)\n"
+            "    probes = sum(line.startswith('exec ') and 'pg_isready' in line\n"
+            "                 for line in log.read_text().splitlines())\n"
+            "    failures = int(os.environ.get('DOCKER_TCP_FAILURES', '0'))\n"
+            "    sys.exit(1 if probes <= failures else 0)\n"
+            "if args[0] == 'rm':\n"
             "    sys.exit(0)\n"
             "sys.exit(0)\n")
         script.chmod(0o755)
@@ -875,7 +1031,8 @@ class SharedServerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             env, log = self.fake_docker(root)
-            with patch.dict(os.environ, env, clear=False):
+            with patch.dict(os.environ, env, clear=False), \
+                    patch.object(socket, 'create_connection', return_value=MagicMock()):
                 servers = mutchecks.SharedServers(2).start()
                 self.assertEqual(len(servers.dsns), 2)
                 self.assertIn('127.0.0.1:55000', servers.dsn(0))
@@ -884,18 +1041,42 @@ class SharedServerTests(unittest.TestCase):
             calls = log.read_text().splitlines()
             self.assertTrue(any(call.startswith('run -d') and '--tmpfs /var/lib/postgresql/data' in call for call in calls))
             self.assertTrue(all('-c max_connections=300' in call for call in calls if call.startswith('run -d')))
-            self.assertTrue(all(call.startswith('exec ') for call in calls if 'pg_isready' in call))
+            probes = [call for call in calls if 'pg_isready' in call]
+            self.assertTrue(probes)
+            self.assertTrue(all(call.startswith('exec ') for call in probes))
+            self.assertTrue(all(' pg_isready -h 127.0.0.1 -p 5432 -U salon -d salon' in call
+                                for call in probes))
             removed = [call for call in calls if call.startswith('rm -f')]
             self.assertEqual(len(removed), 2)
             self.assertTrue(all(call.startswith('rm -f salon-mutcheck-pg-') for call in removed))
             self.assertFalse(any('salon-dev-db' in call for call in removed))
+
+    def test_start_waits_for_tcp_not_only_the_init_socket(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            env, log = self.fake_docker(root)
+            env['DOCKER_TCP_FAILURES'] = '3'
+            with patch.dict(os.environ, env, clear=False), \
+                    patch.object(socket, 'create_connection', return_value=MagicMock()) as host_tcp:
+                servers = mutchecks.SharedServers(1).start()
+                servers.close()
+            calls = log.read_text().splitlines()
+            probes = [call for call in calls if 'pg_isready' in call]
+            self.assertEqual(len(probes), 5, probes)
+            self.assertTrue(all(' pg_isready -h 127.0.0.1 -p 5432 -U salon -d salon' in call
+                                for call in probes))
+            self.assertEqual([call.args[0] for call in host_tcp.call_args_list],
+                             [('127.0.0.1', 55000), ('127.0.0.1', 55000)])
+            removed = [call for call in calls if call.startswith('rm -f')]
+            self.assertEqual(len(removed), 1)
 
     def test_failed_start_removes_the_containers_it_created(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             env, log = self.fake_docker(root)
             env['DOCKER_FAIL_INDEX'] = '2'
-            with patch.dict(os.environ, env, clear=False):
+            with patch.dict(os.environ, env, clear=False), \
+                    patch.object(socket, 'create_connection', return_value=MagicMock()):
                 with self.assertRaises(mutchecks.SharedPGError):
                     mutchecks.SharedServers(2).start()
             removed = [call for call in log.read_text().splitlines() if call.startswith('rm -f')]
@@ -925,6 +1106,7 @@ class SharedServerTests(unittest.TestCase):
                             replacement='mutated', packages=['a'], guards=['TestGuard'])
                        for name in ('a', 'b')]
             with patch.object(mutchecks, 'ROOT', root), patch.dict(os.environ, env, clear=False), \
+                    patch.object(socket, 'create_connection', return_value=MagicMock()), \
                     patch.object(mutchecks, 'baseline', return_value=True), \
                     patch.object(mutchecks.shutil, 'disk_usage', return_value=Mock(free=1 << 40)), \
                     patch('sys.stdout', new=io.StringIO()):
@@ -962,6 +1144,7 @@ class SharedServerTests(unittest.TestCase):
             entry = dict(kind='go', step='1', name='guard', file='guard', original='original',
                          replacement='mutated', packages=['a'], guards=['TestGuard'])
             with patch.object(mutchecks, 'ROOT', root), patch.dict(os.environ, env, clear=False), \
+                    patch.object(socket, 'create_connection', return_value=MagicMock()), \
                     patch.object(mutchecks.shutil, 'disk_usage', return_value=Mock(free=1 << 40)), \
                     patch('sys.stdout', new=io.StringIO()):
                 self.assertEqual(mutchecks.run_parallel([entry], manifest, 1, logs, io.StringIO(), shared_pg=True), 0)
@@ -996,6 +1179,10 @@ class SharedServerTests(unittest.TestCase):
             text = Path(mutchecks.__file__).read_text()
             text = text.replace('selected = affected_entries(selected, args.since, summary=summary)', 'selected = selected')
             text = text.replace('selected = affected_entries(selected, args.since)', 'selected = selected')
+            text = text.replace(
+                'def main():',
+                'SharedServers._host_accepts_tcp = staticmethod(lambda port, timeout=1.0: True)\n\n\ndef main():',
+                1)
             script.write_text(text)
             (root / 'backend/scripts/mutcheck.sh').write_text(
                 '#!/bin/bash\nprintf mutated > "$3"\nmkdir -p .dev\ntouch .dev/ready\nsleep 30\n')

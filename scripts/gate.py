@@ -23,7 +23,9 @@ Heavy gates run one at a time: a command whose text mentions go test, mutchecks,
 mutcheck.sh, dev.sh or e2e first takes an exclusive lock on .dev/heavy.lock
 (GATE_HEAVY_LOCK overrides the path) and waits while another heavy gate holds it,
 because they compete for Docker and the CPU and time out under load. The record's
-lock_wait gives the seconds spent waiting.
+lock_wait gives the seconds spent waiting. While holding it, gate.py exports
+SALON_HEAVY_LOCK_HELD so mutchecks.py and mutcheck.sh do not lock the same file
+again and deadlock.
 """
 import argparse
 import fcntl
@@ -37,6 +39,7 @@ import sys
 import time
 
 HEAVY = re.compile(r'\bgo test\b|mutchecks\.py|mutcheck\.sh|dev\.sh|\be2e\b')
+HEAVY_LOCK_MARKER = 'SALON_HEAVY_LOCK_HELD'
 
 
 def main():
@@ -71,18 +74,24 @@ def main():
     cwd = args.cwd.resolve()
     log = folder / (args.label + '.log')
     lock = None
+    lock_path = None
     waited = 0.0
     if HEAVY.search(' '.join(command)):
-        path = Path(os.environ.get('GATE_HEAVY_LOCK') or Path(__file__).resolve().parents[1] / '.dev/heavy.lock')
+        path = Path(os.environ.get('GATE_HEAVY_LOCK') or Path(__file__).resolve().parents[1] / '.dev/heavy.lock').resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
         lock = path.open('w')
         begin = time.monotonic()
         fcntl.flock(lock, fcntl.LOCK_EX)
         waited = round(time.monotonic() - begin, 2)
+        lock_path = str(path)
+    child_env = None
+    if lock_path is not None:
+        child_env = dict(os.environ)
+        child_env[HEAVY_LOCK_MARKER] = lock_path
     start = time.monotonic()
     with log.open('w') as output:
         try:
-            code = subprocess.run(command, cwd=cwd, stdout=output,
+            code = subprocess.run(command, cwd=cwd, env=child_env, stdout=output,
                                   stderr=subprocess.STDOUT).returncode
         except OSError as exc:
             output.write(str(exc) + '\n')
