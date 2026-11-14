@@ -228,8 +228,8 @@ func TestChatToolListFollowsRole(t *testing.T) {
 		want   []string
 		absent []string
 	}{
-		{"owner", s.Owner, s.MustCaller(s.Owner), []string{"get_me", "list_commissions", "explain_commission", "list_payroll_commissions"}, []string{"save_commission_scheme", "checkout_orders", "create_draft", "list_drafts", "get_draft", "get_redemption"}},
-		{"stylist", token, s.MustCaller(token), []string{"get_me", "list_performance", "list_commissions", "explain_commission"}, []string{"list_payroll_commissions", "save_commission_scheme", "checkout_orders", "create_draft", "list_drafts", "get_draft", "get_redemption"}},
+		{"owner", s.Owner, s.MustCaller(s.Owner), []string{"get_me", "list_commissions", "explain_commission", "list_payroll_commissions", "list_drafts", "get_draft", "get_redemption", "get_rotation"}, []string{"save_commission_scheme", "checkout_orders", "create_draft"}},
+		{"stylist", token, s.MustCaller(token), []string{"get_me", "list_performance", "list_commissions", "explain_commission", "list_drafts", "get_draft", "get_rotation"}, []string{"list_payroll_commissions", "save_commission_scheme", "checkout_orders", "create_draft", "get_redemption"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := &fakeModel{reply: func(int, []ai.Message, []ops.Tool) (ai.Message, error) { return assistant("好。"), nil }}

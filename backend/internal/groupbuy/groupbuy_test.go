@@ -94,7 +94,7 @@ func TestUnknown(t *testing.T) {
 			if f.Count("redeem") != want {
 				t.Fatal("duplicate redeem")
 			}
-			auditCount(t, s, "get_redemption", 2)
+			auditCount(t, s, "get_redemption", 0)
 		})
 	}
 }

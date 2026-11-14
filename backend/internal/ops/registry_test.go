@@ -147,21 +147,26 @@ func TestReadToolsExcludeWritesAndDrafts(t *testing.T) {
 	}
 }
 
-func TestReadToolsExcludeLazyWriteReads(t *testing.T) {
+func TestReadToolsIncludeEveryDirectRead(t *testing.T) {
 	r := newRegistry(t)
-	for _, name := range []string{"read_thing", ops.ReadToolListDrafts, ops.ReadToolGetDraft, ops.ReadToolGetRedemption, ops.ReadToolGetRotation} {
+	names := []string{"read_thing", "list_drafts", "get_draft", "get_redemption", "get_rotation"}
+	for _, name := range names {
 		op := valid()
 		op.Name = name
 		ops.Register(r, op)
 	}
 	caller := ops.Caller{Permissions: map[ops.Permission]ops.Grant{"thing.view": {}}}
 	tools := r.ReadTools(caller)
-	if len(tools) != 1 || tools[0].Name != "read_thing" {
-		t.Fatalf("ReadTools = %v, want only read_thing", tools)
+	if len(tools) != len(names) {
+		t.Fatalf("ReadTools = %v, want %d reads", tools, len(names))
 	}
-	for _, name := range []string{ops.ReadToolListDrafts, ops.ReadToolGetDraft, ops.ReadToolGetRedemption, ops.ReadToolGetRotation} {
-		if _, err := r.CallReadTool(context.Background(), caller, name, nil); !errors.Is(err, ops.ErrUnknownOperation) {
-			t.Fatalf("CallReadTool(%q) err = %v, want ErrUnknownOperation", name, err)
+	got := map[string]bool{}
+	for _, tool := range tools {
+		got[tool.Name] = true
+	}
+	for _, name := range names {
+		if !got[name] {
+			t.Fatalf("ReadTools missing %s: %v", name, tools)
 		}
 	}
 }

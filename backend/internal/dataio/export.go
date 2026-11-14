@@ -33,6 +33,18 @@ const (
 
 var exportOrder = []string{exportCustomers, exportStored, exportCounts, exportLedger, exportOrders, exportPayments, exportStaffName, exportItems, exportCardTypes}
 
+// exportPageSize 是导出大表时每次查询读取的行数；测试会调小它验证分页上限。
+var exportPageSize int32 = 1000
+
+// exportPageObserver 只在测试中记录每个分页查询返回的行数。
+var exportPageObserver func(name string, rows int)
+
+func observeExportPage(name string, rows int) {
+	if exportPageObserver != nil {
+		exportPageObserver(name, rows)
+	}
+}
+
 // Export 把本店全量数据写成可被 excelize 读回的 xlsx，并记录一次导出日志。
 func Export(ctx context.Context, w io.Writer, pool *pgxpool.Pool, caller ops.Caller, now time.Time) error {
 	if !caller.Has(perm.DataExport) {
@@ -115,135 +127,219 @@ func setRow(sw *excelize.StreamWriter, row int, values []string) error {
 }
 
 func exportCustomersSheet(ctx context.Context, f *excelize.File, q *dbgen.Queries, caller ops.Caller, counts map[string]int) error {
-	rows, err := q.ExportCustomers(ctx, caller.StoreID)
-	if err != nil {
-		return err
-	}
-	counts[exportCustomers] = len(rows)
 	return streamSheet(f, exportCustomers, customerHeaders, func(sw *excelize.StreamWriter) error {
-		for i, row := range rows {
-			gender := ""
-			if row.Gender != nil {
-				gender = map[string]string{"male": "男", "female": "女"}[*row.Gender]
-			}
-			phone := stringValue(row.Phone)
-			if phone != "" && !caller.Has(perm.CustomerFullPhone) {
-				phone = privacy.MaskPhone(phone)
-			}
-			if err := setRow(sw, i+2, []string{row.ID.String(), stringValue(row.Name), phone, gender}); err != nil {
+		line := 2
+		var after *uuid.UUID
+		for {
+			rows, err := q.ExportCustomersPage(ctx, dbgen.ExportCustomersPageParams{StoreID: caller.StoreID, AfterID: after, RowLimit: exportPageSize})
+			if err != nil {
 				return err
 			}
+			observeExportPage("customers", len(rows))
+			for _, row := range rows {
+				gender := ""
+				if row.Gender != nil {
+					gender = map[string]string{"male": "男", "female": "女"}[*row.Gender]
+				}
+				phone := stringValue(row.Phone)
+				if phone != "" && !caller.Has(perm.CustomerFullPhone) {
+					phone = privacy.MaskPhone(phone)
+				}
+				if err := setRow(sw, line, []string{row.ID.String(), stringValue(row.Name), phone, gender}); err != nil {
+					return err
+				}
+				line++
+			}
+			counts[exportCustomers] += len(rows)
+			if len(rows) < int(exportPageSize) {
+				return nil
+			}
+			id := rows[len(rows)-1].ID
+			after = &id
 		}
-		return nil
 	})
 }
 
 func exportStoredSheet(ctx context.Context, f *excelize.File, q *dbgen.Queries, storeID uuid.UUID, counts map[string]int) error {
-	rows, err := q.ExportStoredCards(ctx, storeID)
-	if err != nil {
-		return err
-	}
-	counts[exportStored] = len(rows)
 	return streamSheet(f, exportStored, storedHeaders, func(sw *excelize.StreamWriter) error {
-		for i, row := range rows {
-			if err := setRow(sw, i+2, []string{row.ID.String(), row.CustomerID.String(), row.CardTypeName, row.Principal, row.Bonus, dateValue(row.ExpiresOn), fmt.Sprint(row.Points)}); err != nil {
+		line := 2
+		var after *uuid.UUID
+		for {
+			rows, err := q.ExportStoredCardsPage(ctx, dbgen.ExportStoredCardsPageParams{StoreID: storeID, AfterCardID: after, RowLimit: exportPageSize})
+			if err != nil {
 				return err
 			}
+			observeExportPage("stored_cards", len(rows))
+			for _, row := range rows {
+				if err := setRow(sw, line, []string{row.ID.String(), row.CustomerID.String(), row.CardTypeName, row.Principal, row.Bonus, dateValue(row.ExpiresOn), fmt.Sprint(row.Points)}); err != nil {
+					return err
+				}
+				line++
+			}
+			counts[exportStored] += len(rows)
+			if len(rows) < int(exportPageSize) {
+				return nil
+			}
+			id := rows[len(rows)-1].ID
+			after = &id
 		}
-		return nil
 	})
 }
 
 func exportCountSheet(ctx context.Context, f *excelize.File, q *dbgen.Queries, storeID uuid.UUID, counts map[string]int) error {
-	rows, err := q.ExportCountCards(ctx, storeID)
-	if err != nil {
-		return err
-	}
-	counts[exportCounts] = len(rows)
 	return streamSheet(f, exportCounts, countHeaders, func(sw *excelize.StreamWriter) error {
-		for i, row := range rows {
-			if err := setRow(sw, i+2, []string{row.ID.String(), row.CustomerID.String(), row.CardTypeName, row.ItemName, fmt.Sprint(row.PaidCount), fmt.Sprint(row.GiftCount), dateValue(row.ExpiresOn)}); err != nil {
+		line := 2
+		var afterCard, afterItem *uuid.UUID
+		for {
+			rows, err := q.ExportCountCardsPage(ctx, dbgen.ExportCountCardsPageParams{StoreID: storeID, AfterCardID: afterCard, AfterItemID: afterItem, RowLimit: exportPageSize})
+			if err != nil {
 				return err
 			}
+			observeExportPage("count_cards", len(rows))
+			for _, row := range rows {
+				if err := setRow(sw, line, []string{row.ID.String(), row.CustomerID.String(), row.CardTypeName, row.ItemName, fmt.Sprint(row.PaidCount), fmt.Sprint(row.GiftCount), dateValue(row.ExpiresOn)}); err != nil {
+					return err
+				}
+				line++
+			}
+			counts[exportCounts] += len(rows)
+			if len(rows) < int(exportPageSize) {
+				return nil
+			}
+			cardID := rows[len(rows)-1].ID
+			itemID := rows[len(rows)-1].ItemID
+			afterCard, afterItem = &cardID, &itemID
 		}
-		return nil
 	})
 }
 
 func exportLedgerSheet(ctx context.Context, f *excelize.File, q *dbgen.Queries, storeID uuid.UUID, counts map[string]int) error {
-	rows, err := q.ExportCardLedger(ctx, storeID)
-	if err != nil {
-		return err
-	}
-	counts[exportLedger] = len(rows)
 	headers := []string{"流水ID", "卡ID", "类型", "本金变动前", "本金变动", "本金变动后", "赠送金变动前", "赠送金变动", "赠送金变动后", "营业日", "时间", "操作员工"}
 	return streamSheet(f, exportLedger, headers, func(sw *excelize.StreamWriter) error {
-		for i, row := range rows {
-			if err := setRow(sw, i+2, []string{row.ID.String(), row.CardID.String(), row.Kind, row.PrincipalBefore, row.PrincipalDelta, row.PrincipalAfter, row.BonusBefore, row.BonusDelta, row.BonusAfter, dateValue(row.BusinessDate), timeValue(row.At), row.ActorName}); err != nil {
+		line := 2
+		var after *uuid.UUID
+		for {
+			rows, err := q.ExportCardLedgerPage(ctx, dbgen.ExportCardLedgerPageParams{StoreID: storeID, AfterID: after, RowLimit: exportPageSize})
+			if err != nil {
 				return err
 			}
+			observeExportPage("card_ledger", len(rows))
+			for _, row := range rows {
+				if err := setRow(sw, line, []string{row.ID.String(), row.CardID.String(), row.Kind, row.PrincipalBefore, row.PrincipalDelta, row.PrincipalAfter, row.BonusBefore, row.BonusDelta, row.BonusAfter, dateValue(row.BusinessDate), timeValue(row.At), row.ActorName}); err != nil {
+					return err
+				}
+				line++
+			}
+			counts[exportLedger] += len(rows)
+			if len(rows) < int(exportPageSize) {
+				return nil
+			}
+			id := rows[len(rows)-1].ID
+			after = &id
 		}
-		return nil
 	})
 }
 
 func exportOrdersSheet(ctx context.Context, f *excelize.File, q *dbgen.Queries, storeID uuid.UUID, counts map[string]int) error {
-	orders, err := q.ExportOrders(ctx, storeID)
-	if err != nil {
-		return err
-	}
-	items, err := q.ExportOrderItems(ctx, storeID)
-	if err != nil {
-		return err
-	}
-	byOrder := map[uuid.UUID][]dbgen.ExportOrderItemsRow{}
-	for _, item := range items {
-		byOrder[item.OrderID] = append(byOrder[item.OrderID], item)
-	}
 	headers := []string{"单ID", "顾客ID", "性别", "指定", "状态", "营业日", "开单时间", "开单员工", "结账ID", "合并到", "补录单", "项目行ID", "项目", "种类", "价格", "折扣", "价格来源", "添加时间", "去掉时间"}
 	rows := 0
-	err = streamSheet(f, exportOrders, headers, func(sw *excelize.StreamWriter) error {
+	err := streamSheet(f, exportOrders, headers, func(sw *excelize.StreamWriter) error {
 		line := 2
-		for _, order := range orders {
-			base := []string{order.ID.String(), order.CustomerID.String(), map[string]string{"male": "男", "female": "女"}[order.Gender], yesNo(order.Designated), order.Status, dateValue(order.BusinessDate), timeValue(order.OpenedAt), order.OpenedByName, idValue(order.CheckoutID), idValue(order.MergedInto), yesNo(order.Backfill)}
-			lines := byOrder[order.ID]
-			if len(lines) == 0 {
-				if err := setRow(sw, line, append(base, "", "", "", "", "", "", "", "")); err != nil {
-					return err
-				}
-				line++
-				rows++
-				continue
+		var after *uuid.UUID
+		for {
+			orders, err := q.ExportOrdersPage(ctx, dbgen.ExportOrdersPageParams{StoreID: storeID, AfterID: after, RowLimit: exportPageSize})
+			if err != nil {
+				return err
 			}
-			for _, item := range lines {
-				values := append(append([]string{}, base...), item.ID.String(), item.ItemName, item.ItemKind, item.Price, item.Discount, item.PriceSource, timeValue(item.AddedAt), timeValue(item.RemovedAt))
-				if err := setRow(sw, line, values); err != nil {
-					return err
-				}
-				line++
-				rows++
+			observeExportPage("orders", len(orders))
+			ids := make([]uuid.UUID, len(orders))
+			for i, order := range orders {
+				ids[i] = order.ID
 			}
+			items, err := exportOrderItems(ctx, q, storeID, ids)
+			if err != nil {
+				return err
+			}
+			byOrder := map[uuid.UUID][]dbgen.ExportOrderItemsPageRow{}
+			for _, item := range items {
+				byOrder[item.OrderID] = append(byOrder[item.OrderID], item)
+			}
+			for _, order := range orders {
+				base := []string{order.ID.String(), order.CustomerID.String(), map[string]string{"male": "男", "female": "女"}[order.Gender], yesNo(order.Designated), order.Status, dateValue(order.BusinessDate), timeValue(order.OpenedAt), order.OpenedByName, idValue(order.CheckoutID), idValue(order.MergedInto), yesNo(order.Backfill)}
+				lines := byOrder[order.ID]
+				if len(lines) == 0 {
+					if err := setRow(sw, line, append(base, "", "", "", "", "", "", "", "")); err != nil {
+						return err
+					}
+					line++
+					rows++
+					continue
+				}
+				for _, item := range lines {
+					values := append(append([]string{}, base...), item.ID.String(), item.ItemName, item.ItemKind, item.Price, item.Discount, item.PriceSource, timeValue(item.AddedAt), timeValue(item.RemovedAt))
+					if err := setRow(sw, line, values); err != nil {
+						return err
+					}
+					line++
+					rows++
+				}
+			}
+			if len(orders) < int(exportPageSize) {
+				return nil
+			}
+			id := orders[len(orders)-1].ID
+			after = &id
 		}
-		return nil
 	})
 	counts[exportOrders] = rows
 	return err
 }
 
-func exportPaymentsSheet(ctx context.Context, f *excelize.File, q *dbgen.Queries, storeID uuid.UUID, counts map[string]int) error {
-	rows, err := q.ExportOrderPayments(ctx, storeID)
-	if err != nil {
-		return err
+func exportOrderItems(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, orderIDs []uuid.UUID) ([]dbgen.ExportOrderItemsPageRow, error) {
+	if len(orderIDs) == 0 {
+		return nil, nil
 	}
-	counts[exportPayments] = len(rows)
+	var out []dbgen.ExportOrderItemsPageRow
+	var after *uuid.UUID
+	for {
+		rows, err := q.ExportOrderItemsPage(ctx, dbgen.ExportOrderItemsPageParams{StoreID: storeID, OrderIds: orderIDs, AfterID: after, RowLimit: exportPageSize})
+		if err != nil {
+			return nil, err
+		}
+		observeExportPage("order_items", len(rows))
+		out = append(out, rows...)
+		if len(rows) < int(exportPageSize) {
+			return out, nil
+		}
+		id := rows[len(rows)-1].ID
+		after = &id
+	}
+}
+
+func exportPaymentsSheet(ctx context.Context, f *excelize.File, q *dbgen.Queries, storeID uuid.UUID, counts map[string]int) error {
 	headers := []string{"支付ID", "结账ID", "单ID", "方式", "金额", "卡流水ID", "次数流水ID", "红包ID"}
 	return streamSheet(f, exportPayments, headers, func(sw *excelize.StreamWriter) error {
-		for i, row := range rows {
-			if err := setRow(sw, i+2, []string{row.ID.String(), row.CheckoutID.String(), row.OrderID.String(), row.Method, row.Amount, idValue(row.CardLedgerID), idValue(row.CardCountLedgerID), idValue(row.RedPacketID)}); err != nil {
+		line := 2
+		var after *uuid.UUID
+		for {
+			rows, err := q.ExportOrderPaymentsPage(ctx, dbgen.ExportOrderPaymentsPageParams{StoreID: storeID, AfterID: after, RowLimit: exportPageSize})
+			if err != nil {
 				return err
 			}
+			observeExportPage("order_payments", len(rows))
+			for _, row := range rows {
+				if err := setRow(sw, line, []string{row.ID.String(), row.CheckoutID.String(), row.OrderID.String(), row.Method, row.Amount, idValue(row.CardLedgerID), idValue(row.CardCountLedgerID), idValue(row.RedPacketID)}); err != nil {
+					return err
+				}
+				line++
+			}
+			counts[exportPayments] += len(rows)
+			if len(rows) < int(exportPageSize) {
+				return nil
+			}
+			id := rows[len(rows)-1].ID
+			after = &id
 		}
-		return nil
 	})
 }
 

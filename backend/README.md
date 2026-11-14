@@ -50,6 +50,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 - `Env.Now` 是本次调用的时刻，由 Registry 的时钟在每次调用时读取一次，整个操作只用这一个时刻。
 - 权限检查只在 `ops` 里做：HTTP 和 AI 调用都经过同一条路径，先检查权限，再在调用者租户的事务里执行。操作处理函数里不再检查权限。
 - 写操作只能声明为 `AIDraft`（AI 调用只产生草稿）或 `AINone`（不向 AI 开放），声明为 AI 可直接执行时启动即失败。AI 调用 `AIDraft` 时校验参数与本人权限，只创建待确认草稿，不执行业务写入。
+- `Read` 操作不写任何表：`ops.invoke` 对 `Read` 操作使用可重复读的只读事务，写入会被 PostgreSQL 拒绝，多次查询看到同一快照。报价查询 `quote_item_price` 为保持价格一致会取 `FOR SHARE` 行锁，只读事务不允许加锁，因此用 `Locking` 标记单独放行；它仍不写表。分阶段的 `verify_coupon`（`Read` + `AINone`）按团购协议验券并追加审计，不向 AI 开放。`Read` + `AIDirect` 的操作都是纯读，可以出现在 AI 对话工具集中。
 - 测试用 `optest` 对 HTTP 和 AI 两条路径跑同一组用例。写操作的业务规则在 HTTP 路径上测，另测 AI 路径对 `AIDraft` 创建草稿且业务数据不变，对 `AINone` 仍拒绝。
 
 ## 登录与权限（ADR-0009）
@@ -208,7 +209,7 @@ Reconcile 按 `collections.business_date`（补录单写入纸单日；为空的
 
 导出查询使用可重复读事务，所有工作表取同一数据库快照。
 
-`GET /api/export/all.xlsx` 用 excelize StreamWriter 输出九张表：`顾客`、`储值卡`、`次卡套餐`、`卡流水`、`单据`、`支付`、`员工`、`项目`、`卡种`。只包含当前门店的数据，金额一律为两位小数文本。`顾客`、`储值卡`、`次卡套餐` 使用与导入契约完全相同的列，来源 ID 为顾客或卡的 UUID，因此可以重新导入另一套系统；没有 `customer.full_phone` 的调用者看到打码手机号；`单据` 一张单的项目行各占一行，没有项目行的单也保留一行。导出文件可被 excelize 读回。
+`GET /api/export/all.xlsx` 用 excelize StreamWriter 输出九张表：`顾客`、`储值卡`、`次卡套餐`、`卡流水`、`单据`、`支付`、`员工`、`项目`、`卡种`。只包含当前门店的数据，金额一律为两位小数文本。`顾客`、`储值卡`、`次卡套餐`、`卡流水`、`单据`、`支付` 按主键（或导出顺序的 `(created_at, id)`）keyset 分页，每页写入 StreamWriter 后再取下一页；`单据` 的项目行按这一页的单批量读取，不再建立全量 map。列和行的顺序与不翻页时相同。`顾客`、`储值卡`、`次卡套餐` 使用与导入契约完全相同的列，来源 ID 为顾客或卡的 UUID，因此可以重新导入另一套系统；没有 `customer.full_phone` 的调用者看到打码手机号；`单据` 一张单的项目行各占一行，没有项目行的单也保留一行。导出文件可被 excelize 读回。
 
 ## 操作日志
 
@@ -347,13 +348,13 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 ## 轮牌
 
-`internal/rotation` 管理电子轮牌。`rotation_queues` 是门店的队列（例如剪发牌、助理牌），名称在门店内唯一，可停用；`rotation_members` 记录队列成员和默认顺序，一名员工可以在多个队列。`rotation_turns` 是某个队列某个营业日的有序名单，首次访问当天时按设置建立，状态为 off（未到岗）、waiting（等待）、serving（服务中）、resting（临时休息）或 covered（盖牌）；每行记位置、半轮标记、休息结束时刻和正在服务的单。唯一键保证同一员工每天在一个队列只有一行、位置在队列内唯一。`rotation_events` 只追加、不修改不删除，记录每次加入、离岗、接客、释放、跳过、自动跳过、盖牌、取消盖牌、休息、休息结束、拖动和结账推进，跳过与拖动必须带原因。`rotation_half_items` 保存按项目记半轮的项目。
+`internal/rotation` 管理电子轮牌。`rotation_queues` 是门店的队列（例如剪发牌、助理牌），名称在门店内唯一，可停用；`rotation_members` 记录队列成员和默认顺序，一名员工可以在多个队列。`rotation_turns` 是某个队列某个营业日的有序名单，状态为 off（未到岗）、waiting（等待）、serving（服务中）、resting（临时休息）或 covered（盖牌）；每行记位置、半轮标记、休息结束时刻和正在服务的单。唯一键保证同一员工每天在一个队列只有一行、位置在队列内唯一。`rotation_events` 只追加、不修改不删除，记录每次加入、离岗、接客、释放、跳过、自动跳过、盖牌、取消盖牌、休息、休息结束、拖动和结账推进，跳过与拖动必须带原因。`rotation_half_items` 保存按项目记半轮的项目。
 
 所有表都有租户 RLS、`tenant_id`/`store_id`、引用门店和其他业务表的组合外键。`salon_app` 对队列和轮牌行有 SELECT、INSERT、UPDATE，对成员和半轮项目另有 DELETE，对事件只有 SELECT、INSERT，因此事件永远只追加。
 
-顺序规则在第一次访问某个营业日时生效：先到先排的当天名单为空，员工到岗时依次排到队尾；接昨天顺序按前一个营业日结束后各员工的位置预排，新成员按默认顺序排在队尾；每晚重置按成员的默认顺序预排。预排的员工都是 off，到岗后变成 waiting 并保留位置。到岗、离岗都留事件；离岗保留当天位置但不再接客，服务中的员工不能离岗。
+顺序规则在第一次访问某个营业日时生效：先到先排的当天名单为空，员工到岗时依次排到队尾；接昨天顺序按该队列在当天之前最近一个有已持久化 `rotation_turns` 的营业日结束后各员工的位置预排（只查看过、未写入的营业日不改变顺序），新成员按默认顺序排在队尾；每晚重置按成员的默认顺序预排。预排的员工都是 off，到岗后变成 waiting 并保留位置。到岗、离岗都留事件；离岗保留当天位置但不再接客，服务中的员工不能离岗。
 
-`assign_turn` 不带员工时取位置最靠前的 waiting；serving、resting、covered、off 都不接客。队首正在服务点客且 `rotation_skip_when_serving_designated` 为 yes 时，记录一条原因为“点客服务中”的 auto_skip，并按 `rotation_skip_policy` 排到队尾或保留原位。带员工时是点客，员工必须是 waiting，标记 serving 和是否指定。`release_turn` 撤销接客、不消耗轮牌。`skip_staff` 必须从固定原因中选择，选“其他”还要写说明；`cover_turn` 盖牌后保留位置但不能接客，`uncover_turn` 恢复等待；`rest_staff` 休息 1–240 分钟，到点后在读取或下一次操作时自动恢复 waiting 并记 rest_end；`drag_turn` 把等待员工拖到指定位置并必须写原因。
+`get_rotation` 是纯读：首次读取某个营业日时按顺序规则在内存中算出初始名单，休息到点的员工显示为 waiting，但不写 `rotation_turns` 或 `rotation_events`。初始名单和 rest_end 改由该营业日的第一次写操作（任一轮牌操作或结账推进）在同一个事务里、应用自己的修改前持久化；rest_end 事件的 `created_at` 记实际休息结束时刻 `rest_until`，不是后来写入的时刻。`rotation_events.created_at` 是事件发生时刻，读取按 `(business_date, created_at, id)` 排序；仓库内没有 since 游标，外部轮询请记录 `id` 或自行按事件时刻处理。`assign_turn` 不带员工时取位置最靠前的 waiting；serving、resting、covered、off 都不接客。队首正在服务点客且 `rotation_skip_when_serving_designated` 为 yes 时，记录一条原因为“点客服务中”的 auto_skip，并按 `rotation_skip_policy` 排到队尾或保留原位。带员工时是点客，员工必须是 waiting，标记 serving 和是否指定。`release_turn` 撤销接客、不消耗轮牌。`skip_staff` 必须从固定原因中选择，选“其他”还要写说明；`cover_turn` 盖牌后保留位置但不能接客，`uncover_turn` 恢复等待；`rest_staff` 休息 1–240 分钟，到点后读取显示 waiting，下一次写操作记 rest_end；`drag_turn` 把等待员工拖到指定位置并必须写原因。
 
 停用的队列仍可查看和释放正在服务的员工；`update_rotation_queue` 可以改名并重新启用，`join_rotation`、`assign_turn` 等新的接客操作仍拒绝停用队列。自动选人和点名都只接受当前队列成员且仍在职的员工，成员被移除或员工停用后，当天仍是 waiting 的行不会再被分配。
 
@@ -419,7 +420,7 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 `verify_coupon`、`redeem_coupon`、`revoke_coupon` 均为 AINone；`get_redemption` 为 AIDirect。
 
 开发环境可用 `GROUPBUY_FAKE_PLATFORMS=meituan,douyin` 启动内存假平台（`fakeprovider`），用于手工联调和端到端测试：没有脚本响应时，没见过的券码验为 unused，核销/撤销/查询按内存状态机返回，核销时刻取启动时刻；平台协议不返回购买价或平台商品 ID，这些仍由团购商品和核销记录留存。启动时打印一行警告。`scripts/dev.sh up|reset` 会为本地后端设置它，生产环境必须保持未设置。
-四者均要求 `groupbuy.redeem`，记录无关联顾客的 coupon_redemption 审计。
+四者均要求 `groupbuy.redeem`；`verify_coupon`、`redeem_coupon`、`revoke_coupon` 记录无关联顾客的 coupon_redemption 审计，`get_redemption` 只读本店记录，不写审计。
 核销本身不写订单；核销成功后可以另行关联挂单，也可以暂不关联。
 
 团购使用 `ops.Operation.Phased`：处理函数在事务外执行，每段数据库操作由 `env.Transact`
@@ -444,7 +445,7 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 `internal/drafts` 保存草稿和只追加的事件。工具的可选 `summary`、`utterance` 为草稿元数据，从业务参数中分离后仍按原 schema 校验；也可用 `create_draft` 显式提供 operation、params、utterance、summary。原始参数不可改，修改记录保留前后参数。
 
-`list_drafts`、`get_draft` 仅返回本人发起或当前有目标操作权限的草稿；修改、拒绝采用相同范围。读、确认时惰性过期，期限用 `settings.BusinessDayDeadline` 按创建营业日的结束设置计算。确认锁草稿后重读状态、检查期限、通过 ops 统一路径重新检查确认人的权限及参数，再以确认人身份执行原 Handle；成功后与状态、事件一并提交。业务失败保留 pending。
+`list_drafts`、`get_draft` 仅返回本人发起或当前有目标操作权限的草稿；修改、拒绝采用相同范围。读路径是纯读：`pending` 且 `now >= expires_at` 的草稿在返回时计算为 `expired`（`decided_at` 仍为空），不写状态或事件；期限用 `settings.BusinessDayDeadline` 按创建营业日的结束设置计算。确认、修改、拒绝这张草稿时才持久化过期和 `expired` 事件并返回原来的“草稿已过期，请重新起草”；`create_draft` 也会批量过期本店到期的 pending 草稿。确认锁草稿后重读状态、检查期限、通过 ops 统一路径重新检查确认人的权限及参数，再以确认人身份执行原 Handle；成功后与状态、事件一并提交。业务失败保留 pending。
 
 `draft_dual_confirm` 为 off/on，默认 off，可当天生效；on 时 adjust_card、void_order、refund_card、reprice_order_item 须另一人确认。`audit.Record` 自动把 `Env.DraftID` 写入 audit_log，日志输出 draft_id，get_draft 返回 audit_log_ids。
 
@@ -458,6 +459,6 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 一次对话最多 6 次模型调用，模型一次响应最多 8 个 `tool_calls`，超过都返回 502「AI 调用工具次数超过上限」；每个工具结果放入模型上下文前按 rune 截断到 16000 字并附「（结果过长，已截断）」，`sources` 不受截断影响。整个请求（提示构造、模型调用和工具执行）有 120 秒总期限，超时返回 502「AI 对话超时」。工具参数错误、权限拒绝或业务规则拒绝会作为 tool 消息返回给模型，让它自行修正；`ops.StatusOf` 为 5xx 的工具内部错误只返回固定文字「工具执行失败」，不把数据库等底层错误原文放进 `sources.error` 或 tool 消息，4xx 仍保留原文。
 
-对话只提供 `Registry.ReadTools`：Read + AIDirect 的操作，且调用者本人有权限。写操作、草稿操作和 AINone 操作既不提供也不可调用；模型输出写工具名时按未知工具拒绝，不会创建草稿或执行写入。`list_drafts`、`get_draft`、`get_redemption` 和 `get_rotation` 虽然标为 Read + AIDirect，但会惰性更新草稿或轮牌、或写审计，因此从对话工具集中排除，`CallReadTool` 也按未知工具拒绝；等这些读操作拆出惰性写入后再移除排除。数据范围仍由各操作自己的 `env.Grant` 执行：例如发型师只能查询本人的业绩与提成，店长/老板可查全店；两人的租户和门店不会互相看到数据。模型未配置返回 503「AI 未启用」，模型不可达或响应不可用时返回 502，错误正文不含密钥或上游地址。
+对话只提供 `Registry.ReadTools`：Read + AIDirect 的操作，且调用者本人有权限。写操作、草稿操作和 AINone 操作既不提供也不可调用；模型输出写工具名时按未知工具拒绝，不会创建草稿或执行写入。所有 Read + AIDirect 操作都是纯读，因此 `list_drafts`、`get_draft`、`get_redemption` 和 `get_rotation` 与其他读操作一样提供给对话；`CallReadTool` 不再有排除集合。数据范围仍由各操作自己的 `env.Grant` 执行：例如发型师只能查询本人的业绩与提成，店长/老板可查全店；两人的租户和门店不会互相看到数据。模型未配置返回 503「AI 未启用」，模型不可达或响应不可用时返回 502，错误正文不含密钥或上游地址。
 
 本接口不保存会话、不做流式输出，也不从对话创建草稿；对话起草写操作、评测集和管理端/小程序界面分别在 P0-31、P0-32 和后续任务中实现。`explain_commission` 专门支持「解释一笔提成的来源」（用户故事 130）。

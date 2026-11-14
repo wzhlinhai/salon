@@ -13,9 +13,9 @@ import (
 )
 
 func getRotation(ctx context.Context, env ops.Env, in *GetRotationInput) (*Rotation, error) {
-	queue, err := lockQueueAny(ctx, env, in.QueueID)
+	queue, err := env.Q.GetRotationQueue(ctx, dbgen.GetRotationQueueParams{StoreID: env.Caller.StoreID, ID: in.QueueID})
 	if err != nil {
-		return nil, err
+		return nil, queueError(err)
 	}
 	day, err := rotationDate(ctx, env, in.Date)
 	if err != nil {
@@ -25,14 +25,9 @@ func getRotation(ctx context.Context, env ops.Env, in *GetRotationInput) (*Rotat
 	if err != nil {
 		return nil, err
 	}
-	turns, changed, err := prepareTurns(ctx, env, queue, day, rules)
+	turns, err := prepareTurnsRead(ctx, env, queue, day, rules)
 	if err != nil {
 		return nil, err
-	}
-	if changed {
-		if err := persistTurns(ctx, env, queue.ID, day, turns, false); err != nil {
-			return nil, err
-		}
 	}
 	return finish(ctx, env, queue, day, turns)
 }
