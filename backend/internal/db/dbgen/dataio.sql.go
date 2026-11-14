@@ -207,15 +207,24 @@ func (q *Queries) CreateImportBatch(ctx context.Context, arg CreateImportBatchPa
 	return i, err
 }
 
-const exportCardLedger = `-- name: ExportCardLedger :many
+const exportCardLedgerPage = `-- name: ExportCardLedgerPage :many
 SELECT l.id, l.card_id, l.kind, l.principal_before::text AS principal_before, l.principal_delta::text AS principal_delta,
        l.principal_after::text AS principal_after, l.bonus_before::text AS bonus_before, l.bonus_delta::text AS bonus_delta,
        l.bonus_after::text AS bonus_after, l.business_date, l.at, s.name AS actor_name
 FROM card_ledger l JOIN staff s ON s.id=l.actor_id
-WHERE l.store_id=$1 ORDER BY l.at, l.id
+WHERE l.store_id=$1
+ AND ($2::uuid IS NULL OR (l.at, l.id) > (
+   SELECT l2.at, l2.id FROM card_ledger l2 WHERE l2.id=$2 AND l2.store_id=$1))
+ORDER BY l.at, l.id LIMIT $3
 `
 
-type ExportCardLedgerRow struct {
+type ExportCardLedgerPageParams struct {
+	StoreID  uuid.UUID
+	AfterID  *uuid.UUID
+	RowLimit int32
+}
+
+type ExportCardLedgerPageRow struct {
 	ID              uuid.UUID
 	CardID          uuid.UUID
 	Kind            string
@@ -230,15 +239,15 @@ type ExportCardLedgerRow struct {
 	ActorName       string
 }
 
-func (q *Queries) ExportCardLedger(ctx context.Context, storeID uuid.UUID) ([]ExportCardLedgerRow, error) {
-	rows, err := q.db.Query(ctx, exportCardLedger, storeID)
+func (q *Queries) ExportCardLedgerPage(ctx context.Context, arg ExportCardLedgerPageParams) ([]ExportCardLedgerPageRow, error) {
+	rows, err := q.db.Query(ctx, exportCardLedgerPage, arg.StoreID, arg.AfterID, arg.RowLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ExportCardLedgerRow
+	var items []ExportCardLedgerPageRow
 	for rows.Next() {
-		var i ExportCardLedgerRow
+		var i ExportCardLedgerPageRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.CardID,
@@ -348,39 +357,56 @@ func (q *Queries) ExportCardTypes(ctx context.Context, storeID uuid.UUID) ([]Exp
 	return items, nil
 }
 
-const exportCountCards = `-- name: ExportCountCards :many
-SELECT c.id, c.customer_id, t.name AS card_type_name, i.name AS item_name,
+const exportCountCardsPage = `-- name: ExportCountCardsPage :many
+SELECT c.id, c.customer_id, t.name AS card_type_name, ci.item_id, i.name AS item_name,
        cl.paid_after AS paid_count, cl.gift_after AS gift_count, c.expires_on
 FROM cards c JOIN card_types t ON t.id=c.card_type_id
 JOIN card_items ci ON ci.card_id=c.id JOIN items i ON i.id=ci.item_id
 JOIN LATERAL (SELECT paid_after,gift_after FROM card_count_ledger WHERE card_id=c.id AND item_id=ci.item_id ORDER BY at DESC,id DESC LIMIT 1) cl ON true
 WHERE c.store_id=$1 AND t.kind IN ('count','package')
-ORDER BY c.opened_at, c.id, ci.item_id
+ AND ($2::uuid IS NULL OR (c.opened_at, c.id, ci.item_id) > (
+   SELECT c2.opened_at, c2.id, ci2.item_id FROM cards c2 JOIN card_items ci2 ON ci2.card_id=c2.id
+   WHERE c2.id=$2 AND ci2.item_id=$3 AND c2.store_id=$1))
+ORDER BY c.opened_at, c.id, ci.item_id LIMIT $4
 `
 
-type ExportCountCardsRow struct {
+type ExportCountCardsPageParams struct {
+	StoreID     uuid.UUID
+	AfterCardID *uuid.UUID
+	AfterItemID *uuid.UUID
+	RowLimit    int32
+}
+
+type ExportCountCardsPageRow struct {
 	ID           uuid.UUID
 	CustomerID   uuid.UUID
 	CardTypeName string
+	ItemID       uuid.UUID
 	ItemName     string
 	PaidCount    int32
 	GiftCount    int32
 	ExpiresOn    pgtype.Date
 }
 
-func (q *Queries) ExportCountCards(ctx context.Context, storeID uuid.UUID) ([]ExportCountCardsRow, error) {
-	rows, err := q.db.Query(ctx, exportCountCards, storeID)
+func (q *Queries) ExportCountCardsPage(ctx context.Context, arg ExportCountCardsPageParams) ([]ExportCountCardsPageRow, error) {
+	rows, err := q.db.Query(ctx, exportCountCardsPage,
+		arg.StoreID,
+		arg.AfterCardID,
+		arg.AfterItemID,
+		arg.RowLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ExportCountCardsRow
+	var items []ExportCountCardsPageRow
 	for rows.Next() {
-		var i ExportCountCardsRow
+		var i ExportCountCardsPageRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.CustomerID,
 			&i.CardTypeName,
+			&i.ItemID,
 			&i.ItemName,
 			&i.PaidCount,
 			&i.GiftCount,
@@ -396,11 +422,21 @@ func (q *Queries) ExportCountCards(ctx context.Context, storeID uuid.UUID) ([]Ex
 	return items, nil
 }
 
-const exportCustomers = `-- name: ExportCustomers :many
-SELECT id, name, phone, gender, created_at FROM customers WHERE store_id=$1 ORDER BY created_at, id
+const exportCustomersPage = `-- name: ExportCustomersPage :many
+SELECT c.id, c.name, c.phone, c.gender, c.created_at FROM customers c
+WHERE c.store_id=$1
+ AND ($2::uuid IS NULL OR (c.created_at, c.id) > (
+   SELECT c2.created_at, c2.id FROM customers c2 WHERE c2.id=$2 AND c2.store_id=$1))
+ORDER BY c.created_at, c.id LIMIT $3
 `
 
-type ExportCustomersRow struct {
+type ExportCustomersPageParams struct {
+	StoreID  uuid.UUID
+	AfterID  *uuid.UUID
+	RowLimit int32
+}
+
+type ExportCustomersPageRow struct {
 	ID        uuid.UUID
 	Name      *string
 	Phone     *string
@@ -408,15 +444,15 @@ type ExportCustomersRow struct {
 	CreatedAt pgtype.Timestamptz
 }
 
-func (q *Queries) ExportCustomers(ctx context.Context, storeID uuid.UUID) ([]ExportCustomersRow, error) {
-	rows, err := q.db.Query(ctx, exportCustomers, storeID)
+func (q *Queries) ExportCustomersPage(ctx context.Context, arg ExportCustomersPageParams) ([]ExportCustomersPageRow, error) {
+	rows, err := q.db.Query(ctx, exportCustomersPage, arg.StoreID, arg.AfterID, arg.RowLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ExportCustomersRow
+	var items []ExportCustomersPageRow
 	for rows.Next() {
-		var i ExportCustomersRow
+		var i ExportCustomersPageRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -480,13 +516,23 @@ func (q *Queries) ExportItems(ctx context.Context, storeID uuid.UUID) ([]ExportI
 	return items, nil
 }
 
-const exportOrderItems = `-- name: ExportOrderItems :many
+const exportOrderItemsPage = `-- name: ExportOrderItemsPage :many
 SELECT i.id, i.order_id, i.item_name, i.item_kind, i.price::text AS price, i.discount::text AS discount,
        i.price_source, i.added_at, i.removed_at
-FROM order_items i WHERE i.store_id=$1 ORDER BY i.order_id, i.added_at, i.id
+FROM order_items i WHERE i.store_id=$1 AND i.order_id = ANY($2::uuid[])
+ AND ($3::uuid IS NULL OR (i.order_id, i.added_at, i.id) > (
+   SELECT i2.order_id, i2.added_at, i2.id FROM order_items i2 WHERE i2.id=$3 AND i2.store_id=$1))
+ORDER BY i.order_id, i.added_at, i.id LIMIT $4
 `
 
-type ExportOrderItemsRow struct {
+type ExportOrderItemsPageParams struct {
+	StoreID  uuid.UUID
+	OrderIds []uuid.UUID
+	AfterID  *uuid.UUID
+	RowLimit int32
+}
+
+type ExportOrderItemsPageRow struct {
 	ID          uuid.UUID
 	OrderID     uuid.UUID
 	ItemName    string
@@ -498,15 +544,20 @@ type ExportOrderItemsRow struct {
 	RemovedAt   pgtype.Timestamptz
 }
 
-func (q *Queries) ExportOrderItems(ctx context.Context, storeID uuid.UUID) ([]ExportOrderItemsRow, error) {
-	rows, err := q.db.Query(ctx, exportOrderItems, storeID)
+func (q *Queries) ExportOrderItemsPage(ctx context.Context, arg ExportOrderItemsPageParams) ([]ExportOrderItemsPageRow, error) {
+	rows, err := q.db.Query(ctx, exportOrderItemsPage,
+		arg.StoreID,
+		arg.OrderIds,
+		arg.AfterID,
+		arg.RowLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ExportOrderItemsRow
+	var items []ExportOrderItemsPageRow
 	for rows.Next() {
-		var i ExportOrderItemsRow
+		var i ExportOrderItemsPageRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OrderID,
@@ -528,13 +579,22 @@ func (q *Queries) ExportOrderItems(ctx context.Context, storeID uuid.UUID) ([]Ex
 	return items, nil
 }
 
-const exportOrderPayments = `-- name: ExportOrderPayments :many
+const exportOrderPaymentsPage = `-- name: ExportOrderPaymentsPage :many
 SELECT p.id, p.checkout_id, p.order_id, p.method, p.amount::text AS amount,
        p.card_ledger_id, p.card_count_ledger_id, p.red_packet_id
-FROM order_payments p WHERE p.store_id=$1 ORDER BY p.id
+FROM order_payments p WHERE p.store_id=$1
+ AND ($2::uuid IS NULL OR p.id > (
+   SELECT p2.id FROM order_payments p2 WHERE p2.id=$2 AND p2.store_id=$1))
+ORDER BY p.id LIMIT $3
 `
 
-type ExportOrderPaymentsRow struct {
+type ExportOrderPaymentsPageParams struct {
+	StoreID  uuid.UUID
+	AfterID  *uuid.UUID
+	RowLimit int32
+}
+
+type ExportOrderPaymentsPageRow struct {
 	ID                uuid.UUID
 	CheckoutID        uuid.UUID
 	OrderID           uuid.UUID
@@ -545,15 +605,15 @@ type ExportOrderPaymentsRow struct {
 	RedPacketID       *uuid.UUID
 }
 
-func (q *Queries) ExportOrderPayments(ctx context.Context, storeID uuid.UUID) ([]ExportOrderPaymentsRow, error) {
-	rows, err := q.db.Query(ctx, exportOrderPayments, storeID)
+func (q *Queries) ExportOrderPaymentsPage(ctx context.Context, arg ExportOrderPaymentsPageParams) ([]ExportOrderPaymentsPageRow, error) {
+	rows, err := q.db.Query(ctx, exportOrderPaymentsPage, arg.StoreID, arg.AfterID, arg.RowLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ExportOrderPaymentsRow
+	var items []ExportOrderPaymentsPageRow
 	for rows.Next() {
-		var i ExportOrderPaymentsRow
+		var i ExportOrderPaymentsPageRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.CheckoutID,
@@ -574,14 +634,23 @@ func (q *Queries) ExportOrderPayments(ctx context.Context, storeID uuid.UUID) ([
 	return items, nil
 }
 
-const exportOrders = `-- name: ExportOrders :many
+const exportOrdersPage = `-- name: ExportOrdersPage :many
 SELECT o.id, o.customer_id, o.gender, o.designated, o.status, o.business_date, o.opened_at, s.name AS opened_by_name,
        o.checkout_id, o.merged_into, o.backfill
 FROM orders o JOIN staff s ON s.id=o.opened_by
-WHERE o.store_id=$1 ORDER BY o.opened_at, o.id
+WHERE o.store_id=$1
+ AND ($2::uuid IS NULL OR (o.opened_at, o.id) > (
+   SELECT o2.opened_at, o2.id FROM orders o2 WHERE o2.id=$2 AND o2.store_id=$1))
+ORDER BY o.opened_at, o.id LIMIT $3
 `
 
-type ExportOrdersRow struct {
+type ExportOrdersPageParams struct {
+	StoreID  uuid.UUID
+	AfterID  *uuid.UUID
+	RowLimit int32
+}
+
+type ExportOrdersPageRow struct {
 	ID           uuid.UUID
 	CustomerID   uuid.UUID
 	Gender       string
@@ -595,15 +664,15 @@ type ExportOrdersRow struct {
 	Backfill     bool
 }
 
-func (q *Queries) ExportOrders(ctx context.Context, storeID uuid.UUID) ([]ExportOrdersRow, error) {
-	rows, err := q.db.Query(ctx, exportOrders, storeID)
+func (q *Queries) ExportOrdersPage(ctx context.Context, arg ExportOrdersPageParams) ([]ExportOrdersPageRow, error) {
+	rows, err := q.db.Query(ctx, exportOrdersPage, arg.StoreID, arg.AfterID, arg.RowLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ExportOrdersRow
+	var items []ExportOrdersPageRow
 	for rows.Next() {
-		var i ExportOrdersRow
+		var i ExportOrdersPageRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.CustomerID,
@@ -669,17 +738,25 @@ func (q *Queries) ExportStaff(ctx context.Context, storeID uuid.UUID) ([]ExportS
 	return items, nil
 }
 
-const exportStoredCards = `-- name: ExportStoredCards :many
+const exportStoredCardsPage = `-- name: ExportStoredCardsPage :many
 SELECT c.id, c.customer_id, t.name AS card_type_name, l.principal_after::text AS principal, l.bonus_after::text AS bonus,
        c.expires_on, COALESCE(p.after,0)::int AS points
 FROM cards c JOIN card_types t ON t.id=c.card_type_id
 JOIN LATERAL (SELECT principal_after,bonus_after FROM card_ledger WHERE card_id=c.id ORDER BY at DESC,id DESC LIMIT 1) l ON true
 LEFT JOIN LATERAL (SELECT after FROM card_points_ledger WHERE card_id=c.id ORDER BY at DESC,id DESC LIMIT 1) p ON true
 WHERE c.store_id=$1 AND t.kind='stored_value'
-ORDER BY c.opened_at, c.id
+ AND ($2::uuid IS NULL OR (c.opened_at, c.id) > (
+   SELECT c2.opened_at, c2.id FROM cards c2 WHERE c2.id=$2 AND c2.store_id=$1))
+ORDER BY c.opened_at, c.id LIMIT $3
 `
 
-type ExportStoredCardsRow struct {
+type ExportStoredCardsPageParams struct {
+	StoreID     uuid.UUID
+	AfterCardID *uuid.UUID
+	RowLimit    int32
+}
+
+type ExportStoredCardsPageRow struct {
 	ID           uuid.UUID
 	CustomerID   uuid.UUID
 	CardTypeName string
@@ -689,15 +766,15 @@ type ExportStoredCardsRow struct {
 	Points       int32
 }
 
-func (q *Queries) ExportStoredCards(ctx context.Context, storeID uuid.UUID) ([]ExportStoredCardsRow, error) {
-	rows, err := q.db.Query(ctx, exportStoredCards, storeID)
+func (q *Queries) ExportStoredCardsPage(ctx context.Context, arg ExportStoredCardsPageParams) ([]ExportStoredCardsPageRow, error) {
+	rows, err := q.db.Query(ctx, exportStoredCardsPage, arg.StoreID, arg.AfterCardID, arg.RowLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ExportStoredCardsRow
+	var items []ExportStoredCardsPageRow
 	for rows.Next() {
-		var i ExportStoredCardsRow
+		var i ExportStoredCardsPageRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.CustomerID,

@@ -194,6 +194,8 @@ type Operation[I, O any] struct {
 	Name string
 	// Phased 在事务外执行 Handle，由 Env.Transact 包住各个数据库阶段。
 	Phased bool
+	// Locking 表示 Read 操作为了报价一致会取行锁；它仍不写表，但不能在只读事务里执行。
+	Locking bool
 	// Summary 是面向人和 AI 的一句话说明。
 	Summary    string
 	Kind       Kind

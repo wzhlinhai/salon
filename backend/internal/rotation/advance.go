@@ -52,9 +52,13 @@ func AdvanceAfterCheckout(ctx context.Context, env ops.Env, orderID uuid.UUID) e
 	if err != nil {
 		return err
 	}
-	_, err = env.Q.LockAllRotationQueues(ctx, env.Caller.StoreID)
+	queues, err := env.Q.LockAllRotationQueues(ctx, env.Caller.StoreID)
 	if err != nil {
 		return err
+	}
+	queueByID := make(map[uuid.UUID]dbgen.RotationQueue, len(queues))
+	for _, queue := range queues {
+		queueByID[queue.ID] = queue
 	}
 	serving, err := env.Q.LockServingRotationTurnsByOrder(ctx, dbgen.LockServingRotationTurnsByOrderParams{StoreID: env.Caller.StoreID, OrderID: orderID})
 	if err != nil {
@@ -68,13 +72,13 @@ func AdvanceAfterCheckout(ctx context.Context, env ops.Env, orderID uuid.UUID) e
 	targets := map[turnDay][]uuid.UUID{}
 	seen := map[turnDay]map[uuid.UUID]bool{}
 	for _, row := range serving {
-		if !staffIDs[row.StaffID] {
-			continue
-		}
 		key := turnDay{queueID: row.QueueID, day: row.BusinessDate.Time}
 		if seen[key] == nil {
 			seen[key] = map[uuid.UUID]bool{}
 			order = append(order, key)
+		}
+		if !staffIDs[row.StaffID] {
+			continue
 		}
 		if seen[key][row.StaffID] {
 			continue
@@ -83,7 +87,7 @@ func AdvanceAfterCheckout(ctx context.Context, env ops.Env, orderID uuid.UUID) e
 		targets[key] = append(targets[key], row.StaffID)
 	}
 	for _, key := range order {
-		turns, err := loadTurns(ctx, env, key.queueID, key.day)
+		turns, err := prepareTurnsWrite(ctx, env, queueByID[key.queueID], key.day, rules)
 		if err != nil {
 			return err
 		}

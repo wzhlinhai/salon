@@ -110,6 +110,9 @@ func stamp(t time.Time) pgtype.Timestamptz { return pgtype.Timestamptz{Time: t, 
 
 func view(env ops.Env, d dbgen.AiDraft) (*Draft, error) {
 	out := &Draft{ID: d.ID, Initiator: d.Initiator, Operation: d.Operation, Utterance: d.Utterance, Params: d.Params, OriginalParams: d.OriginalParams, Summary: d.Summary, Status: d.Status, BusinessDate: d.BusinessDate.Time.Format(time.DateOnly), ExpiresAt: d.ExpiresAt.Time, CreatedAt: d.CreatedAt.Time, DecidedBy: d.DecidedBy, RejectReason: d.RejectReason}
+	if out.Status == "pending" && !env.Now.Before(d.ExpiresAt.Time) {
+		out.Status = "expired"
+	}
 	if d.DecidedAt.Valid {
 		out.DecidedAt = &d.DecidedAt.Time
 	}
@@ -134,6 +137,9 @@ func redact(env ops.Env, raw json.RawMessage) (json.RawMessage, error) {
 
 func (s service) create(ctx context.Context, env ops.Env, name string, params json.RawMessage, utterance, summary string) (any, error) {
 	if err := s.registry.CheckDraft(env.Caller, name, params); err != nil {
+		return nil, err
+	}
+	if err := env.Q.ExpireStoreDrafts(ctx, dbgen.ExpireStoreDraftsParams{StoreID: env.Caller.StoreID, Now: stamp(env.Now), ActorID: env.Caller.StaffID}); err != nil {
 		return nil, err
 	}
 	day, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, env.Now)
@@ -167,7 +173,7 @@ func (s service) visible(env ops.Env, d dbgen.AiDraft) bool {
 	return d.Initiator == env.Caller.StaffID || (err == nil && env.Caller.Has(p))
 }
 
-// lock 在锁内重读并进行惰性过期；不可见目标不泄露内容。
+// lock 在锁内重读并持久化过期；不可见目标不泄露内容。
 func (s service) lock(ctx context.Context, env ops.Env, id uuid.UUID, requireVisible bool) (dbgen.AiDraft, error) {
 	d, err := env.Q.LockDraft(ctx, dbgen.LockDraftParams{StoreID: env.Caller.StoreID, ID: id})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -179,6 +185,11 @@ func (s service) lock(ctx context.Context, env ops.Env, id uuid.UUID, requireVis
 	if requireVisible && !s.visible(env, d) {
 		return d, ops.ErrNotFound
 	}
+	return s.persistExpiry(ctx, env, d)
+}
+
+func (s service) persistExpiry(ctx context.Context, env ops.Env, d dbgen.AiDraft) (dbgen.AiDraft, error) {
+	var err error
 	if d.Status == "pending" && !env.Now.Before(d.ExpiresAt.Time) {
 		d.Status = "expired"
 		d.DecidedAt = stamp(env.Now)
@@ -202,9 +213,6 @@ func pending(d dbgen.AiDraft) error {
 }
 
 func (s service) list(ctx context.Context, env ops.Env, _ *struct{}) (*List, error) {
-	if err := env.Q.ExpireStoreDrafts(ctx, dbgen.ExpireStoreDraftsParams{StoreID: env.Caller.StoreID, Now: stamp(env.Now), ActorID: env.Caller.StaffID}); err != nil {
-		return nil, err
-	}
 	rows, err := env.Q.ListDrafts(ctx, env.Caller.StoreID)
 	if err != nil {
 		return nil, err
@@ -224,9 +232,15 @@ func (s service) list(ctx context.Context, env ops.Env, _ *struct{}) (*List, err
 }
 
 func (s service) get(ctx context.Context, env ops.Env, in *IDInput) (*Detail, error) {
-	d, err := s.lock(ctx, env, in.ID, true)
+	d, err := env.Q.GetDraft(ctx, dbgen.GetDraftParams{StoreID: env.Caller.StoreID, ID: in.ID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ops.ErrNotFound
+	}
 	if err != nil {
 		return nil, err
+	}
+	if !s.visible(env, d) {
+		return nil, ops.ErrNotFound
 	}
 	rows, err := env.Q.DraftEvents(ctx, dbgen.DraftEventsParams{StoreID: env.Caller.StoreID, DraftID: d.ID})
 	if err != nil {

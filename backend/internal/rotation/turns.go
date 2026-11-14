@@ -35,7 +35,7 @@ func daySetup(ctx context.Context, env ops.Env, queueID uuid.UUID, requireActive
 	if err != nil {
 		return queue, time.Time{}, settings.Rules{}, nil, err
 	}
-	turns, _, err := prepareTurns(ctx, env, queue, day, rules)
+	turns, err := prepareTurnsWrite(ctx, env, queue, day, rules)
 	if err != nil {
 		return queue, time.Time{}, settings.Rules{}, nil, err
 	}
