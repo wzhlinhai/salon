@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import type { components } from '~/utils/api'
-
-type Payment = components['schemas']['Payment']
-const props = defineProps<{ expected: string }>()
+interface Payment { method: string, amount: string }
+const props = defineProps<{
+  expected: string
+  methods?: { label: string, value: string }[]
+  resetKey?: number
+}>()
 const payments = defineModel<Payment[]>({ default: () => [] })
 const touched = defineModel<boolean>('touched', { default: false })
-const methods = [{ label: '现金', value: 'cash' }, { label: '银联', value: 'unionpay' }, { label: '微信', value: 'wechat' }, { label: '支付宝', value: 'alipay' }]
+const defaultMethods = [{ label: '现金', value: 'cash' }, { label: '银联', value: 'unionpay' }, { label: '微信', value: 'wechat' }, { label: '支付宝', value: 'alipay' }]
+const methods = computed(() => props.methods ?? defaultMethods)
 const total = computed(() => payments.value.reduce((sum, p) => sum + cents(p.amount), 0))
 
 function cents(value: string) {
@@ -28,7 +31,7 @@ function defaults(expected: string): Payment[] {
   return out
 }
 
-watch([() => props.expected, touched], ([value, custom]) => {
+watch([() => props.expected, touched, () => props.resetKey], ([value, custom]) => {
   if (!custom) payments.value = defaults(value)
 }, { immediate: true })
 

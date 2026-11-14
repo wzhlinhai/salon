@@ -550,6 +550,58 @@ func (q *Queries) ListOrderRedemptions(ctx context.Context, arg ListOrderRedempt
 	return items, nil
 }
 
+const listRedemptions = `-- name: ListRedemptions :many
+SELECT id, tenant_id, store_id, platform, coupon_code, idempotency_key, status, redeemed_at, redeemed_by, revoked_at, order_id, created_at, deal_id, purchase_price, store_price, linked_at, order_payment_id FROM coupon_redemptions
+WHERE store_id = $1
+  AND COALESCE(redeemed_at, created_at) >= $2
+  AND COALESCE(redeemed_at, created_at) < $3
+ORDER BY COALESCE(redeemed_at, created_at), id
+`
+
+type ListRedemptionsParams struct {
+	StoreID  uuid.UUID
+	FromTime pgtype.Timestamptz
+	ToTime   pgtype.Timestamptz
+}
+
+func (q *Queries) ListRedemptions(ctx context.Context, arg ListRedemptionsParams) ([]CouponRedemption, error) {
+	rows, err := q.db.Query(ctx, listRedemptions, arg.StoreID, arg.FromTime, arg.ToTime)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CouponRedemption
+	for rows.Next() {
+		var i CouponRedemption
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.StoreID,
+			&i.Platform,
+			&i.CouponCode,
+			&i.IdempotencyKey,
+			&i.Status,
+			&i.RedeemedAt,
+			&i.RedeemedBy,
+			&i.RevokedAt,
+			&i.OrderID,
+			&i.CreatedAt,
+			&i.DealID,
+			&i.PurchasePrice,
+			&i.StorePrice,
+			&i.LinkedAt,
+			&i.OrderPaymentID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockCouponIdentity = `-- name: LockCouponIdentity :exec
 SELECT pg_advisory_xact_lock(hashtextextended(($1::uuid)::text || '/coupon/' || length($2::text)::text || ':' || $2::text || $3::text, 0))
 `

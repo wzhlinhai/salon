@@ -119,3 +119,10 @@ ORDER BY s.created_at DESC, s.id DESC;
 -- name: MoveOrderRedemptions :exec
 UPDATE coupon_redemptions SET order_id = sqlc.arg(order_id)
 WHERE store_id = sqlc.arg(store_id) AND order_id = ANY(sqlc.arg(merged_order_ids)::uuid[]) AND status = 'redeemed';
+
+-- name: ListRedemptions :many
+SELECT * FROM coupon_redemptions
+WHERE store_id = @store_id
+  AND COALESCE(redeemed_at, created_at) >= @from_time
+  AND COALESCE(redeemed_at, created_at) < @to_time
+ORDER BY COALESCE(redeemed_at, created_at), id;
