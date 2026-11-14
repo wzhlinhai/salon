@@ -871,6 +871,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/get_business_report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看营业日报或月报 */
+        post: operations["get_business_report"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/get_card_report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看卡项分析 */
+        post: operations["get_card_report"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/get_collection": {
         parameters: {
             query?: never;
@@ -916,6 +950,23 @@ export interface paths {
         put?: never;
         /** 查看顾客档案和安全提醒 */
         post: operations["get_customer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/get_customer_source_report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看新客来源报表 */
+        post: operations["get_customer_source_report"];
         delete?: never;
         options?: never;
         head?: never;
@@ -984,6 +1035,23 @@ export interface paths {
         put?: never;
         /** 查看一批导入的行结果与核对差额 */
         post: operations["get_import_batch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/get_item_report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看项目分析 */
+        post: operations["get_item_report"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1137,6 +1205,23 @@ export interface paths {
         put?: never;
         /** 查看员工月度考勤 */
         post: operations["get_staff_attendance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/get_staff_report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看员工业绩分析 */
+        post: operations["get_staff_report"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3298,6 +3383,57 @@ export interface components {
         BaseSalaryList: {
             entries: components["schemas"]["StaffBaseSalary"][];
         };
+        BusinessReport: {
+            /** @enum {string} */
+            granularity: "day" | "month";
+            rows: components["schemas"]["BusinessReportRow"][];
+            totals: components["schemas"]["BusinessReportRow"];
+        };
+        BusinessReportInput: {
+            /** @description 营业日 YYYY-MM-DD，或月份 YYYY-MM */
+            from: string;
+            /**
+             * @description day 为日报，month 为月报
+             * @enum {string}
+             */
+            granularity: "day" | "month";
+            /** @description 营业日 YYYY-MM-DD，或月份 YYYY-MM */
+            to: string;
+        };
+        BusinessReportRow: {
+            /** @description 售后退款 */
+            aftersale_refund: string;
+            /** @description 耗卡赠送金 */
+            card_bonus: string;
+            /** @description 耗卡本金 */
+            card_principal: string;
+            /** Format: int64 */
+            checkout_count: number;
+            /** @description 扣次金额 */
+            count_amount: string;
+            /** @description 挂账还款 */
+            debt_repayment: string;
+            /** @description 团购抵扣 */
+            groupbuy_deduct: string;
+            guest_designated: string;
+            guest_female: string;
+            guest_male: string;
+            guest_not_designated: string;
+            /** @description 四位小数的客数净额 */
+            guest_total: string;
+            /** @description 新增挂账 */
+            new_debt: string;
+            non_site: components["schemas"]["ReportMethodAmount"][];
+            on_site: components["schemas"]["ReportMethodAmount"][];
+            /** @description 日报为 YYYY-MM-DD，月报为 YYYY-MM */
+            period: string;
+            /** @description 开卡、充值、补差价和卖红包的收款合计 */
+            sales_revenue: string;
+            /** @description 结账单实收合计，撤单在撤单日冲回 */
+            service_revenue: string;
+            /** Format: int64 */
+            void_count: number;
+        };
         CancelAppointmentInput: {
             id: string;
             /** @description 原因为其他时的说明 */
@@ -3472,6 +3608,37 @@ export interface components {
             items: components["schemas"]["CardRefundItem"][];
             principal: string;
         };
+        CardReport: {
+            rows: components["schemas"]["CardReportRow"][];
+            totals: components["schemas"]["CardReportRow"];
+        };
+        CardReportInput: {
+            /** Format: date */
+            from: string;
+            /** Format: date */
+            to: string;
+        };
+        CardReportRow: {
+            card_type: components["schemas"]["CardTypeRef"];
+            consumed_bonus: string;
+            consumed_principal: string;
+            count_amount: string;
+            /** Format: int64 */
+            count_used: number;
+            ending_balance: string;
+            /** Format: int64 */
+            ending_counts: number;
+            open_bonus: string;
+            /** Format: int64 */
+            open_count: number;
+            open_principal: string;
+            recharge_bonus: string;
+            recharge_principal: string;
+            refund_amount: string;
+            /** Format: int64 */
+            refund_count: number;
+            upgrade: string;
+        };
         CardTransferResult: {
             from: components["schemas"]["Card"];
             to: components["schemas"]["Card"];
@@ -3509,6 +3676,10 @@ export interface components {
         };
         CardTypeList: {
             items: components["schemas"]["CardType"][];
+        };
+        CardTypeRef: {
+            id: string;
+            name: string;
         };
         CardUpgrade: {
             actor: components["schemas"]["CardLedgerActor"];
@@ -4008,6 +4179,28 @@ export interface components {
         CustomerSourceList: {
             items: components["schemas"]["CustomerSource"][];
         };
+        CustomerSourceReport: {
+            rows: components["schemas"]["CustomerSourceReportRow"][];
+            totals: components["schemas"]["CustomerSourceReportRow"];
+            /** Format: int64 */
+            unidentified_orders: number;
+        };
+        CustomerSourceReportInput: {
+            /** Format: date */
+            from: string;
+            /** Format: date */
+            to: string;
+        };
+        CustomerSourceReportRow: {
+            /** Format: int64 */
+            new_customers: number;
+            /** Format: int64 */
+            returning: number;
+            revenue: string;
+            source_id: string | null;
+            /** @description 未填写来源时为空 */
+            source_name: string | null;
+        };
         DayClose: {
             alipay_actual: string;
             business_date: string;
@@ -4490,6 +4683,32 @@ export interface components {
             price: string;
             /** @enum {string} */
             source: "standard" | "level" | "member";
+        };
+        ItemReport: {
+            rows: components["schemas"]["ItemReportRow"][];
+            totals: components["schemas"]["ItemReportRow"];
+        };
+        ItemReportInput: {
+            /** Format: date */
+            from: string;
+            /** Format: date */
+            to: string;
+        };
+        ItemReportRow: {
+            card_paid: string;
+            count_paid: string;
+            /** Format: int64 */
+            designated: number;
+            groupbuy_paid: string;
+            item_id: string;
+            /** @enum {string} */
+            item_kind: "service" | "goods";
+            item_name: string;
+            line_price: string;
+            paid: string;
+            performance: string;
+            /** Format: int64 */
+            times: number;
         };
         JoinRotationInput: {
             queue_id: string;
@@ -5337,6 +5556,11 @@ export interface components {
             method: "cash" | "unionpay" | "wechat" | "alipay";
             repaid_by: string;
         };
+        ReportMethodAmount: {
+            amount: string;
+            label: string;
+            method: string;
+        };
         RepriceOrderItemInput: {
             order_id: string;
             order_item_id: string;
@@ -5667,6 +5891,34 @@ export interface components {
         };
         StaffOptionList: {
             staff: components["schemas"]["StaffOption"][];
+        };
+        StaffReport: {
+            rows: components["schemas"]["StaffReportRow"][];
+            totals: components["schemas"]["StaffReportRow"];
+        };
+        StaffReportInput: {
+            /** Format: date */
+            from: string;
+            staff_id?: string;
+            /** Format: date */
+            to: string;
+        };
+        StaffReportRow: {
+            card_performance: string;
+            cash_performance: string;
+            commission_total: string;
+            consume_performance: string;
+            guest_designated: string;
+            guest_female: string;
+            guest_male: string;
+            guest_not_designated: string;
+            guest_total: string;
+            item_performance: string;
+            labor_performance: string;
+            sale_performance: string;
+            /** Format: int64 */
+            service_item_lines: number;
+            staff: components["schemas"]["Ref"] | null;
         };
         StaffRotationStat: {
             /**
@@ -7604,6 +7856,72 @@ export interface operations {
             };
         };
     };
+    get_business_report: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BusinessReportInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessReport"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    get_card_report: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CardReportInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardReport"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     get_collection: {
         parameters: {
             query?: never;
@@ -7690,6 +8008,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Customer"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    get_customer_source_report: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerSourceReportInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerSourceReport"];
                 };
             };
             /** @description Error */
@@ -7822,6 +8173,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImportBatchDetail"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    get_item_report: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemReportInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemReport"];
                 };
             };
             /** @description Error */
@@ -8119,6 +8503,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffAttendance"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    get_staff_report: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffReportInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffReport"];
                 };
             };
             /** @description Error */
