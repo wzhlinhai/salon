@@ -20,22 +20,6 @@ type Tool struct {
 	Draft bool
 }
 
-// 以下操作虽然声明为 Read + AIDirect，执行时仍会惰性更新数据或写审计。对话暂不提供，
-// 等这些读操作拆出惰性写入后（另开 issue）再从排除集合移除。
-const (
-	ReadToolListDrafts    = "list_drafts"
-	ReadToolGetDraft      = "get_draft"
-	ReadToolGetRedemption = "get_redemption"
-	ReadToolGetRotation   = "get_rotation"
-)
-
-var excludedReadTools = map[string]struct{}{
-	ReadToolListDrafts:    {},
-	ReadToolGetDraft:      {},
-	ReadToolGetRedemption: {},
-	ReadToolGetRotation:   {},
-}
-
 // ToolError 是 AI 工具调用的参数错误，信息可以原样返回给模型，让它修正参数。
 type ToolError struct{ Messages []string }
 
@@ -71,7 +55,7 @@ func (r *Registry) ReadTools(caller Caller) []Tool {
 	out := tools[:0]
 	for _, tool := range tools {
 		e, ok := r.ops[tool.Name]
-		if !ok || e.kind != Read || e.ai != AIDirect || readToolExcluded(tool.Name) {
+		if !ok || e.kind != Read || e.ai != AIDirect {
 			continue
 		}
 		out = append(out, tool)
@@ -79,18 +63,13 @@ func (r *Registry) ReadTools(caller Caller) []Tool {
 	return out
 }
 
-// CallReadTool 执行 AI 对话中的一次只读工具调用。不是 Read + AIDirect 的操作，或带有惰性写入而被排除的操作，一律当作未知工具。
+// CallReadTool 执行 AI 对话中的一次只读工具调用。不是 Read + AIDirect 的操作一律当作未知工具。
 func (r *Registry) CallReadTool(ctx context.Context, caller Caller, name string, args json.RawMessage) (json.RawMessage, error) {
 	e, ok := r.ops[name]
-	if !ok || e.kind != Read || e.ai != AIDirect || readToolExcluded(name) {
+	if !ok || e.kind != Read || e.ai != AIDirect {
 		return nil, ErrUnknownOperation
 	}
 	return r.CallTool(ctx, caller, name, args)
-}
-
-func readToolExcluded(name string) bool {
-	_, ok := excludedReadTools[name]
-	return ok
 }
 
 // CallTool 以 caller 本人的权限执行 AI 的一次工具调用。args 是模型给出的 JSON 参数。

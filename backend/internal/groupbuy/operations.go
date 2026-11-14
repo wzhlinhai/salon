@@ -98,8 +98,7 @@ func Register(r *ops.Registry, providers *Providers) {
 			if err != nil {
 				return nil, err
 			}
-			out := view(row)
-			return out, audit.Record(ctx, env, "get_redemption", audit.CouponRedemptionTarget(row.ID), nil, out)
+			return view(row), nil
 		}})
 }
 

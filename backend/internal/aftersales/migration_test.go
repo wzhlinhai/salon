@@ -41,7 +41,10 @@ func TestAftersaleMigrationDown(t *testing.T) {
 		refund := f.create(id(order["id"]), "partial_refund", "退本金", map[string]any{"method": "card_principal", "amount": "40", "card_id": card["id"]})
 		f.approve(id(refund["id"]), map[string]any{"deduct_performance": true, "deduct_commission": true})
 
-		// 先回滚本分支新增的 00050，再确认 00049 在已有售后数据时拒绝回滚。
+		// 先回滚本分支新增的 00051、00050，再确认 00049 在已有售后数据时拒绝回滚。
+		if err := db.MigrateDown(context.Background(), f.Pool); err != nil {
+			t.Fatal(err)
+		}
 		if err := db.MigrateDown(context.Background(), f.Pool); err != nil {
 			t.Fatal(err)
 		}

@@ -161,39 +161,81 @@ func loadTurns(ctx context.Context, env ops.Env, queueID uuid.UUID, day time.Tim
 	return out, nil
 }
 
-// prepareTurns 锁定队列当天全部轮牌行；当天还没有行时按顺序规则预建。
-func prepareTurns(ctx context.Context, env ops.Env, queue dbgen.RotationQueue, day time.Time, rules settings.Rules) ([]turnState, bool, error) {
+// loadTurnsRead 读取队列当天全部轮牌行，不加锁；纯读路径不得在只读事务里使用 FOR UPDATE。
+func loadTurnsRead(ctx context.Context, env ops.Env, queueID uuid.UUID, day time.Time) ([]turnState, error) {
+	rows, err := env.Q.ListRotationTurns(ctx, dbgen.ListRotationTurnsParams{StoreID: env.Caller.StoreID, QueueID: queueID, BusinessDate: dateValue(day)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]turnState, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, turnState{
+			turn: dbgen.RotationTurn{
+				TenantID: row.TenantID, StoreID: row.StoreID, ID: row.ID, QueueID: row.QueueID,
+				BusinessDate: row.BusinessDate, StaffID: row.StaffID, Position: row.Position, Status: row.Status,
+				HalfPending: row.HalfPending, RestUntil: row.RestUntil, ServingOrderID: row.ServingOrderID,
+				ServingDesignated: row.ServingDesignated, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+			},
+			staffName: row.StaffName, staffNumber: row.StaffNumber,
+		})
+	}
+	return out, nil
+}
+
+// prepareTurnsRead 在内存中得出当天名单：按顺序规则预建初始行，并把到点的休息显示为等待，不写任何表。
+func prepareTurnsRead(ctx context.Context, env ops.Env, queue dbgen.RotationQueue, day time.Time, rules settings.Rules) ([]turnState, error) {
+	turns, err := loadTurnsRead(ctx, env, queue.ID, day)
+	if err != nil {
+		return nil, err
+	}
+	if len(turns) == 0 && rules.RotationOrderRule() != "first_come" {
+		turns, err = prefillStates(ctx, env, queue, day, rules.RotationOrderRule())
+		if err != nil {
+			return nil, err
+		}
+	}
+	expireRestsRead(env.Now, turns)
+	return turns, nil
+}
+
+// prepareTurnsWrite 锁定队列当天全部轮牌行，先持久化待建的初始行和到点的休息，再由调用方应用自己的修改。
+func prepareTurnsWrite(ctx context.Context, env ops.Env, queue dbgen.RotationQueue, day time.Time, rules settings.Rules) ([]turnState, error) {
 	turns, err := loadTurns(ctx, env, queue.ID, day)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	if len(turns) == 0 && rules.RotationOrderRule() != "first_come" {
 		if err := prefillTurns(ctx, env, queue, day, rules.RotationOrderRule()); err != nil {
-			return nil, false, err
+			return nil, err
 		}
 		if turns, err = loadTurns(ctx, env, queue.ID, day); err != nil {
-			return nil, false, err
+			return nil, err
 		}
 	}
 	changed, err := expireRests(ctx, env, queue.ID, day, turns)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
-	return turns, changed, nil
+	if changed {
+		if err := persistTurns(ctx, env, queue.ID, day, turns, false); err != nil {
+			return nil, err
+		}
+	}
+	return turns, nil
 }
 
-func prefillTurns(ctx context.Context, env ops.Env, queue dbgen.RotationQueue, day time.Time, rule string) error {
+func orderedMembers(ctx context.Context, env ops.Env, queue dbgen.RotationQueue, day time.Time, rule string) ([]dbgen.ListRotationMembersRow, error) {
 	members, err := env.Q.ListRotationMembers(ctx, dbgen.ListRotationMembersParams{StoreID: env.Caller.StoreID, QueueID: queue.ID})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	ordered := slices.Clone(members)
 	if rule == "continue_yesterday" {
 		previous, err := env.Q.ListPreviousRotationTurns(ctx, dbgen.ListPreviousRotationTurnsParams{
-			StoreID: env.Caller.StoreID, QueueID: queue.ID, PreviousDate: dateValue(day.AddDate(0, 0, -1)),
+			StoreID: env.Caller.StoreID, QueueID: queue.ID, BusinessDate: dateValue(day),
 		})
 		if err != nil {
-			return err
+			return nil, err
 		}
 		rank := make(map[uuid.UUID]int32, len(previous))
 		for _, row := range previous {
@@ -216,6 +258,32 @@ func prefillTurns(ctx context.Context, env ops.Env, queue dbgen.RotationQueue, d
 	} else {
 		slices.SortStableFunc(ordered, func(a, b dbgen.ListRotationMembersRow) int { return int(a.SortOrder - b.SortOrder) })
 	}
+	return ordered, nil
+}
+
+func prefillStates(ctx context.Context, env ops.Env, queue dbgen.RotationQueue, day time.Time, rule string) ([]turnState, error) {
+	ordered, err := orderedMembers(ctx, env, queue, day, rule)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]turnState, 0, len(ordered))
+	for i, member := range ordered {
+		out = append(out, turnState{
+			turn: dbgen.RotationTurn{
+				TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, QueueID: queue.ID,
+				BusinessDate: dateValue(day), StaffID: member.StaffID, Position: int32(i + 1), Status: StatusOff,
+			},
+			staffName: member.StaffName, staffNumber: member.StaffNumber,
+		})
+	}
+	return out, nil
+}
+
+func prefillTurns(ctx context.Context, env ops.Env, queue dbgen.RotationQueue, day time.Time, rule string) error {
+	ordered, err := orderedMembers(ctx, env, queue, day, rule)
+	if err != nil {
+		return err
+	}
 	if len(ordered) == 0 {
 		return nil
 	}
@@ -237,15 +305,27 @@ func expireRests(ctx context.Context, env ops.Env, queueID uuid.UUID, day time.T
 			continue
 		}
 		from := t.turn.Position
+		ended := t.turn.RestUntil.Time
 		t.turn.Status = StatusWaiting
 		t.turn.RestUntil = pgtype.Timestamptz{}
 		t.dirty = true
 		changed = true
-		if err := recordEvent(ctx, env, queueID, day, &t.turn.StaffID, "rest_end", nil, nil, position(from), position(from), nil, nil, nil); err != nil {
+		if err := recordEventAt(ctx, env, queueID, day, &t.turn.StaffID, "rest_end", nil, nil, position(from), position(from), nil, nil, nil, ended); err != nil {
 			return false, err
 		}
 	}
 	return changed, nil
+}
+
+func expireRestsRead(now time.Time, turns []turnState) {
+	for i := range turns {
+		t := &turns[i]
+		if t.turn.Status != StatusResting || !t.turn.RestUntil.Valid || t.turn.RestUntil.Time.After(now) {
+			continue
+		}
+		t.turn.Status = StatusWaiting
+		t.turn.RestUntil = pgtype.Timestamptz{}
+	}
 }
 
 func persistTurns(ctx context.Context, env ops.Env, queueID uuid.UUID, day time.Time, turns []turnState, renumber bool) error {
@@ -281,6 +361,16 @@ func recordEvent(ctx context.Context, env ops.Env, queueID uuid.UUID, day time.T
 		TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, QueueID: queueID, BusinessDate: dateValue(day),
 		StaffID: staffID, Kind: kind, Reason: reason, Note: note, FromPosition: from, ToPosition: to,
 		Minutes: minutes, OrderID: orderID, Designated: designated, ActorStaffID: env.Caller.StaffID,
+	})
+	return err
+}
+
+func recordEventAt(ctx context.Context, env ops.Env, queueID uuid.UUID, day time.Time, staffID *uuid.UUID, kind string, reason, note *string, from, to *int32, minutes *int32, orderID *uuid.UUID, designated *bool, at time.Time) error {
+	_, err := env.Q.AddRotationEventAt(ctx, dbgen.AddRotationEventAtParams{
+		TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, QueueID: queueID, BusinessDate: dateValue(day),
+		StaffID: staffID, Kind: kind, Reason: reason, Note: note, FromPosition: from, ToPosition: to,
+		Minutes: minutes, OrderID: orderID, Designated: designated, ActorStaffID: env.Caller.StaffID,
+		CreatedAt: timeValue(&at),
 	})
 	return err
 }

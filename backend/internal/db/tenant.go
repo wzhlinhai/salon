@@ -22,6 +22,11 @@ func InTenant(ctx context.Context, pool *pgxpool.Pool, tenantID uuid.UUID, fn fu
 	return inTenant(ctx, pool, tenantID, pgx.TxOptions{}, fn)
 }
 
+// InTenantReadOnly 在可重复读的只读事务中执行 fn；任何写入都会被 PostgreSQL 拒绝。
+func InTenantReadOnly(ctx context.Context, pool *pgxpool.Pool, tenantID uuid.UUID, fn func(q *dbgen.Queries) error) error {
+	return inTenant(ctx, pool, tenantID, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, fn)
+}
+
 // InTenantSnapshot 在可重复读事务中读取同一租户的一致快照。
 func InTenantSnapshot(ctx context.Context, pool *pgxpool.Pool, tenantID uuid.UUID, fn func(q *dbgen.Queries) error) error {
 	return inTenant(ctx, pool, tenantID, pgx.TxOptions{IsoLevel: pgx.RepeatableRead}, fn)

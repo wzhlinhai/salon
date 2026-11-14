@@ -5,6 +5,9 @@ VALUES ($1,$2,$3,$4) RETURNING *;
 -- name: LockRotationQueue :one
 SELECT * FROM rotation_queues WHERE store_id = @store_id AND id = @id FOR NO KEY UPDATE;
 
+-- name: GetRotationQueue :one
+SELECT * FROM rotation_queues WHERE store_id = @store_id AND id = @id;
+
 -- name: LockRotationQueueForUpdate :one
 SELECT * FROM rotation_queues WHERE store_id = @store_id AND id = @id FOR UPDATE;
 
@@ -75,7 +78,11 @@ ORDER BY t.position, t.staff_id;
 
 -- name: ListPreviousRotationTurns :many
 SELECT t.* FROM rotation_turns t
-WHERE t.store_id = @store_id AND t.queue_id = @queue_id AND t.business_date = @previous_date
+WHERE t.store_id = @store_id AND t.queue_id = @queue_id
+ AND t.business_date = (
+   SELECT max(p.business_date) FROM rotation_turns p
+   WHERE p.store_id = @store_id AND p.queue_id = @queue_id AND p.business_date < @business_date
+ )
 ORDER BY t.position, t.staff_id;
 
 -- name: ListServingRotationTurns :many
@@ -106,6 +113,12 @@ INSERT INTO rotation_events
  (tenant_id, store_id, queue_id, business_date, staff_id, kind, reason, note,
   from_position, to_position, minutes, order_id, designated, actor_staff_id)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *;
+
+-- name: AddRotationEventAt :one
+INSERT INTO rotation_events
+ (tenant_id, store_id, queue_id, business_date, staff_id, kind, reason, note,
+  from_position, to_position, minutes, order_id, designated, actor_staff_id, created_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *;
 
 -- name: ListRotationEvents :many
 SELECT e.*, s.name AS staff_name, s.number AS staff_number, a.name AS actor_name

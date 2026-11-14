@@ -76,6 +76,71 @@ func (q *Queries) AddRotationEvent(ctx context.Context, arg AddRotationEventPara
 	return i, err
 }
 
+const addRotationEventAt = `-- name: AddRotationEventAt :one
+INSERT INTO rotation_events
+ (tenant_id, store_id, queue_id, business_date, staff_id, kind, reason, note,
+  from_position, to_position, minutes, order_id, designated, actor_staff_id, created_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING tenant_id, store_id, id, queue_id, business_date, staff_id, kind, reason, note, from_position, to_position, minutes, order_id, designated, actor_staff_id, created_at
+`
+
+type AddRotationEventAtParams struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	QueueID      uuid.UUID
+	BusinessDate pgtype.Date
+	StaffID      *uuid.UUID
+	Kind         string
+	Reason       *string
+	Note         *string
+	FromPosition *int32
+	ToPosition   *int32
+	Minutes      *int32
+	OrderID      *uuid.UUID
+	Designated   *bool
+	ActorStaffID uuid.UUID
+	CreatedAt    pgtype.Timestamptz
+}
+
+func (q *Queries) AddRotationEventAt(ctx context.Context, arg AddRotationEventAtParams) (RotationEvent, error) {
+	row := q.db.QueryRow(ctx, addRotationEventAt,
+		arg.TenantID,
+		arg.StoreID,
+		arg.QueueID,
+		arg.BusinessDate,
+		arg.StaffID,
+		arg.Kind,
+		arg.Reason,
+		arg.Note,
+		arg.FromPosition,
+		arg.ToPosition,
+		arg.Minutes,
+		arg.OrderID,
+		arg.Designated,
+		arg.ActorStaffID,
+		arg.CreatedAt,
+	)
+	var i RotationEvent
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.QueueID,
+		&i.BusinessDate,
+		&i.StaffID,
+		&i.Kind,
+		&i.Reason,
+		&i.Note,
+		&i.FromPosition,
+		&i.ToPosition,
+		&i.Minutes,
+		&i.OrderID,
+		&i.Designated,
+		&i.ActorStaffID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const addRotationHalfItem = `-- name: AddRotationHalfItem :exec
 INSERT INTO rotation_half_items (tenant_id, store_id, item_id) VALUES ($1,$2,$3)
 `
@@ -196,6 +261,30 @@ func (q *Queries) GetRotationMember(ctx context.Context, arg GetRotationMemberPa
 		&i.QueueID,
 		&i.StaffID,
 		&i.SortOrder,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getRotationQueue = `-- name: GetRotationQueue :one
+SELECT tenant_id, store_id, id, name, active, created_by, created_at FROM rotation_queues WHERE store_id = $1 AND id = $2
+`
+
+type GetRotationQueueParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) GetRotationQueue(ctx context.Context, arg GetRotationQueueParams) (RotationQueue, error) {
+	row := q.db.QueryRow(ctx, getRotationQueue, arg.StoreID, arg.ID)
+	var i RotationQueue
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.Name,
+		&i.Active,
+		&i.CreatedBy,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -322,18 +411,22 @@ func (q *Queries) ListAllRotationMembers(ctx context.Context, storeID uuid.UUID)
 
 const listPreviousRotationTurns = `-- name: ListPreviousRotationTurns :many
 SELECT t.tenant_id, t.store_id, t.id, t.queue_id, t.business_date, t.staff_id, t.position, t.status, t.half_pending, t.rest_until, t.serving_order_id, t.serving_designated, t.created_at, t.updated_at FROM rotation_turns t
-WHERE t.store_id = $1 AND t.queue_id = $2 AND t.business_date = $3
+WHERE t.store_id = $1 AND t.queue_id = $2
+ AND t.business_date = (
+   SELECT max(p.business_date) FROM rotation_turns p
+   WHERE p.store_id = $1 AND p.queue_id = $2 AND p.business_date < $3
+ )
 ORDER BY t.position, t.staff_id
 `
 
 type ListPreviousRotationTurnsParams struct {
 	StoreID      uuid.UUID
 	QueueID      uuid.UUID
-	PreviousDate pgtype.Date
+	BusinessDate pgtype.Date
 }
 
 func (q *Queries) ListPreviousRotationTurns(ctx context.Context, arg ListPreviousRotationTurnsParams) ([]RotationTurn, error) {
-	rows, err := q.db.Query(ctx, listPreviousRotationTurns, arg.StoreID, arg.QueueID, arg.PreviousDate)
+	rows, err := q.db.Query(ctx, listPreviousRotationTurns, arg.StoreID, arg.QueueID, arg.BusinessDate)
 	if err != nil {
 		return nil, err
 	}

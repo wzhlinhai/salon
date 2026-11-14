@@ -5,6 +5,9 @@ VALUES ($1,$2,$3,$4,$5,$6,$6,$7,'pending',$8,$9,$10) RETURNING *;
 -- name: LockDraft :one
 SELECT * FROM ai_drafts WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE;
 
+-- name: GetDraft :one
+SELECT * FROM ai_drafts WHERE store_id=$1 AND id=$2;
+
 -- name: ListDrafts :many
 SELECT * FROM ai_drafts WHERE store_id=$1 ORDER BY created_at, id;
 

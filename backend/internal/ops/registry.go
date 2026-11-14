@@ -31,6 +31,7 @@ type entry struct {
 	permission Permission
 	ai         AIMode
 	phased     bool
+	locking    bool
 	// call 把 JSON 参数解码为 I 并执行操作，返回 *O。
 	call func(ctx context.Context, env Env, args []byte) (any, error)
 }
@@ -67,6 +68,7 @@ func Register[I, O any](r *Registry, op Operation[I, O]) {
 		permission: op.Permission,
 		ai:         op.AI,
 		phased:     op.Phased,
+		locking:    op.Locking,
 		call: func(ctx context.Context, env Env, args []byte) (any, error) {
 			in := new(I)
 			if err := json.Unmarshal(args, in); err != nil {
@@ -168,13 +170,23 @@ func (r *Registry) invoke(ctx context.Context, caller Caller, e *entry, run func
 	}
 	now := r.now()
 	if e.phased {
-		return run(ctx, Env{Now: now, Caller: caller, Grant: caller.Grant(e.permission), Transact: func(ctx context.Context, fn func(*dbgen.Queries) error) error {
+		transact := func(ctx context.Context, fn func(*dbgen.Queries) error) error {
 			return db.InTenant(ctx, r.pool, caller.TenantID, fn)
-		}})
+		}
+		if e.kind == Read && e.ai == AIDirect && !e.locking {
+			transact = func(ctx context.Context, fn func(*dbgen.Queries) error) error {
+				return db.InTenantReadOnly(ctx, r.pool, caller.TenantID, fn)
+			}
+		}
+		return run(ctx, Env{Now: now, Caller: caller, Grant: caller.Grant(e.permission), Transact: transact})
 	}
 	var out any
 	var committedRule error
-	err := db.InTenant(ctx, r.pool, caller.TenantID, func(q *dbgen.Queries) error {
+	inTenant := db.InTenant
+	if e.kind == Read && !e.locking {
+		inTenant = db.InTenantReadOnly
+	}
+	err := inTenant(ctx, r.pool, caller.TenantID, func(q *dbgen.Queries) error {
 		var err error
 		out, err = run(ctx, Env{Now: now, Caller: caller, Grant: caller.Grant(e.permission), Q: q})
 		var rule *RuleError
