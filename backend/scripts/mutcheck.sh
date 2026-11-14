@@ -13,7 +13,7 @@
 # 未设置 GOCACHE（单独运行或 --restore）时使用 .dev/mutcheck-gocache-standalone.* 临时缓存，
 # 退出时删除；由 mutchecks.py 启动时沿用其运行缓存。go test 均带 -trimpath。
 # 退出码：0 有测试失败（被发现）；1 测试全部通过（没被发现）；
-#         2 用法、匹配或构建错误；3 测试失败但没有 --- FAIL 行（超时、panic 等，需人工查看）；
+#         2 用法、匹配、构建错误，或变异让迁移无法执行；3 测试失败但没有 --- FAIL 行（超时、panic 等，需人工查看）；
 #         4 PostgreSQL 容器环境失败（重试一次后仍失败，不计为捕获）。
 set -euo pipefail
 
@@ -133,6 +133,8 @@ fi
 [ $# -ge 3 ] || { echo "usage: backend/scripts/mutcheck.sh [--run <regex>] <file> <old> <new> [go test args] | --restore" >&2; exit 2; }
 file=$(realpath "$1") old=$2 new=$3; shift 3
 [ -f "$file" ] || { echo "mutcheck: no such file: $file" >&2; exit 2; }
+is_migration=false
+case "$file" in "$backend"/internal/db/migrations/*) is_migration=true ;; esac
 [ $# -gt 0 ] || set -- ./...
 cd "$backend"
 mkdir -p "$(dirname "$slot")"
@@ -181,6 +183,11 @@ for attempt in 1 2; do
   status=0
   out=$(go test -count=1 -trimpath "${go_parallel[@]}" "${test_selection[@]}" "$@" 2>&1) || status=$?
   if [[ "$out" == *"启动 PostgreSQL 测试容器失败"* ]]; then
+    if $is_migration && [[ "$out" == *"migrate up"* ]]; then
+      echo "mutcheck: mutated migration does not apply:" >&2
+      grep -m1 '启动 PostgreSQL 测试容器失败' <<<"$out" >&2 || true
+      exit 2
+    fi
     echo "mutcheck: environment failure (attempt $attempt/2):" >&2
     if [ "$attempt" -eq 1 ]; then
       echo "mutcheck: retrying test run once" >&2
