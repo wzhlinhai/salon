@@ -188,6 +188,39 @@ func (q *Queries) ExpireStoreDrafts(ctx context.Context, arg ExpireStoreDraftsPa
 	return err
 }
 
+const getDraft = `-- name: GetDraft :one
+SELECT id, tenant_id, store_id, initiator, operation, utterance, params, original_params, summary, status, business_date, expires_at, created_at, decided_at, decided_by, reject_reason FROM ai_drafts WHERE store_id=$1 AND id=$2
+`
+
+type GetDraftParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) GetDraft(ctx context.Context, arg GetDraftParams) (AiDraft, error) {
+	row := q.db.QueryRow(ctx, getDraft, arg.StoreID, arg.ID)
+	var i AiDraft
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Initiator,
+		&i.Operation,
+		&i.Utterance,
+		&i.Params,
+		&i.OriginalParams,
+		&i.Summary,
+		&i.Status,
+		&i.BusinessDate,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.DecidedAt,
+		&i.DecidedBy,
+		&i.RejectReason,
+	)
+	return i, err
+}
+
 const listDrafts = `-- name: ListDrafts :many
 SELECT id, tenant_id, store_id, initiator, operation, utterance, params, original_params, summary, status, business_date, expires_at, created_at, decided_at, decided_by, reject_reason FROM ai_drafts WHERE store_id=$1 ORDER BY created_at, id
 `

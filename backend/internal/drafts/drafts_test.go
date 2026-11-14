@@ -155,6 +155,7 @@ func TestDraftExpiry(t *testing.T) {
 				t.Fatal(d)
 			}
 			s.Advance(deadline.Sub(s.Now()))
+			before := dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "ai_drafts", "ai_draft_events")
 			if path == "confirm_draft" {
 				rejected(t, s.HTTPWithToken(t, s.Owner, path, id(d)), 409, "已过期")
 			} else {
@@ -162,7 +163,19 @@ func TestDraftExpiry(t *testing.T) {
 				if path == "list_drafts" {
 					args = map[string]any{}
 				}
-				call(t, s, s.Owner, path, args)
+				got := call(t, s, s.Owner, path, args)
+				if path == "list_drafts" {
+					entries := got.Body["drafts"].([]any)
+					if len(entries) != 1 || entries[0].(map[string]any)["status"] != "expired" || entries[0].(map[string]any)["decided_at"] != nil {
+						t.Fatal(got)
+					}
+				} else if got.Body["status"] != "expired" || got.Body["decided_at"] != nil || len(got.Body["events"].([]any)) != 1 {
+					t.Fatal(got)
+				}
+				if after := dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "ai_drafts", "ai_draft_events"); after != before {
+					t.Fatal("read persisted the draft expiry")
+				}
+				rejected(t, s.HTTPWithToken(t, s.Owner, "confirm_draft", id(d)), 409, "已过期")
 			}
 			got := call(t, s, s.Owner, "get_draft", id(d)).Body
 			if got["status"] != "expired" || got["decided_at"] == nil {
@@ -178,13 +191,11 @@ func TestDraftExpiry(t *testing.T) {
 				t.Fatal(got)
 			}
 			rejected(t, s.HTTPWithToken(t, s.Owner, "confirm_draft", id(d)), 409, "已过期")
-			for range 2 {
-				call(t, s, s.Owner, "list_drafts", map[string]any{})
-			}
 			refreshed := call(t, s, s.Owner, "get_draft", id(d)).Body
 			if len(refreshed["events"].([]any)) != 2 {
-				t.Fatal(refreshed)
+				t.Fatalf("repeated confirm added an expiry event: %v", refreshed)
 			}
+			call(t, s, s.Owner, "list_drafts", map[string]any{})
 		})
 	}
 }
@@ -208,6 +219,36 @@ func TestDraftReject(t *testing.T) {
 	}
 	rejected(t, s.HTTPWithToken(t, s.Owner, "confirm_draft", id(d)), 409, "草稿不是待确认状态")
 	rejected(t, s.HTTPWithToken(t, s.Owner, "reject_draft", map[string]any{"id": d["id"], "reason": "重复"}), 409, "草稿不是待确认状态")
+}
+
+func TestDraftReadsAndCreateExpiry(t *testing.T) {
+	s := optest.OpenShop(t)
+	s.SetNow(time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC))
+	d := create(t, s, s.Owner)
+	deadline, err := time.Parse(time.RFC3339, d["expires_at"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Advance(deadline.Sub(s.Now()))
+	before := dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "ai_drafts", "ai_draft_events")
+	for _, ch := range s.Channels() {
+		list := ch.Call(t, s.MustCaller(s.Owner), "list_drafts", map[string]any{})
+		if list.Status != 200 || list.Body["drafts"].([]any)[0].(map[string]any)["status"] != "expired" {
+			t.Fatal(ch.Name, list)
+		}
+		got := ch.Call(t, s.MustCaller(s.Owner), "get_draft", id(d))
+		if got.Status != 200 || got.Body["status"] != "expired" || got.Body["decided_at"] != nil || len(got.Body["events"].([]any)) != 1 {
+			t.Fatal(ch.Name, got)
+		}
+	}
+	if after := dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "ai_drafts", "ai_draft_events"); after != before {
+		t.Fatal("reads persisted the draft expiry")
+	}
+	create(t, s, s.Owner)
+	got := call(t, s, s.Owner, "get_draft", id(d)).Body
+	if got["status"] != "expired" || got["decided_at"] == nil || len(got["events"].([]any)) != 2 {
+		t.Fatal(got)
+	}
 }
 
 func TestDraftDualConfirm(t *testing.T) {
@@ -345,6 +386,7 @@ func TestDraftStorage(t *testing.T) {
 			t.Fatal(r)
 		}
 	}
+	rejected(t, s.HTTP(t, &c, "update_draft_params", map[string]any{"id": d["id"], "params": map[string]any{"name": "跨店"}}), 404, "not found")
 	// 同租户不同门店的审计行也不能关联这个草稿。
 	tx = dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	other, err := dbgen.New(tx).CreateStore(context.Background(), dbgen.CreateStoreParams{TenantID: s.Res.TenantID, Name: "另一门店"})
@@ -540,14 +582,12 @@ func TestDraftBatchLock(t *testing.T) {
 	dbtest.Exec(t, tx, "UPDATE ai_drafts SET status='confirmed' WHERE id=$1", d["id"])
 	s.Advance(48 * time.Hour)
 	done := make(chan optest.Result, 1)
-	go func() { done <- s.HTTPWithToken(t, s.Owner, "list_drafts", map[string]any{}) }()
+	go func() {
+		done <- s.HTTPWithToken(t, s.Owner, "create_draft", map[string]any{"operation": "create_customer", "params": map[string]any{"name": "另一个"}, "summary": "", "utterance": ""})
+	}()
 	optest.AssertWaiting(t, s.Pool, done, 1)
 	dbtest.Commit(t, tx)
-	result := optest.WaitResult(t, done, 200)
-	rows := result.Body["drafts"].([]any)
-	if len(rows) != 1 || rows[0].(map[string]any)["status"] != "confirmed" {
-		t.Fatal(result)
-	}
+	optest.WaitResult(t, done, 200)
 	got := call(t, s, s.Owner, "get_draft", id(d)).Body
 	if len(got["events"].([]any)) != 1 {
 		t.Fatal(got)

@@ -71,49 +71,70 @@ SELECT array_to_json(undo_import_batch(sqlc.arg(batch_id)::uuid, sqlc.arg(store_
 SELECT * FROM customers
 WHERE merged_into IS NULL AND phone = ANY(sqlc.arg(phones)::text[]);
 
--- name: ExportCustomers :many
-SELECT id, name, phone, gender, created_at FROM customers WHERE store_id=$1 ORDER BY created_at, id;
+-- name: ExportCustomersPage :many
+SELECT c.id, c.name, c.phone, c.gender, c.created_at FROM customers c
+WHERE c.store_id=sqlc.arg(store_id)
+ AND (sqlc.narg(after_id)::uuid IS NULL OR (c.created_at, c.id) > (
+   SELECT c2.created_at, c2.id FROM customers c2 WHERE c2.id=sqlc.narg(after_id) AND c2.store_id=sqlc.arg(store_id)))
+ORDER BY c.created_at, c.id LIMIT sqlc.arg(row_limit);
 
--- name: ExportStoredCards :many
+-- name: ExportStoredCardsPage :many
 SELECT c.id, c.customer_id, t.name AS card_type_name, l.principal_after::text AS principal, l.bonus_after::text AS bonus,
        c.expires_on, COALESCE(p.after,0)::int AS points
 FROM cards c JOIN card_types t ON t.id=c.card_type_id
 JOIN LATERAL (SELECT principal_after,bonus_after FROM card_ledger WHERE card_id=c.id ORDER BY at DESC,id DESC LIMIT 1) l ON true
 LEFT JOIN LATERAL (SELECT after FROM card_points_ledger WHERE card_id=c.id ORDER BY at DESC,id DESC LIMIT 1) p ON true
-WHERE c.store_id=$1 AND t.kind='stored_value'
-ORDER BY c.opened_at, c.id;
+WHERE c.store_id=sqlc.arg(store_id) AND t.kind='stored_value'
+ AND (sqlc.narg(after_card_id)::uuid IS NULL OR (c.opened_at, c.id) > (
+   SELECT c2.opened_at, c2.id FROM cards c2 WHERE c2.id=sqlc.narg(after_card_id) AND c2.store_id=sqlc.arg(store_id)))
+ORDER BY c.opened_at, c.id LIMIT sqlc.arg(row_limit);
 
--- name: ExportCountCards :many
-SELECT c.id, c.customer_id, t.name AS card_type_name, i.name AS item_name,
+-- name: ExportCountCardsPage :many
+SELECT c.id, c.customer_id, t.name AS card_type_name, ci.item_id, i.name AS item_name,
        cl.paid_after AS paid_count, cl.gift_after AS gift_count, c.expires_on
 FROM cards c JOIN card_types t ON t.id=c.card_type_id
 JOIN card_items ci ON ci.card_id=c.id JOIN items i ON i.id=ci.item_id
 JOIN LATERAL (SELECT paid_after,gift_after FROM card_count_ledger WHERE card_id=c.id AND item_id=ci.item_id ORDER BY at DESC,id DESC LIMIT 1) cl ON true
-WHERE c.store_id=$1 AND t.kind IN ('count','package')
-ORDER BY c.opened_at, c.id, ci.item_id;
+WHERE c.store_id=sqlc.arg(store_id) AND t.kind IN ('count','package')
+ AND (sqlc.narg(after_card_id)::uuid IS NULL OR (c.opened_at, c.id, ci.item_id) > (
+   SELECT c2.opened_at, c2.id, ci2.item_id FROM cards c2 JOIN card_items ci2 ON ci2.card_id=c2.id
+   WHERE c2.id=sqlc.narg(after_card_id) AND ci2.item_id=sqlc.narg(after_item_id) AND c2.store_id=sqlc.arg(store_id)))
+ORDER BY c.opened_at, c.id, ci.item_id LIMIT sqlc.arg(row_limit);
 
--- name: ExportCardLedger :many
+-- name: ExportCardLedgerPage :many
 SELECT l.id, l.card_id, l.kind, l.principal_before::text AS principal_before, l.principal_delta::text AS principal_delta,
        l.principal_after::text AS principal_after, l.bonus_before::text AS bonus_before, l.bonus_delta::text AS bonus_delta,
        l.bonus_after::text AS bonus_after, l.business_date, l.at, s.name AS actor_name
 FROM card_ledger l JOIN staff s ON s.id=l.actor_id
-WHERE l.store_id=$1 ORDER BY l.at, l.id;
+WHERE l.store_id=sqlc.arg(store_id)
+ AND (sqlc.narg(after_id)::uuid IS NULL OR (l.at, l.id) > (
+   SELECT l2.at, l2.id FROM card_ledger l2 WHERE l2.id=sqlc.narg(after_id) AND l2.store_id=sqlc.arg(store_id)))
+ORDER BY l.at, l.id LIMIT sqlc.arg(row_limit);
 
--- name: ExportOrders :many
+-- name: ExportOrdersPage :many
 SELECT o.id, o.customer_id, o.gender, o.designated, o.status, o.business_date, o.opened_at, s.name AS opened_by_name,
        o.checkout_id, o.merged_into, o.backfill
 FROM orders o JOIN staff s ON s.id=o.opened_by
-WHERE o.store_id=$1 ORDER BY o.opened_at, o.id;
+WHERE o.store_id=sqlc.arg(store_id)
+ AND (sqlc.narg(after_id)::uuid IS NULL OR (o.opened_at, o.id) > (
+   SELECT o2.opened_at, o2.id FROM orders o2 WHERE o2.id=sqlc.narg(after_id) AND o2.store_id=sqlc.arg(store_id)))
+ORDER BY o.opened_at, o.id LIMIT sqlc.arg(row_limit);
 
--- name: ExportOrderItems :many
+-- name: ExportOrderItemsPage :many
 SELECT i.id, i.order_id, i.item_name, i.item_kind, i.price::text AS price, i.discount::text AS discount,
        i.price_source, i.added_at, i.removed_at
-FROM order_items i WHERE i.store_id=$1 ORDER BY i.order_id, i.added_at, i.id;
+FROM order_items i WHERE i.store_id=sqlc.arg(store_id) AND i.order_id = ANY(sqlc.arg(order_ids)::uuid[])
+ AND (sqlc.narg(after_id)::uuid IS NULL OR (i.order_id, i.added_at, i.id) > (
+   SELECT i2.order_id, i2.added_at, i2.id FROM order_items i2 WHERE i2.id=sqlc.narg(after_id) AND i2.store_id=sqlc.arg(store_id)))
+ORDER BY i.order_id, i.added_at, i.id LIMIT sqlc.arg(row_limit);
 
--- name: ExportOrderPayments :many
+-- name: ExportOrderPaymentsPage :many
 SELECT p.id, p.checkout_id, p.order_id, p.method, p.amount::text AS amount,
        p.card_ledger_id, p.card_count_ledger_id, p.red_packet_id
-FROM order_payments p WHERE p.store_id=$1 ORDER BY p.id;
+FROM order_payments p WHERE p.store_id=sqlc.arg(store_id)
+ AND (sqlc.narg(after_id)::uuid IS NULL OR p.id > (
+   SELECT p2.id FROM order_payments p2 WHERE p2.id=sqlc.narg(after_id) AND p2.store_id=sqlc.arg(store_id)))
+ORDER BY p.id LIMIT sqlc.arg(row_limit);
 
 -- name: ExportStaff :many
 SELECT id, name, number, active, login_account, deactivated_at, created_at FROM staff WHERE store_id=$1 ORDER BY number, id;
