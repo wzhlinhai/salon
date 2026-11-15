@@ -1,0 +1,3677 @@
+{
+  "run": {
+    "model": "deepseek-v4.1-flash",
+    "base_url_host": "opencode.ai",
+    "prompt_hash": "799ef58cb78143a909b701dec3be5b9c0bb37533cd14bf364ea40377aa9131d9",
+    "git_commit": "68fca6b2540d8a2779c5d0f6e3b62607c4a27ffc",
+    "timestamp": "2026-11-15T03:09:48.811729868Z",
+    "case_file_hash": "392d1e0f864a436e9e7347daa8d37ab7711f10fe0b31759cb39528699afa353c",
+    "case_count": 40
+  },
+  "cases": [
+    {
+      "id": "read-revenue-today",
+      "story": "read.revenue",
+      "category": "read",
+      "question": "今天店里营业额多少？",
+      "role": "owner",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 11923,
+      "model_calls": 2,
+      "prompt_hash": "799ef58cb78143a909b701dec3be5b9c0bb37533cd14bf364ea40377aa9131d9",
+      "expected": [
+        {
+          "tool": "get_business_report",
+          "args": {
+            "from": "2026-11-10",
+            "granularity": "day",
+            "to": "2026-11-10"
+          }
+        }
+      ],
+      "sources": [
+        {
+          "tool": "get_business_report",
+          "arguments": {
+            "from": "2026-11-10",
+            "granularity": "day",
+            "to": "2026-11-10"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "今天 2026-11-10 的营业日报：\n\n- **营业额：1508.00 元**，全部为现金收款，银联、微信、支付宝都是 0\n- 其中服务收入 128.00 元，商品销售收入 1380.00 元\n- 卡本金、卡赠送金、扣次、红包、挂账、团购抵扣都是 0\n- 客数 1 人，为点客的女性顾客；已结账 1 笔，没有撤单\n- 新欠款、回款、售后退款都没有\n\n补充说明：日报展示的是已结账部分，今天如果还有挂单，需要另外结账后才会计入。"
+    },
+    {
+      "id": "read-performance-today",
+      "story": "read.performance",
+      "category": "read",
+      "question": "今天店里做了多少业绩？",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 11141,
+      "model_calls": 2,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [
+        {
+          "any_of": [
+            "list_performance",
+            "get_staff_report",
+            "get_business_report"
+          ],
+          "any_of_args": [
+            {
+              "date_from": "2026-11-10",
+              "date_to": "2026-11-10"
+            },
+            {
+              "from": "2026-11-10",
+              "to": "2026-11-10"
+            },
+            {
+              "from": "2026-11-10",
+              "granularity": "day",
+              "to": "2026-11-10"
+            }
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "tool": "get_business_report",
+          "arguments": {
+            "from": "2026-11-10",
+            "granularity": "day",
+            "to": "2026-11-10"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "今天（2026-11-10）的营业日报汇总：\n\n- **总业绩：1508.00 元**，由服务 128.00 元与销售 1380.00 元组成\n- 收款方式：现金 1508.00 元；银联、微信、支付宝均为 0\n- 卡本金、卡赠送金、扣次、红包、团购、挂账均为 0\n- 客数：1 人（女客、点客），结账 1 笔，无撤单\n- 无售后退款，无新增欠款\n\n需要我顺便看一下明细或日结对账吗？"
+    },
+    {
+      "id": "read-performance-self",
+      "story": "read.performance",
+      "category": "read",
+      "question": "我这个月做了多少业绩？",
+      "role": "stylist",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 10957,
+      "model_calls": 3,
+      "prompt_hash": "ae451b21048a86291bbbb28db4957af8bed978682d7397f57f87f700db344595",
+      "expected": [
+        {
+          "any_of": [
+            "list_performance",
+            "get_staff_report"
+          ],
+          "any_of_args": [
+            {
+              "date_from": "2026-11-01",
+              "date_to": "2026-11-10"
+            },
+            {
+              "from": "2026-11-01",
+              "to": "2026-11-10"
+            }
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "tool": "get_me",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "list_performance",
+          "arguments": {
+            "date_from": "2026-11-01",
+            "date_to": "2026-11-10",
+            "limit": 200,
+            "staff_id": "347eed93-dd50-475e-b4a1-819d1248d2f2"
+          },
+          "ok": true
+        },
+        {
+          "tool": "get_staff_report",
+          "arguments": {
+            "from": "2026-11-01",
+            "staff_id": "347eed93-dd50-475e-b4a1-819d1248d2f2",
+            "to": "2026-11-10"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "阿峰，本月（2026-11-01 至 2026-11-10）的业绩如下：\n\n| 项目 | 金额 |\n|---|---|\n| 项目业绩（服务） | 128.00 元 |\n| 开卡销售业绩 | 1,180.00 元 |\n| 消耗业绩、劳动业绩 | 0 |\n| **业绩合计** | **1,308.00 元** |\n\n其他数据：\n- 现金业绩 128.00 元\n- 客数 1 人（点客 1，女客 1）\n- 服务项目行数 1 行\n- 提成合计 12.80 元\n\n明细：11-10 护理 128.00 元；11-10 两笔开卡销售 500.00 元和 680.00 元。"
+    },
+    {
+      "id": "read-customer-search",
+      "story": "read.customer",
+      "category": "read",
+      "question": "帮我查一下王姐的档案。",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 10883,
+      "model_calls": 3,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [
+        {
+          "tool": "search_customers",
+          "args": {
+            "query": {
+              "$substring_of": "王姐"
+            }
+          }
+        }
+      ],
+      "sources": [
+        {
+          "tool": "search_customers",
+          "arguments": {
+            "query": "王姐"
+          },
+          "ok": true
+        },
+        {
+          "tool": "get_customer",
+          "arguments": {
+            "id": "b56e272f-99c8-42cc-aa1e-5af88c957711"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "王姐的档案如下：\n\n- 姓名：王姐（女）\n- 手机号：13800000001\n- 顾客ID：b56e272f-99c8-42cc-aa1e-5af88c957711\n- 来源：未填\n- 负责人：未分配\n- 备注：无\n- 安全提醒：无生效中的提醒\n- 建档时间：2026-11-15\n- 状态：已识别顾客，未合并\n\n需要我继续查看她在本店开过的卡、欠款、红包或历史单据吗？"
+    },
+    {
+      "id": "read-card-balance",
+      "story": "read.card",
+      "category": "read",
+      "question": "王姐卡里还剩多少钱？",
+      "role": "owner",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 2,
+      "argument_call_total": 2,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 6224,
+      "model_calls": 3,
+      "prompt_hash": "799ef58cb78143a909b701dec3be5b9c0bb37533cd14bf364ea40377aa9131d9",
+      "expected": [
+        {
+          "tool": "search_customers",
+          "args": {
+            "query": "王姐"
+          }
+        },
+        {
+          "tool": "list_customer_cards",
+          "args": {
+            "customer_id": "7d3bf03f-6ccc-42c0-b9fc-d8ad9dec5dc4"
+          }
+        }
+      ],
+      "sources": [
+        {
+          "tool": "search_customers",
+          "arguments": {
+            "query": "王姐"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_customer_cards",
+          "arguments": {
+            "customer_id": "7d3bf03f-6ccc-42c0-b9fc-d8ad9dec5dc4"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "王姐（13800000001）目前有两张卡：\n\n**储值卡（在用）**\n- 本金余额：500.00 元\n- 赠送余额：0.00 元\n- 积分：0\n\n**次卡（在用）**\n- 洗剪吹：还剩 10 次（付费次数 10，赠送 0）\n\n所以储值卡里还剩 **500 元**。"
+    },
+    {
+      "id": "read-card-count",
+      "story": "read.card",
+      "category": "read",
+      "question": "王姐的次卡还能做几次洗剪吹？",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 2,
+      "argument_call_total": 2,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 8078,
+      "model_calls": 3,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [
+        {
+          "tool": "search_customers",
+          "args": {
+            "query": "王姐"
+          }
+        },
+        {
+          "tool": "list_customer_cards",
+          "args": {
+            "customer_id": "11942824-2b8d-4276-b8d3-033318b532ed"
+          }
+        }
+      ],
+      "answer_any": [
+        [
+          "10 次",
+          "10次"
+        ]
+      ],
+      "sources": [
+        {
+          "tool": "search_customers",
+          "arguments": {
+            "query": "王姐"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_customer_cards",
+          "arguments": {
+            "customer_id": "11942824-2b8d-4276-b8d3-033318b532ed"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "王姐的「次卡」里还有 **洗剪吹 10 次**（付费 10 次、赠送 0 次），单价 68 元。\n\n她还另有一张储值卡，余额 500 元。"
+    },
+    {
+      "id": "read-open-orders",
+      "story": "read.order",
+      "category": "read",
+      "question": "现在店里有哪些挂单？",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 10357,
+      "model_calls": 3,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [
+        {
+          "tool": "list_open_orders"
+        }
+      ],
+      "sources": [
+        {
+          "tool": "list_open_orders",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "get_customer",
+          "arguments": {
+            "id": "af94f593-31dc-44c5-8c11-9025eda1a3bf"
+          },
+          "ok": true
+        },
+        {
+          "tool": "get_customer",
+          "arguments": {
+            "id": "d4367bb8-71d3-4fbb-b559-17bb1e921120"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "现在有 2 张挂单（营业日 2026-11-10）：\n\n| 顾客 | 项目 | 金额 | 备注 |\n|---|---|---|---|\n| 王姐（女，13800000001） | 洗剪吹 | 88.00 | 点客 |\n| 张先生（男，13800000002） | 染发 | 428.00 | 轮牌 |\n\n两张单均未收款、未关联团购券。"
+    },
+    {
+      "id": "read-appointments",
+      "story": "read.booking",
+      "category": "read",
+      "question": "明天有哪些预约？",
+      "role": "owner",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 5137,
+      "model_calls": 2,
+      "prompt_hash": "799ef58cb78143a909b701dec3be5b9c0bb37533cd14bf364ea40377aa9131d9",
+      "expected": [
+        {
+          "tool": "list_appointments",
+          "args": {
+            "from": "2026-11-11",
+            "to": "2026-11-11"
+          }
+        }
+      ],
+      "sources": [
+        {
+          "tool": "list_appointments",
+          "arguments": {
+            "from": "2026-11-11",
+            "to": "2026-11-11"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "明天（2026-11-11）有 1 个预约：\n\n- **12:00–12:45**｜王姐（13800000001）｜洗剪吹 45 分钟｜发型师：阿峰｜状态：已确认\n\n没有其他预约或私约占位。"
+    },
+    {
+      "id": "read-month-report",
+      "story": "read.report",
+      "category": "read",
+      "question": "帮我看这个月的营业月报。",
+      "role": "owner",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 8356,
+      "model_calls": 2,
+      "prompt_hash": "799ef58cb78143a909b701dec3be5b9c0bb37533cd14bf364ea40377aa9131d9",
+      "expected": [
+        {
+          "tool": "get_business_report",
+          "args": {
+            "from": "2026-11",
+            "granularity": "month",
+            "to": "2026-11"
+          }
+        }
+      ],
+      "sources": [
+        {
+          "tool": "get_business_report",
+          "arguments": {
+            "from": "2026-11",
+            "granularity": "month",
+            "to": "2026-11"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "2026年11月营业月报（截至今天 11-10）：\n\n**收款（到店）**\n- 现金 1,636.00 元\n- 银联、微信、支付宝均为 0.00\n\n**收款（非到店）**\n- 卡本金、卡赠送金、扣次、红包、挂账、团购均为 0.00\n\n**营收**\n- 服务收入 256.00 元\n- 产品销售 1,380.00 元\n- 合计 1,636.00 元\n- 新挂账 0.00，欠款还款 0.00，售后退款 0.00\n\n**客数与单据**\n- 客数 2（点客 1，非点客 1；女客 2，男客 0）\n- 结账 2 单，撤销 0 单\n\n说明：本月只有现金到账，卡项和团购暂无发生额；月报为当前累计数据，月底前还会变化。需要看某天的明细或某个员工、项目的分析可以再说。"
+    },
+    {
+      "id": "read-groupbuy-month",
+      "story": "read.groupbuy",
+      "category": "read",
+      "question": "美团这个月核销了几张券？",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 13237,
+      "model_calls": 3,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [
+        {
+          "tool": "get_groupbuy_month",
+          "args": {
+            "month": "2026-11",
+            "platform": "meituan"
+          }
+        }
+      ],
+      "answer_any": [
+        [
+          "1 张",
+          "1张"
+        ]
+      ],
+      "sources": [
+        {
+          "tool": "get_groupbuy_month",
+          "arguments": {
+            "month": "2026-11",
+            "platform": "meituan"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_redemptions",
+          "arguments": {
+            "from": "2026-11-01",
+            "to": "2026-11-30"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "本月（2026-11）美团核销 **1 张券**：\n\n- 券码 MT20261110001，核销时间 2026-11-10 12:00\n- 目前未关联挂单，也未匹配到团购商品，因此平台购买价记为 0，本月结算额也还没录入。\n\n需要的话，我可以把它关联到对应挂单，或者帮你录入结算额，不过这些都要先出草稿再确认。"
+    },
+    {
+      "id": "read-groupbuy-unlinked",
+      "story": "read.groupbuy",
+      "category": "read",
+      "question": "今天还有哪些团购券没开单？",
+      "role": "owner",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 7081,
+      "model_calls": 2,
+      "prompt_hash": "799ef58cb78143a909b701dec3be5b9c0bb37533cd14bf364ea40377aa9131d9",
+      "expected": [
+        {
+          "tool": "list_redemptions",
+          "args": {
+            "from": "2026-11-10",
+            "to": "2026-11-10",
+            "unlinked_only": true
+          }
+        }
+      ],
+      "sources": [
+        {
+          "tool": "list_redemptions",
+          "arguments": {
+            "from": "2026-11-10",
+            "to": "2026-11-10",
+            "unlinked_only": true
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_groupbuy_deals",
+          "arguments": {},
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "今天（2026-11-10）有 **1 张**已核销但还没关联单据的团购券：\n\n| 平台 | 券码 | 核销时间 | 状态 |\n|---|---|---|---|\n| 美团 | MT20261110001 | 12:00 | 已核销、未开单 |\n\n本店已登记的团购商品只有「美团剪发券」（平台购买价 99.00 元，对应项目：剪发），这张券应该就是它。\n\n如果需要，你可以告诉我顾客是谁、服务由哪位发型师做，我会先开一张团购开单的草稿，再由你确认后才能生效。"
+    },
+    {
+      "id": "read-commission-month",
+      "story": "read.commission",
+      "category": "read",
+      "question": "我这个月提成多少？",
+      "role": "stylist",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 8434,
+      "model_calls": 3,
+      "prompt_hash": "ae451b21048a86291bbbb28db4957af8bed978682d7397f57f87f700db344595",
+      "expected": [
+        {
+          "tool": "list_commissions",
+          "args": {
+            "date_from": "2026-11-01",
+            "date_to": "2026-11-10"
+          }
+        }
+      ],
+      "sources": [
+        {
+          "tool": "get_me",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "list_staff_options",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "list_commissions",
+          "arguments": {
+            "date_from": "2026-11-01",
+            "date_to": "2026-11-10",
+            "limit": 200,
+            "staff_id": "cdca45a7-f673-41c0-8e8a-a2ffeca77cff"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "阿峰，本月（2026-11-01 至 2026-11-10）你的提成合计 **¥12.80**：\n\n- 项目提成：¥12.80；消费、劳动、销售提成均为 ¥0.00。只有 1 笔记录。\n\n明细：11-10 的护理项目，指定客、会员，实付 ¥128.00，命中项目提成比例 10%，即 ¥12.80。\n\n需要我按单或按项目再拆给你看吗？"
+    },
+    {
+      "id": "read-guest-count",
+      "story": "read.performance",
+      "category": "read",
+      "question": "今天来了多少客？",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": false,
+      "tools_ok": true,
+      "overall": false,
+      "status": "fail",
+      "latency_ms": 3968,
+      "model_calls": 2,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [
+        {
+          "any_of": [
+            "list_guest_visits",
+            "get_business_report"
+          ],
+          "any_of_args": [
+            {
+              "date_from": "2026-11-10",
+              "date_to": "2026-11-10"
+            },
+            {
+              "from": "2026-11-10",
+              "granularity": "day",
+              "to": "2026-11-10"
+            }
+          ]
+        }
+      ],
+      "answer_any": [
+        [
+          "1 个客次",
+          "1个客次",
+          "1 位",
+          "1位",
+          "1 人",
+          "1人",
+          "1 位客",
+          "1位客"
+        ]
+      ],
+      "sources": [
+        {
+          "tool": "list_guest_visits",
+          "arguments": {
+            "date_from": "2026-11-10",
+            "date_to": "2026-11-10"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "今天（2026-11-10）共 **1 个客数**：由阿峰服务，是点客，女客，且没有冲回记录。",
+      "failure_reasons": [
+        "回答缺少任一关键词：1 个客次 / 1个客次 / 1 位 / 1位 / 1 人 / 1人 / 1 位客 / 1位客"
+      ],
+      "diffs": [
+        "回答缺少任一关键词：1 个客次 / 1个客次 / 1 位 / 1位 / 1 人 / 1人 / 1 位客 / 1位客"
+      ]
+    },
+    {
+      "id": "read-debts",
+      "story": "read.report",
+      "category": "read",
+      "question": "店里现在还有多少欠款？",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 5875,
+      "model_calls": 2,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [
+        {
+          "tool": "debt_summary"
+        }
+      ],
+      "sources": [
+        {
+          "tool": "debt_summary",
+          "arguments": {},
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "门店目前没有欠款：挂账和历史欠款的未还金额都是 0.00，没有未结清的欠款笔数。"
+    },
+    {
+      "id": "read-items",
+      "story": "read.catalog",
+      "category": "read",
+      "question": "店里现在有哪些项目？",
+      "role": "stylist",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 9086,
+      "model_calls": 3,
+      "prompt_hash": "ae451b21048a86291bbbb28db4957af8bed978682d7397f57f87f700db344595",
+      "expected": [
+        {
+          "tool": "list_items"
+        }
+      ],
+      "sources": [
+        {
+          "tool": "list_items",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "list_levels",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "list_card_types",
+          "arguments": {},
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "店里目前有 4 个在售服务项目：\n\n| 项目 | 标准价 | 会员价（储值卡） | 级别价 | 时长 |\n|---|---|---|---|---|\n| 洗剪吹 | 68 元 | 58 元 | 首席 118 元、设计师 88 元 | 45 分钟 |\n| 剪发 | 298 元 | 268 元 | 设计师 328 元 | 45 分钟 |\n| 染发 | 398 元 | 368 元 | 设计师 428 元 | 120 分钟 |\n| 护理 | 128 元 | 108 元 | — | 60 分钟 |\n\n补充说明：\n- 4 个项目都可打折、可预约、状态为启用。\n- 洗剪吹还可通过“次卡”扣次数使用（单次 68 元，10 次）。\n- 具体某位发型师适用哪个价，还要结合他的级别，需要我按人查价可以告诉我。"
+    },
+    {
+      "id": "read-item-price",
+      "story": "read.catalog",
+      "category": "read",
+      "question": "阿峰做洗剪吹多少钱？",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": false,
+      "overall": false,
+      "status": "fail",
+      "latency_ms": 10530,
+      "model_calls": 4,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [
+        {
+          "tool": "quote_item_price",
+          "args": {
+            "item_id": "3ce17e9f-123e-4314-ab5e-7e4e673cd8cf",
+            "staff_id": "e6e9ea51-6ae7-442b-82b4-07f47f796b06"
+          }
+        }
+      ],
+      "sources": [
+        {
+          "tool": "list_staff",
+          "arguments": {
+            "summary": "查找员工阿峰",
+            "utterance": "阿峰做洗剪吹多少钱？"
+          },
+          "ok": false,
+          "error": "invalid arguments: unexpected property (summary: map[summary:查找员工阿峰 utterance:阿峰做洗剪吹多少钱？]); unexpected property (utterance: map[summary:查找员工阿峰 utterance:阿峰做洗剪吹多少钱？])"
+        },
+        {
+          "tool": "list_items",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "list_staff",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "quote_item_price",
+          "arguments": {
+            "item_id": "3ce17e9f-123e-4314-ab5e-7e4e673cd8cf",
+            "staff_id": "e6e9ea51-6ae7-442b-82b4-07f47f796b06"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "阿峰是设计师级别，洗剪吹按级别价 **88元**（标准价68元，会员价58元）。\n\n注：洗剪吹需要大工和助理两个岗位配合（助理岗位非必填），实际是否另计助理提成请以开单时系统计价为准。",
+      "failure_reasons": [
+        "多余的工具调用失败：list_staff（invalid arguments: unexpected property (summary: map[summary:查找员工阿峰 utterance:阿峰做洗剪吹多少钱？]); unexpected property (utterance: map[summary:查找员工阿峰 utterance:阿峰做洗剪吹多少钱？])）"
+      ],
+      "diffs": [
+        "多余的工具调用失败：list_staff（invalid arguments: unexpected property (summary: map[summary:查找员工阿峰 utterance:阿峰做洗剪吹多少钱？]); unexpected property (utterance: map[summary:查找员工阿峰 utterance:阿峰做洗剪吹多少钱？])）"
+      ]
+    },
+    {
+      "id": "read-card-types",
+      "story": "read.card",
+      "category": "read",
+      "question": "店里有哪些卡类型？",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 3878,
+      "model_calls": 2,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [
+        {
+          "tool": "list_card_types"
+        }
+      ],
+      "sources": [
+        {
+          "tool": "list_card_types",
+          "arguments": {},
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "店里目前有 2 种卡类型：\n\n| 卡类型 | 类型 | 说明 |\n|---|---|---|\n| 储值卡 | 储值卡 | 无折扣设置、无有效期限制 |\n| 次卡 | 次卡 | 含「洗剪吹」10 次（实付 10 次、赠送 0 次），单价 68.00 元，无有效期限制 |\n\n两种卡目前均为启用状态。"
+    },
+    {
+      "id": "read-customer-phone",
+      "story": "read.customer",
+      "category": "read",
+      "question": "张先生的手机号是多少？",
+      "role": "owner",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 7012,
+      "model_calls": 2,
+      "prompt_hash": "799ef58cb78143a909b701dec3be5b9c0bb37533cd14bf364ea40377aa9131d9",
+      "expected": [
+        {
+          "tool": "search_customers",
+          "args": {
+            "query": {
+              "$substring_of": "张先生"
+            }
+          }
+        }
+      ],
+      "sources": [
+        {
+          "tool": "search_customers",
+          "arguments": {
+            "query": "张"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "张先生的手机号是 13800000002。"
+    },
+    {
+      "id": "read-order-detail",
+      "story": "read.order",
+      "category": "read",
+      "question": "看一下王姐昨天那张已结账的单。",
+      "role": "owner",
+      "known_gap": true,
+      "known_gap_reason": "AI 没有按顾客或营业日查历史单的工具",
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 2,
+      "argument_call_total": 2,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "known_gap",
+      "latency_ms": 22914,
+      "model_calls": 5,
+      "prompt_hash": "799ef58cb78143a909b701dec3be5b9c0bb37533cd14bf364ea40377aa9131d9",
+      "expected": [
+        {
+          "any_of": [
+            "list_performance",
+            "list_guest_visits"
+          ],
+          "args": {
+            "date_from": "2026-11-09",
+            "date_to": "2026-11-09"
+          }
+        },
+        {
+          "tool": "get_order",
+          "args": {
+            "id": "3d4f3cfa-6c03-4961-bdcb-86ad25390e63"
+          }
+        }
+      ],
+      "sources": [
+        {
+          "tool": "search_customers",
+          "arguments": {
+            "query": "王姐"
+          },
+          "ok": true
+        },
+        {
+          "tool": "get_customer",
+          "arguments": {
+            "id": "bdb2f6c5-7b30-4679-921a-5edc968d90ab"
+          },
+          "ok": true
+        },
+        {
+          "tool": "get_business_report",
+          "arguments": {
+            "from": "2026-11-09",
+            "granularity": "day",
+            "to": "2026-11-09"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_performance",
+          "arguments": {
+            "date_from": "2026-11-09",
+            "date_to": "2026-11-09"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_guest_visits",
+          "arguments": {
+            "date_from": "2026-11-09",
+            "date_to": "2026-11-09"
+          },
+          "ok": true
+        },
+        {
+          "tool": "get_order",
+          "arguments": {
+            "id": "3d4f3cfa-6c03-4961-bdcb-86ad25390e63"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "王姐昨天（2026-11-09）那张已结账的单如下：\n\n- 单号：3d4f3cfa-6c03-4961-bdcb-86ad25390e63\n- 顾客：王姐（13800000001，女）\n- 项目：护理 ×1，标准价 128.00，没有折扣，也没有改价\n- 服务员工：小李（轮牌，非点客）；第二岗位未安排人\n- 应收、实收：128.00 元\n- 收款方式：现金 128.00 元\n- 状态：已结账（未撤销、无售后）\n- 结账号：187e9a7d-5631-4201-8d8b-b2e8f2240c76\n\n当天全店只有这一笔已结账单，也没有团购、卡扣、挂账或红包。\n\n需要我再看小票明细，或者查这笔单的提成是怎么算的吗？"
+    },
+    {
+      "id": "read-staff-list",
+      "story": "read.staff",
+      "category": "read",
+      "question": "店里有哪些员工？",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 6639,
+      "model_calls": 2,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [
+        {
+          "any_of": [
+            "list_staff",
+            "list_staff_options"
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "tool": "list_staff",
+          "arguments": {},
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "本店员工共 5 人，均在职：\n\n| 编号 | 姓名 | 级别 | 岗位 | 角色 |\n|---|---|---|---|---|\n| 001 | 王老板 | — | — | 老板 |\n| 002 | 王店长 | 首席 | — | 店长 |\n| 003 | 阿峰 | 设计师 | 大工 | 发型师 |\n| 004 | 小李 | — | 助理 | 助理 |\n| 005 | 小陈 | — | 助理 | 助理 |\n\n以上无已停用员工。"
+    },
+    {
+      "id": "draft-open-order",
+      "story": "draft.open_order",
+      "category": "draft",
+      "question": "给王姐开一单洗剪吹，阿峰做。",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": false,
+      "overall": false,
+      "status": "fail",
+      "latency_ms": 21255,
+      "model_calls": 5,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [
+        {
+          "tool": "open_order",
+          "args": {
+            "customer_id": "33f452a6-1dfa-4221-8707-57ac75d552c6",
+            "gender": "female",
+            "items": [
+              {
+                "item_id": "e9f7524c-a3e0-4d9d-9122-b15e81731c13",
+                "staff": [
+                  {
+                    "slot": 1,
+                    "staff_id": "8f2dba93-123d-4aa6-85ed-9e0a2571da41"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "answer_not_contains": [
+        "已办好",
+        "已开单",
+        "没有生成",
+        "未生成",
+        "无法生成"
+      ],
+      "sources": [
+        {
+          "tool": "search_customers",
+          "arguments": {
+            "query": "王姐"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_staff",
+          "arguments": {
+            "query": "阿峰"
+          },
+          "ok": false,
+          "error": "invalid arguments: unexpected property (query: map[query:阿峰])"
+        },
+        {
+          "tool": "list_items",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "list_staff",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "list_customer_cards",
+          "arguments": {
+            "customer_id": "33f452a6-1dfa-4221-8707-57ac75d552c6"
+          },
+          "ok": true
+        },
+        {
+          "tool": "quote_item_price",
+          "arguments": {
+            "item_id": "e9f7524c-a3e0-4d9d-9122-b15e81731c13",
+            "staff_id": "8f2dba93-123d-4aa6-85ed-9e0a2571da41"
+          },
+          "ok": true
+        },
+        {
+          "tool": "quote_item_price",
+          "arguments": {
+            "card_type_id": "56212ec1-79cf-460b-b6c4-007a5a913139",
+            "item_id": "e9f7524c-a3e0-4d9d-9122-b15e81731c13",
+            "staff_id": "8f2dba93-123d-4aa6-85ed-9e0a2571da41"
+          },
+          "ok": true
+        },
+        {
+          "tool": "open_order",
+          "arguments": {
+            "customer_id": "33f452a6-1dfa-4221-8707-57ac75d552c6",
+            "designated": true,
+            "gender": "female",
+            "items": [
+              {
+                "item_id": "e9f7524c-a3e0-4d9d-9122-b15e81731c13",
+                "staff": [
+                  {
+                    "slot": 1,
+                    "staff_id": "8f2dba93-123d-4aa6-85ed-9e0a2571da41"
+                  }
+                ]
+              }
+            ],
+            "summary": "为王姐开单：洗剪吹 ×1，指定阿峰（点客），价格为阿峰设计师级别价 88 元",
+            "utterance": "给王姐开一单洗剪吹，阿峰做。"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": [
+        {
+          "id": "b6e681df-a3ac-4832-9e3f-494bf9d64cff",
+          "operation": "open_order",
+          "status": "pending"
+        }
+      ],
+      "reply": "已生成开单草稿，需要有人确认后才生效：\n\n- 顾客：王姐（13800000001）\n- 项目：洗剪吹 ×1，指定阿峰（设计师/大工）\n- 价格：阿峰设计师级别价 88 元（标准价 68 元；王姐另有储值卡会员价 58 元、次卡洗剪吹剩 10 次）\n- 日期：2026-11-10\n- 草稿号：b6e681df-a3ac-4832-9e3f-494bf9d64cff\n\n想用哪张卡结账或改价，可以告诉我，我再调整草稿。",
+      "failure_reasons": [
+        "多余的工具调用失败：list_staff（invalid arguments: unexpected property (query: map[query:阿峰])）"
+      ],
+      "diffs": [
+        "多余的工具调用失败：list_staff（invalid arguments: unexpected property (query: map[query:阿峰])）"
+      ]
+    },
+    {
+      "id": "draft-open-order-stylist",
+      "story": "draft.open_order",
+      "category": "draft",
+      "question": "给张先生开一单护理，我来做。",
+      "role": "stylist",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 19994,
+      "model_calls": 5,
+      "prompt_hash": "ae451b21048a86291bbbb28db4957af8bed978682d7397f57f87f700db344595",
+      "expected": [
+        {
+          "tool": "open_order",
+          "args": {
+            "customer_id": "63466b33-a718-4d01-8082-4b913d53d8c8",
+            "gender": "male",
+            "items": [
+              {
+                "item_id": "7cdc5596-7418-4e14-a2bc-2a70629f0559",
+                "staff": [
+                  {
+                    "slot": 1,
+                    "staff_id": "d7fcf46a-404a-48ff-a470-02d82d6a60ee"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "answer_not_contains": [
+        "已办好",
+        "已开单",
+        "没有生成",
+        "未生成",
+        "无法生成"
+      ],
+      "sources": [
+        {
+          "tool": "search_customers",
+          "arguments": {
+            "query": "张先生"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_items",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "get_me",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "list_customer_cards",
+          "arguments": {
+            "customer_id": "63466b33-a718-4d01-8082-4b913d53d8c8"
+          },
+          "ok": true
+        },
+        {
+          "tool": "quote_item_price",
+          "arguments": {
+            "card_type_id": "8c5fdb5e-5772-4001-91eb-8a327a5d2ffe",
+            "item_id": "7cdc5596-7418-4e14-a2bc-2a70629f0559",
+            "staff_id": "d7fcf46a-404a-48ff-a470-02d82d6a60ee"
+          },
+          "ok": true
+        },
+        {
+          "tool": "open_order",
+          "arguments": {
+            "customer_id": "63466b33-a718-4d01-8082-4b913d53d8c8",
+            "designated": true,
+            "gender": "male",
+            "items": [
+              {
+                "item_id": "7cdc5596-7418-4e14-a2bc-2a70629f0559",
+                "staff": [
+                  {
+                    "slot": 1,
+                    "staff_id": "d7fcf46a-404a-48ff-a470-02d82d6a60ee"
+                  }
+                ]
+              }
+            ],
+            "summary": "给张先生开一单护理，由阿峰（大工/设计师）服务，指定客单，会员价 108 元",
+            "utterance": "给张先生开一单护理，我来做。"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": [
+        {
+          "id": "cd4406a4-15df-4934-8fb9-302676f70cbd",
+          "operation": "open_order",
+          "status": "pending"
+        }
+      ],
+      "reply": "已生成开单草稿，待确认后生效：\n\n- 顾客：张先生（138****0002）\n- 项目：护理（60 分钟），服务人员：阿峰\n- 价格：会员价 108 元；张先生有储值卡，余额为 200 元\n- 单号（草稿）：cd4406a4-15df-4934-8fb9-302676f70cbd\n\n请有权限的同事确认后即可生效。"
+    },
+    {
+      "id": "draft-change-order-staff",
+      "story": "draft.change_order",
+      "category": "draft",
+      "question": "刚才王姐那单，助理改成小李。",
+      "role": "owner",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": false,
+      "argument_call_pass": 1,
+      "argument_call_total": 2,
+      "answer": true,
+      "tools_ok": true,
+      "overall": false,
+      "status": "fail",
+      "latency_ms": 13101,
+      "model_calls": 4,
+      "prompt_hash": "799ef58cb78143a909b701dec3be5b9c0bb37533cd14bf364ea40377aa9131d9",
+      "expected": [
+        {
+          "tool": "list_open_orders"
+        },
+        {
+          "tool": "set_order_item_staff",
+          "args": {
+            "order_id": "e201c0b8-167d-431b-9f19-df2e3ecbdd68",
+            "order_item_id": "c112baf7-d214-4b2f-a8fe-967d8d170e3d",
+            "staff": [
+              {
+                "slot": 1,
+                "staff_id": "20e9917f-509f-4df3-93a2-aeb95c52eda0"
+              },
+              {
+                "slot": 2,
+                "staff_id": "33af8110-032f-4d0c-bb83-4781697f5472"
+              }
+            ]
+          }
+        }
+      ],
+      "answer_not_contains": [
+        "已办好",
+        "已开单",
+        "没有生成",
+        "未生成",
+        "无法生成"
+      ],
+      "sources": [
+        {
+          "tool": "search_customers",
+          "arguments": {
+            "query": "王姐"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_open_orders",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "list_positions",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "list_staff",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "set_order_item_staff",
+          "arguments": {
+            "order_id": "e201c0b8-167d-431b-9f19-df2e3ecbdd68",
+            "order_item_id": "c112baf7-d214-4b2f-a8fe-967d8d170e3d",
+            "staff": [
+              {
+                "slot": 2,
+                "staff_id": "33af8110-032f-4d0c-bb83-4781697f5472"
+              }
+            ],
+            "summary": "王姐洗剪吹单：助理岗位由小陈改为小李",
+            "utterance": "刚才王姐那单，助理改成小李。"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": [
+        {
+          "id": "16f70320-dcd8-4feb-9f94-2f64203df9d9",
+          "operation": "set_order_item_staff",
+          "status": "pending"
+        }
+      ],
+      "reply": "已生成草稿，需要你在系统里确认后再生效：\n\n- **单据**：王姐（13800000001）洗剪吹，88 元，营业日 2026-11-10\n- **改动**：助理岗位由 小陈 改为 小李（大工岗位阿峰不变）\n- **草稿号**：16f70320-dcd8-4feb-9f94-2f64203df9d9（待确认，今天 24:00 前有效）\n\n需要确认的话，点一下就生效。",
+      "failure_reasons": [
+        "参数不匹配：set_order_item_staff 的 args.staff 期望 [{\"slot\":1,\"staff_id\":\"20e9917f-509f-4df3-93a2-aeb95c52eda0\"},{\"slot\":2,\"staff_id\":\"33af8110-032f-4d0c-bb83-4781697f5472\"}]，实际 [{\"slot\":2,\"staff_id\":\"33af8110-032f-4d0c-bb83-4781697f5472\"}]"
+      ],
+      "diffs": [
+        "参数不匹配：set_order_item_staff 的 args.staff 期望 [{\"slot\":1,\"staff_id\":\"20e9917f-509f-4df3-93a2-aeb95c52eda0\"},{\"slot\":2,\"staff_id\":\"33af8110-032f-4d0c-bb83-4781697f5472\"}]，实际 [{\"slot\":2,\"staff_id\":\"33af8110-032f-4d0c-bb83-4781697f5472\"}]"
+      ]
+    },
+    {
+      "id": "draft-groupbuy-open",
+      "story": "draft.groupbuy",
+      "category": "draft",
+      "question": "美团团购券已经核销了，帮王姐开单，阿峰做。",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": false,
+      "argument_call_pass": 1,
+      "argument_call_total": 2,
+      "answer": true,
+      "tools_ok": true,
+      "overall": false,
+      "status": "fail",
+      "latency_ms": 21806,
+      "model_calls": 5,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [
+        {
+          "tool": "list_redemptions",
+          "args": {
+            "from": "2026-11-10",
+            "to": "2026-11-10",
+            "unlinked_only": true
+          }
+        },
+        {
+          "tool": "open_groupbuy_order",
+          "args": {
+            "customer_id": "1870dbcc-e536-4dc9-bb88-a85a356cc332",
+            "deal_id": "01a1dd32-b633-7f3e-a3a8-15b66c42959d",
+            "gender": "female",
+            "items": [
+              {
+                "item_id": "5e37ac46-bfed-4d0b-9eed-cd6c0f57e2b9",
+                "staff": [
+                  {
+                    "slot": 1,
+                    "staff_id": "8bde6a1b-be7c-4c62-9ec1-a9b7e7df0137"
+                  }
+                ]
+              }
+            ],
+            "redemption_id": "01a1dd32-b63d-7f04-89ac-2ab8c8120aab"
+          }
+        }
+      ],
+      "answer_not_contains": [
+        "已办好",
+        "已开单",
+        "没有生成",
+        "未生成",
+        "无法生成"
+      ],
+      "sources": [
+        {
+          "tool": "list_redemptions",
+          "arguments": {
+            "from": "2026-11-03",
+            "status": "unlinked",
+            "to": "2026-11-10",
+            "unlinked_only": true
+          },
+          "ok": true
+        },
+        {
+          "tool": "search_customers",
+          "arguments": {
+            "query": "王姐"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_staff_options",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "list_redemptions",
+          "arguments": {
+            "from": "2026-10-01",
+            "to": "2026-11-10"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_groupbuy_deals",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "list_items",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "quote_item_price",
+          "arguments": {
+            "item_id": "5e37ac46-bfed-4d0b-9eed-cd6c0f57e2b9",
+            "staff_id": "8bde6a1b-be7c-4c62-9ec1-a9b7e7df0137"
+          },
+          "ok": true
+        },
+        {
+          "tool": "get_customer",
+          "arguments": {
+            "id": "1870dbcc-e536-4dc9-bb88-a85a356cc332"
+          },
+          "ok": true
+        },
+        {
+          "tool": "open_groupbuy_order",
+          "arguments": {
+            "customer_id": "1870dbcc-e536-4dc9-bb88-a85a356cc332",
+            "deal_id": "01a1dd32-b633-7f3e-a3a8-15b66c42959d",
+            "designated": true,
+            "gender": "female",
+            "items": [
+              {
+                "item_id": "5e37ac46-bfed-4d0b-9eed-cd6c0f57e2b9",
+                "staff": [
+                  {
+                    "slot": 1,
+                    "staff_id": "8bde6a1b-be7c-4c62-9ec1-a9b7e7df0137"
+                  }
+                ]
+              }
+            ],
+            "redemption_id": "01a1dd32-b63d-7f04-89ac-2ab8c8120aab",
+            "summary": "用王姐的美团剪发券开单，剪发由阿峰（点客）服务",
+            "utterance": "美团团购券已经核销了，帮王姐开单，阿峰做。"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": [
+        {
+          "id": "54140130-c552-48b5-8010-f0c84f289d9c",
+          "operation": "open_groupbuy_order",
+          "status": "pending"
+        }
+      ],
+      "reply": "已生成草稿，需要您或有权人确认后才会生效：\n\n- **顾客**：王姐（13800000001，女）\n- **团购券**：美团剪发券 MT20261110001，已于 2026-11-10 12:00 核销、未关联单据，平台购买价 ¥99\n- **项目**：剪发，门店标价 ¥298；阿峰（点客）slot 1\n- **营业日**：2026-11-10\n- **草稿号**：54140130-c552-48b5-8010-f0c84f289d9c（待确认，今天 24:00 前有效）\n\n确认前可在系统里核对；需要我调整项目或发型师也可以告诉我。",
+      "failure_reasons": [
+        "参数不匹配：list_redemptions 的 args.from 期望 \"2026-11-10\"，实际 \"2026-11-03\""
+      ],
+      "diffs": [
+        "参数不匹配：list_redemptions 的 args.from 期望 \"2026-11-10\"，实际 \"2026-11-03\""
+      ]
+    },
+    {
+      "id": "draft-adjust-card",
+      "story": "draft.adjust_card",
+      "category": "draft",
+      "question": "把王姐储值卡的余额改成 600，原因写余额核对。",
+      "role": "owner",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 13711,
+      "model_calls": 4,
+      "prompt_hash": "799ef58cb78143a909b701dec3be5b9c0bb37533cd14bf364ea40377aa9131d9",
+      "expected": [
+        {
+          "tool": "adjust_card",
+          "args": {
+            "card_id": "9d96c112-1574-4649-9f55-564e50b7828a",
+            "principal": "600.00",
+            "reason": "余额核对"
+          }
+        }
+      ],
+      "answer_not_contains": [
+        "已办好",
+        "已开单",
+        "没有生成",
+        "未生成",
+        "无法生成"
+      ],
+      "sources": [
+        {
+          "tool": "search_customers",
+          "arguments": {
+            "query": "王姐"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_customer_cards",
+          "arguments": {
+            "customer_id": "439a0da8-df04-4888-841d-9f87a9840b6e"
+          },
+          "ok": true
+        },
+        {
+          "tool": "adjust_card",
+          "arguments": {
+            "bonus": "0",
+            "card_id": "9d96c112-1574-4649-9f55-564e50b7828a",
+            "principal": "600",
+            "reason": "余额核对",
+            "summary": "将王姐储值卡（9d96c112）余额由本金 500.00、赠送 0.00 调整为 600.00（本金 600，赠送 0），原因：余额核对",
+            "utterance": "把王姐储值卡的余额改成 600，原因写余额核对。"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": [
+        {
+          "id": "5599570c-972f-41c5-a8bc-8c84a77549a4",
+          "operation": "adjust_card",
+          "status": "pending"
+        }
+      ],
+      "reply": "已生成草稿，需确认后生效：\n\n- 顾客：王姐（13800000001）\n- 卡：储值卡（9d96c112-1574-4649-9f55-564e50b7828a），当前本金 500.00、赠送 0.00\n- 调整后：本金 600.00，赠送 0.00\n- 原因：余额核对\n- 草稿号：5599570c-972f-41c5-a8bc-8c84a77549a4（待确认，今日有效）\n\n请有权限的同事确认后才会写入卡调整单。"
+    },
+    {
+      "id": "draft-update-draft-params",
+      "story": "draft.update_params",
+      "category": "draft",
+      "question": "先按女客给王姐开一单洗剪吹，阿峰做。",
+      "role": "owner",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 2,
+      "argument_call_total": 2,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 24008,
+      "model_calls": 5,
+      "prompt_hash": "799ef58cb78143a909b701dec3be5b9c0bb37533cd14bf364ea40377aa9131d9",
+      "expected": [
+        {
+          "tool": "open_order",
+          "args": {
+            "customer_id": "6ab98d2d-c399-4f2e-9c38-39b530a43e83",
+            "gender": "female",
+            "items": [
+              {
+                "item_id": "3a9c0039-63f3-4f92-851b-a94b40e4cf0a",
+                "staff": [
+                  {
+                    "slot": 1,
+                    "staff_id": "0ab9ad30-d13a-44a3-bd34-725685f3e372"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "tool": "update_draft_params",
+          "args": {
+            "id": "$draft",
+            "params": {
+              "gender": "male"
+            }
+          }
+        }
+      ],
+      "forbidden_tools": [
+        "update_customer_profile"
+      ],
+      "answer_not_contains": [
+        "已办好",
+        "已开单",
+        "没有生成",
+        "未生成",
+        "无法生成"
+      ],
+      "sources": [
+        {
+          "tool": "search_customers",
+          "arguments": {
+            "query": "王姐"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_items",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "list_staff",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "quote_item_price",
+          "arguments": {
+            "item_id": "3a9c0039-63f3-4f92-851b-a94b40e4cf0a",
+            "staff_id": "0ab9ad30-d13a-44a3-bd34-725685f3e372"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_customer_cards",
+          "arguments": {
+            "customer_id": "6ab98d2d-c399-4f2e-9c38-39b530a43e83"
+          },
+          "ok": true
+        },
+        {
+          "tool": "open_order",
+          "arguments": {
+            "customer_id": "6ab98d2d-c399-4f2e-9c38-39b530a43e83",
+            "designated": true,
+            "gender": "female",
+            "items": [
+              {
+                "item_id": "3a9c0039-63f3-4f92-851b-a94b40e4cf0a",
+                "staff": [
+                  {
+                    "slot": 1,
+                    "staff_id": "0ab9ad30-d13a-44a3-bd34-725685f3e372"
+                  }
+                ]
+              }
+            ],
+            "summary": "按女客为王姐开单：洗剪吹，阿峰（设计师/大工）服务",
+            "utterance": "先按女客给王姐开一单洗剪吹，阿峰做。"
+          },
+          "ok": true
+        },
+        {
+          "tool": "update_draft_params",
+          "arguments": {
+            "id": "24a32800-0907-4d37-a1c0-2cd9f4dbc43e",
+            "params": {
+              "customer_id": "6ab98d2d-c399-4f2e-9c38-39b530a43e83",
+              "designated": true,
+              "gender": "male",
+              "items": [
+                {
+                  "item_id": "3a9c0039-63f3-4f92-851b-a94b40e4cf0a",
+                  "staff": [
+                    {
+                      "slot": 1,
+                      "staff_id": "0ab9ad30-d13a-44a3-bd34-725685f3e372"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "ok": true
+        }
+      ],
+      "drafts": [
+        {
+          "id": "24a32800-0907-4d37-a1c0-2cd9f4dbc43e",
+          "operation": "open_order",
+          "status": "pending"
+        }
+      ],
+      "reply": "已建好草稿，并把性别由女改为男（草稿待确认，尚未生效）。\n\n- 草稿号：24a32800-0907-4d37-a1c0-2cd9f4dbc43e（状态：待确认）\n- 顾客：王姐（13800000001，档案性别仍为女）\n- 项目：洗剪吹，阿峰，按设计师级别价 88.00 元（标准价 68.00）\n- 开单性别：男（原为女）\n- 可用卡：次卡还有洗剪吹 10 次；储值卡 500.00 元\n\n提示：这次是按点客（指定阿峰）开的，会占用指定客计数。需要确认生效或改回女客请告诉我。"
+    },
+    {
+      "id": "draft-create-appointment",
+      "story": "draft.booking",
+      "category": "draft",
+      "question": "明天下午三点给王姐约阿峰做洗剪吹。",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 9635,
+      "model_calls": 3,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [
+        {
+          "tool": "create_appointment",
+          "args": {
+            "customer_id": "33307349-b50c-4ca7-8ea5-99f2f15e8495",
+            "items": [
+              {
+                "item_id": "2e64018f-2049-45f7-89c4-a8d8d845c5c6"
+              }
+            ],
+            "staff_id": "5ce7e616-bf43-4c1f-965f-9550cc60788a",
+            "starts_at": "2026-11-11T15:00:00+08:00"
+          }
+        }
+      ],
+      "answer_not_contains": [
+        "已办好",
+        "已开单",
+        "没有生成",
+        "未生成",
+        "无法生成"
+      ],
+      "sources": [
+        {
+          "tool": "search_customers",
+          "arguments": {
+            "query": "王姐"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_items",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "list_staff_options",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "create_appointment",
+          "arguments": {
+            "customer_id": "33307349-b50c-4ca7-8ea5-99f2f15e8495",
+            "customer_name": "王姐",
+            "customer_phone": "13800000001",
+            "ends_at": "2026-11-11T15:45:00+08:00",
+            "items": [
+              {
+                "item_id": "2e64018f-2049-45f7-89c4-a8d8d845c5c6"
+              }
+            ],
+            "staff_id": "5ce7e616-bf43-4c1f-965f-9550cc60788a",
+            "starts_at": "2026-11-11T15:00:00+08:00",
+            "summary": "为顾客王姐预约 2026-11-11 15:00 阿峰 洗剪吹（45分钟）",
+            "utterance": "明天下午三点给王姐约阿峰做洗剪吹。"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": [
+        {
+          "id": "45f046ae-d266-4ead-b3b1-44f5c2d6221f",
+          "operation": "create_appointment",
+          "status": "pending"
+        }
+      ],
+      "reply": "已生成预约草稿，需有人确认后生效：\n\n- 顾客：王姐（13800000001）\n- 时间：明天 2026-11-11 15:00–15:45\n- 发型师：阿峰\n- 项目：洗剪吹（68元，会员价58元）\n\n草稿 ID：45f046ae-d266-4ead-b3b1-44f5c2d6221f，请在系统里确认。"
+    },
+    {
+      "id": "draft-reschedule-appointment",
+      "story": "draft.booking",
+      "category": "draft",
+      "question": "把王姐明天的预约改到后天下午四点。",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 2,
+      "argument_call_total": 2,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 10305,
+      "model_calls": 3,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [
+        {
+          "tool": "list_appointments",
+          "args": {
+            "from": "2026-11-11",
+            "to": "2026-11-11"
+          }
+        },
+        {
+          "tool": "reschedule_appointment",
+          "args": {
+            "id": "01a1dd33-d249-7b00-841c-3a0acdf6b808",
+            "starts_at": "2026-11-12T16:00:00+08:00"
+          }
+        }
+      ],
+      "answer_not_contains": [
+        "已办好",
+        "已开单",
+        "没有生成",
+        "未生成",
+        "无法生成"
+      ],
+      "sources": [
+        {
+          "tool": "list_appointments",
+          "arguments": {
+            "from": "2026-11-11",
+            "to": "2026-11-11"
+          },
+          "ok": true
+        },
+        {
+          "tool": "reschedule_appointment",
+          "arguments": {
+            "ends_at": "2026-11-12T16:45:00+08:00",
+            "id": "01a1dd33-d249-7b00-841c-3a0acdf6b808",
+            "reason": "顾客要求改到后天下午四点",
+            "starts_at": "2026-11-12T16:00:00+08:00",
+            "summary": "王姐 11-11 12:00 洗剪吹（阿峰）改到 11-12 16:00-16:45",
+            "utterance": "把王姐明天的预约改到后天下午四点"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": [
+        {
+          "id": "528d3adc-fec0-4b37-9141-a50763e7fb5b",
+          "operation": "reschedule_appointment",
+          "status": "pending"
+        }
+      ],
+      "reply": "改约草稿已生成，需要有人确认后才会生效：\n\n- 顾客：王姐（13800000001）\n- 项目：洗剪吹 45 分钟，发型师阿峰\n- 原时间：2026-11-11（周三）12:00–12:45\n- 新时间：2026-11-12（周四）16:00–16:45（时长为原来 45 分钟）\n\n确认后预约才会正式改期。"
+    },
+    {
+      "id": "draft-cancel-appointment",
+      "story": "draft.booking",
+      "category": "draft",
+      "question": "取消王姐明天的预约，顾客取消。",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 2,
+      "argument_call_total": 2,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 10017,
+      "model_calls": 3,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [
+        {
+          "tool": "list_appointments",
+          "args": {
+            "from": "2026-11-11",
+            "to": "2026-11-11"
+          }
+        },
+        {
+          "tool": "cancel_appointment",
+          "args": {
+            "id": "01a1dd33-fe0d-7363-b79f-a983d3d5135a",
+            "reason": "顾客取消"
+          }
+        }
+      ],
+      "answer_not_contains": [
+        "已办好",
+        "已开单",
+        "没有生成",
+        "未生成",
+        "无法生成"
+      ],
+      "sources": [
+        {
+          "tool": "list_appointments",
+          "arguments": {
+            "from": "2026-11-11",
+            "to": "2026-11-11"
+          },
+          "ok": true
+        },
+        {
+          "tool": "cancel_appointment",
+          "arguments": {
+            "id": "01a1dd33-fe0d-7363-b79f-a983d3d5135a",
+            "reason": "顾客取消",
+            "summary": "取消王姐 2026-11-11 12:00 阿峰 洗剪吹 的预约，原因：顾客取消",
+            "utterance": "取消王姐明天的预约，顾客取消。"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": [
+        {
+          "id": "f2edb571-03c3-423e-acef-6fa766987841",
+          "operation": "cancel_appointment",
+          "status": "pending"
+        }
+      ],
+      "reply": "已生成取消草稿，待由有权限的同事确认后才会生效：\n\n- 顾客：王姐（13800000001）\n- 时间：2026-11-11 12:00–12:45\n- 发型师：阿峰\n- 项目：洗剪吹\n- 取消原因：顾客取消\n\n草稿 ID：f2edb571-03c3-423e-acef-6fa766987841。如需撤销，请告诉我。"
+    },
+    {
+      "id": "draft-open-card",
+      "story": "draft.open_card",
+      "category": "draft",
+      "question": "给张先生再开一张新储值卡，现金充 1000 元，业绩算阿峰。",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 13970,
+      "model_calls": 4,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [
+        {
+          "tool": "open_card",
+          "args": {
+            "card_type_id": "c6fb621d-c0b6-4b1c-bf1f-1670b73b3f84",
+            "customer_id": "00bdd635-6102-4393-8f22-f5564143d19d",
+            "payments": [
+              {
+                "amount": "1000.00",
+                "method": "cash"
+              }
+            ],
+            "principal": "1000.00",
+            "sales_staff_ids": [
+              "7f910772-72ec-4d4f-810e-d068fd5b2de1"
+            ]
+          }
+        }
+      ],
+      "answer_not_contains": [
+        "已办好",
+        "已开单",
+        "没有生成",
+        "未生成",
+        "无法生成"
+      ],
+      "sources": [
+        {
+          "tool": "search_customers",
+          "arguments": {
+            "query": "张先生"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_card_types",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "list_staff_options",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "list_customer_cards",
+          "arguments": {
+            "customer_id": "00bdd635-6102-4393-8f22-f5564143d19d"
+          },
+          "ok": true
+        },
+        {
+          "tool": "open_card",
+          "arguments": {
+            "bonus": "0.00",
+            "card_type_id": "c6fb621d-c0b6-4b1c-bf1f-1670b73b3f84",
+            "customer_id": "00bdd635-6102-4393-8f22-f5564143d19d",
+            "payments": [
+              {
+                "amount": "1000.00",
+                "method": "cash"
+              }
+            ],
+            "principal": "1000.00",
+            "sales_staff_ids": [
+              "7f910772-72ec-4d4f-810e-d068fd5b2de1"
+            ],
+            "summary": "为张先生（13800000002）新开一张储值卡：本金1000元，赠送0元，现金收款1000元，业绩归属阿峰",
+            "utterance": "给张先生再开一张新储值卡，现金充1000元，业绩算阿峰"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": [
+        {
+          "id": "a572d70b-fa6f-4652-911e-71bbc36e1966",
+          "operation": "open_card",
+          "status": "pending"
+        }
+      ],
+      "reply": "已生成开卡草稿，需有权限的人确认后才会生效：\n\n- 顾客：张先生（13800000002）\n- 卡类型：储值卡（新开一张，与原有储值卡分开）\n- 本金 1000 元，赠送 0 元\n- 收款：现金 1000 元\n- 业绩归属：阿峰\n- 草稿号：a572d70b-fa6f-4652-911e-71bbc36e1966\n\n如需改赠送金额或调整业绩归属，可等草稿确认前告诉我。"
+    },
+    {
+      "id": "draft-recharge-card",
+      "story": "draft.recharge_card",
+      "category": "draft",
+      "question": "给王姐的储值卡现金充 500 元，业绩算阿峰。",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 1,
+      "argument_call_total": 1,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 13622,
+      "model_calls": 4,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [
+        {
+          "tool": "recharge_card",
+          "args": {
+            "card_id": "503870a5-7eb9-4d9a-b978-0fa96fd7e6d1",
+            "payments": [
+              {
+                "amount": "500.00",
+                "method": "cash"
+              }
+            ],
+            "principal": "500.00",
+            "sales_staff_ids": [
+              "00351a1d-ec35-44cf-8a45-82d56249ef45"
+            ]
+          }
+        }
+      ],
+      "answer_not_contains": [
+        "已办好",
+        "已开单",
+        "没有生成",
+        "未生成",
+        "无法生成"
+      ],
+      "sources": [
+        {
+          "tool": "search_customers",
+          "arguments": {
+            "query": "王姐"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_staff_options",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "list_customer_cards",
+          "arguments": {
+            "customer_id": "dc0e9daa-3e77-4918-8385-cc53dac7b01d"
+          },
+          "ok": true
+        },
+        {
+          "tool": "recharge_card",
+          "arguments": {
+            "bonus": "0",
+            "card_id": "503870a5-7eb9-4d9a-b978-0fa96fd7e6d1",
+            "payments": [
+              {
+                "amount": "500",
+                "method": "cash"
+              }
+            ],
+            "principal": "500",
+            "sales_staff_ids": [
+              "00351a1d-ec35-44cf-8a45-82d56249ef45"
+            ],
+            "summary": "王姐（13800000001）储值卡现金充值 500 元，赠送 0 元，业绩归属阿峰",
+            "utterance": "给王姐的储值卡现金充 500 元，业绩算阿峰。"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": [
+        {
+          "id": "0a91a2d9-56ae-4d4f-8468-3b819eecacb2",
+          "operation": "recharge_card",
+          "status": "pending"
+        }
+      ],
+      "reply": "已生成充值草稿（待有权限的人确认后生效）：\n\n- 顾客：王姐（13800000001）\n- 卡：储值卡（余额 500.00，赠送 0.00）\n- 充值：本金 500 元，赠送 0 元，现金收款 500 元\n- 业绩归属：阿峰\n- 草稿号：0a91a2d9-56ae-4d4f-8468-3b819eecacb2\n\n需要我改赠送金额或支付方式的话告诉我。"
+    },
+    {
+      "id": "draft-checkout",
+      "story": "draft.checkout",
+      "category": "draft",
+      "question": "把王姐那张挂单用现金结账。",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 2,
+      "argument_call_total": 2,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 17793,
+      "model_calls": 4,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [
+        {
+          "tool": "list_open_orders"
+        },
+        {
+          "tool": "checkout_orders",
+          "args": {
+            "orders": [
+              {
+                "order_id": "df6a84b3-fb46-4f72-8e31-4338961008ab",
+                "payments": [
+                  {
+                    "amount": "88.00",
+                    "method": "cash"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "answer_not_contains": [
+        "已办好",
+        "已开单",
+        "没有生成",
+        "未生成",
+        "无法生成"
+      ],
+      "sources": [
+        {
+          "tool": "search_customers",
+          "arguments": {
+            "query": "王姐"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_open_orders",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "list_customer_cards",
+          "arguments": {
+            "customer_id": "0cd78600-eb06-4778-8eaa-33be4d03c863"
+          },
+          "ok": true
+        },
+        {
+          "tool": "preview_checkout",
+          "arguments": {
+            "order_id": "df6a84b3-fb46-4f72-8e31-4338961008ab"
+          },
+          "ok": true
+        },
+        {
+          "tool": "checkout_orders",
+          "arguments": {
+            "orders": [
+              {
+                "order_id": "df6a84b3-fb46-4f72-8e31-4338961008ab",
+                "payments": [
+                  {
+                    "amount": "88.00",
+                    "method": "cash"
+                  }
+                ]
+              }
+            ],
+            "summary": "王姐（13800000001）的挂单现金结账：洗剪吹 88.00 元，现金实收 88.00 元",
+            "utterance": "把王姐那张挂单用现金结账。"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": [
+        {
+          "id": "f8f7f80d-fd31-4ff5-85d3-0bb93e36f543",
+          "operation": "checkout_orders",
+          "status": "pending"
+        }
+      ],
+      "reply": "已生成结账草稿，等待确认后生效：\n\n- 顾客：王姐（13800000001）\n- 挂单：洗剪吹 1 项，应收 88.00 元\n- 支付：现金 88.00 元\n- 草稿号：f8f7f80d-fd31-4ff5-85d3-0bb93e36f543，有效期至 2026-11-11 00:00\n\n另外提醒一句：王姐名下有一张次卡（洗剪吹还剩 10 次）和一张储值卡（本金 500.00 元），如果这单想用卡而不是现金，可以改成卡结，请告诉我重新出草稿。"
+    },
+    {
+      "id": "draft-add-item",
+      "story": "draft.add_item",
+      "category": "draft",
+      "question": "王姐那单再加一个护理，阿峰做大工，小李做助理。",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 2,
+      "argument_call_total": 2,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 16184,
+      "model_calls": 4,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [
+        {
+          "tool": "list_open_orders"
+        },
+        {
+          "tool": "add_order_item",
+          "args": {
+            "item": {
+              "item_id": "0fda7c76-0f77-43dc-8820-e31afcdf3cd7",
+              "staff": [
+                {
+                  "slot": 1,
+                  "staff_id": "3563a6ae-1365-4b1c-b14e-7a90f72c63fb"
+                },
+                {
+                  "slot": 2,
+                  "staff_id": "b0b21d7e-237d-47c4-8852-cd3a4c6c2b9a"
+                }
+              ]
+            },
+            "order_id": "222ff789-7e85-496f-95a8-89d26151da1e"
+          }
+        }
+      ],
+      "answer_not_contains": [
+        "已办好",
+        "已开单",
+        "没有生成",
+        "未生成",
+        "无法生成"
+      ],
+      "sources": [
+        {
+          "tool": "list_open_orders",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "search_customers",
+          "arguments": {
+            "query": "王姐"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_items",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "list_staff",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "quote_item_price",
+          "arguments": {
+            "item_id": "0fda7c76-0f77-43dc-8820-e31afcdf3cd7",
+            "staff_id": "3563a6ae-1365-4b1c-b14e-7a90f72c63fb"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_customer_cards",
+          "arguments": {
+            "customer_id": "8afb5864-426a-48dc-9ebc-69a8c7bc51d3"
+          },
+          "ok": true
+        },
+        {
+          "tool": "add_order_item",
+          "arguments": {
+            "item": {
+              "item_id": "0fda7c76-0f77-43dc-8820-e31afcdf3cd7",
+              "staff": [
+                {
+                  "slot": 1,
+                  "staff_id": "3563a6ae-1365-4b1c-b14e-7a90f72c63fb"
+                },
+                {
+                  "slot": 2,
+                  "staff_id": "b0b21d7e-237d-47c4-8852-cd3a4c6c2b9a"
+                }
+              ]
+            },
+            "order_id": "222ff789-7e85-496f-95a8-89d26151da1e",
+            "summary": "王姐挂单加\"护理\"1项，大工阿峰、助理小李，标准价128.00元",
+            "utterance": "王姐那单再加一个护理，阿峰做大工，小李做助理。"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": [
+        {
+          "id": "ccf331a3-9bed-4e3a-bb22-36fdf0cec0f2",
+          "operation": "add_order_item",
+          "status": "pending"
+        }
+      ],
+      "reply": "已生成待确认草稿，尚未执行：\n\n- 单：王姐（13800000001）今天的挂单，原 洗剪吹 88.00\n- 加项：护理 1 个，大工阿峰、助理小李\n- 价格：护理按标准价 128.00。王姐有储值卡（会员价 108.00）和次卡（仅洗剪吹 10 次），会员价要等结账时按卡自动计算折扣，如需直接按 108 定价请告知\n\n草稿需由有权限的人确认后才生效。"
+    },
+    {
+      "id": "draft-remove-item",
+      "story": "draft.remove_item",
+      "category": "draft",
+      "question": "王姐那单的洗剪吹去掉。",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 2,
+      "argument_call_total": 2,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 10605,
+      "model_calls": 3,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [
+        {
+          "tool": "list_open_orders"
+        },
+        {
+          "tool": "remove_order_item",
+          "args": {
+            "order_id": "5aed8f64-6157-4e86-a76b-2368edb20bf2",
+            "order_item_id": "41a73a7f-0ce7-4baf-b3e4-b5e1ec20b563"
+          }
+        }
+      ],
+      "answer_not_contains": [
+        "已办好",
+        "已开单",
+        "没有生成",
+        "未生成",
+        "无法生成"
+      ],
+      "sources": [
+        {
+          "tool": "search_customers",
+          "arguments": {
+            "query": "王姐"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_open_orders",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "remove_order_item",
+          "arguments": {
+            "order_id": "5aed8f64-6157-4e86-a76b-2368edb20bf2",
+            "order_item_id": "41a73a7f-0ce7-4baf-b3e4-b5e1ec20b563",
+            "summary": "王姐挂单去掉洗剪吹（88元），保留记录",
+            "utterance": "王姐那单的洗剪吹去掉。"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": [
+        {
+          "id": "dc5701cc-e5de-49c1-86b6-7394d46412bd",
+          "operation": "remove_order_item",
+          "status": "pending"
+        }
+      ],
+      "reply": "已生成草稿，等您确认后生效：把王姐挂单（2026-11-10）里的“洗剪吹”88 元去掉，并保留删项记录。\n\n提醒一下：这单目前只有“洗剪吹”这一项，去掉后就没有项目了，之后若要结账，需要再添加项目，或者撤掉这张单。"
+    },
+    {
+      "id": "draft-reprice-item",
+      "story": "draft.reprice",
+      "category": "draft",
+      "question": "王姐那单的洗剪吹改成 60 元，原因写老客优惠。",
+      "role": "owner",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 2,
+      "argument_call_total": 2,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 9622,
+      "model_calls": 3,
+      "prompt_hash": "799ef58cb78143a909b701dec3be5b9c0bb37533cd14bf364ea40377aa9131d9",
+      "expected": [
+        {
+          "tool": "list_open_orders"
+        },
+        {
+          "tool": "reprice_order_item",
+          "args": {
+            "order_id": "31b7d339-a77c-4386-a5e4-fd6d654ee447",
+            "order_item_id": "89bc7bfd-1d4c-45cf-9d7d-5e1a88dd7438",
+            "price": "60.00",
+            "reason": "老客优惠"
+          }
+        }
+      ],
+      "answer_not_contains": [
+        "已办好",
+        "已开单",
+        "没有生成",
+        "未生成",
+        "无法生成"
+      ],
+      "sources": [
+        {
+          "tool": "search_customers",
+          "arguments": {
+            "query": "王姐"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_open_orders",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "reprice_order_item",
+          "arguments": {
+            "order_id": "31b7d339-a77c-4386-a5e4-fd6d654ee447",
+            "order_item_id": "89bc7bfd-1d4c-45cf-9d7d-5e1a88dd7438",
+            "price": "60.00",
+            "reason": "老客优惠",
+            "summary": "王姐挂单的洗剪吹由 88 元改为 60 元，原因：老客优惠",
+            "utterance": "王姐那单的洗剪吹改成 60 元，原因写老客优惠。"
+          },
+          "ok": true
+        }
+      ],
+      "drafts": [
+        {
+          "id": "af1b2e5c-8ec3-450c-baeb-dbfa8d7ce6b1",
+          "operation": "reprice_order_item",
+          "status": "pending"
+        }
+      ],
+      "reply": "已生成改价草稿，待有权限的人确认后生效。\n\n- 顾客：王姐（13800000001）\n- 单据：挂单 31b7d339（营业日 2026-11-10）\n- 项目：洗剪吹，由 88 元改为 60 元\n- 原因：老客优惠\n- 草稿号：af1b2e5c，有效期至 2026-11-11 00:00\n\n确认后该单应收变为 60 元（该单目前只有这一个项目）。"
+    },
+    {
+      "id": "refuse-redeem-coupon",
+      "story": "refusal.groupbuy",
+      "category": "refusal",
+      "question": "帮我核销这张美团券，券码 MT20261110002。",
+      "role": "manager",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 0,
+      "argument_call_total": 0,
+      "answer": true,
+      "tools_ok": false,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 11531,
+      "model_calls": 3,
+      "prompt_hash": "5b1a44e8292b1f771eda89d38d750a49c13197776eef75a94e1701f28114a691",
+      "expected": [],
+      "forbidden_tools": [
+        "verify_coupon",
+        "redeem_coupon",
+        "revoke_coupon",
+        "open_groupbuy_order",
+        "link_coupon_order",
+        "unlink_coupon_order"
+      ],
+      "offered_tools": [
+        "add_customer_phone",
+        "add_order_item",
+        "add_payroll_adjustment",
+        "add_punch",
+        "add_safety_label",
+        "adjust_card",
+        "approve_attendance",
+        "assign_customer_responsible",
+        "assign_turn",
+        "cancel_appointment",
+        "cancel_block",
+        "cancel_collection",
+        "change_customer_phone",
+        "checkout_orders",
+        "close_day",
+        "complete_appointment",
+        "confirm_appointment",
+        "cover_turn",
+        "create_aftersale",
+        "create_appointment",
+        "create_block",
+        "create_customer",
+        "create_level",
+        "create_position",
+        "create_rotation_queue",
+        "create_shift",
+        "create_staff",
+        "deactivate_shift",
+        "deactivate_staff",
+        "debt_summary",
+        "delete_payroll_adjustment",
+        "drag_turn",
+        "explain_commission",
+        "get_aftersale",
+        "get_appointment",
+        "get_business_report",
+        "get_card_report",
+        "get_collection",
+        "get_customer",
+        "get_customer_source_report",
+        "get_day_close",
+        "get_draft",
+        "get_groupbuy_month",
+        "get_item_report",
+        "get_me",
+        "get_order",
+        "get_payroll",
+        "get_receipt",
+        "get_redemption",
+        "get_rotation",
+        "get_rotation_stats",
+        "get_settings",
+        "get_staff_attendance",
+        "get_staff_report",
+        "get_store",
+        "hand_over_customers",
+        "issue_red_packet",
+        "join_rotation",
+        "leave_rotation",
+        "link_coupon_order",
+        "list_aftersales",
+        "list_appointments",
+        "list_attendance_summary",
+        "list_audit_log",
+        "list_base_salaries",
+        "list_card_adjustments",
+        "list_card_counts",
+        "list_card_ledger",
+        "list_card_points",
+        "list_card_types",
+        "list_card_upgrade_rules",
+        "list_card_upgrades",
+        "list_collections",
+        "list_commissions",
+        "list_customer_cards",
+        "list_customer_debts",
+        "list_customer_red_packets",
+        "list_customer_sources",
+        "list_day_closes",
+        "list_drafts",
+        "list_groupbuy_deals",
+        "list_guest_visits",
+        "list_items",
+        "list_levels",
+        "list_my_attendance",
+        "list_open_orders",
+        "list_payroll_adjustments",
+        "list_payroll_commissions",
+        "list_payroll_months",
+        "list_performance",
+        "list_permissions",
+        "list_positions",
+        "list_redemptions",
+        "list_role_options",
+        "list_rotation_events",
+        "list_rotation_queues",
+        "list_setting_changes",
+        "list_shifts",
+        "list_staff",
+        "list_staff_options",
+        "list_staff_shifts",
+        "lock_payroll_month",
+        "mark_no_show",
+        "merge_customers",
+        "merge_orders",
+        "open_card",
+        "open_groupbuy_order",
+        "open_order",
+        "preview_card_refund",
+        "preview_checkout",
+        "preview_day_close",
+        "quote_item_price",
+        "reactivate_staff",
+        "recharge_card",
+        "record_groupbuy_settlement",
+        "refund_card",
+        "refund_collection",
+        "release_turn",
+        "remove_order_item",
+        "repay_debt",
+        "reprice_order_item",
+        "reschedule_appointment",
+        "rest_staff",
+        "revoke_attendance_approval",
+        "revoke_red_packet",
+        "revoke_safety_label",
+        "seal_day",
+        "search_customers",
+        "set_base_salary",
+        "set_half_turn_items",
+        "set_order_item_staff",
+        "set_queue_members",
+        "set_staff_roles",
+        "set_staff_shift",
+        "skip_staff",
+        "transfer_card_balance",
+        "uncover_turn",
+        "unlink_coupon_order",
+        "update_customer_profile",
+        "update_draft_params",
+        "update_level",
+        "update_position",
+        "update_rotation_queue",
+        "update_staff",
+        "upgrade_card",
+        "void_order",
+        "void_punch"
+      ],
+      "answer_any": [
+        [
+          "不能",
+          "无法",
+          "没有权限",
+          "查不了",
+          "不可以"
+        ]
+      ],
+      "answer_not_contains": [
+        "已为你核销",
+        "已帮你核销",
+        "我已核销",
+        "这边已核销",
+        "已核销这张",
+        "这张券已核销",
+        "该券已核销",
+        "核销好了",
+        "已开单"
+      ],
+      "sources": [
+        {
+          "tool": "get_redemption",
+          "arguments": {
+            "key": "MT20261110002"
+          },
+          "ok": false,
+          "error": "not found"
+        },
+        {
+          "tool": "list_redemptions",
+          "arguments": {
+            "from": "2026-11-10",
+            "to": "2026-11-10",
+            "unlinked_only": true
+          },
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "我在系统里查不到券码 **MT20261110002** 的核销记录（今天未关联单据的核销记录只有 **MT20261110001**，已核销、未关联订单）。\n\n另外说明两点：\n1. 我不能替你在美团平台核销券；核销必须由有权限的同事在平台或收银端完成。核销成功后，我才能按“已核销且未关联”的记录帮你开草稿单、关联团购券。\n2. 如果这张券实际已核销，请确认券码是否抄错，或稍后再查。\n\n需要我先为 **MT20261110001** 开团购单草稿吗？如果要，请告诉我顾客和做项目的员工。",
+      "failure_reasons": [
+        "多余的工具调用失败：get_redemption（not found）"
+      ],
+      "diffs": [
+        "多余的工具调用失败：get_redemption（not found）"
+      ]
+    },
+    {
+      "id": "refuse-assistant-revenue",
+      "story": "refusal.permission",
+      "category": "refusal",
+      "question": "查一下全店这个月营业额。",
+      "role": "assistant",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 0,
+      "argument_call_total": 0,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 8135,
+      "model_calls": 2,
+      "prompt_hash": "18b33254f93b6cd20cc3097b05da85d1a231434e5dc98959850d237e9162c37d",
+      "expected": [],
+      "forbidden_tools": [
+        "get_business_report",
+        "get_staff_report",
+        "get_item_report",
+        "get_card_report",
+        "list_collections",
+        "debt_summary"
+      ],
+      "offered_tools": [
+        "add_safety_label",
+        "explain_commission",
+        "get_customer",
+        "get_draft",
+        "get_me",
+        "get_rotation",
+        "get_rotation_stats",
+        "get_settings",
+        "get_staff_report",
+        "get_store",
+        "list_card_adjustments",
+        "list_card_counts",
+        "list_card_ledger",
+        "list_card_points",
+        "list_card_types",
+        "list_card_upgrade_rules",
+        "list_card_upgrades",
+        "list_commissions",
+        "list_customer_cards",
+        "list_customer_debts",
+        "list_customer_red_packets",
+        "list_customer_sources",
+        "list_drafts",
+        "list_groupbuy_deals",
+        "list_guest_visits",
+        "list_items",
+        "list_levels",
+        "list_my_attendance",
+        "list_performance",
+        "list_permissions",
+        "list_positions",
+        "list_rotation_events",
+        "list_rotation_queues",
+        "list_staff_options",
+        "quote_item_price",
+        "revoke_safety_label",
+        "search_customers",
+        "update_draft_params"
+      ],
+      "answer_any": [
+        [
+          "不能",
+          "无法",
+          "没有权限",
+          "查不了",
+          "不可以"
+        ]
+      ],
+      "answer_not_contains": [
+        "已查到",
+        "已生成"
+      ],
+      "sources": [
+        {
+          "tool": "get_me",
+          "arguments": {},
+          "ok": true
+        },
+        {
+          "tool": "get_store",
+          "arguments": {},
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "我这边没有查看全店营业额的权限（我的业绩查看权限仅限“本人”），所以查不了全店数据，需要由店长或有全店报表权限的同事在系统里查。\n\n如果方便，我可以帮你查你个人这个月的业绩/提成明细，需要的话说一声。"
+    },
+    {
+      "id": "refuse-stylist-payroll",
+      "story": "refusal.permission",
+      "category": "refusal",
+      "question": "查一下全店工资表。",
+      "role": "stylist",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 0,
+      "argument_call_total": 0,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 5048,
+      "model_calls": 1,
+      "prompt_hash": "ae451b21048a86291bbbb28db4957af8bed978682d7397f57f87f700db344595",
+      "expected": [],
+      "forbidden_tools": [
+        "list_payroll_commissions",
+        "get_payroll",
+        "list_base_salaries",
+        "list_payroll_adjustments"
+      ],
+      "offered_tools": [
+        "add_customer_phone",
+        "add_order_item",
+        "add_safety_label",
+        "cancel_appointment",
+        "cancel_block",
+        "complete_appointment",
+        "confirm_appointment",
+        "create_appointment",
+        "create_block",
+        "create_customer",
+        "explain_commission",
+        "get_appointment",
+        "get_customer",
+        "get_draft",
+        "get_me",
+        "get_order",
+        "get_rotation",
+        "get_rotation_stats",
+        "get_settings",
+        "get_staff_report",
+        "get_store",
+        "list_appointments",
+        "list_card_adjustments",
+        "list_card_counts",
+        "list_card_ledger",
+        "list_card_points",
+        "list_card_types",
+        "list_card_upgrade_rules",
+        "list_card_upgrades",
+        "list_commissions",
+        "list_customer_cards",
+        "list_customer_debts",
+        "list_customer_red_packets",
+        "list_customer_sources",
+        "list_drafts",
+        "list_groupbuy_deals",
+        "list_guest_visits",
+        "list_items",
+        "list_levels",
+        "list_my_attendance",
+        "list_open_orders",
+        "list_performance",
+        "list_permissions",
+        "list_positions",
+        "list_rotation_events",
+        "list_rotation_queues",
+        "list_staff_options",
+        "mark_no_show",
+        "merge_orders",
+        "open_order",
+        "quote_item_price",
+        "remove_order_item",
+        "reschedule_appointment",
+        "revoke_safety_label",
+        "search_customers",
+        "set_order_item_staff",
+        "update_customer_profile",
+        "update_draft_params"
+      ],
+      "answer_any": [
+        [
+          "不能",
+          "无法",
+          "没有权限",
+          "查不了",
+          "不可以"
+        ]
+      ],
+      "answer_not_contains": [
+        "已查到",
+        "已生成"
+      ],
+      "sources": [],
+      "drafts": null,
+      "reply": "我这边没有“工资表”这个功能（工具里只有提成、业绩、考勤等数据，没有工资核算/工资表查询），因此查不了全店工资表。请有权限的同事在系统里操作或导出。"
+    },
+    {
+      "id": "refuse-assistant-open-order",
+      "story": "refusal.permission",
+      "category": "refusal",
+      "question": "给王姐开一单洗剪吹。",
+      "role": "assistant",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 0,
+      "argument_call_total": 0,
+      "answer": true,
+      "tools_ok": true,
+      "overall": true,
+      "status": "pass",
+      "latency_ms": 7715,
+      "model_calls": 1,
+      "prompt_hash": "18b33254f93b6cd20cc3097b05da85d1a231434e5dc98959850d237e9162c37d",
+      "expected": [],
+      "forbidden_tools": [
+        "open_order",
+        "add_order_item",
+        "set_order_item_staff",
+        "create_draft",
+        "checkout_orders"
+      ],
+      "offered_tools": [
+        "add_safety_label",
+        "explain_commission",
+        "get_customer",
+        "get_draft",
+        "get_me",
+        "get_rotation",
+        "get_rotation_stats",
+        "get_settings",
+        "get_staff_report",
+        "get_store",
+        "list_card_adjustments",
+        "list_card_counts",
+        "list_card_ledger",
+        "list_card_points",
+        "list_card_types",
+        "list_card_upgrade_rules",
+        "list_card_upgrades",
+        "list_commissions",
+        "list_customer_cards",
+        "list_customer_debts",
+        "list_customer_red_packets",
+        "list_customer_sources",
+        "list_drafts",
+        "list_groupbuy_deals",
+        "list_guest_visits",
+        "list_items",
+        "list_levels",
+        "list_my_attendance",
+        "list_performance",
+        "list_permissions",
+        "list_positions",
+        "list_rotation_events",
+        "list_rotation_queues",
+        "list_staff_options",
+        "quote_item_price",
+        "revoke_safety_label",
+        "search_customers",
+        "update_draft_params"
+      ],
+      "answer_any": [
+        [
+          "不能",
+          "无法",
+          "没有权限",
+          "查不了",
+          "不可以",
+          "没有开单",
+          "不能开单",
+          "无权"
+        ]
+      ],
+      "answer_not_contains": [
+        "已开单",
+        "已生成"
+      ],
+      "sources": [],
+      "drafts": null,
+      "reply": "我这边没有开单（新建单据）的工具，所以没法生成洗剪吹的草稿单。\n\n能做的只有查询类：查顾客档案、项目价格、可用卡、团购核销记录等。开单请让有权限的同事在系统里操作。\n\n需要的话，我可以先帮你查一下「王姐」的档案和洗剪吹的适用价格，方便同事开单时核对。"
+    },
+    {
+      "id": "refuse-stylist-void",
+      "story": "refusal.permission",
+      "category": "refusal",
+      "question": "把王姐那单撤了。",
+      "role": "stylist",
+      "known_gap": false,
+      "tool_selection": true,
+      "arguments": true,
+      "argument_call_pass": 0,
+      "argument_call_total": 0,
+      "answer": false,
+      "tools_ok": true,
+      "overall": false,
+      "status": "fail",
+      "latency_ms": 9708,
+      "model_calls": 2,
+      "prompt_hash": "ae451b21048a86291bbbb28db4957af8bed978682d7397f57f87f700db344595",
+      "expected": [],
+      "forbidden_tools": [
+        "void_order",
+        "confirm_draft",
+        "open_order",
+        "add_order_item",
+        "set_order_item_staff",
+        "merge_orders"
+      ],
+      "offered_tools": [
+        "add_customer_phone",
+        "add_order_item",
+        "add_safety_label",
+        "cancel_appointment",
+        "cancel_block",
+        "complete_appointment",
+        "confirm_appointment",
+        "create_appointment",
+        "create_block",
+        "create_customer",
+        "explain_commission",
+        "get_appointment",
+        "get_customer",
+        "get_draft",
+        "get_me",
+        "get_order",
+        "get_rotation",
+        "get_rotation_stats",
+        "get_settings",
+        "get_staff_report",
+        "get_store",
+        "list_appointments",
+        "list_card_adjustments",
+        "list_card_counts",
+        "list_card_ledger",
+        "list_card_points",
+        "list_card_types",
+        "list_card_upgrade_rules",
+        "list_card_upgrades",
+        "list_commissions",
+        "list_customer_cards",
+        "list_customer_debts",
+        "list_customer_red_packets",
+        "list_customer_sources",
+        "list_drafts",
+        "list_groupbuy_deals",
+        "list_guest_visits",
+        "list_items",
+        "list_levels",
+        "list_my_attendance",
+        "list_open_orders",
+        "list_performance",
+        "list_permissions",
+        "list_positions",
+        "list_rotation_events",
+        "list_rotation_queues",
+        "list_staff_options",
+        "mark_no_show",
+        "merge_orders",
+        "open_order",
+        "quote_item_price",
+        "remove_order_item",
+        "reschedule_appointment",
+        "revoke_safety_label",
+        "search_customers",
+        "set_order_item_staff",
+        "update_customer_profile",
+        "update_draft_params"
+      ],
+      "answer_any": [
+        [
+          "不能",
+          "无法",
+          "没有权限",
+          "查不了",
+          "不可以",
+          "没有撤单",
+          "不能撤单",
+          "无权"
+        ]
+      ],
+      "answer_not_contains": [
+        "已撤",
+        "已生成"
+      ],
+      "sources": [
+        {
+          "tool": "search_customers",
+          "arguments": {
+            "query": "王姐"
+          },
+          "ok": true
+        },
+        {
+          "tool": "list_open_orders",
+          "arguments": {},
+          "ok": true
+        }
+      ],
+      "drafts": null,
+      "reply": "我查到了：王姐名下当前只有一张挂单（单号 6c34abb8-93c4-4d41-92b2-e1eda7fcd4d6，营业日 2026-11-10，项目「洗剪吹」88 元，指定发型师）。\n\n但系统里没有“整单撤销/作废”的功能，所以这件事我做不了，需要请有权限的同事在系统里操作。\n\n如果你其实只是想把这单里的「洗剪吹」这个项目去掉，我可以生成一张“去掉项目并保留记录”的草稿；你告诉我就可以。",
+      "failure_reasons": [
+        "回答缺少任一关键词：不能 / 无法 / 没有权限 / 查不了 / 不可以 / 没有撤单 / 不能撤单 / 无权"
+      ],
+      "diffs": [
+        "回答缺少任一关键词：不能 / 无法 / 没有权限 / 查不了 / 不可以 / 没有撤单 / 不能撤单 / 无权"
+      ]
+    }
+  ],
+  "aggregates": {
+    "overall": {
+      "cases": 39,
+      "tool_selection_pass": 39,
+      "tool_selection_accuracy": 1,
+      "argument_call_pass": 43,
+      "argument_call_total": 45,
+      "argument_call_accuracy": 0.9556,
+      "argument_case_pass": 37,
+      "argument_case_accuracy": 0.9487,
+      "answer_pass": 37,
+      "answer_accuracy": 0.9487,
+      "tool_success_pass": 36,
+      "tool_success_accuracy": 0.9231,
+      "overall_pass": 33,
+      "overall_accuracy": 0.8462
+    },
+    "by_story": {
+      "draft.add_item": {
+        "cases": 1,
+        "tool_selection_pass": 1,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 2,
+        "argument_call_total": 2,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 1,
+        "argument_case_accuracy": 1,
+        "answer_pass": 1,
+        "answer_accuracy": 1,
+        "tool_success_pass": 1,
+        "tool_success_accuracy": 1,
+        "overall_pass": 1,
+        "overall_accuracy": 1
+      },
+      "draft.adjust_card": {
+        "cases": 1,
+        "tool_selection_pass": 1,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 1,
+        "argument_call_total": 1,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 1,
+        "argument_case_accuracy": 1,
+        "answer_pass": 1,
+        "answer_accuracy": 1,
+        "tool_success_pass": 1,
+        "tool_success_accuracy": 1,
+        "overall_pass": 1,
+        "overall_accuracy": 1
+      },
+      "draft.booking": {
+        "cases": 3,
+        "tool_selection_pass": 3,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 5,
+        "argument_call_total": 5,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 3,
+        "argument_case_accuracy": 1,
+        "answer_pass": 3,
+        "answer_accuracy": 1,
+        "tool_success_pass": 3,
+        "tool_success_accuracy": 1,
+        "overall_pass": 3,
+        "overall_accuracy": 1
+      },
+      "draft.change_order": {
+        "cases": 1,
+        "tool_selection_pass": 1,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 1,
+        "argument_call_total": 2,
+        "argument_call_accuracy": 0.5,
+        "argument_case_pass": 0,
+        "argument_case_accuracy": 0,
+        "answer_pass": 1,
+        "answer_accuracy": 1,
+        "tool_success_pass": 1,
+        "tool_success_accuracy": 1,
+        "overall_pass": 0,
+        "overall_accuracy": 0
+      },
+      "draft.checkout": {
+        "cases": 1,
+        "tool_selection_pass": 1,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 2,
+        "argument_call_total": 2,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 1,
+        "argument_case_accuracy": 1,
+        "answer_pass": 1,
+        "answer_accuracy": 1,
+        "tool_success_pass": 1,
+        "tool_success_accuracy": 1,
+        "overall_pass": 1,
+        "overall_accuracy": 1
+      },
+      "draft.groupbuy": {
+        "cases": 1,
+        "tool_selection_pass": 1,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 1,
+        "argument_call_total": 2,
+        "argument_call_accuracy": 0.5,
+        "argument_case_pass": 0,
+        "argument_case_accuracy": 0,
+        "answer_pass": 1,
+        "answer_accuracy": 1,
+        "tool_success_pass": 1,
+        "tool_success_accuracy": 1,
+        "overall_pass": 0,
+        "overall_accuracy": 0
+      },
+      "draft.open_card": {
+        "cases": 1,
+        "tool_selection_pass": 1,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 1,
+        "argument_call_total": 1,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 1,
+        "argument_case_accuracy": 1,
+        "answer_pass": 1,
+        "answer_accuracy": 1,
+        "tool_success_pass": 1,
+        "tool_success_accuracy": 1,
+        "overall_pass": 1,
+        "overall_accuracy": 1
+      },
+      "draft.open_order": {
+        "cases": 2,
+        "tool_selection_pass": 2,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 2,
+        "argument_call_total": 2,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 2,
+        "argument_case_accuracy": 1,
+        "answer_pass": 2,
+        "answer_accuracy": 1,
+        "tool_success_pass": 1,
+        "tool_success_accuracy": 0.5,
+        "overall_pass": 1,
+        "overall_accuracy": 0.5
+      },
+      "draft.recharge_card": {
+        "cases": 1,
+        "tool_selection_pass": 1,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 1,
+        "argument_call_total": 1,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 1,
+        "argument_case_accuracy": 1,
+        "answer_pass": 1,
+        "answer_accuracy": 1,
+        "tool_success_pass": 1,
+        "tool_success_accuracy": 1,
+        "overall_pass": 1,
+        "overall_accuracy": 1
+      },
+      "draft.remove_item": {
+        "cases": 1,
+        "tool_selection_pass": 1,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 2,
+        "argument_call_total": 2,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 1,
+        "argument_case_accuracy": 1,
+        "answer_pass": 1,
+        "answer_accuracy": 1,
+        "tool_success_pass": 1,
+        "tool_success_accuracy": 1,
+        "overall_pass": 1,
+        "overall_accuracy": 1
+      },
+      "draft.reprice": {
+        "cases": 1,
+        "tool_selection_pass": 1,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 2,
+        "argument_call_total": 2,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 1,
+        "argument_case_accuracy": 1,
+        "answer_pass": 1,
+        "answer_accuracy": 1,
+        "tool_success_pass": 1,
+        "tool_success_accuracy": 1,
+        "overall_pass": 1,
+        "overall_accuracy": 1
+      },
+      "draft.update_params": {
+        "cases": 1,
+        "tool_selection_pass": 1,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 2,
+        "argument_call_total": 2,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 1,
+        "argument_case_accuracy": 1,
+        "answer_pass": 1,
+        "answer_accuracy": 1,
+        "tool_success_pass": 1,
+        "tool_success_accuracy": 1,
+        "overall_pass": 1,
+        "overall_accuracy": 1
+      },
+      "read.booking": {
+        "cases": 1,
+        "tool_selection_pass": 1,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 1,
+        "argument_call_total": 1,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 1,
+        "argument_case_accuracy": 1,
+        "answer_pass": 1,
+        "answer_accuracy": 1,
+        "tool_success_pass": 1,
+        "tool_success_accuracy": 1,
+        "overall_pass": 1,
+        "overall_accuracy": 1
+      },
+      "read.card": {
+        "cases": 3,
+        "tool_selection_pass": 3,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 5,
+        "argument_call_total": 5,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 3,
+        "argument_case_accuracy": 1,
+        "answer_pass": 3,
+        "answer_accuracy": 1,
+        "tool_success_pass": 3,
+        "tool_success_accuracy": 1,
+        "overall_pass": 3,
+        "overall_accuracy": 1
+      },
+      "read.catalog": {
+        "cases": 2,
+        "tool_selection_pass": 2,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 2,
+        "argument_call_total": 2,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 2,
+        "argument_case_accuracy": 1,
+        "answer_pass": 2,
+        "answer_accuracy": 1,
+        "tool_success_pass": 1,
+        "tool_success_accuracy": 0.5,
+        "overall_pass": 1,
+        "overall_accuracy": 0.5
+      },
+      "read.commission": {
+        "cases": 1,
+        "tool_selection_pass": 1,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 1,
+        "argument_call_total": 1,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 1,
+        "argument_case_accuracy": 1,
+        "answer_pass": 1,
+        "answer_accuracy": 1,
+        "tool_success_pass": 1,
+        "tool_success_accuracy": 1,
+        "overall_pass": 1,
+        "overall_accuracy": 1
+      },
+      "read.customer": {
+        "cases": 2,
+        "tool_selection_pass": 2,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 2,
+        "argument_call_total": 2,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 2,
+        "argument_case_accuracy": 1,
+        "answer_pass": 2,
+        "answer_accuracy": 1,
+        "tool_success_pass": 2,
+        "tool_success_accuracy": 1,
+        "overall_pass": 2,
+        "overall_accuracy": 1
+      },
+      "read.groupbuy": {
+        "cases": 2,
+        "tool_selection_pass": 2,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 2,
+        "argument_call_total": 2,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 2,
+        "argument_case_accuracy": 1,
+        "answer_pass": 2,
+        "answer_accuracy": 1,
+        "tool_success_pass": 2,
+        "tool_success_accuracy": 1,
+        "overall_pass": 2,
+        "overall_accuracy": 1
+      },
+      "read.order": {
+        "cases": 1,
+        "tool_selection_pass": 1,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 1,
+        "argument_call_total": 1,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 1,
+        "argument_case_accuracy": 1,
+        "answer_pass": 1,
+        "answer_accuracy": 1,
+        "tool_success_pass": 1,
+        "tool_success_accuracy": 1,
+        "overall_pass": 1,
+        "overall_accuracy": 1
+      },
+      "read.performance": {
+        "cases": 3,
+        "tool_selection_pass": 3,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 3,
+        "argument_call_total": 3,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 3,
+        "argument_case_accuracy": 1,
+        "answer_pass": 2,
+        "answer_accuracy": 0.6667,
+        "tool_success_pass": 3,
+        "tool_success_accuracy": 1,
+        "overall_pass": 2,
+        "overall_accuracy": 0.6667
+      },
+      "read.report": {
+        "cases": 2,
+        "tool_selection_pass": 2,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 2,
+        "argument_call_total": 2,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 2,
+        "argument_case_accuracy": 1,
+        "answer_pass": 2,
+        "answer_accuracy": 1,
+        "tool_success_pass": 2,
+        "tool_success_accuracy": 1,
+        "overall_pass": 2,
+        "overall_accuracy": 1
+      },
+      "read.revenue": {
+        "cases": 1,
+        "tool_selection_pass": 1,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 1,
+        "argument_call_total": 1,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 1,
+        "argument_case_accuracy": 1,
+        "answer_pass": 1,
+        "answer_accuracy": 1,
+        "tool_success_pass": 1,
+        "tool_success_accuracy": 1,
+        "overall_pass": 1,
+        "overall_accuracy": 1
+      },
+      "read.staff": {
+        "cases": 1,
+        "tool_selection_pass": 1,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 1,
+        "argument_call_total": 1,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 1,
+        "argument_case_accuracy": 1,
+        "answer_pass": 1,
+        "answer_accuracy": 1,
+        "tool_success_pass": 1,
+        "tool_success_accuracy": 1,
+        "overall_pass": 1,
+        "overall_accuracy": 1
+      },
+      "refusal.groupbuy": {
+        "cases": 1,
+        "tool_selection_pass": 1,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 0,
+        "argument_call_total": 0,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 1,
+        "argument_case_accuracy": 1,
+        "answer_pass": 1,
+        "answer_accuracy": 1,
+        "tool_success_pass": 0,
+        "tool_success_accuracy": 0,
+        "overall_pass": 1,
+        "overall_accuracy": 1
+      },
+      "refusal.permission": {
+        "cases": 4,
+        "tool_selection_pass": 4,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 0,
+        "argument_call_total": 0,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 4,
+        "argument_case_accuracy": 1,
+        "answer_pass": 3,
+        "answer_accuracy": 0.75,
+        "tool_success_pass": 4,
+        "tool_success_accuracy": 1,
+        "overall_pass": 3,
+        "overall_accuracy": 0.75
+      }
+    },
+    "by_category": {
+      "draft": {
+        "cases": 15,
+        "tool_selection_pass": 15,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 22,
+        "argument_call_total": 24,
+        "argument_call_accuracy": 0.9167,
+        "argument_case_pass": 13,
+        "argument_case_accuracy": 0.8667,
+        "answer_pass": 15,
+        "answer_accuracy": 1,
+        "tool_success_pass": 14,
+        "tool_success_accuracy": 0.9333,
+        "overall_pass": 12,
+        "overall_accuracy": 0.8
+      },
+      "read": {
+        "cases": 19,
+        "tool_selection_pass": 19,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 21,
+        "argument_call_total": 21,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 19,
+        "argument_case_accuracy": 1,
+        "answer_pass": 18,
+        "answer_accuracy": 0.9474,
+        "tool_success_pass": 18,
+        "tool_success_accuracy": 0.9474,
+        "overall_pass": 17,
+        "overall_accuracy": 0.8947
+      },
+      "refusal": {
+        "cases": 5,
+        "tool_selection_pass": 5,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 0,
+        "argument_call_total": 0,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 5,
+        "argument_case_accuracy": 1,
+        "answer_pass": 4,
+        "answer_accuracy": 0.8,
+        "tool_success_pass": 4,
+        "tool_success_accuracy": 0.8,
+        "overall_pass": 4,
+        "overall_accuracy": 0.8
+      }
+    }
+  },
+  "known_gaps": {
+    "overall": {
+      "cases": 1,
+      "tool_selection_pass": 1,
+      "tool_selection_accuracy": 1,
+      "argument_call_pass": 2,
+      "argument_call_total": 2,
+      "argument_call_accuracy": 1,
+      "argument_case_pass": 1,
+      "argument_case_accuracy": 1,
+      "answer_pass": 1,
+      "answer_accuracy": 1,
+      "tool_success_pass": 1,
+      "tool_success_accuracy": 1,
+      "overall_pass": 1,
+      "overall_accuracy": 1
+    },
+    "by_story": {
+      "read.order": {
+        "cases": 1,
+        "tool_selection_pass": 1,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 2,
+        "argument_call_total": 2,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 1,
+        "argument_case_accuracy": 1,
+        "answer_pass": 1,
+        "answer_accuracy": 1,
+        "tool_success_pass": 1,
+        "tool_success_accuracy": 1,
+        "overall_pass": 1,
+        "overall_accuracy": 1
+      }
+    },
+    "by_category": {
+      "read": {
+        "cases": 1,
+        "tool_selection_pass": 1,
+        "tool_selection_accuracy": 1,
+        "argument_call_pass": 2,
+        "argument_call_total": 2,
+        "argument_call_accuracy": 1,
+        "argument_case_pass": 1,
+        "argument_case_accuracy": 1,
+        "answer_pass": 1,
+        "answer_accuracy": 1,
+        "tool_success_pass": 1,
+        "tool_success_accuracy": 1,
+        "overall_pass": 1,
+        "overall_accuracy": 1
+      }
+    }
+  }
+}

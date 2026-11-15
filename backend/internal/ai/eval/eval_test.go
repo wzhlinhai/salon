@@ -456,6 +456,23 @@ func TestEvalScorerAnswerNotContains(t *testing.T) {
 	}
 }
 
+func TestEvalScorerRefuseStylistVoidRejectsCompletedClaim(t *testing.T) {
+	var c Case
+	for _, candidate := range mustSuite(t).Cases {
+		if candidate.ID == "refuse-stylist-void" {
+			c = candidate
+			break
+		}
+	}
+	if c.ID == "" {
+		t.Fatal("refuse-stylist-void is missing")
+	}
+	result := ScoreCase(c, Observed{Reply: "这件事我做不了，不过王姐的单已经撤销了。"}, nil)
+	if result.Overall || !strings.Contains(strings.Join(result.FailureReasons, "\n"), "回答出现禁止关键词") {
+		t.Fatalf("completed claim should fail: %+v", result)
+	}
+}
+
 func TestEvalScorerDateKeywords(t *testing.T) {
 	for _, tc := range []struct {
 		name, keyword, reply string
@@ -495,6 +512,9 @@ func TestEvalScorerLiteralDigitBoundaries(t *testing.T) {
 		{"leading digit matches standalone", "1 人", "今天 1 人", true},
 		{"trailing digit rejects longer number", "第1", "第10", false},
 		{"trailing digit matches standalone", "第1", "第1名", true},
+		{"leading digit rejects longer guest count", "1 个客数", "11 个客数", false},
+		{"leading digit rejects longer guest count without space", "1个客数", "11个客数", false},
+		{"leading digit matches standalone guest count", "1 个客数", "共 1 个客数", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := answerContains(tc.reply, tc.keyword); got != tc.ok {
@@ -853,6 +873,29 @@ func TestEvalPreviewCheckoutOrderIDDoc(t *testing.T) {
 		return
 	}
 	t.Fatal("preview_checkout is not offered")
+}
+
+func TestEvalSetOrderItemStaffFullReplacementDoc(t *testing.T) {
+	f := Seed(t)
+	const want = "这个项目全部岗位的员工，整体替换：不改的岗位也要照原样填上，没填的岗位会被清空；第一个岗位换人或没填时，未手工改价的项目重新计价"
+	for _, tool := range f.Shop.Registry.ChatTools(f.Callers["owner"]) {
+		if tool.Name != "set_order_item_staff" {
+			continue
+		}
+		properties, ok := tool.Parameters["properties"].(map[string]any)
+		if !ok {
+			t.Fatalf("set_order_item_staff properties = %v", tool.Parameters["properties"])
+		}
+		staff, ok := properties["staff"].(map[string]any)
+		if !ok {
+			t.Fatalf("set_order_item_staff staff = %v", properties["staff"])
+		}
+		if got, _ := staff["description"].(string); got != want {
+			t.Fatalf("set_order_item_staff staff description = %q, want %q", got, want)
+		}
+		return
+	}
+	t.Fatal("set_order_item_staff is not offered")
 }
 
 func TestEvalFixtureFingerprintChangesWithSource(t *testing.T) {
