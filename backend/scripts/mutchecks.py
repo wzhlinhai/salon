@@ -42,6 +42,9 @@ CREATE VIEW 创建的名字时也保守选中。选中名称逐行输出到 stde
 mutchecks.py --locate [--since <git-ref>] 只定位；
 mutchecks.py --since <git-ref> [--jobs N] 正式运行选中项（必须带 --since，不接受名称）。
 逐份输出选中、通过、失败、not run (environment) 数量和最终总计；失败或未运行均非零退出。
+e2e 项的变异或还原阶段因 scripts/dev.sh reset 失败而退出码 4 时，文件已还原且无其他错误
+才记 not run (environment)；变异阶段 reset 失败不再运行还原阶段，还原阶段还要求变异阶段已命中全部 guards，
+判据是命令日志里的 reset failed。
 PostgreSQL 容器启动签名出现时，基线按包重试一次；变异由 mutcheck.sh 重试一次，
 退出码 4 或同一签名只记 not run (environment)，绝不解析为 caught。
 mutcheck.sh 对迁移文件的变异发现 migrate up 失败时退出 2（变异让迁移无法执行），
@@ -1651,7 +1654,7 @@ def phase(entry, folder, label):
     command = (
         f'L={prefix}; if scripts/dev.sh reset > "$L-reset.log" 2>&1; then '
         f'(cd admin && npm run e2e -- {test_args} > "$L-e2e.log" 2>&1); '
-        's=$?; echo "e2e exit=$s"; else s=$?; echo "reset failed exit=$s"; fi; '
+        f's=$?; echo "e2e exit=$s"; else s=$?; echo "reset failed exit=$s"; s={ENVIRONMENT_EXIT}; fi; '
         'scripts/dev.sh down > "$L-down.log" 2>&1; (exit $s)'
     )
     (folder / (label + '.command.sh')).write_text(command + '\n')
@@ -1711,11 +1714,16 @@ def phase(entry, folder, label):
     return code, caught
 
 
+def reset_failed(folder, label):
+    """判断该阶段的命令日志是否记录了 reset 失败。"""
+    return 'reset failed exit=' in (folder / (label + '-command.log')).read_text(errors='replace')
+
+
 def run_e2e(entry, logs, results):
     path = ROOT / entry['file']
     before = None
     mutated_code, restored_code = 'not-run', 'not-run'
-    caught, clean, error, owned = [], [], None, False
+    caught, clean, error, owned, environment = [], [], None, False, False
     folder = logs / (entry['step'] + '-' + entry['name'])
     folder.mkdir()
     try:
@@ -1744,7 +1752,11 @@ def run_e2e(entry, logs, results):
         finally:
             # 还原后的测试也占用备份槽，防止另一项变异干扰验证。
             path.write_bytes(before)
-        restored_code, clean = phase(entry, folder, 'restored')
+        environment = mutated_code == ENVIRONMENT_EXIT and reset_failed(folder, 'mutated')
+        if not environment:
+            restored_code, clean = phase(entry, folder, 'restored')
+            environment = (restored_code == ENVIRONMENT_EXIT and reset_failed(folder, 'restored')
+                           and set(entry['guards']).issubset(caught))
     except (OSError, ValueError) as exc:
         error = str(exc)
     finally:
@@ -1757,10 +1769,11 @@ def run_e2e(entry, logs, results):
                 error = 'restore failed; see restore.log'
             restored = restored and path.read_bytes() == before
     passed = set(entry['guards']).issubset(caught) and set(entry['guards']).issubset(clean) and restored and error is None
-    result_line(f"{entry['step']} {entry['name']} exit={mutated_code}/{restored_code} caught={','.join(caught) or '-'} restored={restored} {'PASS' if passed else 'FAIL'}", results)
+    status = "not run (environment)" if environment and restored and error is None else ("PASS" if passed else "FAIL")
+    result_line(f"{entry['step']} {entry['name']} exit={mutated_code}/{restored_code} caught={','.join(caught) or '-'} restored={restored} {status}", results)
     if error:
         print(error, file=sys.stderr)
-    return passed, restored
+    return passed and not environment, restored
 
 
 def main():
