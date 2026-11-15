@@ -1784,6 +1784,128 @@ class StandaloneCacheTests(unittest.TestCase):
 
 
 class EnvironmentTests(unittest.TestCase):
+    def e2e_reset_fixture(self, fail_on, npm_exit, caught=False, guards=None, restore_fail=False):
+        guards = ['TestGuard'] if guards is None else guards
+        caught_titles = list(guards) if caught is True else (list(caught) if caught else [])
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        root = Path(folder.name)
+        (root / 'guard').write_text('original')
+        scripts = root / 'backend/scripts'
+        scripts.mkdir(parents=True)
+        shutil.copy(Path(__file__).with_name('mutcheck.sh'), scripts / 'mutcheck.sh')
+        if restore_fail:
+            (scripts / 'mutcheck.sh').write_text(
+                '#!/bin/bash\n[ "$1" = --restore ] && exit 7\nexit 0\n')
+        dev = root / 'scripts/dev.sh'
+        dev.parent.mkdir(parents=True)
+        dev.write_text('#!/bin/bash\n'
+                       'case "$1" in\n'
+                       '  reset)\n'
+                       '    n=0; [ -f "$FAKE_RESET_COUNTER" ] && n=$(cat "$FAKE_RESET_COUNTER")\n'
+                       '    n=$((n+1)); echo $n > "$FAKE_RESET_COUNTER"\n'
+                       '    if [ "$n" -eq "$FAKE_RESET_FAIL_ON" ]; then exit 9; fi ;;\n'
+                       '  down) exit 0 ;;\n'
+                       'esac\n')
+        dev.chmod(0o755)
+        (root / 'admin').mkdir()
+        (root / 'bin').mkdir()
+        npm = root / 'bin/npm'
+        npm.write_text('#!' + sys.executable + '\n'
+                       'import json, os, pathlib, sys\n'
+                       'counter = pathlib.Path(os.environ["FAKE_NPM_COUNTER"])\n'
+                       'n = int(counter.read_text()) if counter.exists() else 0\n'
+                       'counter.write_text(str(n + 1))\n'
+                       'caught = json.loads(os.environ["FAKE_NPM_CAUGHT_GUARDS"])\n'
+                       'if caught and n == 0:\n'
+                       '    specs = []\n'
+                       '    for title in json.loads(os.environ["FAKE_NPM_GUARDS"]):\n'
+                       '        failed = title in caught\n'
+                       '        result = ({"status": "failed", "errors": [{"message": "expect(x)"}]}\n'
+                       '                  if failed else {"status": "passed"})\n'
+                       '        specs.append({"title": title, "tests": [{"projectName": "default", '
+                       '"status": "unexpected" if failed else "expected", "results": [result]}]})\n'
+                       '    print(json.dumps({"specs": specs}))\n'
+                       '    sys.exit(1)\n'
+                       'sys.exit(int(os.environ["FAKE_NPM_EXIT"]))\n')
+        npm.chmod(0o755)
+        manifest = root / '.dev/codex/a/manifest.py'
+        manifest.parent.mkdir(parents=True)
+        entry = dict(kind='e2e', step='1', name='browser', file='guard',
+                     original='original', replacement='mutated',
+                     guards=guards, spec='e2e/browser.spec.ts')
+        manifest.write_text('ENTRIES = ' + repr([entry]))
+        env = dict(os.environ, PATH=str(root / 'bin') + os.pathsep + os.environ['PATH'],
+                   FAKE_RESET_FAIL_ON=str(fail_on), FAKE_RESET_COUNTER=str(root / 'reset-count'),
+                   FAKE_NPM_EXIT=str(npm_exit), FAKE_NPM_COUNTER=str(root / 'npm-count'),
+                   FAKE_NPM_GUARDS=json.dumps(guards), FAKE_NPM_CAUGHT_GUARDS=json.dumps(caught_titles))
+        with patch.object(mutchecks, 'SLOT', root / '.dev/mutcheck-backup'), \
+                patch.object(mutchecks, 'affected_entries', side_effect=lambda entries, ref, **kwargs: entries), \
+                patch.object(mutchecks, 'baseline', return_value=True), \
+                patch.dict(os.environ, env, clear=True):
+            code, output, _ = AllManifestTests().invoke(root, '--since', 'main')
+        return code, output, next(manifest.parent.glob('mutchecks-*'))
+
+    def test_e2e_mutated_reset_failure_is_environment(self):
+        code, output, logs = self.e2e_reset_fixture(fail_on=1, npm_exit=0)
+        self.assertEqual(code, 1, output)
+        content = (logs / 'results.log').read_text()
+        self.assertIn('1 browser exit=4/not-run caught=- restored=True not run (environment)', content)
+        self.assertIn('reset failed exit=9', (logs / '1-browser/mutated-command.log').read_text())
+        self.assertFalse((logs / '1-browser/restored-command.log').exists())
+        self.assertIn('selected=1 passed=0 failed=0 environment=1', output)
+
+    def test_e2e_restored_reset_failure_is_environment(self):
+        code, output, logs = self.e2e_reset_fixture(fail_on=2, npm_exit=1, caught=True)
+        self.assertEqual(code, 1, output)
+        content = (logs / 'results.log').read_text()
+        self.assertIn('1 browser exit=1/4 caught=TestGuard restored=True not run (environment)', content)
+        self.assertIn('reset failed exit=9', (logs / '1-browser/restored-command.log').read_text())
+        self.assertIn('selected=1 passed=0 failed=0 environment=1', output)
+
+    def test_e2e_restored_reset_without_catch_fails(self):
+        code, output, logs = self.e2e_reset_fixture(fail_on=2, npm_exit=0)
+        self.assertEqual(code, 1, output)
+        content = (logs / 'results.log').read_text()
+        self.assertIn('1 browser exit=0/4 caught=- restored=True FAIL', content)
+        self.assertNotIn('not run (environment)', content)
+        self.assertIn('selected=1 passed=0 failed=1 environment=0', output)
+
+    def test_e2e_restored_reset_partial_catch_fails(self):
+        code, output, logs = self.e2e_reset_fixture(
+            fail_on=2, npm_exit=1, caught=['TestGuard'], guards=['TestGuard', 'TestGuardTwo'])
+        self.assertEqual(code, 1, output)
+        content = (logs / 'results.log').read_text()
+        self.assertIn('1 browser exit=1/4 caught=TestGuard restored=True FAIL', content)
+        self.assertNotIn('not run (environment)', content)
+        self.assertIn('selected=1 passed=0 failed=1 environment=0', output)
+
+    def test_e2e_restore_failure_after_environment_fails(self):
+        code, output, logs = self.e2e_reset_fixture(fail_on=2, npm_exit=1, caught=True, restore_fail=True)
+        self.assertEqual(code, 1, output)
+        content = (logs / 'results.log').read_text()
+        self.assertIn('1 browser exit=1/4 caught=TestGuard restored=True FAIL', content)
+        self.assertNotIn('not run (environment)', content)
+        self.assertIn('selected=1 passed=0 failed=1 environment=0', output)
+
+    def test_e2e_environment_never_counts_as_passed(self):
+        code, output, logs = self.e2e_reset_fixture(fail_on=1, npm_exit=0, guards=[])
+        self.assertEqual(code, 1, output)
+        content = (logs / 'results.log').read_text()
+        self.assertIn('1 browser exit=4/not-run caught=- restored=True not run (environment)', content)
+        self.assertIn('selected=1 passed=0 failed=0 environment=1', output)
+
+    def test_e2e_exit_four_without_reset_marker_fails(self):
+        for caught in (False, True):
+            with self.subTest(caught=caught):
+                code, output, logs = self.e2e_reset_fixture(fail_on=0, npm_exit=4, caught=caught)
+                self.assertEqual(code, 1, output)
+                content = (logs / 'results.log').read_text()
+                exit_line = 'exit=1/4 caught=TestGuard' if caught else 'exit=4/4 caught=-'
+                self.assertIn(f'1 browser {exit_line} restored=True FAIL', content)
+                self.assertNotIn('not run (environment)', content)
+                self.assertIn('selected=1 passed=0 failed=1 environment=0', output)
+
     def test_baseline_retries_only_environment_package_once(self):
         for persistent in (False, True):
             with self.subTest(persistent=persistent), tempfile.TemporaryDirectory() as folder:
