@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 
@@ -161,7 +162,7 @@ func ScoreCase(c Case, observed Observed, modelErr error) CaseResult {
 		}
 	}
 	for _, keyword := range c.AnswerNotContains {
-		if answerContains(observed.Reply, keyword) {
+		if answerNotContains(observed.Reply, keyword) {
 			result.Answer = false
 			reason := fmt.Sprintf("回答出现禁止关键词：%s", keyword)
 			result.FailureReasons = append(result.FailureReasons, reason)
@@ -415,6 +416,9 @@ func sameNumber(want float64, got any) bool {
 }
 
 func answerContains(reply, keyword string) bool {
+	if date, ok := parseAnswerDate(keyword); ok {
+		return answerDateMatches(reply, date)
+	}
 	if want, ok := parseAnswerNumber(keyword); ok {
 		for _, token := range answerNumberTokens(reply) {
 			if got, ok := parseAnswerNumber(token); ok && got.Cmp(want) == 0 {
@@ -423,10 +427,164 @@ func answerContains(reply, keyword string) bool {
 		}
 		return false
 	}
-	if strings.Contains(reply, keyword) {
-		return true
+	return literalAnswerContains(reply, keyword)
+}
+
+func literalAnswerContains(reply, keyword string) bool {
+	replyRunes := []rune(reply)
+	keywordRunes := []rune(keyword)
+	for index := 0; index+len(keywordRunes) <= len(replyRunes); index++ {
+		if literalMatchAt(replyRunes, keywordRunes, index) {
+			return true
+		}
 	}
-	return strings.Contains(strings.ToLower(reply), strings.ToLower(keyword))
+	return false
+}
+
+func literalMatchAt(replyRunes, keywordRunes []rune, index int) bool {
+	if index+len(keywordRunes) > len(replyRunes) || !equalFoldRunes(replyRunes[index:index+len(keywordRunes)], keywordRunes) {
+		return false
+	}
+	if isASCIIDigit(keywordRunes[0]) && index > 0 && isASCIIDigit(replyRunes[index-1]) {
+		return false
+	}
+	end := index + len(keywordRunes)
+	if isASCIIDigit(keywordRunes[len(keywordRunes)-1]) && end < len(replyRunes) && isASCIIDigit(replyRunes[end]) {
+		return false
+	}
+	return true
+}
+
+func isASCIIDigit(r rune) bool {
+	return r >= '0' && r <= '9'
+}
+
+type answerDate struct {
+	year, month, day int
+	hasDay           bool
+}
+
+var (
+	answerMonthKeywordPattern = regexp.MustCompile(`^([0-9]{4})-([0-9]{2})$`)
+	answerDayKeywordPattern   = regexp.MustCompile(`^([0-9]{4})-([0-9]{2})-([0-9]{2})$`)
+)
+
+func parseAnswerDate(keyword string) (answerDate, bool) {
+	if match := answerDayKeywordPattern.FindStringSubmatch(keyword); match != nil {
+		year, _ := strconv.Atoi(match[1])
+		month, _ := strconv.Atoi(match[2])
+		day, _ := strconv.Atoi(match[3])
+		if !validAnswerDate(year, month, day) {
+			return answerDate{}, false
+		}
+		return answerDate{year: year, month: month, day: day, hasDay: true}, true
+	}
+	if match := answerMonthKeywordPattern.FindStringSubmatch(keyword); match != nil {
+		year, _ := strconv.Atoi(match[1])
+		month, _ := strconv.Atoi(match[2])
+		if !validAnswerDate(year, month, 1) {
+			return answerDate{}, false
+		}
+		return answerDate{year: year, month: month}, true
+	}
+	return answerDate{}, false
+}
+
+func validAnswerDate(year, month, day int) bool {
+	date := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
+	return date.Year() == year && int(date.Month()) == month && date.Day() == day
+}
+
+func answerDateMatches(reply string, date answerDate) bool {
+	year := strconv.Itoa(date.year)
+	month := answerDateNumber(date.month)
+	patterns := []string{
+		`(?:^|[^0-9])` + year + `-` + month + `(?:[^0-9]|$)`,
+		`(?:^|[^0-9])` + year + `年` + month + `月`,
+	}
+	if date.hasDay {
+		day := answerDateNumber(date.day)
+		patterns = []string{
+			`(?:^|[^0-9])` + year + `-` + month + `-` + day + `(?:[^0-9]|$)`,
+			`(?:^|[^0-9])` + year + `/` + month + `/` + day + `(?:[^0-9]|$)`,
+			`(?:^|[^0-9])` + year + `年` + month + `月` + day + `日`,
+		}
+	}
+	for _, pattern := range patterns {
+		if regexp.MustCompile(pattern).MatchString(reply) {
+			return true
+		}
+	}
+	return false
+}
+
+func answerDateNumber(value int) string {
+	if value < 10 {
+		return fmt.Sprintf("0?%d", value)
+	}
+	return strconv.Itoa(value)
+}
+
+func answerNotContains(reply, keyword string) bool {
+	if _, ok := parseAnswerNumber(keyword); ok {
+		return answerContains(reply, keyword)
+	}
+	if _, ok := parseAnswerDate(keyword); ok {
+		return answerContains(reply, keyword)
+	}
+	if startsWithNegation(keyword) {
+		return answerContains(reply, keyword)
+	}
+	replyRunes := []rune(reply)
+	keywordRunes := []rune(keyword)
+	for index := 0; index+len(keywordRunes) <= len(replyRunes); index++ {
+		if !literalMatchAt(replyRunes, keywordRunes, index) {
+			continue
+		}
+		if !exemptAnswerNotContains(replyRunes, index) {
+			return true
+		}
+	}
+	return false
+}
+
+var answerNotContainsExemptions = []string{"不算", "不是", "没有", "还没", "尚未", "并未", "不会", "不要说", "别说"}
+
+func exemptAnswerNotContains(runes []rune, index int) bool {
+	end := index
+	for end > 0 && unicode.IsSpace(runes[end-1]) {
+		end--
+	}
+	prefix := string(runes[:end])
+	for _, exemption := range answerNotContainsExemptions {
+		if strings.HasSuffix(prefix, exemption) {
+			return true
+		}
+	}
+	return false
+}
+
+func startsWithNegation(keyword string) bool {
+	for _, r := range keyword {
+		return isNegation(r)
+	}
+	return false
+}
+
+func isNegation(r rune) bool {
+	return r == '不' || r == '未' || r == '没' || r == '非' || r == '无'
+}
+
+func equalFoldRunes(left, right []rune) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range right {
+		if unicode.ToLower(left[i]) != unicode.ToLower(right[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 var (
