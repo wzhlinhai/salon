@@ -7,6 +7,7 @@ import (
 
 	"github.com/wzhlinhai/salon/backend/internal/ai"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
 // NewOracle 返回一条用例的 oracle 模型：按期望调用顺序发出工具调用，最后给出标准答案。
@@ -74,6 +75,13 @@ func oracleArgs(tool string, expected map[string]any, messages []ai.Message, f *
 	case "open_order", "open_groupbuy_order":
 		if _, ok := args["designated"]; !ok {
 			args["designated"] = false
+		}
+	case "list_redemptions":
+		if _, ok := args["from"]; !ok {
+			args["from"] = f.Now.Format(settings.DateLayout)
+		}
+		if _, ok := args["to"]; !ok {
+			args["to"] = f.Now.Format(settings.DateLayout)
 		}
 	case "open_card", "recharge_card":
 		if _, ok := args["sales_staff_ids"]; !ok {

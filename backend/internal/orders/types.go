@@ -122,7 +122,7 @@ type RemoveOrderItemInput struct {
 type SetOrderItemStaffInput struct {
 	OrderID     uuid.UUID             `json:"order_id"`
 	OrderItemID uuid.UUID             `json:"order_item_id"`
-	Staff       []OrderItemStaffInput `json:"staff" maxItems:"20"`
+	Staff       []OrderItemStaffInput `json:"staff" maxItems:"20" doc:"这个项目全部岗位的员工，整体替换：不改的岗位也要照原样填上，没填的岗位会被清空；第一个岗位换人或没填时，未手工改价的项目重新计价"`
 }
 
 // RepriceOrderItemInput 是项目行改价的金额和原因。
