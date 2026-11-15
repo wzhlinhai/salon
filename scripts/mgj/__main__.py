@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import extract, fixture, load, seed
+from . import extract, fixture, load, replay, seed
 from .client import ApiError
 
 
@@ -30,6 +30,16 @@ def _parser():
     load_parser.add_argument("--xlsx", required=True, type=Path)
     load_parser.add_argument("--out", required=True, type=Path)
     load_parser.add_argument("--commit", action="store_true")
+
+    replay_parser = commands.add_parser("replay", help="回放一个月的单据并写对比报告")
+    replay_parser.add_argument("--db", required=True, type=Path)
+    replay_parser.add_argument("--month", required=True)
+    replay_parser.add_argument("--api", required=True)
+    replay_parser.add_argument("--account", required=True)
+    replay_parser.add_argument("--password", required=True)
+    replay_parser.add_argument("--scheme", required=True, type=Path)
+    replay_parser.add_argument("--out", required=True, type=Path)
+    replay_parser.add_argument("--limit", type=int, help="只回放前 N 张单，便于调试")
 
     fixture_parser = commands.add_parser("make-fixture", help="写出合成 SQLite 测试存档")
     fixture_parser.add_argument("path", type=Path)
@@ -59,6 +69,29 @@ def main(argv=None):
                         "batch_id": detail.get("id"),
                         "status": detail.get("status"),
                         "lines": len(report.splitlines()),
+                    },
+                    ensure_ascii=False,
+                )
+            )
+        elif args.command == "replay":
+            result = replay.run(
+                args.db,
+                args.month,
+                args.api,
+                args.account,
+                args.password,
+                args.scheme,
+                args.out,
+                args.limit,
+            )
+            print(
+                json.dumps(
+                    {
+                        "report": str(Path(args.out) / "replay-report.md"),
+                        "result": str(Path(args.out) / "replay-result.json"),
+                        "bills_total": result["bills_total"],
+                        "bills_replayed": result["bills_replayed"],
+                        "bills_failed": result["bills_failed"],
                     },
                     ensure_ascii=False,
                 )

@@ -18,6 +18,7 @@
 python3 -m mgj extract --db <archive.sqlite> --out <dir>
 python3 -m mgj seed --api http://localhost:8080 --account boss --password owner-password --catalog <dir>/catalog.json
 python3 -m mgj load --api http://localhost:8080 --account boss --password owner-password --xlsx <dir>/import.xlsx --out <dir> [--commit]
+python3 -m mgj replay --db <archive.sqlite> --month 2026-09 --api http://localhost:8080 --account boss --password owner-password --scheme mgj/replay-scheme.example.json --out <dir> [--limit N]
 python3 -m mgj make-fixture <fixture.sqlite> [--force] [--orphan] [--no-independent]
 ```
 
@@ -100,3 +101,73 @@ go test ./internal/dataio/...
 `scripts/test_mgj.py` 用合成存档覆盖手机号、积分、折扣、中位数、套餐拆分、孤儿卡、确定性和 HTTP 请求；`backend/internal/dataio/mgj_import_test.go` 用 `parseWorkbook` 读取 `testdata/mgj-sample.xlsx`。Python 测试会重新生成该样本并断言字节一致。
 
 `make-fixture` 默认不覆盖已存在的路径，必须显式加 `--force`；这样不会误删上一次的 fixture。
+
+## replay
+
+前提：dev 数据库刚 reset，且第 1 步 `seed` 已写入项目和卡类型。`replay` 会把整月真实服务单
+通过 HTTP 重建到**今天的营业日**，再写 `replay-report.md` 和 `replay-result.json`。
+没有使用 `paper_date` 补录：提成方案的 `effective_from` 不能早于今天，补录的历史单拿不到提成。
+工具要求当天没有挂单、没有已结业绩，期初导入行也没有“已导入”或缺少 `entity_id`；否则
+中止并提示 **replay 需要刚 reset 的开发库**。
+
+### 阶段
+
+1. **安装**（按名称幂等）：建岗位 `大工`、`助理`；从 `business_employee_commission_monthly`
+   当月 `employee_label` 解析 `<编号> 号 <级别> [<姓名>]`，建级别、员工（级别 `助理` 用岗位
+   `助理`，其他用 `大工`）和默认非老板角色 `发型师`。第 1 步的项目都补上
+   `[大工(必填), 助理(非必填)]`，不带岗位比例。先按 `scheme.json` 的 `settings` 调
+   `change_setting`（生效今天），再保存提成方案。
+2. **期初余额**：按整月 `archive_visits` 单号和 `business_transaction_payments` 汇总每个
+   `(customer_id, card_type)` 的 `卡金`/`赠金`，生成只有这些顾客和储值卡的中间 Excel，
+   `preview`、`commit_import`、`get_import_batch` 后按 `source_key → entity_id` 映射。
+   顾客名写 `回放顾客<customer_id>`，手机号留空；卡号写 `R<customer_id>-<card_type>`。
+3. **逐单回放**：按 `occurred_at` 顺序。`items` 用 `、` 分行，`staff` 用 `；` 分段，按项目名
+   出现顺序匹配；第一个员工进 slot 1（大工），第二个进 slot 2（助理）。每行
+   `open_order` → `add_order_item` → 价格不同时 `reprice_order_item`（原因 `美管加回放`）。
+   支付：`卡金+赠金` 合并为一笔卡支付；微信/支付宝/现金/银联直接登记；点评支付和抖音团购
+   各建一个价格等于金额的团购商品，用假平台核销新券并 `link_coupon_order`，由结账生成
+   团购支付。支付合计不等于改价后应收时该单记 `payment_mismatch`。最后 `checkout_orders`；
+   卡支付单在关联团购券后用 `preview_checkout {order_id, card_id}` 试算；试算 `net` 与支付
+   合计不同时记 `card_discount_mismatch`，不结账。任何单张异常都只记在该单上并继续：
+   `ApiError` 记 `api_<状态码>`，其他异常记 `error_<异常类名>`。
+   负的支付行按 `invalid_payment_amount` 失败（退款单不回放）。
+4. **报告**：逐单记录、支付方式对比、卡本金/赠送金拆分、按员工业绩和提成对比，以及说明段。
+   差额一律 `美管加 − 本系统`，全部用 `Decimal`；三张对比表都有合计行。期初某个
+   （顾客、卡种）合计出负数时不建卡并计 `negative_opening_balance`。
+
+安装或期初阶段任何 `ApiError` / `ReplayError` 都会中止回放，但仍写出两个报告文件，并在
+`blockers` 中记录阶段、操作名和原始 detail。
+
+### scheme.json
+
+提成方案由人/Claude 写好，工具只把名称换成编号，不推导规则。顶层：
+
+- `settings`：`{设置项: 值}`，先于所有单通过 `change_setting` 生效今天。
+- `commission`：后端 `CommissionScheme` 的名称版。
+  - `rules[].cells[]` 用 `position_name` 代替 `position_id`；`source`、`base`、
+    `by_position`、`by_designated`、`by_member`、`tiers`、`percent`、`fixed_amount`
+    与后端一致。
+  - `overrides[]` 用 `staff_name` / `item_name` 代替 `staff_id` / `item_id`。
+  - `excluded_staff` 是员工姓名数组（也接受 `{"staff_name": "..."}`）。
+  - 未知或重名 → 在回放单据前中止。
+
+最小示例见 `scripts/mgj/replay-scheme.example.json`。
+
+### 报告口径
+
+- 本系统业绩用 `get_staff_report` 当天的 `item_performance` / `cash_performance` /
+  `card_performance`；美管加业绩用 `ep_super_operation_report_search__t3`
+  （`is_latest_copy=1`，消费时间按月份，流水单号限制为已回放单）。
+- 本系统提成用 `list_commissions` 当天 `item`/`consume`/`labor` 合计；美管加用
+  `business_employee_commission_monthly.item_commission`。卡销售没有回放，
+  `card_sales_performance` / `card_sales_commission` 只作参照。
+- 报告和 JSON 不含顾客姓名、手机号；单号和员工姓名可以出现。
+
+### 已知限制
+
+- 真实数据没有出现，但工具不拆分项目名里的 `、` 或 `：`，也不识别全角/半角分隔符变体
+  （`,`、`;`、`￥` 等）。出现这类数据时该单会按 `invalid_item_line` / `staff_item_mismatch`
+  等失败，不会静默改价。
+- 美管加 `item_commission` 是整月合计，包含失败或 `--limit` 未回放的单；提成差额包含这些单。
+- `card_discount_mismatch` 是规则差异：美管加按行实收，本系统结账会对非手工改价的可打折行
+  套用卡折扣；不是工具 bug。

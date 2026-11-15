@@ -56,7 +56,11 @@ class Client:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 raw = response.read()
         except urllib.error.HTTPError as error:
-            raise ApiError(error.code, _detail(error.read())) from error
+            try:
+                detail = _detail(error.read())
+            finally:
+                error.close()
+            raise ApiError(error.code, detail) from error
         except urllib.error.URLError as error:
             raise ApiError(0, str(error.reason)) from error
         if not raw:
