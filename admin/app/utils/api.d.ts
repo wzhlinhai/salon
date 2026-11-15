@@ -5735,6 +5735,7 @@ export interface components {
         PreviewCheckoutInput: {
             auto_card?: boolean;
             card_id?: string;
+            /** @description 挂单 id；草稿 id 不行，开单草稿确认前不要调用 */
             order_id: string;
         };
         Punch: {

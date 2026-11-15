@@ -183,7 +183,7 @@ type OrderPaymentCard struct {
 // PreviewCheckoutInput 是试算一张挂单及可选计价卡的参数。
 type PreviewCheckoutInput struct {
 	AutoCard bool       `json:"auto_card,omitempty"`
-	OrderID  uuid.UUID  `json:"order_id"`
+	OrderID  uuid.UUID  `json:"order_id" doc:"挂单 id；草稿 id 不行，开单草稿确认前不要调用"`
 	CardID   *uuid.UUID `json:"card_id,omitempty"`
 }
 

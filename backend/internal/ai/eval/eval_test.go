@@ -412,10 +412,95 @@ func TestEvalScorerExtraCalls(t *testing.T) {
 }
 
 func TestEvalScorerAnswerNotContains(t *testing.T) {
+	for _, tc := range []struct {
+		name, keyword, reply string
+		forbidden            bool
+	}{
+		{"plain", "已开单", "已开单，草稿", true},
+		{"whitelist 不算", "已开单", "尚不算已开单", false},
+		{"whitelist 没有", "生成", "还没有生成", false},
+		{"whitelist skips spaces only", "已开单", "尚未 已开单", false},
+		{"punctuation breaks whitelist", "已开单", "尚不算，已开单", true},
+		{"不仅 is not exempt", "已开单", "不仅已开单", true},
+		{"punctuation after 不 is not exempt", "无法生成", "不，无法生成草稿", true},
+		{"question breaks exemption", "已撤", "不能撤单？不对，已撤了", true},
+		{"没事 is not exempt", "已开单", "没事，已开单", true},
+		{"mixed", "已开单", "尚不算已开单，但已经已开单", true},
+		{"whitelist 不是", "已开单", "不是已开单", false},
+		{"whitelist 并未", "已开单", "并未已开单", false},
+		{"whitelist 不会", "已开单", "不会已开单", false},
+		{"whitelist 不要说", "已开单", "不要说已开单", false},
+		{"whitelist 别说", "已开单", "别说已开单", false},
+		{"keyword starts with negation", "没有生成", "没有生成", true},
+		{"keyword starts with negation after whitelist", "无法生成", "没有无法生成", true},
+		{"keyword starts with 不 after punctuation", "不生成", "不，不生成", true},
+		{"numeric keyword uses normalized compare", "88.00", "价格 ¥88.00", true},
+		{"short numeric keyword is not substring", "1", "10", false},
+		{"date keyword uses normalized compare", "2026-11", "2026年11月", true},
+		{"date keyword respects trailing digit boundary", "2026-11", "2026-110", false},
+		{"coupon phrase after 但 is caught", "这张券已核销", "我不能核销，但这张券已核销。", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := answerNotContains(tc.reply, tc.keyword); got != tc.forbidden {
+				t.Fatalf("answerNotContains(%q, %q) = %v, want %v", tc.reply, tc.keyword, got, tc.forbidden)
+			}
+		})
+	}
 	c := Case{ID: "x", Story: "s", Category: "draft", Role: "owner", Messages: []CaseMessage{{Role: "user", Content: "问"}}, AnswerContains: []string{"草稿"}, AnswerNotContains: []string{"已开单"}, ReferenceAnswer: "已生成草稿"}
 	result := ScoreCase(c, Observed{Reply: "已开单，草稿"}, nil)
 	if result.Overall || !strings.Contains(strings.Join(result.FailureReasons, "\n"), "回答出现禁止关键词") {
 		t.Fatalf("banned answer should fail: %+v", result)
+	}
+	if result := ScoreCase(c, Observed{Reply: "尚不算已开单，草稿"}, nil); !result.Overall {
+		t.Fatalf("negated answer should pass: %+v", result)
+	}
+}
+
+func TestEvalScorerDateKeywords(t *testing.T) {
+	for _, tc := range []struct {
+		name, keyword, reply string
+		ok                   bool
+	}{
+		{"month hyphen", "2026-11", "2026-11 月报", true},
+		{"month chinese", "2026-11", "2026年11月营业月报", true},
+		{"month chinese without padding", "2026-01", "2026年1月", true},
+		{"month chinese with padding", "2026-01", "2026年01月", true},
+		{"month does not match another month", "2026-01", "2026年11月", false},
+		{"month does not match trailing digit", "2026-11", "2026-110", false},
+		{"month does not match other chinese month", "2026-11", "2026年1月", false},
+		{"month does not match leading digit", "2026-11", "12026年11月", false},
+		{"day hyphen", "2026-11-05", "2026-11-05 的日报", true},
+		{"day slash", "2026-11-05", "2026/11/05 的日报", true},
+		{"day chinese", "2026-11-05", "2026年11月5日的日报", true},
+		{"day chinese with padding", "2026-11-05", "2026年11月05日的日报", true},
+		{"day does not match another day", "2026-11-05", "2026年11月15日", false},
+		{"day does not match trailing digit", "2026-11-05", "2026-11-050", false},
+		{"day does not match leading digit", "2026-11-05", "12026年11月5日", false},
+		{"other keyword unchanged", "2026年11月", "2026-11", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := answerContains(tc.reply, tc.keyword); got != tc.ok {
+				t.Fatalf("answerContains(%q, %q) = %v, want %v", tc.reply, tc.keyword, got, tc.ok)
+			}
+		})
+	}
+}
+
+func TestEvalScorerLiteralDigitBoundaries(t *testing.T) {
+	for _, tc := range []struct {
+		name, keyword, reply string
+		ok                   bool
+	}{
+		{"leading digit rejects longer number", "1 人", "今天有 11 人", false},
+		{"leading digit matches standalone", "1 人", "今天 1 人", true},
+		{"trailing digit rejects longer number", "第1", "第10", false},
+		{"trailing digit matches standalone", "第1", "第1名", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := answerContains(tc.reply, tc.keyword); got != tc.ok {
+				t.Fatalf("answerContains(%q, %q) = %v, want %v", tc.reply, tc.keyword, got, tc.ok)
+			}
+		})
 	}
 }
 
@@ -745,6 +830,29 @@ func TestEvalBookingTimeSchemaUsesStoreTimezone(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestEvalPreviewCheckoutOrderIDDoc(t *testing.T) {
+	f := Seed(t)
+	const want = "挂单 id；草稿 id 不行，开单草稿确认前不要调用"
+	for _, tool := range f.Shop.Registry.ChatTools(f.Callers["owner"]) {
+		if tool.Name != "preview_checkout" {
+			continue
+		}
+		properties, ok := tool.Parameters["properties"].(map[string]any)
+		if !ok {
+			t.Fatalf("preview_checkout properties = %v", tool.Parameters["properties"])
+		}
+		orderID, ok := properties["order_id"].(map[string]any)
+		if !ok {
+			t.Fatalf("preview_checkout order_id = %v", properties["order_id"])
+		}
+		if got, _ := orderID["description"].(string); got != want {
+			t.Fatalf("preview_checkout order_id description = %q, want %q", got, want)
+		}
+		return
+	}
+	t.Fatal("preview_checkout is not offered")
 }
 
 func TestEvalFixtureFingerprintChangesWithSource(t *testing.T) {
