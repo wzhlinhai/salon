@@ -294,6 +294,38 @@ func (q *Queries) GetItems(ctx context.Context, arg GetItemsParams) ([]Item, err
 	return items, nil
 }
 
+const listBookableItems = `-- name: ListBookableItems :many
+SELECT id, name, duration_minutes FROM items
+WHERE store_id = $1 AND active AND bookable
+ORDER BY name, id
+`
+
+type ListBookableItemsRow struct {
+	ID              uuid.UUID
+	Name            string
+	DurationMinutes int32
+}
+
+func (q *Queries) ListBookableItems(ctx context.Context, storeID uuid.UUID) ([]ListBookableItemsRow, error) {
+	rows, err := q.db.Query(ctx, listBookableItems, storeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListBookableItemsRow
+	for rows.Next() {
+		var i ListBookableItemsRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.DurationMinutes); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listItemLevelPrices = `-- name: ListItemLevelPrices :many
 SELECT tenant_id, store_id, item_id, level_id, price FROM item_level_prices WHERE store_id=$1 AND item_id = ANY($2::uuid[]) ORDER BY item_id, level_id
 `

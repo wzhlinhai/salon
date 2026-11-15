@@ -225,6 +225,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/book_appointment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 顾客本人自助预约，新建待确认预约 */
+        post: operations["book_appointment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/cancel_appointment": {
         parameters: {
             query?: never;
@@ -270,6 +287,23 @@ export interface paths {
         put?: never;
         /** 登记撤销收款 */
         post: operations["cancel_collection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/cancel_my_appointment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 取消本人尚未开始的预约 */
+        post: operations["cancel_my_appointment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2180,6 +2214,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/my_available_slots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看某发型师某营业日的可自助预约开始时间 */
+        post: operations["my_available_slots"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/my_booking_options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看可自助预约的发型师、项目和门店规则 */
+        post: operations["my_booking_options"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/my_card_ledger": {
         parameters: {
             query?: never;
@@ -3192,7 +3260,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 修改员工的姓名、编号、级别、岗位 */
+        /** 修改员工的姓名、编号、级别、岗位、小程序预约 */
         post: operations["update_staff"];
         delete?: never;
         options?: never;
@@ -3372,7 +3440,7 @@ export interface components {
         Appointment: {
             /** Format: date-time */
             created_at: string;
-            created_by: components["schemas"]["Ref"];
+            created_by: components["schemas"]["AppointmentActor"];
             customer: components["schemas"]["AppointmentCustomer"] | null;
             /** Format: date-time */
             ends_at: string;
@@ -3389,6 +3457,12 @@ export interface components {
             /** @enum {string} */
             status: "pending" | "confirmed" | "completed" | "cancelled" | "no_show";
         };
+        AppointmentActor: {
+            id: string;
+            /** @enum {string} */
+            kind: "staff" | "customer";
+            name: string;
+        };
         AppointmentCustomer: {
             id: string;
             name: string | null;
@@ -3397,7 +3471,7 @@ export interface components {
             phone_masked: boolean;
         };
         AppointmentEvent: {
-            actor: components["schemas"]["Ref"];
+            actor: components["schemas"]["AppointmentActor"];
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -3522,6 +3596,13 @@ export interface components {
         BaseSalaryList: {
             entries: components["schemas"]["StaffBaseSalary"][];
         };
+        BookAppointmentInput: {
+            item_ids: string[];
+            note?: string;
+            staff_id: string;
+            /** Format: date-time */
+            starts_at: string;
+        };
         BusinessReport: {
             /** @enum {string} */
             granularity: "day" | "month";
@@ -3581,6 +3662,9 @@ export interface components {
             reason: "顾客取消" | "门店取消" | "改约" | "其他";
         };
         CancelBlockInput: {
+            id: string;
+        };
+        CancelMyAppointmentInput: {
             id: string;
         };
         Card: {
@@ -4280,6 +4364,8 @@ export interface components {
             position_id?: string;
             /** @description 角色，见 list_roles */
             role_ids: string[];
+            /** @description 顾客能否在小程序自助预约，不填为不能 */
+            self_bookable?: boolean;
         };
         Customer: {
             active_safety_labels: components["schemas"]["SafetyLabel"][];
@@ -5188,6 +5274,23 @@ export interface components {
         MyAppointments: {
             entries: components["schemas"]["MyAppointment"][];
         };
+        MyAvailableSlots: {
+            /** Format: date */
+            date: string;
+            /** @description 本地时间 HH:MM */
+            slots: string[];
+        };
+        MyAvailableSlotsInput: {
+            /** Format: date */
+            date: string;
+            item_ids: string[];
+            staff_id: string;
+        };
+        MyBookingOptions: {
+            items: components["schemas"]["SelfBookingItem"][];
+            rules: components["schemas"]["SelfBookingRuleSet"];
+            staff: components["schemas"]["SelfBookingStaff"][];
+        };
         MyCard: {
             balance: string;
             bonus: string;
@@ -5272,6 +5375,7 @@ export interface components {
             store_name: string;
         };
         My_appointmentsRequest: Record<string, never>;
+        My_booking_optionsRequest: Record<string, never>;
         My_cardsRequest: Record<string, never>;
         My_profileRequest: Record<string, never>;
         OK: {
@@ -6045,6 +6149,28 @@ export interface components {
             query?: string;
             responsible_staff_id?: string;
         };
+        SelfBookingItem: {
+            /** Format: int64 */
+            duration_minutes: number;
+            id: string;
+            name: string;
+        };
+        SelfBookingRuleSet: {
+            business_hours: components["schemas"]["TimeRange"];
+            /** Format: int64 */
+            default_duration_minutes: number;
+            /** Format: int64 */
+            max_days_ahead: number;
+            /** Format: int64 */
+            min_lead_minutes: number;
+            /** Format: int64 */
+            slot_minutes: number;
+        };
+        SelfBookingStaff: {
+            id: string;
+            level_name: string | null;
+            name: string;
+        };
         SetBaseSalaryInput: {
             amount: string;
             /** @enum {string} */
@@ -6196,6 +6322,8 @@ export interface components {
             /** @description 岗位 */
             position?: components["schemas"]["Ref"];
             roles: components["schemas"]["Ref"][];
+            /** @description 顾客能否在小程序自助预约该员工 */
+            self_bookable: boolean;
         };
         StaffAttendance: {
             days: components["schemas"]["AttendanceDay"][];
@@ -6318,6 +6446,10 @@ export interface components {
             levels: components["schemas"]["TierLevel"][];
             /** @enum {string} */
             mode: "whole" | "progressive";
+        };
+        TimeRange: {
+            close: string;
+            open: string;
         };
         Totals: {
             amount: string;
@@ -6467,6 +6599,8 @@ export interface components {
             number: string;
             /** @description 岗位，不填为不设 */
             position_id?: string;
+            /** @description 顾客能否在小程序自助预约，不填为不变 */
+            self_bookable?: boolean;
             staff_id: string;
         };
         UpgradeCardInput: {
@@ -6931,6 +7065,39 @@ export interface operations {
             };
         };
     };
+    book_appointment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BookAppointmentInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyAppointment"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     cancel_appointment: {
         parameters: {
             query?: never;
@@ -7017,6 +7184,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Collection"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    cancel_my_appointment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelMyAppointmentInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyAppointment"];
                 };
             };
             /** @description Error */
@@ -10713,6 +10913,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MyAppointments"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    my_available_slots: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MyAvailableSlotsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyAvailableSlots"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    my_booking_options: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["My_booking_optionsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyBookingOptions"];
                 };
             };
             /** @description Error */

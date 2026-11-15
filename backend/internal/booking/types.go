@@ -49,6 +49,13 @@ type AppointmentCustomer struct {
 	PhoneMasked bool      `json:"phone_masked"`
 }
 
+// AppointmentActor 是预约或事件的发起人：员工或顾客本人。
+type AppointmentActor struct {
+	ID   uuid.UUID `json:"id"`
+	Kind string    `json:"kind" enum:"staff,customer"`
+	Name string    `json:"name"`
+}
+
 // AppointmentItem 是预约选中的项目及服务时长。
 type AppointmentItem struct {
 	ItemID          uuid.UUID `json:"item_id"`
@@ -65,18 +72,18 @@ func (AppointmentEvent) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.S
 
 // AppointmentEvent 是一次只追加的预约/占位变化。
 type AppointmentEvent struct {
-	FromStartsAt *time.Time `json:"from_starts_at" nullable:"true"`
-	FromEndsAt   *time.Time `json:"from_ends_at" nullable:"true"`
-	ToStartsAt   time.Time  `json:"to_starts_at"`
-	ToEndsAt     time.Time  `json:"to_ends_at"`
-	FromStaff    *staff.Ref `json:"from_staff"`
-	ToStaff      staff.Ref  `json:"to_staff"`
-	Reason       *string    `json:"reason" nullable:"true"`
-	Note         *string    `json:"note" nullable:"true"`
-	ID           uuid.UUID  `json:"id"`
-	Kind         string     `json:"kind" enum:"create,reschedule,confirm,complete,cancel,no_show"`
-	Actor        staff.Ref  `json:"actor"`
-	CreatedAt    time.Time  `json:"created_at"`
+	FromStartsAt *time.Time       `json:"from_starts_at" nullable:"true"`
+	FromEndsAt   *time.Time       `json:"from_ends_at" nullable:"true"`
+	ToStartsAt   time.Time        `json:"to_starts_at"`
+	ToEndsAt     time.Time        `json:"to_ends_at"`
+	FromStaff    *staff.Ref       `json:"from_staff"`
+	ToStaff      staff.Ref        `json:"to_staff"`
+	Reason       *string          `json:"reason" nullable:"true"`
+	Note         *string          `json:"note" nullable:"true"`
+	ID           uuid.UUID        `json:"id"`
+	Kind         string           `json:"kind" enum:"create,reschedule,confirm,complete,cancel,no_show"`
+	Actor        AppointmentActor `json:"actor"`
+	CreatedAt    time.Time        `json:"created_at"`
 }
 
 // TransformSchema 声明私约占位没有关联顾客。
@@ -96,7 +103,7 @@ type Appointment struct {
 	StartsAt  time.Time            `json:"starts_at"`
 	EndsAt    time.Time            `json:"ends_at"`
 	Staff     staff.Ref            `json:"staff"`
-	CreatedBy staff.Ref            `json:"created_by"`
+	CreatedBy AppointmentActor     `json:"created_by"`
 	CreatedAt time.Time            `json:"created_at"`
 	Items     []AppointmentItem    `json:"items"`
 	Events    []AppointmentEvent   `json:"events"`

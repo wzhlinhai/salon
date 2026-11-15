@@ -5,6 +5,7 @@ definePageMeta({ permission: 'booking.manage' })
 
 type Appointment = components['schemas']['Appointment']
 type AppointmentEvent = components['schemas']['AppointmentEvent']
+type Actor = components['schemas']['AppointmentActor']
 type Customer = components['schemas']['Customer']
 type Item = components['schemas']['Item']
 type StaffOption = components['schemas']['StaffOption']
@@ -567,6 +568,11 @@ function eventStaff(event: AppointmentEvent) {
   if (!event.from_staff) return event.to_staff.name
   return `${event.from_staff.name} → ${event.to_staff.name}`
 }
+
+function actorLabel(actor: Actor) {
+  if (actor.kind !== 'customer') return actor.name
+  return actor.name === '顾客本人' ? '顾客本人' : `顾客 ${actor.name}`
+}
 </script>
 
 <template>
@@ -721,7 +727,7 @@ function eventStaff(event: AppointmentEvent) {
             <p>状态：{{ statusLabels[detail.status] }}</p>
             <p class="col-span-2">顾客：<span data-detail-customer>{{ detail.kind === 'block' ? '私约占位' : (detail.customer?.name ?? '未识别顾客') }}</span><span v-if="detail.customer?.phone"> · {{ detail.customer.phone }}</span></p>
             <p>发型师：{{ detail.staff.name }}</p>
-            <p>创建人：{{ detail.created_by.name }}</p>
+            <p data-detail-created-by :data-actor-kind="detail.created_by.kind">创建人：{{ actorLabel(detail.created_by) }}</p>
             <p>开始：{{ dateTimeText(detail.starts_at) }}</p>
             <p>结束：{{ dateTimeText(detail.ends_at) }}</p>
             <p>创建时间：{{ dateTimeText(detail.created_at) }}</p>
@@ -746,7 +752,7 @@ function eventStaff(event: AppointmentEvent) {
           <div class="space-y-2">
             <h2 class="font-medium">状态变化</h2>
             <div v-for="event in detail.events" :key="event.id" class="rounded border border-default p-2 text-sm" data-event-row :data-event-kind="event.kind">
-              <p class="font-medium">{{ eventLabels[event.kind] }} · {{ dateTimeText(event.created_at) }} · {{ event.actor.name }}</p>
+              <p class="font-medium" data-event-actor :data-actor-kind="event.actor.kind">{{ eventLabels[event.kind] }} · {{ dateTimeText(event.created_at) }} · {{ actorLabel(event.actor) }}</p>
               <p v-if="event.from_starts_at" class="text-muted">时间：{{ eventRange(event) }} → {{ eventToRange(event) }}</p>
               <p v-else class="text-muted">时间：{{ eventToRange(event) }}</p>
               <p v-if="event.from_staff" class="text-muted">发型师：{{ eventStaff(event) }}</p>

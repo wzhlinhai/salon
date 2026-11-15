@@ -121,3 +121,36 @@ type MyAppointment struct {
 type MyAppointments struct {
 	Entries []MyAppointment `json:"entries"`
 }
+
+// MyBookingOptions 是顾客可预约的发型师、项目与门店规则。
+type MyBookingOptions struct {
+	Staff []booking.SelfBookingStaff `json:"staff"`
+	Items []booking.SelfBookingItem  `json:"items"`
+	Rules booking.SelfBookingRuleSet `json:"rules"`
+}
+
+// MyAvailableSlotsInput 是查看某发型师某天可约开始时间的参数。
+type MyAvailableSlotsInput struct {
+	StaffID uuid.UUID   `json:"staff_id"`
+	Date    string      `json:"date" format:"date"`
+	ItemIDs []uuid.UUID `json:"item_ids" maxItems:"5"`
+}
+
+// MyAvailableSlots 是某发型师某营业日按整点或半点开始的可用时间。
+type MyAvailableSlots struct {
+	Date  string   `json:"date" format:"date"`
+	Slots []string `json:"slots" doc:"本地时间 HH:MM"`
+}
+
+// BookAppointmentInput 是顾客自助预约的参数。
+type BookAppointmentInput struct {
+	StaffID  uuid.UUID   `json:"staff_id"`
+	StartsAt time.Time   `json:"starts_at"`
+	ItemIDs  []uuid.UUID `json:"item_ids" minItems:"1" maxItems:"5"`
+	Note     *string     `json:"note,omitempty" maxLength:"200"`
+}
+
+// CancelMyAppointmentInput 是要取消的本人预约。
+type CancelMyAppointmentInput struct {
+	ID uuid.UUID `json:"id"`
+}

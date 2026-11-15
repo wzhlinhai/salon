@@ -32,6 +32,7 @@ type Staff struct {
 	Position      *Ref       `json:"position,omitempty" doc:"岗位"`
 	LoginAccount  *string    `json:"login_account,omitempty" doc:"登录账号"`
 	Active        bool       `json:"active" doc:"是否在职"`
+	SelfBookable  bool       `json:"self_bookable" doc:"顾客能否在小程序自助预约该员工"`
 	DeactivatedAt *time.Time `json:"deactivated_at,omitempty"`
 	Roles         []Ref      `json:"roles"`
 }

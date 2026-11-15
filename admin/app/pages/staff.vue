@@ -50,6 +50,7 @@ const columns = [
   { id: 'position', header: '岗位' },
   { id: 'roles', header: '角色' },
   { accessorKey: 'login_account', header: '登录账号' },
+  { id: 'self_bookable', header: '小程序预约' },
   { id: 'status', header: '状态' },
   { id: 'actions', header: '' }
 ]
@@ -68,7 +69,7 @@ function done(error: unknown, ok: unknown, message: string, current: () => boole
 const profileEditor = useModalForm()
 const { open: profileOpen, saving: profileSaving } = profileEditor
 const editing = ref<Staff | null>(null)
-const profile = reactive({ name: '', number: '', level: NONE, position: NONE, role_ids: [] as string[] })
+const profile = reactive({ name: '', number: '', level: NONE, position: NONE, role_ids: [] as string[], self_bookable: false })
 
 function openProfile(s: Staff | null) {
   profileEditor.begin(() => {
@@ -78,7 +79,8 @@ function openProfile(s: Staff | null) {
       number: s?.number ?? '',
       level: s?.level?.id ?? NONE,
       position: s?.position?.id ?? NONE,
-      role_ids: []
+      role_ids: [],
+      self_bookable: s?.self_bookable ?? false
     })
   })
 }
@@ -89,7 +91,8 @@ async function saveProfile() {
       name: profile.name,
       number: profile.number,
       level_id: profile.level === NONE ? undefined : profile.level,
-      position_id: profile.position === NONE ? undefined : profile.position
+      position_id: profile.position === NONE ? undefined : profile.position,
+      self_bookable: profile.self_bookable
     }
     const res = editing.value
       ? await api.POST('/api/ops/update_staff', { body: { ...common, staff_id: editing.value.id } })
@@ -173,6 +176,11 @@ async function setActive(s: Staff, active: boolean) {
           <UBadge v-for="r in row.original.roles" :key="r.id" variant="subtle">{{ r.name }}</UBadge>
         </div>
       </template>
+      <template #self_bookable-cell="{ row }">
+        <UBadge :color="row.original.self_bookable ? 'success' : 'neutral'" variant="subtle">
+          {{ row.original.self_bookable ? '可预约' : '不可预约' }}
+        </UBadge>
+      </template>
       <template #status-cell="{ row }">
         <UBadge :color="row.original.active ? 'success' : 'neutral'" variant="subtle">
           {{ row.original.active ? '在职' : '已停用' }}
@@ -196,6 +204,9 @@ async function setActive(s: Staff, active: boolean) {
           <UFormField label="编号"><UInput v-model="profile.number" class="w-full" /></UFormField>
           <UFormField label="级别"><USelect v-model="profile.level" :items="optionItems(levels)" class="w-full" /></UFormField>
           <UFormField label="岗位"><USelect v-model="profile.position" :items="optionItems(positions)" class="w-full" /></UFormField>
+          <UFormField label="小程序预约">
+            <UCheckbox v-model="profile.self_bookable" label="顾客可在小程序预约" aria-label="顾客可在小程序预约" />
+          </UFormField>
           <UFormField v-if="!editing" label="角色">
             <USelectMenu v-model="profile.role_ids" :items="roleItems" value-key="value" multiple class="w-full" />
           </UFormField>

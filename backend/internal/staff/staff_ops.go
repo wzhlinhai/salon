@@ -22,19 +22,21 @@ type StaffList struct {
 type ListStaffInput struct{}
 
 type CreateStaffInput struct {
-	Name       string      `json:"name" minLength:"1" maxLength:"50" doc:"姓名"`
-	Number     string      `json:"number" minLength:"1" maxLength:"20" doc:"员工编号，本店内唯一"`
-	LevelID    *uuid.UUID  `json:"level_id,omitempty" doc:"级别，见 list_levels"`
-	PositionID *uuid.UUID  `json:"position_id,omitempty" doc:"岗位，见 list_positions"`
-	RoleIDs    []uuid.UUID `json:"role_ids" doc:"角色，见 list_roles"`
+	Name         string      `json:"name" minLength:"1" maxLength:"50" doc:"姓名"`
+	Number       string      `json:"number" minLength:"1" maxLength:"20" doc:"员工编号，本店内唯一"`
+	LevelID      *uuid.UUID  `json:"level_id,omitempty" doc:"级别，见 list_levels"`
+	PositionID   *uuid.UUID  `json:"position_id,omitempty" doc:"岗位，见 list_positions"`
+	RoleIDs      []uuid.UUID `json:"role_ids" doc:"角色，见 list_roles"`
+	SelfBookable *bool       `json:"self_bookable,omitempty" doc:"顾客能否在小程序自助预约，不填为不能"`
 }
 
 type UpdateStaffInput struct {
-	StaffID    uuid.UUID  `json:"staff_id"`
-	Name       string     `json:"name" minLength:"1" maxLength:"50" doc:"姓名"`
-	Number     string     `json:"number" minLength:"1" maxLength:"20" doc:"员工编号，本店内唯一"`
-	LevelID    *uuid.UUID `json:"level_id,omitempty" doc:"级别，不填为不设"`
-	PositionID *uuid.UUID `json:"position_id,omitempty" doc:"岗位，不填为不设"`
+	StaffID      uuid.UUID  `json:"staff_id"`
+	Name         string     `json:"name" minLength:"1" maxLength:"50" doc:"姓名"`
+	Number       string     `json:"number" minLength:"1" maxLength:"20" doc:"员工编号，本店内唯一"`
+	LevelID      *uuid.UUID `json:"level_id,omitempty" doc:"级别，不填为不设"`
+	PositionID   *uuid.UUID `json:"position_id,omitempty" doc:"岗位，不填为不设"`
+	SelfBookable *bool      `json:"self_bookable,omitempty" doc:"顾客能否在小程序自助预约，不填为不变"`
 }
 
 type SetStaffLoginInput struct {
@@ -109,6 +111,13 @@ func registerStaff(r *ops.Registry) {
 			if err != nil {
 				return nil, uniqueViolation(err)
 			}
+			if in.SelfBookable != nil && *in.SelfBookable {
+				if _, err := env.Q.UpdateStaffProfile(ctx, dbgen.UpdateStaffProfileParams{
+					ID: st.ID, Name: in.Name, Number: in.Number, LevelID: in.LevelID, PositionID: in.PositionID, SelfBookable: true,
+				}); err != nil {
+					return nil, uniqueViolation(err)
+				}
+			}
 			if err := setRoles(ctx, env, st.ID, in.RoleIDs); err != nil {
 				return nil, err
 			}
@@ -116,15 +125,19 @@ func registerStaff(r *ops.Registry) {
 		},
 	})
 	ops.Register(r, ops.Operation[UpdateStaffInput, Staff]{
-		Name: "update_staff", Summary: "修改员工的姓名、编号、级别、岗位", Kind: ops.Write,
+		Name: "update_staff", Summary: "修改员工的姓名、编号、级别、岗位、小程序预约", Kind: ops.Write,
 		Permission: perm.StaffManage, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *UpdateStaffInput) (*Staff, error) {
 			return change(ctx, env, "update_staff", in.StaffID, uniqueColumns, func(current dbgen.Staff) error {
 				if err := checkLevelPosition(ctx, env, in.LevelID, in.PositionID, &current); err != nil {
 					return err
 				}
+				selfBookable := current.SelfBookable
+				if in.SelfBookable != nil {
+					selfBookable = *in.SelfBookable
+				}
 				_, err := env.Q.UpdateStaffProfile(ctx, dbgen.UpdateStaffProfileParams{
-					ID: in.StaffID, Name: in.Name, Number: in.Number, LevelID: in.LevelID, PositionID: in.PositionID,
+					ID: in.StaffID, Name: in.Name, Number: in.Number, LevelID: in.LevelID, PositionID: in.PositionID, SelfBookable: selfBookable,
 				})
 				return uniqueViolation(err)
 			})
@@ -324,7 +337,7 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Staff) ([]Staff, error
 		s := Staff{
 			ID: st.ID, Name: st.Name, Number: st.Number,
 			Level: ref(st.LevelID), Position: ref(st.PositionID),
-			LoginAccount: st.LoginAccount, Active: st.Active, Roles: []Ref{},
+			LoginAccount: st.LoginAccount, Active: st.Active, SelfBookable: st.SelfBookable, Roles: []Ref{},
 		}
 		if st.DeactivatedAt.Valid {
 			s.DeactivatedAt = &st.DeactivatedAt.Time

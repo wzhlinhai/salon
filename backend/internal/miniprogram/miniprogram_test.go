@@ -891,7 +891,7 @@ func TestCustomerOpsHiddenFromAI(t *testing.T) {
 	s := optest.OpenShop(t)
 	token, _ := mustLogin(t, s, "fake-openid:ai", "fake-phone:13800130016")
 	caller := customerCaller(t, s, token)
-	for _, op := range []string{"my_profile", "my_cards", "my_card_ledger", "my_orders", "my_appointments"} {
+	for _, op := range []string{"my_profile", "my_cards", "my_card_ledger", "my_orders", "my_appointments", "my_booking_options", "my_available_slots", "book_appointment", "cancel_my_appointment"} {
 		if r := s.AI(t, caller, op, map[string]any{}); r.Status != http.StatusNotFound || !errors.Is(r.Err, ops.ErrUnknownOperation) {
 			t.Fatalf("%s AI = %d %v", op, r.Status, r.Err)
 		}

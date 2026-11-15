@@ -2,8 +2,10 @@ package customers
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
@@ -57,4 +59,25 @@ func CheckViewable(ctx context.Context, env ops.Env, ids ...uuid.UUID) error {
 		}
 	}
 	return nil
+}
+
+// LockSurvivingSelf 共享锁住顾客本人并沿 merged_into 跟随到保留顾客；不检查员工查看范围。
+func LockSurvivingSelf(ctx context.Context, env ops.Env, id uuid.UUID) (dbgen.Customer, error) {
+	for range 100 {
+		row, err := env.Q.ShareCustomer(ctx, dbgen.ShareCustomerParams{StoreID: env.Caller.StoreID, ID: id})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return row, ops.ErrNotFound
+		}
+		if err != nil {
+			return row, err
+		}
+		if row.StoreID != env.Caller.StoreID {
+			return row, ops.ErrNotFound
+		}
+		if row.MergedInto == nil {
+			return row, nil
+		}
+		id = *row.MergedInto
+	}
+	return dbgen.Customer{}, errors.New("customer merge chain too long")
 }
