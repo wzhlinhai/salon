@@ -1,6 +1,6 @@
 -- name: CreateAppointment :one
-INSERT INTO appointments (tenant_id, store_id, staff_id, customer_id, kind, starts_at, ends_at, status, note, created_by)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+INSERT INTO appointments (tenant_id, store_id, staff_id, customer_id, kind, starts_at, ends_at, status, note, created_by, created_by_customer)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 RETURNING *;
 
 -- name: GetAppointment :one
@@ -61,15 +61,15 @@ WHERE ai.store_id=$1 AND ai.appointment_id=ANY(sqlc.arg(appointment_ids)::uuid[]
 ORDER BY ai.appointment_id, ai.position;
 
 -- name: AddAppointmentEvent :exec
-INSERT INTO appointment_events (tenant_id, store_id, appointment_id, kind, from_starts_at, from_ends_at, to_starts_at, to_ends_at, from_staff_id, to_staff_id, reason, note, actor_staff_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13);
+INSERT INTO appointment_events (tenant_id, store_id, appointment_id, kind, from_starts_at, from_ends_at, to_starts_at, to_ends_at, from_staff_id, to_staff_id, reason, note, actor_staff_id, actor_customer_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14);
 
 -- name: ListAppointmentEvents :many
 SELECT e.*, actor.name AS actor_name, fs.name AS from_staff_name, ts.name AS to_staff_name
 FROM appointment_events e
-JOIN staff actor ON actor.id=e.actor_staff_id
+LEFT JOIN staff actor ON actor.id=e.actor_staff_id
 LEFT JOIN staff fs ON fs.id=e.from_staff_id
-JOIN staff ts ON ts.id=e.to_staff_id
+LEFT JOIN staff ts ON ts.id=e.to_staff_id
 WHERE e.store_id=$1 AND e.appointment_id=ANY(sqlc.arg(appointment_ids)::uuid[])
 ORDER BY e.appointment_id, e.created_at, e.id;
 
@@ -81,3 +81,20 @@ WHERE store_id=sqlc.arg(store_id) AND staff_id=ANY(sqlc.arg(staff_ids)::uuid[])
 
 -- name: OrderHasCompletedAppointment :one
 SELECT EXISTS(SELECT 1 FROM appointments WHERE store_id=sqlc.arg(store_id) AND order_id=sqlc.arg(order_id)::uuid AND status='completed') AS found;
+
+-- name: ListStaffOccupied :many
+SELECT id, starts_at, ends_at FROM appointments
+WHERE store_id=sqlc.arg(store_id) AND staff_id=sqlc.arg(staff_id)
+ AND status IN ('pending','confirmed')
+ AND starts_at < sqlc.arg(day_end) AND ends_at > sqlc.arg(day_start)
+ORDER BY starts_at, id;
+
+-- name: CountCustomerSelfBookings :one
+SELECT count(*) FROM appointments
+WHERE store_id=sqlc.arg(store_id) AND customer_id=sqlc.arg(customer_id)
+ AND created_by_customer IS NOT NULL
+ AND status IN ('pending','confirmed')
+ AND starts_at >= sqlc.arg(now);
+
+-- name: LockCustomerSelfBooking :exec
+SELECT pg_advisory_xact_lock(hashtextextended((sqlc.arg(store_id)::uuid)::text || '/self_booking/' || (sqlc.arg(customer_id)::uuid)::text, 0));

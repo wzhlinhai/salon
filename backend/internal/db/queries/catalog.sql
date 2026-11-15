@@ -63,3 +63,8 @@ SELECT * FROM items WHERE store_id=$1 AND id=$2 FOR SHARE;
 
 -- name: GetItems :many
 SELECT * FROM items WHERE store_id=sqlc.arg(store_id) AND id=ANY(sqlc.arg(ids)::uuid[]);
+
+-- name: ListBookableItems :many
+SELECT id, name, duration_minutes FROM items
+WHERE store_id = $1 AND active AND bookable
+ORDER BY name, id;

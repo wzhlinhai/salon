@@ -52,11 +52,33 @@ func loadAppointments(ctx context.Context, env ops.Env, rows []dbgen.Appointment
 	customerIDs := make([]uuid.UUID, 0, len(rows))
 	appointmentIDs := make([]uuid.UUID, 0, len(rows))
 	for _, row := range rows {
-		staffIDs = append(staffIDs, row.StaffID, row.CreatedBy)
+		staffIDs = append(staffIDs, row.StaffID)
+		if row.CreatedBy != nil {
+			staffIDs = append(staffIDs, *row.CreatedBy)
+		}
 		if row.CustomerID != nil {
 			customerIDs = append(customerIDs, *row.CustomerID)
 		}
+		if row.CreatedByCustomer != nil {
+			customerIDs = append(customerIDs, *row.CreatedByCustomer)
+		}
 		appointmentIDs = append(appointmentIDs, row.ID)
+	}
+	var eventRows []dbgen.ListAppointmentEventsRow
+	var err error
+	if withEvents {
+		eventRows, err = env.Q.ListAppointmentEvents(ctx, dbgen.ListAppointmentEventsParams{StoreID: env.Caller.StoreID, AppointmentIds: appointmentIDs})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range eventRows {
+			if row.ActorStaffID != nil {
+				staffIDs = append(staffIDs, *row.ActorStaffID)
+			}
+			if row.ActorCustomerID != nil {
+				customerIDs = append(customerIDs, *row.ActorCustomerID)
+			}
+		}
 	}
 	refs, err := env.Q.StaffNames(ctx, dbgen.StaffNamesParams{StoreID: env.Caller.StoreID, Ids: staffIDs})
 	if err != nil {
@@ -85,33 +107,27 @@ func loadAppointments(ctx context.Context, env ops.Env, rows []dbgen.Appointment
 		items[row.AppointmentID] = append(items[row.AppointmentID], AppointmentItem{ItemID: row.ItemID, Name: row.Name, Position: int(row.Position), DurationMinutes: int(row.DurationMinutes)})
 	}
 	events := map[uuid.UUID][]AppointmentEvent{}
-	if withEvents {
-		eventRows, err := env.Q.ListAppointmentEvents(ctx, dbgen.ListAppointmentEventsParams{StoreID: env.Caller.StoreID, AppointmentIds: appointmentIDs})
-		if err != nil {
-			return nil, err
+	for _, row := range eventRows {
+		event := AppointmentEvent{
+			ID: row.ID, Kind: row.Kind, FromStartsAt: timePtr(row.FromStartsAt), FromEndsAt: timePtr(row.FromEndsAt),
+			ToStartsAt: row.ToStartsAt.Time, ToEndsAt: row.ToEndsAt.Time, Reason: row.Reason, Note: row.Note,
+			Actor: actorRef(env, row.ActorStaffID, row.ActorCustomerID, names, customersByID), CreatedAt: row.CreatedAt.Time,
 		}
-		for _, row := range eventRows {
-			event := AppointmentEvent{
-				ID: row.ID, Kind: row.Kind, FromStartsAt: timePtr(row.FromStartsAt), FromEndsAt: timePtr(row.FromEndsAt),
-				ToStartsAt: row.ToStartsAt.Time, ToEndsAt: row.ToEndsAt.Time, Reason: row.Reason, Note: row.Note,
-				Actor: staff.Ref{ID: row.ActorStaffID, Name: row.ActorName}, CreatedAt: row.CreatedAt.Time,
+		if row.FromStaffID != nil {
+			name := ""
+			if row.FromStaffName != nil {
+				name = *row.FromStaffName
 			}
-			if row.FromStaffID != nil {
-				name := ""
-				if row.FromStaffName != nil {
-					name = *row.FromStaffName
-				}
-				event.FromStaff = &staff.Ref{ID: *row.FromStaffID, Name: name}
-			}
-			event.ToStaff = staff.Ref{ID: row.ToStaffID, Name: row.ToStaffName}
-			events[row.AppointmentID] = append(events[row.AppointmentID], event)
+			event.FromStaff = &staff.Ref{ID: *row.FromStaffID, Name: name}
 		}
+		event.ToStaff = staff.Ref{ID: row.ToStaffID, Name: stringValue(row.ToStaffName)}
+		events[row.AppointmentID] = append(events[row.AppointmentID], event)
 	}
 	out := make([]Appointment, 0, len(rows))
 	for _, row := range rows {
 		view := Appointment{
 			ID: row.ID, Kind: row.Kind, Status: row.Status, StartsAt: row.StartsAt.Time, EndsAt: row.EndsAt.Time,
-			Note: row.Note, OrderID: row.OrderID, Staff: names[row.StaffID], CreatedBy: names[row.CreatedBy],
+			Note: row.Note, OrderID: row.OrderID, Staff: names[row.StaffID], CreatedBy: createdByActor(env, row, names, customersByID),
 			CreatedAt: row.CreatedAt.Time, Items: items[row.ID], Events: events[row.ID],
 		}
 		if view.Items == nil {
@@ -126,6 +142,43 @@ func loadAppointments(ctx context.Context, env ops.Env, rows []dbgen.Appointment
 		out = append(out, view)
 	}
 	return out, nil
+}
+
+func stringValue(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
+func createdByActor(env ops.Env, row dbgen.Appointment, names map[uuid.UUID]staff.Ref, customersByID map[uuid.UUID]dbgen.Customer) AppointmentActor {
+	if row.CreatedBy != nil {
+		ref := names[*row.CreatedBy]
+		return AppointmentActor{ID: ref.ID, Kind: "staff", Name: ref.Name}
+	}
+	if row.CreatedByCustomer != nil {
+		return customerActor(env, *row.CreatedByCustomer, customersByID)
+	}
+	return AppointmentActor{}
+}
+
+func actorRef(env ops.Env, staffID, customerID *uuid.UUID, names map[uuid.UUID]staff.Ref, customersByID map[uuid.UUID]dbgen.Customer) AppointmentActor {
+	if customerID != nil {
+		return customerActor(env, *customerID, customersByID)
+	}
+	if staffID != nil {
+		ref := names[*staffID]
+		return AppointmentActor{ID: ref.ID, Kind: "staff", Name: ref.Name}
+	}
+	return AppointmentActor{}
+}
+
+func customerActor(env ops.Env, id uuid.UUID, customersByID map[uuid.UUID]dbgen.Customer) AppointmentActor {
+	name := "顾客本人"
+	if row, ok := customersByID[id]; ok && customers.CanView(env.Caller, row) && row.Name != nil && *row.Name != "" {
+		name = *row.Name
+	}
+	return AppointmentActor{ID: id, Kind: "customer", Name: name}
 }
 
 func customerRef(env ops.Env, id uuid.UUID, row dbgen.Customer) *AppointmentCustomer {

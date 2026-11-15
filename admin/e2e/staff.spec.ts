@@ -123,3 +123,32 @@ test('新建员工断网后恢复并可重试', async ({ page }) => {
   await expect(dialog).toHaveCount(0)
   await expect(page.getByRole('cell', { name, exact: true })).toBeVisible()
 })
+
+test('员工档案可以设置顾客在小程序预约', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const suffix = Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+  const created = await api<{ id: string, name: string }>(token, 'create_staff', {
+    name: `可约员工${suffix}`,
+    number: suffix,
+    role_ids: []
+  })
+  await login(page, owner.account, owner.password)
+  await page.goto('/staff')
+  const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: created.name, exact: true }) })
+  await expect(row.getByRole('cell', { name: '不可预约', exact: true })).toBeVisible()
+  await row.getByRole('button', { name: '档案', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '修改档案', exact: true })
+  const checkbox = dialog.getByRole('checkbox', { name: '顾客可在小程序预约', exact: true })
+  await expect(checkbox).not.toBeChecked()
+  await checkbox.check()
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(row.getByRole('cell', { name: '可预约', exact: true })).toBeVisible()
+
+  await row.getByRole('button', { name: '档案', exact: true }).click()
+  await expect(checkbox).toBeChecked()
+  await checkbox.uncheck()
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(row.getByRole('cell', { name: '不可预约', exact: true })).toBeVisible()
+})

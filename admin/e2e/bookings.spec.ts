@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { api, apiLogin, hire, login, navLabels, owner, uniqueSuffix } from './helpers'
+import { env } from './env'
 
 interface Hours { open: string, close: string }
 interface Customer { id: string, name: string, phone: string }
@@ -483,4 +484,62 @@ test('详情窗口丢弃切换到另一条预约后的旧响应', async ({ page 
   await page.waitForTimeout(500)
   await expect(dialog.locator('[data-detail-customer]')).toHaveText(secondCustomer.customer.name)
   await expect(dialog.locator('[data-appointment-detail]')).toHaveAttribute('data-detail-id', second.id)
+})
+
+async function selfBookable(token: string, staffID: string) {
+  const list = await api<{ staff: { id: string, name: string, number: string }[] }>(token, 'list_staff', {})
+  const row = list.staff.find(person => person.id === staffID)
+  if (!row) throw new Error(`staff ${staffID} missing`)
+  await api(token, 'update_staff', { staff_id: staffID, name: row.name, number: row.number, self_bookable: true })
+}
+
+async function customerLogin(storeID: string, openid: string, phone: string): Promise<string> {
+  const response = await fetch(`${env.baseURL}/api/customer/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ store_id: storeID, code: `fake-openid:${openid}`, phone_code: `fake-phone:${phone}` })
+  })
+  if (!response.ok) throw new Error(`customer login: ${response.status} ${await response.text()}`)
+  return (await response.json()).token as string
+}
+
+async function customerApi<T = unknown>(token: string, op: string, body: object): Promise<T> {
+  const response = await fetch(`${env.baseURL}/api/ops/${op}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(body)
+  })
+  if (!response.ok) throw new Error(`${op}: ${response.status} ${await response.text()}`)
+  return response.json() as Promise<T>
+}
+
+test('顾客自助预约显示顾客创建人并可确认', async ({ page }) => {
+  const seeded = await seed()
+  const today = await settings(seeded.token)
+  const tomorrow = addDays(today.businessDate, 1)
+  const { hours } = await settings(seeded.token, tomorrow)
+  const start = clockAt(hours, 60)
+  await selfBookable(seeded.token, seeded.staff.id)
+  const store = await api<{ id: string }>(seeded.token, 'get_store', {})
+  const customerToken = await customerLogin(store.id, `e2e-${seeded.suffix}`, seeded.customer.phone)
+  await customerApi(customerToken, 'book_appointment', {
+    staff_id: seeded.staff.id,
+    starts_at: `${tomorrow}T${start}:00+08:00`,
+    item_ids: [seeded.item.id]
+  })
+
+  await login(page, owner.account, owner.password)
+  await page.goto('/bookings')
+  await expect(page.getByLabel('营业日')).toHaveValue(today.businessDate)
+  await fillDay(page, tomorrow)
+  const entryRow = entry(page, seeded.staff.id, seeded.customer.name)
+  await expect(entryRow).toHaveAttribute('data-entry-status', 'pending')
+
+  const dialog = await openEntry(page, seeded.staff.id, seeded.customer.name)
+  await expect(dialog.locator('[data-detail-created-by]')).toHaveAttribute('data-actor-kind', 'customer')
+  await expect(dialog.locator('[data-detail-created-by]')).toContainText(`顾客 ${seeded.customer.name}`)
+  await expect(dialog.locator('[data-event-actor]')).toHaveAttribute('data-actor-kind', 'customer')
+  await expect(dialog.locator('[data-event-actor]')).toContainText(`顾客 ${seeded.customer.name}`)
+  await dialog.getByRole('button', { name: '确认', exact: true }).click()
+  await expect(dialog.locator('[data-appointment-detail]')).toHaveAttribute('data-detail-status', 'confirmed')
 })

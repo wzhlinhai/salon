@@ -20,6 +20,7 @@ func TestCustomerLoginMigrationDown(t *testing.T) {
 		tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 		dbtest.Exec(t, tx, `INSERT INTO customer_logins (tenant_id,store_id,openid,customer_id) VALUES ($1,$2,'down-guard',$3)`, s.Res.TenantID, s.Res.StoreID, customerID)
 		dbtest.Commit(t, tx)
+		dbtest.MigrateDownTo(t, s.Pool, 52)
 		err := db.MigrateDown(context.Background(), s.Pool)
 		if err == nil || !strings.Contains(err.Error(), "无法回滚 00052") {
 			t.Fatalf("down error = %v", err)
@@ -31,9 +32,7 @@ func TestCustomerLoginMigrationDown(t *testing.T) {
 
 	t.Run("succeeds without data", func(t *testing.T) {
 		s := optest.OpenShop(t)
-		if err := db.MigrateDown(context.Background(), s.Pool); err != nil {
-			t.Fatal(err)
-		}
+		dbtest.MigrateDownTo(t, s.Pool, 51)
 		var table *string
 		if err := s.Pool.QueryRow(context.Background(), "SELECT to_regclass('customer_logins')::text").Scan(&table); err != nil || table != nil {
 			t.Fatalf("customer_logins = %v, err = %v", table, err)

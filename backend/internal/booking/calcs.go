@@ -41,6 +41,15 @@ func CheckLeadTime(requiredMinutes int, now, startsAt time.Time) error {
 
 // checkSchedule 检查预约是否落在营业时段、可约天数和今天之内。
 func checkSchedule(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, rules settings.Rules, now, startsAt, endsAt time.Time) error {
+	today, err := settings.BusinessDate(ctx, q, storeID, now)
+	if err != nil {
+		return err
+	}
+	return checkScheduleAt(today, rules, now, startsAt, endsAt)
+}
+
+// checkScheduleAt 用已读取的今天检查营业时段、可约天数和是否已过去，供逐槽过滤只取一次营业日。
+func checkScheduleAt(today time.Time, rules settings.Rules, now, startsAt, endsAt time.Time) error {
 	if !endsAt.After(startsAt) {
 		return ops.Rule("结束时间要晚于开始时间")
 	}
@@ -52,10 +61,6 @@ func checkSchedule(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, rul
 	startClock, endClock := startLocal.Format("15:04"), endLocal.Format("15:04")
 	if startClock < hours.Open || endClock > hours.Close {
 		return ops.Rule("预约时间要在营业时段（" + hours.Open + "–" + hours.Close + "）内")
-	}
-	today, err := settings.BusinessDate(ctx, q, storeID, now)
-	if err != nil {
-		return err
 	}
 	day := settings.Date(startsAt)
 	if day.Before(today) {

@@ -34,7 +34,7 @@ func TestEveryCustomerReferenceIsMerged(t *testing.T) {
 	}
 	// 日志只追加，关联写入时的顾客和操作者，不随合并改挂；创建人也是历史记录。
 	// 其余外键仍须全部登记。
-	expected := []string{"audit_log.customer_id", "audit_log.actor_customer_id", "customers.created_by_customer"}
+	expected := []string{"audit_log.customer_id", "audit_log.actor_customer_id", "customers.created_by_customer", "appointments.created_by_customer", "appointment_events.actor_customer_id"}
 	for _, ref := range customerReferences {
 		expected = append(expected, ref.table+"."+ref.column)
 	}

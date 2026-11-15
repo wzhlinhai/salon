@@ -85,11 +85,18 @@ func checkOverlap(ctx context.Context, env ops.Env, staffID uuid.UUID, startsAt,
 }
 
 func addEvent(ctx context.Context, env ops.Env, appointmentID uuid.UUID, kind string, fromStart, fromEnd *time.Time, toStart, toEnd time.Time, fromStaff *uuid.UUID, toStaff uuid.UUID, reason, note *string) error {
-	return env.Q.AddAppointmentEvent(ctx, dbgen.AddAppointmentEventParams{
+	params := dbgen.AddAppointmentEventParams{
 		TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, AppointmentID: appointmentID, Kind: kind,
 		FromStartsAt: optionalTime(fromStart), FromEndsAt: optionalTime(fromEnd), ToStartsAt: timestamptz(toStart), ToEndsAt: timestamptz(toEnd),
-		FromStaffID: fromStaff, ToStaffID: toStaff, Reason: reason, Note: note, ActorStaffID: env.Caller.StaffID,
-	})
+		FromStaffID: fromStaff, ToStaffID: toStaff, Reason: reason, Note: note,
+	}
+	if env.Caller.StaffID != uuid.Nil {
+		actor := env.Caller.StaffID
+		params.ActorStaffID = &actor
+	} else {
+		params.ActorCustomerID = env.Caller.CustomerID
+	}
+	return env.Q.AddAppointmentEvent(ctx, params)
 }
 
 func optionalTime(t *time.Time) pgtype.Timestamptz {
@@ -140,20 +147,7 @@ func selectedItems(ctx context.Context, env ops.Env, in []AppointmentItemInput) 
 	if err != nil {
 		return nil, 0, err
 	}
-	items := make([]dbgen.Item, 0, len(ids))
-	total := 0
-	for _, id := range ids {
-		item := rows[id]
-		if !item.Active {
-			return nil, 0, ops.Rule("项目已停用")
-		}
-		if !item.Bookable {
-			return nil, 0, ops.Rule("该项目不可预约")
-		}
-		items = append(items, item)
-		total += int(item.DurationMinutes)
-	}
-	return items, total, nil
+	return validateSelectedItems(ids, rows)
 }
 
 func createAppointment(ctx context.Context, env ops.Env, in *CreateAppointmentInput) (*Appointment, error) {
@@ -191,10 +185,11 @@ func createAppointment(ctx context.Context, env ops.Env, in *CreateAppointmentIn
 	if err := checkOverlap(ctx, env, in.StaffID, in.StartsAt, endsAt, nil); err != nil {
 		return nil, err
 	}
+	createdBy := env.Caller.StaffID
 	row, err := env.Q.CreateAppointment(ctx, dbgen.CreateAppointmentParams{
 		TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, StaffID: in.StaffID, CustomerID: &customerID,
 		Kind: KindAppointment, StartsAt: timestamptz(in.StartsAt), EndsAt: timestamptz(endsAt), Status: StatusConfirmed,
-		Note: trimNote(in.Note), CreatedBy: env.Caller.StaffID,
+		Note: trimNote(in.Note), CreatedBy: &createdBy,
 	})
 	if err != nil {
 		if isExclusionViolation(err) {
@@ -468,9 +463,10 @@ func createBlock(ctx context.Context, env ops.Env, in *CreateBlockInput) (*Appoi
 	if err := checkOverlap(ctx, env, in.StaffID, in.StartsAt, in.EndsAt, nil); err != nil {
 		return nil, err
 	}
+	createdBy := env.Caller.StaffID
 	row, err := env.Q.CreateAppointment(ctx, dbgen.CreateAppointmentParams{
 		TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, StaffID: in.StaffID, Kind: KindBlock,
-		StartsAt: timestamptz(in.StartsAt), EndsAt: timestamptz(in.EndsAt), Status: StatusConfirmed, Note: trimNote(in.Note), CreatedBy: env.Caller.StaffID,
+		StartsAt: timestamptz(in.StartsAt), EndsAt: timestamptz(in.EndsAt), Status: StatusConfirmed, Note: trimNote(in.Note), CreatedBy: &createdBy,
 	})
 	if err != nil {
 		if isExclusionViolation(err) {
