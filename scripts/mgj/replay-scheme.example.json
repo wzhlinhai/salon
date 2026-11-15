@@ -1,0 +1,30 @@
+{
+  "settings": {
+    "card_deduction_order": "principal_first",
+    "performance_ratio_card_bonus": 100,
+    "performance_split": "by_position"
+  },
+  "commission": {
+    "rules": [
+      {
+        "source": "item",
+        "base": "paid",
+        "by_position": true,
+        "by_designated": false,
+        "by_member": false,
+        "cells": [
+          {
+            "position_name": "大工",
+            "percent": "50.00"
+          },
+          {
+            "position_name": "助理",
+            "percent": "20.00"
+          }
+        ]
+      }
+    ],
+    "overrides": [],
+    "excluded_staff": []
+  }
+}
