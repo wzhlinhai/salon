@@ -211,7 +211,7 @@ func TestTenantContextDoesNotLeakAcrossTransactions(t *testing.T) {
 	// 连接池只有一条连接时，下一个事务必定复用同一条连接。
 	cfg := f.pool.Config()
 	cfg.MaxConns = 1
-	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	pool, err := db.NewPoolWithConfig(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

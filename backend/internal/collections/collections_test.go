@@ -10,8 +10,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/wzhlinhai/salon/backend/internal/collections"
+	"github.com/wzhlinhai/salon/backend/internal/db"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/money"
@@ -519,7 +519,7 @@ func TestListCollectionOrder(t *testing.T) {
 	for _, name := range []string{"enable_indexscan", "enable_indexonlyscan", "enable_bitmapscan"} {
 		config.ConnConfig.RuntimeParams[name] = "off"
 	}
-	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	pool, err := db.NewPoolWithConfig(context.Background(), config)
 	if err != nil {
 		t.Fatal(err)
 	}

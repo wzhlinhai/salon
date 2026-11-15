@@ -4,12 +4,13 @@ import type { components } from '~/utils/api'
 definePageMeta({ permission: 'report.view' })
 
 type GroupbuyMonth = components['schemas']['GroupbuyMonth']
+type Platform = components['schemas']['GroupbuyMonthInput']['platform']
 
 const api = useApi()
 const toast = useToast()
 const { can } = useMe()
-const platformItems = [{ label: '美团', value: 'meituan' }, { label: '抖音', value: 'douyin' }]
-const platform = ref('meituan')
+const platformItems: { label: string, value: Platform }[] = [{ label: '美团', value: 'meituan' }, { label: '抖音', value: 'douyin' }]
+const platform = ref<Platform>('meituan')
 const month = ref('')
 const data = ref<GroupbuyMonth | null>(null)
 const loading = ref(false)

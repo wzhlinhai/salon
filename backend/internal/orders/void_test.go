@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/wzhlinhai/salon/backend/internal/db"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
@@ -366,7 +366,7 @@ func TestVoidViewQueryCount(t *testing.T) {
 	counter := &paymentQueryCounter{}
 	config := s.Pool.Config().Copy()
 	config.ConnConfig.Tracer = counter
-	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	pool, err := db.NewPoolWithConfig(context.Background(), config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -498,7 +498,7 @@ func TestVoidViewsBatch(t *testing.T) {
 	counter := &paymentQueryCounter{}
 	config := s.Pool.Config().Copy()
 	config.ConnConfig.Tracer = counter
-	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	pool, err := db.NewPoolWithConfig(context.Background(), config)
 	if err != nil {
 		t.Fatal(err)
 	}

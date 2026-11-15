@@ -29,7 +29,7 @@ func countingPool(t *testing.T, base *pgxpool.Pool, counter *queryCounter) *pgxp
 	t.Helper()
 	config := base.Config().Copy()
 	config.ConnConfig.Tracer = counter
-	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	pool, err := db.NewPoolWithConfig(context.Background(), config)
 	if err != nil {
 		t.Fatal(err)
 	}

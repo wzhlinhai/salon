@@ -11,8 +11,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/wzhlinhai/salon/backend/internal/db"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/optest"
@@ -40,7 +40,7 @@ func pauseApp(t *testing.T, s *shop, prefix string) (*optest.App, <-chan struct{
 	tracer := &pausedQuery{prefix: prefix, paused: make(chan struct{}), resume: make(chan struct{})}
 	cfg := s.Pool.Config().Copy()
 	cfg.ConnConfig.Tracer = tracer
-	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	pool, err := db.NewPoolWithConfig(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

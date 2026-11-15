@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/wzhlinhai/salon/backend/internal/db"
 	"github.com/wzhlinhai/salon/backend/internal/optest"
 )
 
@@ -40,7 +40,7 @@ func TestCommissionReadQueryCount(t *testing.T) {
 	counter := &queryCounter{}
 	config := s.Pool.Config().Copy()
 	config.ConnConfig.Tracer = counter
-	pool, err := pgxpool.NewWithConfig(t.Context(), config)
+	pool, err := db.NewPoolWithConfig(t.Context(), config)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -38,9 +38,10 @@ type Case struct {
 	Messages          []CaseMessage  `json:"messages"`
 	Expected          []ExpectedCall `json:"expected_calls"`
 	Forbidden         []string       `json:"forbidden_tools,omitempty"`
-	AllowedTools      []string       `json:"allowed_tools,omitempty"`
 	Refusal           bool           `json:"refusal,omitempty"`
+	RefusalException  string         `json:"refusal_exception,omitempty"`
 	AnswerContains    []string       `json:"answer_contains"`
+	AnswerAny         [][]string     `json:"answer_any,omitempty"`
 	AnswerNotContains []string       `json:"answer_not_contains,omitempty"`
 	ReferenceAnswer   string         `json:"reference_answer"`
 	KnownGap          *KnownGap      `json:"known_gap,omitempty"`
@@ -82,8 +83,8 @@ type CaseResult struct {
 	PromptHash        string         `json:"prompt_hash,omitempty"`
 	Expected          []ExpectedCall `json:"expected"`
 	Forbidden         []string       `json:"forbidden_tools,omitempty"`
-	AllowedTools      []string       `json:"allowed_tools,omitempty"`
 	OfferedTools      []string       `json:"offered_tools,omitempty"`
+	AnswerAny         [][]string     `json:"answer_any,omitempty"`
 	AnswerNotContains []string       `json:"answer_not_contains,omitempty"`
 	Sources           []ai.Source    `json:"sources"`
 	Drafts            []DraftRef     `json:"drafts"`

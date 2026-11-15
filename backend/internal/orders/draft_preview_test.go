@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/wzhlinhai/salon/backend/internal/db"
 	"github.com/wzhlinhai/salon/backend/internal/optest"
 	"github.com/wzhlinhai/salon/backend/internal/orders"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
@@ -122,7 +122,7 @@ func TestDraftPreviewQueryCount(t *testing.T) {
 	counter := &paymentQueryCounter{}
 	cfg := s.Pool.Config().Copy()
 	cfg.ConnConfig.Tracer = counter
-	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	pool, err := db.NewPoolWithConfig(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

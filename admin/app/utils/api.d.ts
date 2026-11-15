@@ -4150,21 +4150,30 @@ export interface components {
             customer_phone?: string;
             /**
              * Format: date-time
-             * @description 不填时按项目时长之和或门店默认时长计算
+             * @description 不填时按项目时长之和或门店默认时长计算；门店时区为北京时间（UTC+08:00），必须写成带 +08:00 的 RFC3339，例如 2026-11-11T15:00:00+08:00
              */
             ends_at?: string;
             items?: components["schemas"]["AppointmentItemInput"][];
             note?: string;
             staff_id: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description 门店时区为北京时间（UTC+08:00），必须写成带 +08:00 的 RFC3339，例如 2026-11-11T15:00:00+08:00
+             */
             starts_at: string;
         };
         CreateBlockInput: {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description 门店时区为北京时间（UTC+08:00），必须写成带 +08:00 的 RFC3339，例如 2026-11-11T15:00:00+08:00
+             */
             ends_at: string;
             note?: string;
             staff_id: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description 门店时区为北京时间（UTC+08:00），必须写成带 +08:00 的 RFC3339，例如 2026-11-11T15:00:00+08:00
+             */
             starts_at: string;
         };
         CreateCardTypeInput: {
@@ -4204,7 +4213,11 @@ export interface components {
         CreateDealInput: {
             item_id: string;
             name: string;
-            platform: string;
+            /**
+             * @description 平台：meituan=美团，douyin=抖音
+             * @enum {string}
+             */
+            platform: "meituan" | "douyin";
             purchase_price: string;
         };
         CreateInput: {
@@ -4665,7 +4678,11 @@ export interface components {
         };
         GroupbuyMonthInput: {
             month: string;
-            platform: string;
+            /**
+             * @description 平台：meituan=美团，douyin=抖音
+             * @enum {string}
+             */
+            platform: "meituan" | "douyin";
         };
         GuestVisit: {
             /** Format: date */
@@ -5739,7 +5756,11 @@ export interface components {
             amount: string;
             month: string;
             note?: string;
-            platform: string;
+            /**
+             * @description 平台：meituan=美团，douyin=抖音
+             * @enum {string}
+             */
+            platform: "meituan" | "douyin";
         };
         RedPacket: {
             /** Format: date-time */
@@ -5878,7 +5899,7 @@ export interface components {
         RescheduleAppointmentInput: {
             /**
              * Format: date-time
-             * @description 不填时保持原时长
+             * @description 不填时保持原时长；门店时区为北京时间（UTC+08:00），必须写成带 +08:00 的 RFC3339，例如 2026-11-11T15:00:00+08:00
              */
             ends_at?: string;
             id: string;
@@ -5887,7 +5908,7 @@ export interface components {
             staff_id?: string;
             /**
              * Format: date-time
-             * @description 不填时保持原开始时间
+             * @description 不填时保持原开始时间；门店时区为北京时间（UTC+08:00），必须写成带 +08:00 的 RFC3339，例如 2026-11-11T15:00:00+08:00
              */
             starts_at?: string;
         };

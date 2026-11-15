@@ -97,7 +97,7 @@ func start() {
 		adminDSN = dsn
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		conn, err := pgx.Connect(ctx, dsn)
+		conn, err := db.Connect(ctx, dsn)
 		if err == nil {
 			err = conn.Ping(ctx)
 			_ = conn.Close(ctx)
@@ -171,7 +171,7 @@ func newPool(t testing.TB, template string) *pgxpool.Pool {
 	}
 	ctx := context.Background()
 
-	admin, err := pgx.Connect(ctx, adminDSN)
+	admin, err := db.Connect(ctx, adminDSN)
 	if err != nil {
 		t.Fatal(setupError(err))
 	}
@@ -186,7 +186,7 @@ func newPool(t testing.TB, template string) *pgxpool.Pool {
 	}
 
 	t.Cleanup(func() {
-		admin, err := pgx.Connect(ctx, adminDSN)
+		admin, err := db.Connect(ctx, adminDSN)
 		if err != nil {
 			t.Error(err)
 			return
@@ -204,7 +204,7 @@ func newPool(t testing.TB, template string) *pgxpool.Pool {
 	// 与 CI 一样限制为四个连接，让占用连接的测试在本地也能暴露问题。
 	cfg.MaxConns = 4
 	cfg.ConnConfig.Database = name
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	pool, err := db.NewPoolWithConfig(ctx, cfg)
 	if err != nil {
 		t.Fatal(setupError(err))
 	}
@@ -226,9 +226,19 @@ func NewPool(t testing.TB) *pgxpool.Pool {
 	return newPool(t, templateName)
 }
 
+// DSN 返回测试 PostgreSQL 的管理连接串，供测试验证连接池和单连接构造。
+func DSN(t testing.TB) string {
+	t.Helper()
+	once.Do(start)
+	if startErr != nil {
+		t.Fatal(startErr)
+	}
+	return adminDSN
+}
+
 func createTemplate() error {
 	ctx := context.Background()
-	admin, err := pgx.Connect(ctx, adminDSN)
+	admin, err := db.Connect(ctx, adminDSN)
 	if err != nil {
 		return setupError(err)
 	}
@@ -250,7 +260,7 @@ func createTemplate() error {
 	cfg.ConnConfig.Database = templateName
 	// 迁移期间只用一个连接，几十个测试进程共用服务器时不会耗尽连接数。
 	cfg.MaxConns = 1
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	pool, err := db.NewPoolWithConfig(ctx, cfg)
 	if err != nil {
 		return setupError(err)
 	}
@@ -302,7 +312,7 @@ func runJanitor(template string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	conn, err := pgx.Connect(ctx, os.Getenv(dsnEnv))
+	conn, err := db.Connect(ctx, os.Getenv(dsnEnv))
 	if err != nil {
 		return
 	}

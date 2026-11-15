@@ -68,8 +68,18 @@ func ParseCases(raw []byte) ([]Case, error) {
 				return nil, fmt.Errorf("%s: any_of_args 只能与 any_of 成对使用且长度相同", c.ID)
 			}
 		}
-		if len(c.AnswerContains) == 0 {
-			return nil, fmt.Errorf("%s: answer_contains 不能为空", c.ID)
+		if len(c.AnswerContains) == 0 && len(c.AnswerAny) == 0 {
+			return nil, fmt.Errorf("%s: answer_contains 和 answer_any 不能同时为空", c.ID)
+		}
+		for i, alternatives := range c.AnswerAny {
+			if len(alternatives) == 0 {
+				return nil, fmt.Errorf("%s: answer_any 第 %d 组不能为空", c.ID, i+1)
+			}
+			for _, keyword := range alternatives {
+				if strings.TrimSpace(keyword) == "" {
+					return nil, fmt.Errorf("%s: answer_any 关键词不能为空", c.ID)
+				}
+			}
 		}
 		if strings.TrimSpace(c.ReferenceAnswer) == "" {
 			return nil, fmt.Errorf("%s: reference_answer 不能为空", c.ID)
@@ -86,8 +96,8 @@ func ResolveCase(c Case, f *Fixture) (Case, error) {
 	out := c
 	out.Messages = append([]CaseMessage(nil), c.Messages...)
 	out.Forbidden = append([]string(nil), c.Forbidden...)
-	out.AllowedTools = append([]string(nil), c.AllowedTools...)
 	out.AnswerContains = make([]string, len(c.AnswerContains))
+	out.AnswerAny = make([][]string, len(c.AnswerAny))
 	out.AnswerNotContains = make([]string, len(c.AnswerNotContains))
 	out.Expected = make([]ExpectedCall, len(c.Expected))
 	for i := range c.Expected {
@@ -118,6 +128,16 @@ func ResolveCase(c Case, f *Fixture) (Case, error) {
 			return Case{}, fmt.Errorf("%s answer_contains：%w", c.ID, err)
 		}
 		out.AnswerContains[i] = resolved
+	}
+	for i, alternatives := range c.AnswerAny {
+		out.AnswerAny[i] = make([]string, len(alternatives))
+		for j, keyword := range alternatives {
+			resolved, err := f.ResolveString(keyword)
+			if err != nil {
+				return Case{}, fmt.Errorf("%s answer_any：%w", c.ID, err)
+			}
+			out.AnswerAny[i][j] = resolved
+		}
 	}
 	for i, keyword := range c.AnswerNotContains {
 		resolved, err := f.ResolveString(keyword)
