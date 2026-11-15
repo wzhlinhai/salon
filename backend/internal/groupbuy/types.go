@@ -30,7 +30,7 @@ type DealList struct {
 
 // CreateDealInput 是新建团购商品。
 type CreateDealInput struct {
-	Platform      string       `json:"platform" minLength:"1" maxLength:"100"`
+	Platform      string       `json:"platform" enum:"meituan,douyin" doc:"平台：meituan=美团，douyin=抖音"`
 	Name          string       `json:"name" minLength:"1" maxLength:"200"`
 	PurchasePrice money.Amount `json:"purchase_price"`
 	ItemID        uuid.UUID    `json:"item_id"`
@@ -74,7 +74,7 @@ type Settlement struct {
 
 // RecordSettlementInput 是录入平台月结算额的参数。
 type RecordSettlementInput struct {
-	Platform string       `json:"platform" minLength:"1" maxLength:"100"`
+	Platform string       `json:"platform" enum:"meituan,douyin" doc:"平台：meituan=美团，douyin=抖音"`
 	Month    string       `json:"month" pattern:"^[0-9]{4}-(0[1-9]|1[0-2])$"`
 	Amount   money.Amount `json:"amount"`
 	Note     string       `json:"note,omitempty" maxLength:"500"`
@@ -82,7 +82,7 @@ type RecordSettlementInput struct {
 
 // GroupbuyMonthInput 是按平台和结算月查询团购核销与对账的参数。
 type GroupbuyMonthInput struct {
-	Platform string `json:"platform" minLength:"1" maxLength:"100"`
+	Platform string `json:"platform" enum:"meituan,douyin" doc:"平台：meituan=美团，douyin=抖音"`
 	Month    string `json:"month" pattern:"^[0-9]{4}-(0[1-9]|1[0-2])$"`
 }
 

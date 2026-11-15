@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/wzhlinhai/salon/backend/internal/db"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/optest"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
@@ -153,7 +154,7 @@ func TestClosingQueryCounts(t *testing.T) {
 	counter := &queryCounter{}
 	config := f.Pool.Config().Copy()
 	config.ConnConfig.Tracer = counter
-	pool, err := pgxpool.NewWithConfig(t.Context(), config)
+	pool, err := db.NewPoolWithConfig(t.Context(), config)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,9 +1,36 @@
 package main
 
 import (
+	"context"
 	"reflect"
 	"testing"
+	"time"
+
+	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 )
+
+func TestDatabasePoolUsesStoreTimeZone(t *testing.T) {
+	previous := time.Local
+	losAngeles, err := time.LoadLocation("America/Los_Angeles")
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Local = losAngeles
+	t.Cleanup(func() { time.Local = previous })
+	t.Setenv("DATABASE_URL", dbtest.DSN(t))
+	pool, err := openDatabase(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	var scanned time.Time
+	if err := pool.QueryRow(context.Background(), "SELECT '2026-11-11T12:00:00+08:00'::timestamptz").Scan(&scanned); err != nil {
+		t.Fatal(err)
+	}
+	if got := scanned.Format(time.RFC3339); got != "2026-11-11T12:00:00+08:00" {
+		t.Fatalf("scanned time = %s, want 2026-11-11T12:00:00+08:00", got)
+	}
+}
 
 func TestFakeGroupbuyRegistry(t *testing.T) {
 	providers, platforms := fakeGroupbuy("")

@@ -5,6 +5,7 @@ definePageMeta({ permission: 'settings.manage' })
 
 type Deal = components['schemas']['Deal']
 type Item = components['schemas']['Item']
+type Platform = components['schemas']['CreateDealInput']['platform']
 
 const api = useApi()
 const toast = useToast()
@@ -12,7 +13,7 @@ const deals = ref<Deal[]>([])
 const items = ref<Item[]>([])
 const loading = ref(false)
 const loadGuard = useRequestGuard()
-const platformItems = [{ label: '美团', value: 'meituan' }, { label: '抖音', value: 'douyin' }]
+const platformItems: { label: string, value: Platform }[] = [{ label: '美团', value: 'meituan' }, { label: '抖音', value: 'douyin' }]
 const itemItems = computed(() => items.value.filter(i => i.active).map(i => ({ label: `${i.name}（${i.price}）`, value: i.id })))
 
 async function load() {
@@ -40,7 +41,7 @@ onMounted(load)
 const editor = useModalForm()
 const { open, saving } = editor
 const editing = ref<Deal | null>(null)
-const platform = ref('meituan')
+const platform = ref<Platform>('meituan')
 const name = ref('')
 const purchasePrice = ref('0.00')
 const itemID = ref('')
@@ -49,7 +50,7 @@ const active = ref(true)
 function openEditor(deal: Deal | null) {
   editor.begin(() => {
     editing.value = deal
-    platform.value = deal?.platform ?? 'meituan'
+    platform.value = (deal?.platform as Platform | undefined) ?? 'meituan'
     name.value = deal?.name ?? ''
     purchasePrice.value = deal?.purchase_price ?? '0.00'
     itemID.value = deal?.item_id ?? ''

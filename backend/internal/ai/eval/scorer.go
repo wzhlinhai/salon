@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,7 +31,7 @@ func ScoreCase(c Case, observed Observed, modelErr error) CaseResult {
 	result := CaseResult{
 		ID: c.ID, Story: c.Story, Category: c.Category, Role: c.Role,
 		KnownGap: c.KnownGap != nil, Expected: c.Expected, Forbidden: c.Forbidden,
-		AllowedTools: c.AllowedTools, AnswerNotContains: c.AnswerNotContains,
+		AnswerAny: c.AnswerAny, AnswerNotContains: c.AnswerNotContains,
 		ToolSelection: true, Arguments: true, Answer: true, ToolsOK: true,
 		Sources: observed.Sources, Reply: observed.Reply,
 	}
@@ -97,7 +99,10 @@ func ScoreCase(c Case, observed Observed, modelErr error) CaseResult {
 			continue
 		}
 		if !source.OK {
-			result.ToolSelection = false
+			result.ToolsOK = false
+			if isDraftCall(source.Tool, observed.DraftTools) {
+				result.ToolSelection = false
+			}
 			reason := fmt.Sprintf("多余的工具调用失败：%s（%s）", source.Tool, source.Error)
 			result.FailureReasons = append(result.FailureReasons, reason)
 			result.Diffs = append(result.Diffs, reason)
@@ -112,23 +117,11 @@ func ScoreCase(c Case, observed Observed, modelErr error) CaseResult {
 	}
 
 	if c.Refusal || c.Category == "refusal" {
-		allowed := map[string]bool{}
-		for _, name := range c.AllowedTools {
-			allowed[name] = true
-		}
 		if len(observed.Drafts) > 0 {
 			result.ToolSelection = false
 			reason := fmt.Sprintf("拒绝类用例不应生成草稿：%s", draftNames(observed.Drafts))
 			result.FailureReasons = append(result.FailureReasons, reason)
 			result.Diffs = append(result.Diffs, reason)
-		}
-		for _, source := range observed.Sources {
-			if !allowed[source.Tool] {
-				result.ToolSelection = false
-				reason := fmt.Sprintf("拒绝类用例调用了未允许的工具：%s", source.Tool)
-				result.FailureReasons = append(result.FailureReasons, reason)
-				result.Diffs = append(result.Diffs, reason)
-			}
 		}
 	}
 
@@ -152,6 +145,21 @@ func ScoreCase(c Case, observed Observed, modelErr error) CaseResult {
 			result.Diffs = append(result.Diffs, reason)
 		}
 	}
+	for _, alternatives := range c.AnswerAny {
+		matched := false
+		for _, keyword := range alternatives {
+			if answerContains(observed.Reply, keyword) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			result.Answer = false
+			reason := fmt.Sprintf("回答缺少任一关键词：%s", strings.Join(alternatives, " / "))
+			result.FailureReasons = append(result.FailureReasons, reason)
+			result.Diffs = append(result.Diffs, reason)
+		}
+	}
 	for _, keyword := range c.AnswerNotContains {
 		if answerContains(observed.Reply, keyword) {
 			result.Answer = false
@@ -160,7 +168,11 @@ func ScoreCase(c Case, observed Observed, modelErr error) CaseResult {
 			result.Diffs = append(result.Diffs, reason)
 		}
 	}
-	result.Overall = result.ToolSelection && result.Arguments && result.Answer && result.ToolsOK && modelErr == nil
+	if c.Refusal || c.Category == "refusal" {
+		result.Overall = result.ToolSelection && result.Arguments && result.Answer && modelErr == nil
+	} else {
+		result.Overall = result.ToolSelection && result.Arguments && result.Answer && result.ToolsOK && modelErr == nil
+	}
 	switch {
 	case result.KnownGap:
 		result.Status = "known_gap"
@@ -259,6 +271,15 @@ func matchSubset(want, got any, drafts []ai.DraftView, path string) *mismatch {
 	want = resolveDraft(want, drafts)
 	switch w := want.(type) {
 	case map[string]any:
+		if len(w) == 1 {
+			if text, ok := w["$substring_of"].(string); ok {
+				g, ok := got.(string)
+				if !ok || g == "" || !strings.Contains(text, g) {
+					return &mismatch{path, want, got}
+				}
+				return nil
+			}
+		}
 		g, ok := got.(map[string]any)
 		if !ok {
 			return &mismatch{path, want, got}
@@ -394,10 +415,50 @@ func sameNumber(want float64, got any) bool {
 }
 
 func answerContains(reply, keyword string) bool {
+	if want, ok := parseAnswerNumber(keyword); ok {
+		for _, token := range answerNumberTokens(reply) {
+			if got, ok := parseAnswerNumber(token); ok && got.Cmp(want) == 0 {
+				return true
+			}
+		}
+		return false
+	}
 	if strings.Contains(reply, keyword) {
 		return true
 	}
 	return strings.Contains(strings.ToLower(reply), strings.ToLower(keyword))
+}
+
+var (
+	answerNumberPattern     = regexp.MustCompile(`[¥￥]?-?[0-9][0-9,]*(?:\.[0-9]+)?`)
+	answerNumberUnitPattern = regexp.MustCompile(`^\s*[%％:：点月日号年]`)
+	numberTokenPattern      = regexp.MustCompile(`^[+-]?[0-9]+(?:\.[0-9]+)?$`)
+)
+
+func answerNumberTokens(reply string) []string {
+	matches := answerNumberPattern.FindAllStringIndex(reply, -1)
+	tokens := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if answerNumberUnitPattern.MatchString(reply[match[1]:]) {
+			continue
+		}
+		tokens = append(tokens, reply[match[0]:match[1]])
+	}
+	return tokens
+}
+
+func parseAnswerNumber(text string) (*big.Rat, bool) {
+	normalized := strings.TrimSpace(text)
+	normalized = strings.TrimPrefix(normalized, "¥")
+	normalized = strings.TrimPrefix(normalized, "￥")
+	normalized = strings.TrimSuffix(normalized, "元")
+	normalized = strings.ReplaceAll(normalized, ",", "")
+	normalized = strings.ReplaceAll(normalized, " ", "")
+	if !numberTokenPattern.MatchString(normalized) {
+		return nil, false
+	}
+	value, ok := new(big.Rat).SetString(normalized)
+	return value, ok
 }
 
 func describe(value any) string {

@@ -127,15 +127,15 @@ type CreateAppointmentInput struct {
 	Items         []AppointmentItemInput `json:"items,omitempty" maxItems:"20"`
 	Note          *string                `json:"note,omitempty" maxLength:"200"`
 	StaffID       uuid.UUID              `json:"staff_id"`
-	StartsAt      time.Time              `json:"starts_at"`
-	EndsAt        *time.Time             `json:"ends_at,omitempty" doc:"不填时按项目时长之和或门店默认时长计算"`
+	StartsAt      time.Time              `json:"starts_at" doc:"门店时区为北京时间（UTC+08:00），必须写成带 +08:00 的 RFC3339，例如 2026-11-11T15:00:00+08:00"`
+	EndsAt        *time.Time             `json:"ends_at,omitempty" doc:"不填时按项目时长之和或门店默认时长计算；门店时区为北京时间（UTC+08:00），必须写成带 +08:00 的 RFC3339，例如 2026-11-11T15:00:00+08:00"`
 }
 
 // RescheduleAppointmentInput 是修改预约时间或发型师的参数。
 type RescheduleAppointmentInput struct {
-	EndsAt   *time.Time `json:"ends_at,omitempty" doc:"不填时保持原时长"`
+	EndsAt   *time.Time `json:"ends_at,omitempty" doc:"不填时保持原时长；门店时区为北京时间（UTC+08:00），必须写成带 +08:00 的 RFC3339，例如 2026-11-11T15:00:00+08:00"`
 	Reason   *string    `json:"reason,omitempty" maxLength:"200"`
-	StartsAt *time.Time `json:"starts_at,omitempty" doc:"不填时保持原开始时间"`
+	StartsAt *time.Time `json:"starts_at,omitempty" doc:"不填时保持原开始时间；门店时区为北京时间（UTC+08:00），必须写成带 +08:00 的 RFC3339，例如 2026-11-11T15:00:00+08:00"`
 	ID       uuid.UUID  `json:"id"`
 	StaffID  *uuid.UUID `json:"staff_id,omitempty" doc:"不填时保持原发型师"`
 }
@@ -162,8 +162,8 @@ type CompleteAppointmentInput struct {
 type CreateBlockInput struct {
 	Note     *string   `json:"note,omitempty" maxLength:"200"`
 	StaffID  uuid.UUID `json:"staff_id"`
-	StartsAt time.Time `json:"starts_at"`
-	EndsAt   time.Time `json:"ends_at"`
+	StartsAt time.Time `json:"starts_at" doc:"门店时区为北京时间（UTC+08:00），必须写成带 +08:00 的 RFC3339，例如 2026-11-11T15:00:00+08:00"`
+	EndsAt   time.Time `json:"ends_at" doc:"门店时区为北京时间（UTC+08:00），必须写成带 +08:00 的 RFC3339，例如 2026-11-11T15:00:00+08:00"`
 }
 
 // CancelBlockInput 是取消私约占位的参数。

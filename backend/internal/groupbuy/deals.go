@@ -50,8 +50,8 @@ func loadDealView(ctx context.Context, env ops.Env, row dbgen.GroupbuyDeal) (*De
 func createDeal(ctx context.Context, env ops.Env, in *CreateDealInput) (*Deal, error) {
 	platform := strings.TrimSpace(in.Platform)
 	name := strings.TrimSpace(in.Name)
-	if platform == "" || name == "" {
-		return nil, ops.Rule("团购平台和商品名称不能为空")
+	if name == "" {
+		return nil, ops.Rule("团购商品名称不能为空")
 	}
 	if _, err := env.Q.GetItem(ctx, dbgen.GetItemParams{StoreID: env.Caller.StoreID, ID: in.ItemID}); err != nil {
 		return nil, dealError(err)

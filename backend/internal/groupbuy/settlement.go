@@ -23,9 +23,6 @@ func registerSettlements(r *ops.Registry) {
 func recordSettlement(ctx context.Context, env ops.Env, in *RecordSettlementInput) (*Settlement, error) {
 	platform := strings.TrimSpace(in.Platform)
 	note := strings.TrimSpace(in.Note)
-	if platform == "" {
-		return nil, ops.Rule("团购平台不能为空")
-	}
 	month, err := payrollmonth.Parse(in.Month)
 	if err != nil {
 		return nil, err
@@ -51,9 +48,6 @@ func settlementView(row dbgen.GroupbuySettlement, enteredByName string) Settleme
 
 func getGroupbuyMonth(ctx context.Context, env ops.Env, in *GroupbuyMonthInput) (*GroupbuyMonth, error) {
 	platform := strings.TrimSpace(in.Platform)
-	if platform == "" {
-		return nil, ops.Rule("团购平台不能为空")
-	}
 	month, err := payrollmonth.Parse(in.Month)
 	if err != nil {
 		return nil, err

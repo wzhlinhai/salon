@@ -9,25 +9,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-	_ "time/tzdata" // 部署环境可能没有时区数据库。
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/inforce"
+	"github.com/wzhlinhai/salon/backend/internal/storetime"
 )
 
 // Location 是门店所在时区。P0 只服务中国的门店。
-var Location = mustLoadLocation("Asia/Shanghai")
-
-func mustLoadLocation(name string) *time.Location {
-	loc, err := time.LoadLocation(name)
-	if err != nil {
-		panic(err)
-	}
-	return loc
-}
+var Location = storetime.Location
 
 // DateLayout 是营业日在接口中的格式。
 const DateLayout = time.DateOnly

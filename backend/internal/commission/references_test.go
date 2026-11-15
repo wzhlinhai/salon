@@ -10,8 +10,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/wzhlinhai/salon/backend/internal/db"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/optest"
 )
@@ -167,7 +167,7 @@ func TestCommissionQueryCount(t *testing.T) {
 	counter := &queryCounter{}
 	cfg := s.Pool.Config().Copy()
 	cfg.ConnConfig.Tracer = counter
-	pool, err := pgxpool.NewWithConfig(t.Context(), cfg)
+	pool, err := db.NewPoolWithConfig(t.Context(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

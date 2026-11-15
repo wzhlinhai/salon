@@ -9,10 +9,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/wzhlinhai/salon/backend/internal/db"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/groupbuy"
+	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/optest"
 	"github.com/wzhlinhai/salon/backend/internal/orders"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
@@ -36,7 +37,7 @@ func TestDealCatalogue(t *testing.T) {
 	duplicate := e.Call(t, e.Owner, "create_groupbuy_deal", groupbuy.CreateDealInput{Platform: "douyin", Name: "改名团购", PurchasePrice: amount("1"), ItemID: item}, 0)
 	rejectionDetail(t, duplicate, 409, "团购商品名称已存在")
 	blank := e.Call(t, e.Owner, "create_groupbuy_deal", groupbuy.CreateDealInput{Platform: "douyin", Name: "   ", PurchasePrice: amount("1"), ItemID: item}, 0)
-	rejectionDetail(t, blank, 409, "团购平台和商品名称不能为空")
+	rejectionDetail(t, blank, 409, "团购商品名称不能为空")
 	blankUpdate := e.Call(t, e.Owner, "update_groupbuy_deal", groupbuy.UpdateDealInput{ID: deal, Name: "   ", PurchasePrice: amount("120.00"), ItemID: item, Active: true}, 0)
 	rejectionDetail(t, blankUpdate, 409, "团购商品名称不能为空")
 }
@@ -124,7 +125,45 @@ func TestGroupbuySettlementPermissions(t *testing.T) {
 	writer := e.MustCaller(e.Owner)
 	delete(writer.Permissions, perm.ClosingDaily)
 	rejectionDetail(t, e.HTTP(t, &writer, "record_groupbuy_settlement", groupbuy.RecordSettlementInput{Platform: "douyin", Month: "2026-11", Amount: amount("1")}), 403, "permission denied")
-	rejectionDetail(t, e.Call(t, e.Owner, "get_groupbuy_month", groupbuy.GroupbuyMonthInput{Platform: "   ", Month: "2026-11"}, 0), 409, "团购平台不能为空")
+	rejectionDetail(t, e.Call(t, e.Owner, "get_groupbuy_month", groupbuy.GroupbuyMonthInput{Platform: "   ", Month: "2026-11"}, 0), 422, "validation failed")
+}
+
+func TestGroupbuyPlatformSchemaAndRejection(t *testing.T) {
+	e := newOrderEnv(t)
+	item := e.item("平台枚举项目", "298.00")
+	tools := e.Registry.ChatTools(e.MustCaller(e.Owner))
+	wantDescription := "平台：meituan=美团，douyin=抖音"
+	for _, name := range []string{"create_groupbuy_deal", "record_groupbuy_settlement", "get_groupbuy_month"} {
+		var tool ops.Tool
+		found := false
+		for _, candidate := range tools {
+			if candidate.Name == name {
+				tool, found = candidate, true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("%s is not offered", name)
+		}
+		properties := tool.Parameters["properties"].(map[string]any)
+		platform := properties["platform"].(map[string]any)
+		values := platform["enum"].([]any)
+		if len(values) != 2 || values[0] != "meituan" || values[1] != "douyin" || platform["description"] != wantDescription {
+			t.Fatalf("%s platform schema = %v", name, platform)
+		}
+	}
+	for _, tc := range []struct {
+		name string
+		args map[string]any
+	}{
+		{"create_groupbuy_deal", map[string]any{"platform": "美团", "name": "美团券", "purchase_price": "99.00", "item_id": item}},
+		{"record_groupbuy_settlement", map[string]any{"platform": "美团", "month": "2026-11", "amount": "99.00"}},
+		{"get_groupbuy_month", map[string]any{"platform": "美团", "month": "2026-11"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rejectionDetail(t, e.Call(t, e.Owner, tc.name, tc.args, 0), 422, "validation failed")
+		})
+	}
 }
 
 func TestGroupbuyUnlinkErrors(t *testing.T) {
@@ -148,7 +187,7 @@ func countedApp(t *testing.T, e *orderEnv, counter *groupbuyQueryCounter) *optes
 	t.Helper()
 	config := e.Pool.Config().Copy()
 	config.ConnConfig.Tracer = counter
-	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	pool, err := db.NewPoolWithConfig(context.Background(), config)
 	if err != nil {
 		t.Fatal(err)
 	}

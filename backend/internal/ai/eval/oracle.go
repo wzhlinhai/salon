@@ -52,6 +52,7 @@ func oracleArgs(tool string, expected map[string]any, messages []ai.Message, f *
 	if args == nil {
 		args = map[string]any{}
 	}
+	args = resolveMatcherValues(args).(map[string]any)
 	if tool == "update_draft_params" {
 		draft := lastDraft(messages)
 		if draft == nil {
@@ -90,6 +91,26 @@ func oracleArgs(tool string, expected map[string]any, messages []ai.Message, f *
 		}
 	}
 	return args, nil
+}
+
+func resolveMatcherValues(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		if text, ok := v["$substring_of"].(string); ok && len(v) == 1 {
+			return text
+		}
+		for key, item := range v {
+			v[key] = resolveMatcherValues(item)
+		}
+		return v
+	case []any:
+		for i, item := range v {
+			v[i] = resolveMatcherValues(item)
+		}
+		return v
+	default:
+		return value
+	}
 }
 
 func cashPayments(principal any) []any {

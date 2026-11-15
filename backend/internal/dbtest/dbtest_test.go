@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/pressly/goose/v3"
 	"github.com/testcontainers/testcontainers-go"
 
@@ -184,7 +183,7 @@ func waitForNoDatabases(t *testing.T, patterns ...string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	conn, err := pgx.Connect(ctx, adminDSN)
+	conn, err := db.Connect(ctx, adminDSN)
 	if err != nil {
 		t.Fatal(err)
 	}

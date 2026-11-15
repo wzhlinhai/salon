@@ -66,13 +66,9 @@ func run(ctx context.Context, args []string) error {
 	if args[0] == "openapi" {
 		return printOpenAPI()
 	}
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		return errors.New("DATABASE_URL is required")
-	}
-	pool, err := pgxpool.New(ctx, dsn)
+	pool, err := openDatabase(ctx)
 	if err != nil {
-		return fmt.Errorf("connect database: %w", err)
+		return err
 	}
 	defer pool.Close()
 
@@ -97,6 +93,18 @@ func run(ctx context.Context, args []string) error {
 		}
 	}
 	return errors.New(usage)
+}
+
+func openDatabase(ctx context.Context) (*pgxpool.Pool, error) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		return nil, errors.New("DATABASE_URL is required")
+	}
+	pool, err := db.NewPool(ctx, dsn)
+	if err != nil {
+		return nil, fmt.Errorf("connect database: %w", err)
+	}
+	return pool, nil
 }
 
 func serve(ctx context.Context, pool *pgxpool.Pool) error {

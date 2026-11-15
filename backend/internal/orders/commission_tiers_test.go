@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/wzhlinhai/salon/backend/internal/db"
 	"github.com/wzhlinhai/salon/backend/internal/optest"
 	"github.com/wzhlinhai/salon/backend/internal/orders"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
@@ -147,7 +147,7 @@ func TestCommissionTierReadQueryCount(t *testing.T) {
 	counter := &paymentQueryCounter{}
 	config := s.Pool.Config().Copy()
 	config.ConnConfig.Tracer = counter
-	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	pool, err := db.NewPoolWithConfig(context.Background(), config)
 	if err != nil {
 		t.Fatal(err)
 	}

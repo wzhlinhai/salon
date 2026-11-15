@@ -4,15 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
+	"math/big"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/wzhlinhai/salon/backend/internal/ai"
 	"github.com/wzhlinhai/salon/backend/internal/drafts"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
 var (
@@ -40,7 +44,7 @@ func TestEvalCasesValid(t *testing.T) {
 			t.Fatalf("duplicate case id %s", c.ID)
 		}
 		seen[c.ID] = true
-		if c.Story == "" || c.Category == "" || len(c.Messages) == 0 || len(c.AnswerContains) == 0 || c.ReferenceAnswer == "" {
+		if c.Story == "" || c.Category == "" || len(c.Messages) == 0 || (len(c.AnswerContains) == 0 && len(c.AnswerAny) == 0) || c.ReferenceAnswer == "" {
 			t.Fatalf("incomplete case %+v", c)
 		}
 	}
@@ -49,7 +53,12 @@ func TestEvalCasesValid(t *testing.T) {
 func TestEvalOracleScoresPerfect(t *testing.T) {
 	suite := mustSuite(t)
 	recorder := NewRecorder()
-	factory := func(c Case, f *Fixture) ai.Model { return recorder.Model(c, f, NewOracle(c, f)) }
+	toolResults := map[string]*toolResultModel{}
+	factory := func(c Case, f *Fixture) ai.Model {
+		model := &toolResultModel{inner: NewOracle(c, f)}
+		toolResults[c.ID] = model
+		return recorder.Model(c, f, model)
+	}
 	report, err := Run(context.Background(), t, suite, RunConfig{ModelName: "oracle", BaseURLHost: "offline"}, factory)
 	if err != nil {
 		t.Fatal(err)
@@ -59,6 +68,14 @@ func TestEvalOracleScoresPerfect(t *testing.T) {
 		for _, source := range result.Sources {
 			if !source.OK {
 				t.Fatalf("%s: source %s failed: %s", result.ID, source.Tool, source.Error)
+			}
+		}
+	}
+	for _, c := range suite.Cases {
+		joined := strings.Join(toolResults[c.ID].results, "\n")
+		for _, keyword := range c.AnswerContains {
+			if _, numeric := parseAnswerNumber(keyword); numeric && !answerContains(joined, keyword) {
+				t.Errorf("%s: answer keyword %q is not in oracle tool results", c.ID, keyword)
 			}
 		}
 	}
@@ -76,6 +93,20 @@ func TestEvalOracleScoresPerfect(t *testing.T) {
 	if !reflect.DeepEqual(comparableCassette(committed), comparableCassette(cassette)) {
 		t.Fatalf("baseline cassette is stale: run go test ./internal/ai/eval -run TestEvalOracleScoresPerfect -update-cassette")
 	}
+}
+
+type toolResultModel struct {
+	inner   ai.Model
+	results []string
+}
+
+func (m *toolResultModel) Chat(ctx context.Context, messages []ai.Message, tools []ops.Tool) (ai.Message, error) {
+	for _, message := range messages {
+		if message.Role == ai.RoleTool {
+			m.results = append(m.results, message.Content)
+		}
+	}
+	return m.inner.Chat(ctx, messages, tools)
 }
 
 func TestEvalReplayMatchesOracle(t *testing.T) {
@@ -98,17 +129,53 @@ func TestEvalReplayMatchesOracle(t *testing.T) {
 
 func assertPerfect(t *testing.T, report Report, cases int) {
 	t.Helper()
+	if len(report.Cases) != cases {
+		t.Fatalf("cases = %d, want %d", len(report.Cases), cases)
+	}
+	want := 0
 	for _, result := range report.Cases {
-		if !result.Overall || !result.ToolSelection || !result.Arguments || !result.Answer || !result.ToolsOK {
-			t.Errorf("%s not perfect: tool=%v args=%v answer=%v toolsOK=%v reasons=%v sources=%+v reply=%q", result.ID, result.ToolSelection, result.Arguments, result.Answer, result.ToolsOK, result.FailureReasons, result.Sources, result.Reply)
+		if !result.KnownGap {
+			want++
 		}
+	}
+	for _, problem := range perfectProblems(report) {
+		t.Error(problem)
 	}
 	if t.Failed() {
 		t.FailNow()
 	}
 	aggregate := report.Aggregates.Overall
-	if aggregate.Cases != cases || aggregate.ToolSelectionAccuracy != 1 || aggregate.ArgumentCallAccuracy != 1 || aggregate.ArgumentCaseAccuracy != 1 || aggregate.AnswerAccuracy != 1 || aggregate.ToolSuccessAccuracy != 1 || aggregate.OverallAccuracy != 1 {
+	if aggregate.Cases != want || aggregate.ToolSelectionAccuracy != 1 || aggregate.ArgumentCallAccuracy != 1 || aggregate.ArgumentCaseAccuracy != 1 || aggregate.AnswerAccuracy != 1 || aggregate.ToolSuccessAccuracy != 1 || aggregate.OverallAccuracy != 1 {
 		t.Fatalf("aggregate = %+v", aggregate)
+	}
+	if report.KnownGaps.Overall.Cases != cases-want {
+		t.Fatalf("known gap aggregate = %+v", report.KnownGaps.Overall)
+	}
+}
+
+func perfectProblems(report Report) []string {
+	var problems []string
+	for _, result := range report.Cases {
+		if result.KnownGap {
+			continue
+		}
+		if !result.Overall || !result.ToolSelection || !result.Arguments || !result.Answer || !result.ToolsOK {
+			problems = append(problems, fmt.Sprintf("%s not perfect: tool=%v args=%v answer=%v toolsOK=%v reasons=%v sources=%+v reply=%q", result.ID, result.ToolSelection, result.Arguments, result.Answer, result.ToolsOK, result.FailureReasons, result.Sources, result.Reply))
+		}
+	}
+	return problems
+}
+
+func TestEvalPerfectProblemsSkipKnownGap(t *testing.T) {
+	good := CaseResult{ID: "good", ToolSelection: true, Arguments: true, Answer: true, ToolsOK: true, Overall: true}
+	gap := CaseResult{ID: "gap", KnownGap: true}
+	if problems := perfectProblems(Report{Cases: []CaseResult{good, gap}}); len(problems) != 0 {
+		t.Fatalf("known gap should not be required perfect: %v", problems)
+	}
+	bad := good
+	bad.Overall = false
+	if problems := perfectProblems(Report{Cases: []CaseResult{bad}}); len(problems) != 1 {
+		t.Fatalf("non-known-gap failure should be reported: %v", problems)
 	}
 }
 
@@ -332,8 +399,15 @@ func TestEvalScorerExtraCalls(t *testing.T) {
 		t.Fatalf("extra draft call should fail: %+v", draftExtra)
 	}
 	failedExtra := ScoreCase(base, Observed{Reply: "OK", Sources: []ai.Source{{Tool: "get_me", OK: true}, {Tool: "search_customers", OK: false, Error: "boom"}}}, nil)
-	if failedExtra.Overall || !strings.Contains(strings.Join(failedExtra.FailureReasons, "\n"), "多余的工具调用失败") {
-		t.Fatalf("extra failed call should fail: %+v", failedExtra)
+	if failedExtra.Overall || !failedExtra.ToolSelection || failedExtra.ToolsOK || !strings.Contains(strings.Join(failedExtra.FailureReasons, "\n"), "多余的工具调用失败") {
+		t.Fatalf("extra failed read should only fail tool success: %+v", failedExtra)
+	}
+	failedDraft := ScoreCase(base, Observed{
+		Reply: "OK", Sources: []ai.Source{{Tool: "get_me", OK: true}, {Tool: "open_order", OK: false, Error: "boom"}},
+		DraftTools: map[string]bool{"open_order": true},
+	}, nil)
+	if failedDraft.ToolSelection || failedDraft.ToolsOK {
+		t.Fatalf("extra failed draft should fail selection and success: %+v", failedDraft)
 	}
 }
 
@@ -346,13 +420,18 @@ func TestEvalScorerAnswerNotContains(t *testing.T) {
 }
 
 func TestEvalScorerRefusal(t *testing.T) {
-	c := Case{ID: "x", Story: "s", Category: "refusal", Refusal: true, Role: "manager", AllowedTools: []string{"get_me"}, Messages: []CaseMessage{{Role: "user", Content: "问"}}, AnswerContains: []string{"没有权限"}, ReferenceAnswer: "没有权限"}
+	c := Case{ID: "x", Story: "s", Category: "refusal", Refusal: true, Role: "manager", Messages: []CaseMessage{{Role: "user", Content: "问"}}, AnswerContains: []string{"没有权限"}, ReferenceAnswer: "没有权限"}
 	if result := ScoreCase(c, Observed{Reply: "没有权限", Sources: []ai.Source{{Tool: "get_me", OK: true}}}, nil); !result.Overall {
-		t.Fatalf("allowed read should pass: %+v", result)
+		t.Fatalf("unlisted read should pass: %+v", result)
 	}
-	strayRead := ScoreCase(c, Observed{Reply: "没有权限", Sources: []ai.Source{{Tool: "list_performance", OK: true}}}, nil)
-	if strayRead.Overall || !strings.Contains(strings.Join(strayRead.FailureReasons, "\n"), "未允许的工具") {
-		t.Fatalf("stray offered read should fail: %+v", strayRead)
+	probe := ScoreCase(c, Observed{Reply: "没有权限", Sources: []ai.Source{{Tool: "get_redemption", OK: false, Error: "not found"}}}, nil)
+	if !probe.Overall || probe.ToolsOK {
+		t.Fatalf("failed probe read should only lower tools_ok: %+v", probe)
+	}
+	c.Forbidden = []string{"get_staff_report"}
+	forbidden := ScoreCase(c, Observed{Reply: "没有权限", Sources: []ai.Source{{Tool: "get_staff_report", OK: true}}}, nil)
+	if forbidden.Overall || !strings.Contains(strings.Join(forbidden.FailureReasons, "\n"), "出现禁止的工具") {
+		t.Fatalf("forbidden read should fail: %+v", forbidden)
 	}
 	strayDraft := ScoreCase(c, Observed{
 		Reply: "没有权限", Sources: []ai.Source{{Tool: "open_order", OK: true}},
@@ -360,6 +439,66 @@ func TestEvalScorerRefusal(t *testing.T) {
 	}, nil)
 	if strayDraft.Overall || !strings.Contains(strings.Join(strayDraft.FailureReasons, "\n"), "不应生成草稿") {
 		t.Fatalf("stray offered draft should fail: %+v", strayDraft)
+	}
+}
+
+func TestEvalScorerNumericKeywords(t *testing.T) {
+	for _, tc := range []struct {
+		name, keyword, reply string
+		ok                   bool
+	}{
+		{"thousands separator", "1380.00", "销售业绩 1,380.00 元", true},
+		{"currency suffix", "88.00", "阿峰做洗剪吹 88元", true},
+		{"currency prefix", "88.00", "价格 ¥88.00", true},
+		{"different value", "88.00", "价格 89.00", false},
+		{"short keyword is not substring", "1", "1380", false},
+		{"integer keyword", "1", "今天有 1 个客次", true},
+		{"month and day are not counts", "10", "11 月 10 日", false},
+		{"zero count is not a day", "0", "11 月 10 日", false},
+		{"clock is not a count", "1", "营业到 1 点", false},
+		{"percent is not a count", "88", "打 88% 折", false},
+		{"ratio is not a count", "1", "比例 1:2", false},
+		{"year is not a count", "2026", "2026 年", false},
+		{"non numeric unchanged", "2026-11", "2026-11 月报", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := answerContains(tc.reply, tc.keyword); got != tc.ok {
+				t.Fatalf("answerContains(%q, %q) = %v, want %v", tc.reply, tc.keyword, got, tc.ok)
+			}
+		})
+	}
+	value, ok := parseAnswerNumber("¥1,380.00元")
+	if !ok || value.Cmp(big.NewRat(1380, 1)) != 0 {
+		t.Fatalf("parseAnswerNumber = %v, %v", value, ok)
+	}
+}
+
+func TestEvalScorerAnswerAny(t *testing.T) {
+	c := Case{ID: "x", Story: "s", Category: "refusal", Refusal: true, Role: "manager", Messages: []CaseMessage{{Role: "user", Content: "问"}}, AnswerContains: []string{"核销"}, AnswerAny: [][]string{{"不能", "无法", "没有权限", "查不了", "不可以"}}, ReferenceAnswer: "不能核销"}
+	for _, reply := range []string{"我不能核销团购券", "查不了，没有核销入口", "无法核销"} {
+		if result := ScoreCase(c, Observed{Reply: reply}, nil); !result.Overall {
+			t.Fatalf("reply %q should pass: %+v", reply, result)
+		}
+	}
+	result := ScoreCase(c, Observed{Reply: "核销成功"}, nil)
+	if result.Overall || !strings.Contains(strings.Join(result.FailureReasons, "\n"), "回答缺少任一关键词") {
+		t.Fatalf("missing any keyword should fail: %+v", result)
+	}
+}
+
+func TestEvalScorerSubstringArgument(t *testing.T) {
+	c := Case{ID: "x", Story: "s", Category: "read", Role: "owner", Messages: []CaseMessage{{Role: "user", Content: "问"}}, AnswerContains: []string{"OK"}, ReferenceAnswer: "OK", Expected: []ExpectedCall{{Tool: "search_customers", Args: map[string]any{"query": map[string]any{"$substring_of": "张先生"}}}}}
+	for _, query := range []string{"张", "张先生", "先生"} {
+		result := ScoreCase(c, Observed{Reply: "OK", Sources: []ai.Source{{Tool: "search_customers", OK: true, Arguments: map[string]any{"query": query}}}}, nil)
+		if !result.Overall {
+			t.Fatalf("query %q should match: %+v", query, result)
+		}
+	}
+	for _, query := range []string{"", "王姐", "张先生先生"} {
+		result := ScoreCase(c, Observed{Reply: "OK", Sources: []ai.Source{{Tool: "search_customers", OK: true, Arguments: map[string]any{"query": query}}}}, nil)
+		if result.Overall {
+			t.Fatalf("query %q should not match", query)
+		}
 	}
 }
 
@@ -480,6 +619,7 @@ func TestEvalSameStringAndNumber(t *testing.T) {
 
 func TestEvalRefusalOfferedTools(t *testing.T) {
 	suite := mustSuite(t)
+	offeredForbidden := 0
 	for _, c := range suite.Cases {
 		if c.Category != "refusal" {
 			continue
@@ -491,24 +631,23 @@ func TestEvalRefusalOfferedTools(t *testing.T) {
 		for _, tool := range tools {
 			offered[tool.Name] = true
 		}
-		for _, name := range c.AllowedTools {
-			if !offered[name] {
-				t.Fatalf("%s: allowed tool %s is not offered to %s", c.ID, name, c.Role)
-			}
-			if f.Shop.Registry.DraftTool(name) || name == "update_draft_params" {
-				t.Fatalf("%s: allowed tool %s creates a draft", c.ID, name)
-			}
-		}
-		offeredForbidden := 0
+		offeredForCase := 0
 		for _, name := range c.Forbidden {
 			if offered[name] {
-				offeredForbidden++
+				offeredForCase++
 			}
 		}
-		if offeredForbidden == 0 {
-			t.Fatalf("%s: no forbidden tool is actually offered to %s", c.ID, c.Role)
+		if offeredForCase == 0 && c.RefusalException == "" {
+			t.Fatalf("%s: no forbidden tool is offered to %s and no refusal_exception is documented", c.ID, c.Role)
 		}
+		if offeredForCase > 0 && c.RefusalException != "" {
+			t.Fatalf("%s: refusal_exception is stale because a forbidden tool is offered", c.ID)
+		}
+		offeredForbidden += offeredForCase
 		t.Logf("%s role=%s offered=%v", c.ID, c.Role, toolNames(tools))
+	}
+	if offeredForbidden == 0 {
+		t.Fatal("no forbidden tool is offered to any refusal role")
 	}
 }
 
@@ -517,6 +656,94 @@ func TestEvalFixtureFingerprintStable(t *testing.T) {
 	second := Seed(t)
 	if first.Fingerprint != second.Fingerprint {
 		t.Fatalf("same fixture source produced different fingerprints: %s vs %s", first.Fingerprint, second.Fingerprint)
+	}
+}
+
+func TestEvalDateMacrosUseStoreLocalTime(t *testing.T) {
+	previous := time.Local
+	losAngeles, err := time.LoadLocation("America/Los_Angeles")
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Local = losAngeles
+	t.Cleanup(func() { time.Local = previous })
+
+	f := Seed(t)
+	for _, tc := range []struct{ macro, want string }{
+		{"$today", "2026-11-10"},
+		{"$yesterday", "2026-11-09"},
+		{"$tomorrow", "2026-11-11"},
+		{"$day_after", "2026-11-12"},
+		{"$month", "2026-11"},
+		{"$month_start", "2026-11-01"},
+		{"$tomorrow@15:00", "2026-11-11T15:00:00+08:00"},
+		{"$day_after@16:00", "2026-11-12T16:00:00+08:00"},
+	} {
+		got, err := f.ResolveString(tc.macro)
+		if err != nil || got != tc.want {
+			t.Fatalf("%s = %q, %v; want %q", tc.macro, got, err, tc.want)
+		}
+	}
+	r := f.Shop.Call(t, f.Shop.Owner, "list_appointments", map[string]any{"from": "2026-11-11", "to": "2026-11-11"}, 200)
+	entries := r.Body["entries"].([]any)
+	if len(entries) != 1 {
+		t.Fatalf("appointments = %v", entries)
+	}
+	if got := entries[0].(map[string]any)["starts_at"]; got != "2026-11-11T12:00:00+08:00" {
+		t.Fatalf("tomorrow appointment starts_at = %v", got)
+	}
+}
+
+func TestEvalResolveStringNearStoreMidnight(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		now  time.Time
+		want map[string]string
+	}{
+		{
+			name: "November midnight",
+			now:  time.Date(2026, 11, 11, 0, 30, 0, 0, settings.Location),
+			want: map[string]string{"$today": "2026-11-11", "$tomorrow": "2026-11-12", "$month": "2026-11", "$month_start": "2026-11-01"},
+		},
+		{
+			name: "December first midnight",
+			now:  time.Date(2026, 12, 1, 0, 30, 0, 0, settings.Location),
+			want: map[string]string{"$today": "2026-12-01", "$tomorrow": "2026-12-02", "$month": "2026-12", "$month_start": "2026-12-01"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &Fixture{Now: tc.now}
+			for macro, want := range tc.want {
+				got, err := f.ResolveString(macro)
+				if err != nil || got != want {
+					t.Fatalf("%s = %q, %v; want %q", macro, got, err, want)
+				}
+			}
+		})
+	}
+}
+
+func TestEvalBookingTimeSchemaUsesStoreTimezone(t *testing.T) {
+	f := Seed(t)
+	tools := f.Shop.Registry.ChatTools(f.Callers["manager"])
+	for _, name := range []string{"create_appointment", "reschedule_appointment", "create_block"} {
+		var parameters map[string]any
+		for _, tool := range tools {
+			if tool.Name == name {
+				parameters = tool.Parameters
+				break
+			}
+		}
+		if parameters == nil {
+			t.Fatalf("%s is not offered", name)
+		}
+		properties := parameters["properties"].(map[string]any)
+		for _, field := range []string{"starts_at", "ends_at"} {
+			description, _ := properties[field].(map[string]any)["description"].(string)
+			if !strings.Contains(description, "UTC+08:00") || !strings.Contains(description, "2026-11-11T15:00:00+08:00") {
+				t.Fatalf("%s.%s description = %q", name, field, description)
+			}
+		}
 	}
 }
 

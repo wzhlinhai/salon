@@ -15,7 +15,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/wzhlinhai/salon/backend/internal/ai"
 	"github.com/wzhlinhai/salon/backend/internal/db"
@@ -846,7 +845,7 @@ func TestCustomerOpsQueryCount(t *testing.T) {
 	counter := &queryCounter{}
 	cfg := s.Pool.Config().Copy()
 	cfg.ConnConfig.Tracer = counter
-	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	pool, err := db.NewPoolWithConfig(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
