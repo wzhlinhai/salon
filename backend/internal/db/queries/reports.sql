@@ -186,11 +186,20 @@ line_totals AS (
 perf AS (
   SELECT oi.item_id,
          COALESCE(sum(CASE WHEN e.reverses_id IS NULL THEN e.amount ELSE -e.amount END),0)::text AS performance,
-         COALESCE(sum(CASE WHEN e.reverses_id IS NULL THEN e.paid_amount ELSE -e.paid_amount END) FILTER (WHERE e.method IN ('card_principal','card_bonus')),0)::text AS card_paid,
-         COALESCE(sum(CASE WHEN e.reverses_id IS NULL THEN e.paid_amount ELSE -e.paid_amount END) FILTER (WHERE e.method='groupbuy'),0)::text AS groupbuy_paid
-  FROM performance_entries e
+         COALESCE(sum(CASE WHEN e.reverses_id IS NULL THEN e.paid_amount ELSE -e.paid_amount END)
+                  FILTER (WHERE e.method IN ('card_principal','card_bonus') AND (NOT e.full OR e.slot_rank=1)),0)::text AS card_paid,
+         COALESCE(sum(CASE WHEN e.reverses_id IS NULL THEN e.paid_amount ELSE -e.paid_amount END)
+                  FILTER (WHERE e.method='groupbuy' AND (NOT e.full OR e.slot_rank=1)),0)::text AS groupbuy_paid
+  FROM (
+    SELECT pe.*, COALESCE(ss.rules->>'performance_split','by_position')='full' AS full,
+           row_number() OVER (PARTITION BY pe.order_item_id, pe.method, pe.checkout_id, pe.void_id, pe.aftersale_id, (pe.reverses_id IS NULL), pe.business_date
+                              ORDER BY pe.slot NULLS FIRST, pe.id) AS slot_rank
+    FROM performance_entries pe
+    LEFT JOIN settings_snapshots ss ON ss.tenant_id=pe.tenant_id AND ss.id=pe.settings_snapshot_id
+    WHERE pe.store_id=sqlc.arg(store_id) AND pe.kind='item'
+      AND pe.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
+  ) e
   JOIN order_items oi ON oi.tenant_id=e.tenant_id AND oi.id=e.order_item_id
-  WHERE e.store_id=sqlc.arg(store_id) AND e.kind='item' AND e.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
   GROUP BY oi.item_id
 ),
 count_facts AS (

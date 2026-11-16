@@ -60,6 +60,7 @@ type OrderItem struct {
 	RemovedBy       *uuid.UUID          `json:"removed_by" nullable:"true"`
 	RepriceReason   *string             `json:"reprice_reason" nullable:"true"`
 	AddedAt         time.Time           `json:"added_at"`
+	CategoryRatio   int16               `json:"-" doc:"加项目时留存的类别业绩比例"`
 	Positions       []OrderItemPosition `json:"positions"`
 }
 

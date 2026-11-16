@@ -39,7 +39,8 @@ type PerformanceEntry struct {
 	Staff              *staff.Ref   `json:"staff"`
 	Method             string       `json:"method" enum:"cash,unionpay,wechat,alipay,groupbuy,debt,red_packet,card_principal,card_bonus,count_paid,count_gift,labor,card_open,card_recharge,card_upgrade,red_packet_sold"`
 	PaidAmount         money.Amount `json:"paid_amount" doc:"非负实收份额，reversal 为 true 时计负数"`
-	Ratio              int16        `json:"ratio"`
+	Ratio              int16        `json:"ratio" doc:"支付方式的业绩比例"`
+	CategoryRatio      int16        `json:"category_ratio" doc:"加项目时留存的类别业绩比例"`
 	Amount             money.Amount `json:"amount" doc:"非负业绩金额，reversal 为 true 时计负数"`
 	SettingsSnapshotID *uuid.UUID   `json:"settings_snapshot_id" nullable:"true" doc:"结账来源，销售业绩为空"`
 	CheckoutID         *uuid.UUID   `json:"checkout_id" nullable:"true" doc:"结账来源，销售业绩为空"`
@@ -104,7 +105,7 @@ func listPerformance(ctx context.Context, env ops.Env, in *ListPerformanceInput)
 		if e.StaffID != nil {
 			ref = &staff.Ref{ID: *e.StaffID, Name: *e.StaffName}
 		}
-		out.Entries = append(out.Entries, PerformanceEntry{Member: e.Member, ID: e.ID, Kind: e.Kind, BusinessDate: e.BusinessDate.Time.Format(settings.DateLayout), OrderID: e.OrderID, OrderItemID: e.OrderItemID, ItemName: e.ItemName, Slot: e.Slot, PositionID: e.PositionID, Staff: ref, Method: e.Method, PaidAmount: e.PaidAmount, Ratio: e.Ratio, Amount: e.Amount, SettingsSnapshotID: e.SettingsSnapshotID, CheckoutID: e.CheckoutID, CardLedgerID: e.CardLedgerID, RedPacketID: e.RedPacketID, AftersaleID: e.AftersaleID, Purchase: e.Purchase, Reversal: e.ReversesID != nil, ReversesID: e.ReversesID})
+		out.Entries = append(out.Entries, PerformanceEntry{Member: e.Member, ID: e.ID, Kind: e.Kind, BusinessDate: e.BusinessDate.Time.Format(settings.DateLayout), OrderID: e.OrderID, OrderItemID: e.OrderItemID, ItemName: e.ItemName, Slot: e.Slot, PositionID: e.PositionID, Staff: ref, Method: e.Method, PaidAmount: e.PaidAmount, Ratio: e.Ratio, CategoryRatio: e.CategoryRatio, Amount: e.Amount, SettingsSnapshotID: e.SettingsSnapshotID, CheckoutID: e.CheckoutID, CardLedgerID: e.CardLedgerID, RedPacketID: e.RedPacketID, AftersaleID: e.AftersaleID, Purchase: e.Purchase, Reversal: e.ReversesID != nil, ReversesID: e.ReversesID})
 	}
 	return out, nil
 }

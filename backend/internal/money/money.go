@@ -140,6 +140,14 @@ func (a Amount) PercentOf(percent int) Amount {
 	return Amount{value: percentOf(a.value, percent)}
 }
 
+// PercentOfProduct 返回金额依次乘两个百分比后除以 10000、四舍五入到分的金额；两个百分比须在零到一百之间。
+func (a Amount) PercentOfProduct(first, second int) Amount {
+	if first < 0 || first > 100 || second < 0 || second > 100 {
+		panic("money: percents must be between 0 and 100")
+	}
+	return Amount{value: a.value.Mul(decimal.NewFromInt(int64(first))).Mul(decimal.NewFromInt(int64(second))).Div(decimal.NewFromInt(10000)).Round(2)}
+}
+
 func percentOf(value decimal.Decimal, percent int) decimal.Decimal {
 	if percent < 0 || percent > 100 {
 		panic("money: percent must be between 0 and 100")

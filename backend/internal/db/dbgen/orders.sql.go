@@ -149,8 +149,8 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 }
 
 const createOrderItem = `-- name: CreateOrderItem :one
-INSERT INTO order_items (tenant_id,store_id,order_id,item_id,item_name,price,price_source,level_id,added_by,item_kind,labor_fee_amount,labor_fee_percent)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING tenant_id, store_id, id, order_id, item_id, item_name, price, price_source, level_id, added_by, added_at, removed_at, removed_by, reprice_reason, card_type_id, discount, item_kind, labor_fee_amount, labor_fee_percent
+INSERT INTO order_items (tenant_id,store_id,order_id,item_id,item_name,price,price_source,level_id,added_by,item_kind,labor_fee_amount,labor_fee_percent,category_id,category_ratio)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING tenant_id, store_id, id, order_id, item_id, item_name, price, price_source, level_id, added_by, added_at, removed_at, removed_by, reprice_reason, card_type_id, discount, item_kind, labor_fee_amount, labor_fee_percent, category_id, category_ratio
 `
 
 type CreateOrderItemParams struct {
@@ -166,6 +166,8 @@ type CreateOrderItemParams struct {
 	ItemKind        string
 	LaborFeeAmount  *money.Amount
 	LaborFeePercent *money.Percent
+	CategoryID      *uuid.UUID
+	CategoryRatio   int16
 }
 
 func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams) (OrderItem, error) {
@@ -182,6 +184,8 @@ func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams
 		arg.ItemKind,
 		arg.LaborFeeAmount,
 		arg.LaborFeePercent,
+		arg.CategoryID,
+		arg.CategoryRatio,
 	)
 	var i OrderItem
 	err := row.Scan(
@@ -204,6 +208,8 @@ func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams
 		&i.ItemKind,
 		&i.LaborFeeAmount,
 		&i.LaborFeePercent,
+		&i.CategoryID,
+		&i.CategoryRatio,
 	)
 	return i, err
 }
@@ -300,7 +306,7 @@ func (q *Queries) GetOrder(ctx context.Context, arg GetOrderParams) (Order, erro
 }
 
 const getOrderItem = `-- name: GetOrderItem :one
-SELECT tenant_id, store_id, id, order_id, item_id, item_name, price, price_source, level_id, added_by, added_at, removed_at, removed_by, reprice_reason, card_type_id, discount, item_kind, labor_fee_amount, labor_fee_percent FROM order_items WHERE store_id=$1 AND order_id=$2 AND id=$3
+SELECT tenant_id, store_id, id, order_id, item_id, item_name, price, price_source, level_id, added_by, added_at, removed_at, removed_by, reprice_reason, card_type_id, discount, item_kind, labor_fee_amount, labor_fee_percent, category_id, category_ratio FROM order_items WHERE store_id=$1 AND order_id=$2 AND id=$3
 `
 
 type GetOrderItemParams struct {
@@ -332,6 +338,8 @@ func (q *Queries) GetOrderItem(ctx context.Context, arg GetOrderItemParams) (Ord
 		&i.ItemKind,
 		&i.LaborFeeAmount,
 		&i.LaborFeePercent,
+		&i.CategoryID,
+		&i.CategoryRatio,
 	)
 	return i, err
 }
@@ -614,7 +622,7 @@ func (q *Queries) ListOrderItemPositions(ctx context.Context, arg ListOrderItemP
 }
 
 const listOrderItems = `-- name: ListOrderItems :many
-SELECT oi.tenant_id, oi.store_id, oi.id, oi.order_id, oi.item_id, oi.item_name, oi.price, oi.price_source, oi.level_id, oi.added_by, oi.added_at, oi.removed_at, oi.removed_by, oi.reprice_reason, oi.card_type_id, oi.discount, oi.item_kind, oi.labor_fee_amount, oi.labor_fee_percent FROM order_items oi
+SELECT oi.tenant_id, oi.store_id, oi.id, oi.order_id, oi.item_id, oi.item_name, oi.price, oi.price_source, oi.level_id, oi.added_by, oi.added_at, oi.removed_at, oi.removed_by, oi.reprice_reason, oi.card_type_id, oi.discount, oi.item_kind, oi.labor_fee_amount, oi.labor_fee_percent, oi.category_id, oi.category_ratio FROM order_items oi
 WHERE oi.store_id=$1 AND oi.order_id=ANY($2::uuid[]) ORDER BY oi.added_at,oi.id
 `
 
@@ -652,6 +660,8 @@ func (q *Queries) ListOrderItems(ctx context.Context, arg ListOrderItemsParams) 
 			&i.ItemKind,
 			&i.LaborFeeAmount,
 			&i.LaborFeePercent,
+			&i.CategoryID,
+			&i.CategoryRatio,
 		); err != nil {
 			return nil, err
 		}

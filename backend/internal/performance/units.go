@@ -32,11 +32,12 @@ type Unit struct {
 
 // UnitEntry 是业绩单位内按 ID 排序的支付方式记录。
 type UnitEntry struct {
-	ID         uuid.UUID
-	Method     string
-	PaidAmount money.Amount
-	Ratio      int16
-	Amount     money.Amount
+	ID            uuid.UUID
+	Method        string
+	PaidAmount    money.Amount
+	Ratio         int16
+	CategoryRatio int16
+	Amount        money.Amount
 }
 
 // UnitBase 留存各类基数的分值、原价事实及按需报告的原价计算错误。
@@ -152,7 +153,7 @@ func compose(u unit, f lineFact) Unit {
 		CheckoutID: e.CheckoutID, CardLedgerID: e.CardLedgerID, RedPacketID: e.RedPacketID, VoidID: e.VoidID, AftersaleID: e.AftersaleID,
 		Member: e.Member, Designated: f.designated, Entries: make([]UnitEntry, 0, len(u.entries))}
 	for _, row := range u.entries {
-		out.Entries = append(out.Entries, UnitEntry{ID: row.ID, Method: row.Method, PaidAmount: row.PaidAmount, Ratio: row.Ratio, Amount: row.Amount})
+		out.Entries = append(out.Entries, UnitEntry{ID: row.ID, Method: row.Method, PaidAmount: row.PaidAmount, Ratio: row.Ratio, CategoryRatio: row.CategoryRatio, Amount: row.Amount})
 		out.Base.Paid += row.PaidAmount.Fen()
 		out.Base.Performance += row.Amount.Fen()
 		for _, method := range paymentMethods {

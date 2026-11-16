@@ -242,3 +242,15 @@ test('小票抬头用文字编辑并显示', async ({ page }) => {
   await expect(dialog).toHaveCount(0)
   await expect(card).toContainText(`${tomorrow} 起改为 本店小票`)
 })
+
+test('多人分业绩可以选择每人各记全额', async ({ page }) => {
+  await login(page, owner.account, owner.password)
+  await page.goto('/settings')
+  const card = page.locator('[data-setting=performance_split]')
+  await card.getByRole('button', { name: '修改', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '修改多人分业绩', exact: true })
+  await dialog.getByRole('combobox', { name: '做法', exact: true }).click()
+  await page.getByRole('option', { name: '每人各记全额', exact: true }).click()
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(card).toContainText('每人各记全额')
+})

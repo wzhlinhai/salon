@@ -62,7 +62,7 @@ func RecordCheckout(ctx context.Context, env ops.Env, in CheckoutInput) error {
 			BusinessDate: pgtype.Date{Time: in.BusinessDate, Valid: true},
 			OrderID:      &in.OrderID, OrderItemID: &e.orderItemID, CheckoutID: &in.CheckoutID, SettingsSnapshotID: &in.SettingsSnapshotID,
 			Slot: e.slot, PositionID: e.positionID, StaffID: e.staffID,
-			Member: &in.Member, Kind: e.kind, Method: e.method, PaidAmount: e.paidAmount, Ratio: e.ratio, Amount: e.amount,
+			Member: &in.Member, Kind: e.kind, Method: e.method, PaidAmount: e.paidAmount, Ratio: e.ratio, CategoryRatio: e.categoryRatio, Amount: e.amount,
 		})
 		if err != nil {
 			return err

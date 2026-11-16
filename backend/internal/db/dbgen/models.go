@@ -661,6 +661,17 @@ type Item struct {
 	Kind            string
 	DurationMinutes int32
 	Bookable        bool
+	CategoryID      *uuid.UUID
+}
+
+type ItemCategory struct {
+	ID               uuid.UUID
+	TenantID         uuid.UUID
+	StoreID          uuid.UUID
+	Name             string
+	PerformanceRatio int16
+	Active           bool
+	CreatedAt        pgtype.Timestamptz
 }
 
 type ItemLevelPrice struct {
@@ -735,6 +746,8 @@ type OrderItem struct {
 	ItemKind        string
 	LaborFeeAmount  *money.Amount
 	LaborFeePercent *money.Percent
+	CategoryID      *uuid.UUID
+	CategoryRatio   int16
 }
 
 type OrderItemPosition struct {
@@ -831,6 +844,7 @@ type PerformanceEntry struct {
 	Purchase           *string
 	Member             *bool
 	AftersaleID        *uuid.UUID
+	CategoryRatio      int16
 }
 
 type Position struct {

@@ -99,6 +99,10 @@ func TestExportAllReadable(t *testing.T) {
 	if len(rows)-1 != f.count("SELECT count(*) FROM card_items ci JOIN cards c ON c.id=ci.card_id JOIN card_types t ON t.id=c.card_type_id WHERE t.kind IN ('count','package')") {
 		t.Fatalf("次卡套餐 rows = %d", len(rows)-1)
 	}
+	itemRows, _ := file.GetRows("项目")
+	if len(itemRows) == 0 || len(itemRows[0]) < 3 || itemRows[0][2] != "类别" {
+		t.Fatalf("项目 header = %v", itemRows)
+	}
 	for sheet, query := range map[string]string{
 		"卡流水": "SELECT count(*) FROM card_ledger",
 		"支付":  "SELECT count(*) FROM order_payments",

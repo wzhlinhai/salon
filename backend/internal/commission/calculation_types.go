@@ -50,11 +50,12 @@ type CommissionOrigin struct {
 
 // CommissionPerformanceEntry 是一笔提成所包含的支付方式业绩记录。
 type CommissionPerformanceEntry struct {
-	ID         uuid.UUID    `json:"id"`
-	Method     string       `json:"method"`
-	PaidAmount money.Amount `json:"paid_amount"`
-	Ratio      int16        `json:"ratio"`
-	Amount     money.Amount `json:"amount"`
+	ID            uuid.UUID    `json:"id"`
+	Method        string       `json:"method"`
+	PaidAmount    money.Amount `json:"paid_amount"`
+	Ratio         int16        `json:"ratio"`
+	CategoryRatio int16        `json:"category_ratio"`
+	Amount        money.Amount `json:"amount"`
 }
 
 // CommissionBase 说明计提基数及项目行价格按实收份额的分摊。

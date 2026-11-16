@@ -66,7 +66,7 @@ func deductPerformance(ctx context.Context, env ops.Env, orderID, aftersaleID uu
 		if err != nil {
 			return err
 		}
-		targetAmountFen := targetPaid.PercentOf(int(entry.Ratio)).Fen()
+		targetAmountFen := targetPaid.PercentOfProduct(int(entry.Ratio), int(entry.CategoryRatio)).Fen()
 		deltaPaid := targetPaidFen - priorPaid[entry.ID]
 		deltaAmount := targetAmountFen - priorAmount[entry.ID]
 		if deltaPaid <= 0 {
@@ -91,7 +91,7 @@ func deductPerformance(ctx context.Context, env ops.Env, orderID, aftersaleID uu
 			BusinessDate: pgtype.Date{Time: day, Valid: true},
 			OrderID:      entry.OrderID, OrderItemID: entry.OrderItemID, CheckoutID: entry.CheckoutID, SettingsSnapshotID: entry.SettingsSnapshotID,
 			Slot: entry.Slot, PositionID: entry.PositionID, StaffID: entry.StaffID, Method: entry.Method,
-			PaidAmount: paid, Ratio: entry.Ratio, Amount: amount,
+			PaidAmount: paid, Ratio: entry.Ratio, CategoryRatio: entry.CategoryRatio, Amount: amount,
 			ReversesID: &entry.ID, AftersaleID: &aftersaleID, Member: entry.Member,
 		}); err != nil {
 			return err

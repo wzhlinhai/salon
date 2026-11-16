@@ -40,6 +40,9 @@ func CustomerSourceTarget(id uuid.UUID) Target { return Target{kind: "customer_s
 // ItemTarget 创建项目日志目标。
 func ItemTarget(id uuid.UUID) Target { return Target{kind: "item", id: id} }
 
+// ItemCategoryTarget 创建项目类别日志目标。
+func ItemCategoryTarget(id uuid.UUID) Target { return Target{kind: "item_category", id: id} }
+
 // DayCloseTarget 创建日结快照日志目标。
 func DayCloseTarget(id uuid.UUID) Target { return Target{kind: "day_close", id: id} }
 

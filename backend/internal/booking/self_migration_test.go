@@ -98,6 +98,7 @@ func TestSelfBookingMigrationDownRefusesCustomerActor(t *testing.T) {
  VALUES ($1,$2,$3,$4,'appointment',$5,$6,'pending',$4)`,
 			s.Res.TenantID, s.Res.StoreID, s.staff, s.customer, s.at(3, "10:00"), s.at(3, "10:30"))
 		dbtest.Commit(t, tx)
+		dbtest.MigrateDownTo(t, s.Pool, 53)
 		err := db.MigrateDown(context.Background(), s.Pool)
 		if err == nil || !strings.Contains(err.Error(), "无法回滚 00053") {
 			t.Fatalf("down error = %v", err)
@@ -111,6 +112,7 @@ func TestSelfBookingMigrationDownRefusesCustomerActor(t *testing.T) {
  VALUES ($1,$2,$3,'create',$4,$5,$6,$7)`,
 			s.Res.TenantID, s.Res.StoreID, appointment["id"], s.at(3, "12:00"), s.at(3, "13:00"), s.staff, s.customer)
 		dbtest.Commit(t, tx)
+		dbtest.MigrateDownTo(t, s.Pool, 53)
 		err := db.MigrateDown(context.Background(), s.Pool)
 		if err == nil || !strings.Contains(err.Error(), "无法回滚 00053") {
 			t.Fatalf("down error = %v", err)

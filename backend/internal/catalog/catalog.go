@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -51,25 +52,65 @@ type ItemPosition struct {
 
 // Item 是本店项目及其完整价格规则。
 type Item struct {
-	Kind            string         `json:"kind" enum:"service,goods"`
-	MemberPrices    []MemberPrice  `json:"member_prices"`
-	ID              uuid.UUID      `json:"id"`
-	Name            string         `json:"name"`
-	Price           money.Amount   `json:"price"`
-	Discountable    bool           `json:"discountable"`
-	LaborFeeAmount  *money.Amount  `json:"labor_fee_amount" nullable:"true"`
-	LaborFeePercent *money.Percent `json:"labor_fee_percent" nullable:"true"`
-	DurationMinutes int            `json:"duration_minutes" minimum:"0" maximum:"600" doc:"一次服务的分钟数，0 表示未设置"`
-	Bookable        bool           `json:"bookable" doc:"项目能否被预约"`
-	Active          bool           `json:"active"`
-	CreatedAt       time.Time      `json:"created_at"`
-	LevelPrices     []LevelPrice   `json:"level_prices"`
-	Positions       []ItemPosition `json:"positions"`
+	Kind            string           `json:"kind" enum:"service,goods"`
+	MemberPrices    []MemberPrice    `json:"member_prices"`
+	ID              uuid.UUID        `json:"id"`
+	Name            string           `json:"name"`
+	Price           money.Amount     `json:"price"`
+	Discountable    bool             `json:"discountable"`
+	LaborFeeAmount  *money.Amount    `json:"labor_fee_amount" nullable:"true"`
+	LaborFeePercent *money.Percent   `json:"labor_fee_percent" nullable:"true"`
+	DurationMinutes int              `json:"duration_minutes" minimum:"0" maximum:"600" doc:"一次服务的分钟数，0 表示未设置"`
+	Bookable        bool             `json:"bookable" doc:"项目能否被预约"`
+	Active          bool             `json:"active"`
+	CreatedAt       time.Time        `json:"created_at"`
+	Category        *ItemCategoryRef `json:"category" doc:"项目类别，未归类时为空"`
+	LevelPrices     []LevelPrice     `json:"level_prices"`
+	Positions       []ItemPosition   `json:"positions"`
 }
 
 // ItemList 是本店项目列表。
 type ItemList struct {
 	Items []Item `json:"items"`
+}
+
+// TransformSchema 声明项目类别或空值。
+func (Item) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
+	s.Properties["category"] = &huma.Schema{AnyOf: []*huma.Schema{s.Properties["category"], {Type: "null"}}}
+	return s
+}
+
+// ItemCategoryRef 是项目视图引用的项目类别。
+type ItemCategoryRef struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+// ItemCategory 是本店维护的项目类别及业绩比例。停用后不能再设到项目上，已设置的保留。
+type ItemCategory struct {
+	ID               uuid.UUID `json:"id"`
+	Name             string    `json:"name"`
+	PerformanceRatio int16     `json:"performance_ratio" minimum:"0" maximum:"100" doc:"项目业绩按此百分比的类别比例计入"`
+	Active           bool      `json:"active"`
+}
+
+// ItemCategoryList 是本店的全部项目类别。
+type ItemCategoryList struct {
+	Items []ItemCategory `json:"items"`
+}
+
+// CreateItemCategoryInput 是新建项目类别的参数。
+type CreateItemCategoryInput struct {
+	Name             string `json:"name" minLength:"1" maxLength:"20"`
+	PerformanceRatio *int16 `json:"performance_ratio,omitempty" minimum:"0" maximum:"100" doc:"不填为 100"`
+}
+
+// UpdateItemCategoryInput 是修改或停用项目类别的参数。
+type UpdateItemCategoryInput struct {
+	ID               uuid.UUID `json:"id"`
+	Name             string    `json:"name" minLength:"1" maxLength:"20"`
+	PerformanceRatio int16     `json:"performance_ratio" minimum:"0" maximum:"100"`
+	Active           bool      `json:"active"`
 }
 
 // ListItemsInput 是列出本店项目的参数。
@@ -88,6 +129,7 @@ type CreateItemInput struct {
 	Bookable        *bool               `json:"bookable,omitempty" doc:"能否被预约，新建时不填为可以"`
 	Positions       []ItemPositionInput `json:"positions" maxItems:"20"`
 	LevelPrices     []LevelPrice        `json:"level_prices" maxItems:"20"`
+	CategoryID      *uuid.UUID          `json:"category_id,omitempty" nullable:"true" doc:"项目类别；不填或 null 表示不归类"`
 }
 
 // UpdateItemInput 是替换项目价格规则和启用状态的参数。
@@ -149,6 +191,90 @@ func Register(r *ops.Registry) {
 			return Quote(ctx, env.Q, env.Caller.StoreID, in.ItemID, &in.StaffID, in.CardTypeID, rules)
 		},
 	})
+	ops.Register(r, ops.Operation[ListItemsInput, ItemCategoryList]{
+		Name: "list_item_categories", Summary: "列出本店的项目类别及业绩比例", Kind: ops.Read,
+		Permission: ops.LoggedIn, AI: ops.AIDirect,
+		Handle: func(ctx context.Context, env ops.Env, _ *ListItemsInput) (*ItemCategoryList, error) {
+			rows, err := env.Q.ListItemCategories(ctx, env.Caller.StoreID)
+			out := &ItemCategoryList{Items: make([]ItemCategory, 0, len(rows))}
+			for _, row := range rows {
+				out.Items = append(out.Items, categoryView(row))
+			}
+			return out, err
+		},
+	})
+	ops.Register(r, ops.Operation[CreateItemCategoryInput, ItemCategory]{
+		Name: "create_item_category", Summary: "新建项目类别并设置业绩比例", Kind: ops.Write,
+		Permission: perm.SettingsManage, AI: ops.AIDraft, Handle: createItemCategory,
+	})
+	ops.Register(r, ops.Operation[UpdateItemCategoryInput, ItemCategory]{
+		Name: "update_item_category", Summary: "修改或停用项目类别及业绩比例", Kind: ops.Write,
+		Permission: perm.SettingsManage, AI: ops.AIDraft, Handle: updateItemCategory,
+	})
+}
+
+func categoryRowError(err error) error {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ops.ErrNotFound
+	}
+	var e *pgconn.PgError
+	if errors.As(err, &e) && e.Code == "23505" {
+		return ops.Rule("类别名称重复")
+	}
+	return err
+}
+
+func categoryView(row dbgen.ItemCategory) ItemCategory {
+	return ItemCategory{ID: row.ID, Name: row.Name, PerformanceRatio: row.PerformanceRatio, Active: row.Active}
+}
+
+func categoryName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", ops.Rule("类别名称不能为空")
+	}
+	return name, nil
+}
+
+func createItemCategory(ctx context.Context, env ops.Env, in *CreateItemCategoryInput) (*ItemCategory, error) {
+	name, err := categoryName(in.Name)
+	if err != nil {
+		return nil, err
+	}
+	ratio := int16(100)
+	if in.PerformanceRatio != nil {
+		ratio = *in.PerformanceRatio
+	}
+	row, err := env.Q.CreateItemCategory(ctx, dbgen.CreateItemCategoryParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Name: name, PerformanceRatio: ratio, Active: true})
+	if err != nil {
+		return nil, categoryRowError(err)
+	}
+	after := categoryView(row)
+	if err := audit.Record(ctx, env, "create_item_category", audit.ItemCategoryTarget(row.ID), nil, after); err != nil {
+		return nil, err
+	}
+	return &after, nil
+}
+
+func updateItemCategory(ctx context.Context, env ops.Env, in *UpdateItemCategoryInput) (*ItemCategory, error) {
+	name, err := categoryName(in.Name)
+	if err != nil {
+		return nil, err
+	}
+	row, err := env.Q.LockItemCategory(ctx, dbgen.LockItemCategoryParams{StoreID: env.Caller.StoreID, ID: in.ID})
+	if err != nil {
+		return nil, categoryRowError(err)
+	}
+	before := categoryView(row)
+	row, err = env.Q.UpdateItemCategory(ctx, dbgen.UpdateItemCategoryParams{StoreID: env.Caller.StoreID, ID: in.ID, Name: name, PerformanceRatio: in.PerformanceRatio, Active: in.Active})
+	if err != nil {
+		return nil, categoryRowError(err)
+	}
+	after := categoryView(row)
+	if err := audit.Record(ctx, env, "update_item_category", audit.ItemCategoryTarget(row.ID), before, after); err != nil {
+		return nil, err
+	}
+	return &after, nil
 }
 
 func views(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, rows []dbgen.Item) ([]Item, error) {
@@ -168,11 +294,33 @@ func views(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, rows []dbge
 	if err != nil {
 		return nil, err
 	}
+	categoryIDs := []uuid.UUID{}
+	seenCategories := map[uuid.UUID]bool{}
+	for _, r := range rows {
+		if r.CategoryID != nil && !seenCategories[*r.CategoryID] {
+			seenCategories[*r.CategoryID] = true
+			categoryIDs = append(categoryIDs, *r.CategoryID)
+		}
+	}
+	categoryRows, err := q.GetItemCategories(ctx, dbgen.GetItemCategoriesParams{StoreID: storeID, Ids: categoryIDs})
+	if err != nil {
+		return nil, err
+	}
+	categories := map[uuid.UUID]ItemCategoryRef{}
+	for _, c := range categoryRows {
+		categories[c.ID] = ItemCategoryRef{ID: c.ID, Name: c.Name}
+	}
 	out := make([]Item, 0, len(rows))
 	indices := map[uuid.UUID]int{}
 	for _, r := range rows {
 		indices[r.ID] = len(out)
-		out = append(out, Item{ID: r.ID, Name: r.Name, Kind: r.Kind, Price: r.Price, Discountable: r.Discountable, LaborFeeAmount: r.LaborFeeAmount, LaborFeePercent: r.LaborFeePercent, DurationMinutes: int(r.DurationMinutes), Bookable: r.Bookable, Active: r.Active, CreatedAt: r.CreatedAt.Time, MemberPrices: []MemberPrice{}, LevelPrices: []LevelPrice{}, Positions: []ItemPosition{}})
+		var category *ItemCategoryRef
+		if r.CategoryID != nil {
+			if c, ok := categories[*r.CategoryID]; ok {
+				category = &c
+			}
+		}
+		out = append(out, Item{ID: r.ID, Name: r.Name, Kind: r.Kind, Price: r.Price, Discountable: r.Discountable, LaborFeeAmount: r.LaborFeeAmount, LaborFeePercent: r.LaborFeePercent, DurationMinutes: int(r.DurationMinutes), Bookable: r.Bookable, Active: r.Active, CreatedAt: r.CreatedAt.Time, Category: category, MemberPrices: []MemberPrice{}, LevelPrices: []LevelPrice{}, Positions: []ItemPosition{}})
 	}
 	for _, m := range members {
 		if i, ok := indices[m.ItemID]; ok {
@@ -259,7 +407,7 @@ func createItem(ctx context.Context, env ops.Env, in *CreateItemInput) (*Item, e
 	if in.Bookable != nil {
 		bookable = *in.Bookable
 	}
-	row, err := env.Q.CreateItem(ctx, dbgen.CreateItemParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Name: in.Name, Kind: in.Kind, Price: in.Price, Discountable: in.Discountable, LaborFeeAmount: in.LaborFeeAmount, LaborFeePercent: in.LaborFeePercent, DurationMinutes: duration, Bookable: bookable})
+	row, err := env.Q.CreateItem(ctx, dbgen.CreateItemParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Name: in.Name, Kind: in.Kind, Price: in.Price, Discountable: in.Discountable, LaborFeeAmount: in.LaborFeeAmount, LaborFeePercent: in.LaborFeePercent, DurationMinutes: duration, Bookable: bookable, CategoryID: in.CategoryID})
 	if err != nil {
 		return nil, rowError(err)
 	}
@@ -298,7 +446,7 @@ func updateItem(ctx context.Context, env ops.Env, in *UpdateItemInput) (*Item, e
 	if in.Bookable != nil {
 		bookable = *in.Bookable
 	}
-	row, err = env.Q.UpdateItem(ctx, dbgen.UpdateItemParams{ID: in.ID, Name: in.Name, Kind: in.Kind, Price: in.Price, Discountable: in.Discountable, LaborFeeAmount: in.LaborFeeAmount, LaborFeePercent: in.LaborFeePercent, DurationMinutes: duration, Bookable: bookable, Active: in.Active})
+	row, err = env.Q.UpdateItem(ctx, dbgen.UpdateItemParams{ID: in.ID, Name: in.Name, Kind: in.Kind, Price: in.Price, Discountable: in.Discountable, LaborFeeAmount: in.LaborFeeAmount, LaborFeePercent: in.LaborFeePercent, DurationMinutes: duration, Bookable: bookable, Active: in.Active, CategoryID: in.CategoryID})
 	if err != nil {
 		return nil, rowError(err)
 	}
@@ -317,6 +465,15 @@ func updateItem(ctx context.Context, env ops.Env, in *UpdateItemInput) (*Item, e
 
 // shareReferences 按级别、岗位、卡类型的顺序，各组按 UUID 加共享锁。
 func shareReferences(ctx context.Context, env ops.Env, in *CreateItemInput, before *Item) error {
+	if in.CategoryID != nil && (before.Category == nil || before.Category.ID != *in.CategoryID) {
+		category, err := env.Q.ShareItemCategory(ctx, dbgen.ShareItemCategoryParams{StoreID: env.Caller.StoreID, ID: *in.CategoryID})
+		if err != nil {
+			return rowError(err)
+		}
+		if !category.Active {
+			return ops.Rule("类别已停用")
+		}
+	}
 	oldLevels := map[uuid.UUID]bool{}
 	for _, l := range before.LevelPrices {
 		oldLevels[l.LevelID] = true

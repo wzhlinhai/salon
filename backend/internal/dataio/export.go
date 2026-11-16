@@ -366,10 +366,10 @@ func exportItemsSheet(ctx context.Context, f *excelize.File, q *dbgen.Queries, s
 		return err
 	}
 	counts[exportItems] = len(rows)
-	headers := []string{"项目ID", "名称", "种类", "标准价", "可打折", "手工费金额", "手工费百分比", "启用"}
+	headers := []string{"项目ID", "名称", "类别", "种类", "标准价", "可打折", "手工费金额", "手工费百分比", "启用"}
 	return streamSheet(f, exportItems, headers, func(sw *excelize.StreamWriter) error {
 		for i, row := range rows {
-			if err := setRow(sw, i+2, []string{row.ID.String(), row.Name, row.Kind, row.Price, yesNo(row.Discountable), row.LaborFeeAmountText, row.LaborFeePercentText, yesNo(row.Active)}); err != nil {
+			if err := setRow(sw, i+2, []string{row.ID.String(), row.Name, row.CategoryName, row.Kind, row.Price, yesNo(row.Discountable), row.LaborFeeAmountText, row.LaborFeePercentText, yesNo(row.Active)}); err != nil {
 				return err
 			}
 		}

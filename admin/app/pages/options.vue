@@ -4,8 +4,11 @@ import type { components } from '~/utils/api'
 definePageMeta({ permission: 'staff.manage' })
 
 type LevelOrPosition = components['schemas']['Level'] | components['schemas']['Position']
+type ItemCategory = components['schemas']['ItemCategory']
 const api = useApi()
 const toast = useToast()
+const { can } = useMe()
+const canManageSettings = computed(() => can('settings.manage'))
 
 const kinds = [
   { key: 'level', title: '级别', hint: '例如首席、总监，可用于按级别定价', list: '/api/ops/list_levels', create: '/api/ops/create_level', update: '/api/ops/update_level' },
@@ -14,6 +17,14 @@ const kinds = [
 
 const items = reactive<Record<string, LevelOrPosition[]>>({ level: [], position: [] })
 const draft = reactive<Record<string, string>>({ level: '', position: '' })
+
+const categories = ref<ItemCategory[]>([])
+const categoryDraft = reactive({ name: '', performance_ratio: 100 })
+const categorySaving = reactive<Record<string, boolean>>({})
+const categoryAddSaving = ref(false)
+const categoryActionGuard = useRequestGuard()
+const categoryLoadGuard = useRequestGuard()
+const categoryLoading = ref(false)
 
 const saving = reactive<Record<string, boolean>>({})
 const actionGuard = useRequestGuard()
@@ -32,7 +43,26 @@ async function load() {
   }
 }
 
-onMounted(load)
+async function loadCategories() {
+  const request = categoryLoadGuard.next()
+  categoryLoading.value = true
+  try {
+    const { data, error } = await api.POST('/api/ops/list_item_categories', { body: {} })
+    if (!request()) return
+    if (!data) {
+      toast.add({ title: errorText(error), color: 'error' })
+      return
+    }
+    categories.value = data.items
+  } finally {
+    if (request()) categoryLoading.value = false
+  }
+}
+
+onMounted(() => {
+  load()
+  loadCategories()
+})
 
 function report(error: unknown, ok: unknown) {
   if (!ok) toast.add({ title: errorText(error), color: 'error' })
@@ -54,6 +84,45 @@ async function add(k: typeof kinds[number]) {
   }
 }
 
+function reportCategory(error: unknown, ok: unknown) {
+  if (!ok) toast.add({ title: errorText(error), color: 'error' })
+  loadCategories()
+}
+
+async function addCategory() {
+  if (categoryAddSaving.value || !canManageSettings.value) return
+  const current = categoryActionGuard.hold()
+  categoryAddSaving.value = true
+  try {
+    const name = categoryDraft.name
+    const ratio = Number(categoryDraft.performance_ratio)
+    const { data, error } = await api.POST('/api/ops/create_item_category', { body: { name, performance_ratio: ratio } })
+    if (!current()) return
+    if (data && categoryDraft.name === name) {
+      categoryDraft.name = ''
+      categoryDraft.performance_ratio = 100
+    }
+    reportCategory(error, data)
+  } finally {
+    categoryAddSaving.value = false
+  }
+}
+
+async function saveCategory(category: ItemCategory) {
+  if (categorySaving[category.id] || !canManageSettings.value) return
+  const current = categoryActionGuard.hold()
+  categorySaving[category.id] = true
+  try {
+    const { data, error } = await api.POST('/api/ops/update_item_category', {
+      body: { id: category.id, name: category.name, performance_ratio: Number(category.performance_ratio), active: category.active }
+    })
+    if (!current()) return
+    reportCategory(error, data)
+  } finally {
+    categorySaving[category.id] = false
+  }
+}
+
 async function save(k: typeof kinds[number], o: LevelOrPosition) {
   if (saving[o.id]) return
   const current = actionGuard.hold()
@@ -70,7 +139,7 @@ async function save(k: typeof kinds[number], o: LevelOrPosition) {
 
 <template>
   <div class="space-y-4">
-    <h1 class="text-xl font-semibold">级别与岗位</h1>
+    <h1 class="text-xl font-semibold">级别、岗位与项目类别</h1>
     <div class="grid md:grid-cols-2 gap-4">
       <UCard v-for="k in kinds" :key="k.key">
         <template #header>
@@ -89,5 +158,29 @@ async function save(k: typeof kinds[number], o: LevelOrPosition) {
         </div>
       </UCard>
     </div>
+    <UCard data-category="item_categories">
+      <template #header>
+        <div class="font-medium">项目类别</div>
+        <div class="text-sm text-muted">门店自己维护的类别，例如剪发、烫染、护理；每个类别有一个 0–100 的业绩比例</div>
+      </template>
+      <div class="space-y-2">
+        <div v-if="categoryLoading" class="text-sm text-muted">加载中</div>
+        <div v-for="category in categories" :key="category.id" data-category-row :data-category-name="category.name" class="flex flex-wrap items-center gap-2">
+          <UInput v-model="category.name" :disabled="categorySaving[category.id] || !canManageSettings" :aria-label="`类别 ${category.name}`" class="flex-1" @change="saveCategory(category)" />
+          <UFormField label="业绩比例">
+            <UInput v-model.number="category.performance_ratio" type="number" min="0" max="100" :disabled="categorySaving[category.id] || !canManageSettings" :aria-label="`${category.name}业绩比例`" @change="saveCategory(category)" />
+          </UFormField>
+          <USwitch v-if="canManageSettings" v-model="category.active" :loading="categorySaving[category.id]" :label="category.active ? '启用' : '停用'" @update:model-value="saveCategory(category)" />
+          <UBadge v-else :color="category.active ? 'success' : 'neutral'" variant="subtle">{{ category.active ? '启用' : '停用' }}</UBadge>
+        </div>
+        <form v-if="canManageSettings" class="flex flex-wrap items-center gap-2 pt-2" @submit.prevent="addCategory">
+          <UInput v-model="categoryDraft.name" placeholder="新类别" aria-label="新类别" class="flex-1" />
+          <UFormField label="业绩比例">
+            <UInput v-model.number="categoryDraft.performance_ratio" type="number" min="0" max="100" aria-label="新类别业绩比例" />
+          </UFormField>
+          <UButton :loading="categoryAddSaving" type="submit" icon="i-lucide-plus">添加</UButton>
+        </form>
+      </div>
+    </UCard>
   </div>
 </template>
