@@ -90,8 +90,8 @@ WHERE store_id=sqlc.arg(store_id) AND order_id=sqlc.arg(order_id) AND kind='item
 ORDER BY id;
 
 -- name: AddAftersalePerformanceEntry :exec
-INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,ratio,amount,reverses_id,aftersale_id,member)
-VALUES (sqlc.arg(tenant_id),sqlc.arg(store_id),'item',sqlc.arg(business_date),sqlc.arg(order_id),sqlc.arg(order_item_id),sqlc.arg(checkout_id),sqlc.arg(settings_snapshot_id),sqlc.arg(slot),sqlc.arg(position_id),sqlc.arg(staff_id),sqlc.arg(method),sqlc.arg(paid_amount),sqlc.arg(ratio),sqlc.arg(amount),sqlc.arg(reverses_id),sqlc.arg(aftersale_id),sqlc.arg(member));
+INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,ratio,category_ratio,amount,reverses_id,aftersale_id,member)
+VALUES (sqlc.arg(tenant_id),sqlc.arg(store_id),'item',sqlc.arg(business_date),sqlc.arg(order_id),sqlc.arg(order_item_id),sqlc.arg(checkout_id),sqlc.arg(settings_snapshot_id),sqlc.arg(slot),sqlc.arg(position_id),sqlc.arg(staff_id),sqlc.arg(method),sqlc.arg(paid_amount),sqlc.arg(ratio),sqlc.arg(category_ratio),sqlc.arg(amount),sqlc.arg(reverses_id),sqlc.arg(aftersale_id),sqlc.arg(member));
 
 -- name: PriorAftersalePerformanceReversals :many
 SELECT p.reverses_id,COALESCE(sum(p.paid_amount),0)::text AS paid,COALESCE(sum(p.amount),0)::text AS amount

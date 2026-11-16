@@ -86,8 +86,8 @@ func (q *Queries) AddItemPosition(ctx context.Context, arg AddItemPositionParams
 }
 
 const createItem = `-- name: CreateItem :one
-INSERT INTO items (tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, kind, duration_minutes, bookable)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind, duration_minutes, bookable
+INSERT INTO items (tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, kind, duration_minutes, bookable, category_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind, duration_minutes, bookable, category_id
 `
 
 type CreateItemParams struct {
@@ -101,6 +101,7 @@ type CreateItemParams struct {
 	Kind            string
 	DurationMinutes int32
 	Bookable        bool
+	CategoryID      *uuid.UUID
 }
 
 func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (Item, error) {
@@ -115,6 +116,7 @@ func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (Item, e
 		arg.Kind,
 		arg.DurationMinutes,
 		arg.Bookable,
+		arg.CategoryID,
 	)
 	var i Item
 	err := row.Scan(
@@ -131,6 +133,41 @@ func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (Item, e
 		&i.Kind,
 		&i.DurationMinutes,
 		&i.Bookable,
+		&i.CategoryID,
+	)
+	return i, err
+}
+
+const createItemCategory = `-- name: CreateItemCategory :one
+INSERT INTO item_categories (tenant_id, store_id, name, performance_ratio, active)
+VALUES ($1, $2, $3, $4, $5) RETURNING id, tenant_id, store_id, name, performance_ratio, active, created_at
+`
+
+type CreateItemCategoryParams struct {
+	TenantID         uuid.UUID
+	StoreID          uuid.UUID
+	Name             string
+	PerformanceRatio int16
+	Active           bool
+}
+
+func (q *Queries) CreateItemCategory(ctx context.Context, arg CreateItemCategoryParams) (ItemCategory, error) {
+	row := q.db.QueryRow(ctx, createItemCategory,
+		arg.TenantID,
+		arg.StoreID,
+		arg.Name,
+		arg.PerformanceRatio,
+		arg.Active,
+	)
+	var i ItemCategory
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Name,
+		&i.PerformanceRatio,
+		&i.Active,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -178,7 +215,7 @@ func (q *Queries) DeleteItemPosition(ctx context.Context, arg DeleteItemPosition
 }
 
 const getItem = `-- name: GetItem :one
-SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind, duration_minutes, bookable FROM items WHERE store_id = $1 AND id = $2
+SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind, duration_minutes, bookable, category_id FROM items WHERE store_id = $1 AND id = $2
 `
 
 type GetItemParams struct {
@@ -203,6 +240,68 @@ func (q *Queries) GetItem(ctx context.Context, arg GetItemParams) (Item, error) 
 		&i.Kind,
 		&i.DurationMinutes,
 		&i.Bookable,
+		&i.CategoryID,
+	)
+	return i, err
+}
+
+const getItemCategories = `-- name: GetItemCategories :many
+SELECT id, tenant_id, store_id, name, performance_ratio, active, created_at FROM item_categories WHERE store_id = $1 AND id = ANY($2::uuid[])
+`
+
+type GetItemCategoriesParams struct {
+	StoreID uuid.UUID
+	Ids     []uuid.UUID
+}
+
+func (q *Queries) GetItemCategories(ctx context.Context, arg GetItemCategoriesParams) ([]ItemCategory, error) {
+	rows, err := q.db.Query(ctx, getItemCategories, arg.StoreID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ItemCategory
+	for rows.Next() {
+		var i ItemCategory
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.StoreID,
+			&i.Name,
+			&i.PerformanceRatio,
+			&i.Active,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getItemCategory = `-- name: GetItemCategory :one
+SELECT id, tenant_id, store_id, name, performance_ratio, active, created_at FROM item_categories WHERE store_id = $1 AND id = $2
+`
+
+type GetItemCategoryParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) GetItemCategory(ctx context.Context, arg GetItemCategoryParams) (ItemCategory, error) {
+	row := q.db.QueryRow(ctx, getItemCategory, arg.StoreID, arg.ID)
+	var i ItemCategory
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Name,
+		&i.PerformanceRatio,
+		&i.Active,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -252,7 +351,7 @@ func (q *Queries) GetItemMemberPrice(ctx context.Context, arg GetItemMemberPrice
 }
 
 const getItems = `-- name: GetItems :many
-SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind, duration_minutes, bookable FROM items WHERE store_id=$1 AND id=ANY($2::uuid[])
+SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind, duration_minutes, bookable, category_id FROM items WHERE store_id=$1 AND id=ANY($2::uuid[])
 `
 
 type GetItemsParams struct {
@@ -283,6 +382,7 @@ func (q *Queries) GetItems(ctx context.Context, arg GetItemsParams) ([]Item, err
 			&i.Kind,
 			&i.DurationMinutes,
 			&i.Bookable,
+			&i.CategoryID,
 		); err != nil {
 			return nil, err
 		}
@@ -316,6 +416,38 @@ func (q *Queries) ListBookableItems(ctx context.Context, storeID uuid.UUID) ([]L
 	for rows.Next() {
 		var i ListBookableItemsRow
 		if err := rows.Scan(&i.ID, &i.Name, &i.DurationMinutes); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listItemCategories = `-- name: ListItemCategories :many
+SELECT id, tenant_id, store_id, name, performance_ratio, active, created_at FROM item_categories WHERE store_id = $1 ORDER BY active DESC, name, id
+`
+
+func (q *Queries) ListItemCategories(ctx context.Context, storeID uuid.UUID) ([]ItemCategory, error) {
+	rows, err := q.db.Query(ctx, listItemCategories, storeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ItemCategory
+	for rows.Next() {
+		var i ItemCategory
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.StoreID,
+			&i.Name,
+			&i.PerformanceRatio,
+			&i.Active,
+			&i.CreatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -434,7 +566,7 @@ func (q *Queries) ListItemPositions(ctx context.Context, arg ListItemPositionsPa
 }
 
 const listItems = `-- name: ListItems :many
-SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind, duration_minutes, bookable FROM items WHERE store_id = $1 ORDER BY active DESC, created_at, id
+SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind, duration_minutes, bookable, category_id FROM items WHERE store_id = $1 ORDER BY active DESC, created_at, id
 `
 
 func (q *Queries) ListItems(ctx context.Context, storeID uuid.UUID) ([]Item, error) {
@@ -460,6 +592,7 @@ func (q *Queries) ListItems(ctx context.Context, storeID uuid.UUID) ([]Item, err
 			&i.Kind,
 			&i.DurationMinutes,
 			&i.Bookable,
+			&i.CategoryID,
 		); err != nil {
 			return nil, err
 		}
@@ -472,7 +605,7 @@ func (q *Queries) ListItems(ctx context.Context, storeID uuid.UUID) ([]Item, err
 }
 
 const lockItem = `-- name: LockItem :one
-SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind, duration_minutes, bookable FROM items WHERE store_id = $1 AND id = $2 FOR NO KEY UPDATE
+SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind, duration_minutes, bookable, category_id FROM items WHERE store_id = $1 AND id = $2 FOR NO KEY UPDATE
 `
 
 type LockItemParams struct {
@@ -498,12 +631,37 @@ func (q *Queries) LockItem(ctx context.Context, arg LockItemParams) (Item, error
 		&i.Kind,
 		&i.DurationMinutes,
 		&i.Bookable,
+		&i.CategoryID,
+	)
+	return i, err
+}
+
+const lockItemCategory = `-- name: LockItemCategory :one
+SELECT id, tenant_id, store_id, name, performance_ratio, active, created_at FROM item_categories WHERE store_id = $1 AND id = $2 FOR NO KEY UPDATE
+`
+
+type LockItemCategoryParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) LockItemCategory(ctx context.Context, arg LockItemCategoryParams) (ItemCategory, error) {
+	row := q.db.QueryRow(ctx, lockItemCategory, arg.StoreID, arg.ID)
+	var i ItemCategory
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Name,
+		&i.PerformanceRatio,
+		&i.Active,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const shareItem = `-- name: ShareItem :one
-SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind, duration_minutes, bookable FROM items WHERE store_id=$1 AND id=$2 FOR SHARE
+SELECT id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind, duration_minutes, bookable, category_id FROM items WHERE store_id=$1 AND id=$2 FOR SHARE
 `
 
 type ShareItemParams struct {
@@ -528,13 +686,38 @@ func (q *Queries) ShareItem(ctx context.Context, arg ShareItemParams) (Item, err
 		&i.Kind,
 		&i.DurationMinutes,
 		&i.Bookable,
+		&i.CategoryID,
+	)
+	return i, err
+}
+
+const shareItemCategory = `-- name: ShareItemCategory :one
+SELECT id, tenant_id, store_id, name, performance_ratio, active, created_at FROM item_categories WHERE store_id = $1 AND id = $2 FOR SHARE
+`
+
+type ShareItemCategoryParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) ShareItemCategory(ctx context.Context, arg ShareItemCategoryParams) (ItemCategory, error) {
+	row := q.db.QueryRow(ctx, shareItemCategory, arg.StoreID, arg.ID)
+	var i ItemCategory
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Name,
+		&i.PerformanceRatio,
+		&i.Active,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const updateItem = `-- name: UpdateItem :one
-UPDATE items SET name=$2, price=$3, discountable=$4, labor_fee_amount=$5, labor_fee_percent=$6, active=$7, kind=$8, duration_minutes=$9, bookable=$10
-WHERE id=$1 RETURNING id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind, duration_minutes, bookable
+UPDATE items SET name=$2, price=$3, discountable=$4, labor_fee_amount=$5, labor_fee_percent=$6, active=$7, kind=$8, duration_minutes=$9, bookable=$10, category_id=$11
+WHERE id=$1 RETURNING id, tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, active, created_at, kind, duration_minutes, bookable, category_id
 `
 
 type UpdateItemParams struct {
@@ -548,6 +731,7 @@ type UpdateItemParams struct {
 	Kind            string
 	DurationMinutes int32
 	Bookable        bool
+	CategoryID      *uuid.UUID
 }
 
 func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) (Item, error) {
@@ -562,6 +746,7 @@ func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) (Item, e
 		arg.Kind,
 		arg.DurationMinutes,
 		arg.Bookable,
+		arg.CategoryID,
 	)
 	var i Item
 	err := row.Scan(
@@ -578,6 +763,41 @@ func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) (Item, e
 		&i.Kind,
 		&i.DurationMinutes,
 		&i.Bookable,
+		&i.CategoryID,
+	)
+	return i, err
+}
+
+const updateItemCategory = `-- name: UpdateItemCategory :one
+UPDATE item_categories SET name = $2, performance_ratio = $3, active = $4
+WHERE store_id = $1 AND id = $5 RETURNING id, tenant_id, store_id, name, performance_ratio, active, created_at
+`
+
+type UpdateItemCategoryParams struct {
+	StoreID          uuid.UUID
+	Name             string
+	PerformanceRatio int16
+	Active           bool
+	ID               uuid.UUID
+}
+
+func (q *Queries) UpdateItemCategory(ctx context.Context, arg UpdateItemCategoryParams) (ItemCategory, error) {
+	row := q.db.QueryRow(ctx, updateItemCategory,
+		arg.StoreID,
+		arg.Name,
+		arg.PerformanceRatio,
+		arg.Active,
+		arg.ID,
+	)
+	var i ItemCategory
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Name,
+		&i.PerformanceRatio,
+		&i.Active,
+		&i.CreatedAt,
 	)
 	return i, err
 }

@@ -471,14 +471,16 @@ func (q *Queries) ExportCustomersPage(ctx context.Context, arg ExportCustomersPa
 }
 
 const exportItems = `-- name: ExportItems :many
-SELECT id, name, kind, price::text AS price, discountable, COALESCE(labor_fee_amount,0)::text AS labor_fee_amount_text,
-       COALESCE(labor_fee_percent,0)::text AS labor_fee_percent_text, active
-FROM items WHERE store_id=$1 ORDER BY name, id
+SELECT i.id, i.name, COALESCE(c.name,'') AS category_name, i.kind, i.price::text AS price, i.discountable, COALESCE(i.labor_fee_amount,0)::text AS labor_fee_amount_text,
+       COALESCE(i.labor_fee_percent,0)::text AS labor_fee_percent_text, i.active
+FROM items i LEFT JOIN item_categories c ON c.tenant_id=i.tenant_id AND c.id=i.category_id
+WHERE i.store_id=$1 ORDER BY i.name, i.id
 `
 
 type ExportItemsRow struct {
 	ID                  uuid.UUID
 	Name                string
+	CategoryName        string
 	Kind                string
 	Price               string
 	Discountable        bool
@@ -499,6 +501,7 @@ func (q *Queries) ExportItems(ctx context.Context, storeID uuid.UUID) ([]ExportI
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
+			&i.CategoryName,
 			&i.Kind,
 			&i.Price,
 			&i.Discountable,

@@ -54,8 +54,8 @@ func (q *Queries) AddAftersaleEvent(ctx context.Context, arg AddAftersaleEventPa
 }
 
 const addAftersalePerformanceEntry = `-- name: AddAftersalePerformanceEntry :exec
-INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,ratio,amount,reverses_id,aftersale_id,member)
-VALUES ($1,$2,'item',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,ratio,category_ratio,amount,reverses_id,aftersale_id,member)
+VALUES ($1,$2,'item',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
 `
 
 type AddAftersalePerformanceEntryParams struct {
@@ -72,6 +72,7 @@ type AddAftersalePerformanceEntryParams struct {
 	Method             string
 	PaidAmount         money.Amount
 	Ratio              int16
+	CategoryRatio      int16
 	Amount             money.Amount
 	ReversesID         *uuid.UUID
 	AftersaleID        *uuid.UUID
@@ -93,6 +94,7 @@ func (q *Queries) AddAftersalePerformanceEntry(ctx context.Context, arg AddAfter
 		arg.Method,
 		arg.PaidAmount,
 		arg.Ratio,
+		arg.CategoryRatio,
 		arg.Amount,
 		arg.ReversesID,
 		arg.AftersaleID,
@@ -593,7 +595,7 @@ func (q *Queries) OrderCardPrincipalPaid(ctx context.Context, arg OrderCardPrinc
 }
 
 const orderItemPerformanceEntries = `-- name: OrderItemPerformanceEntries :many
-SELECT tenant_id, store_id, id, kind, business_date, order_id, order_item_id, checkout_id, settings_snapshot_id, slot, position_id, staff_id, method, paid_amount, ratio, amount, void_id, reverses_id, created_at, card_ledger_id, red_packet_id, purchase, member, aftersale_id FROM performance_entries
+SELECT tenant_id, store_id, id, kind, business_date, order_id, order_item_id, checkout_id, settings_snapshot_id, slot, position_id, staff_id, method, paid_amount, ratio, amount, void_id, reverses_id, created_at, card_ledger_id, red_packet_id, purchase, member, aftersale_id, category_ratio FROM performance_entries
 WHERE store_id=$1 AND order_id=$2 AND kind='item' AND reverses_id IS NULL
 ORDER BY id
 `
@@ -637,6 +639,7 @@ func (q *Queries) OrderItemPerformanceEntries(ctx context.Context, arg OrderItem
 			&i.Purchase,
 			&i.Member,
 			&i.AftersaleID,
+			&i.CategoryRatio,
 		); err != nil {
 			return nil, err
 		}

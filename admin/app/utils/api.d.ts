@@ -667,6 +667,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/create_item_category": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 新建项目类别并设置业绩比例 */
+        post: operations["create_item_category"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/create_level": {
         parameters: {
             query?: never;
@@ -1783,6 +1800,23 @@ export interface paths {
         put?: never;
         /** 列出导入批次及核对差额 */
         post: operations["list_import_batches"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_item_categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 列出本店的项目类别及业绩比例 */
+        post: operations["list_item_categories"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3183,6 +3217,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/update_item_category": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 修改或停用项目类别及业绩比例 */
+        post: operations["update_item_category"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/update_level": {
         parameters: {
             query?: never;
@@ -4112,6 +4163,8 @@ export interface components {
         };
         CommissionPerformanceEntry: {
             amount: string;
+            /** Format: int32 */
+            category_ratio: number;
             id: string;
             method: string;
             paid_amount: string;
@@ -4312,9 +4365,19 @@ export interface components {
             summary: string;
             utterance: string;
         };
+        CreateItemCategoryInput: {
+            name: string;
+            /**
+             * Format: int32
+             * @description 不填为 100
+             */
+            performance_ratio?: number;
+        };
         CreateItemInput: {
             /** @description 能否被预约，新建时不填为可以 */
             bookable?: boolean;
+            /** @description 项目类别；不填或 null 表示不归类 */
+            category_id?: string | null;
             discountable: boolean;
             /**
              * Format: int64
@@ -4911,6 +4974,7 @@ export interface components {
             active: boolean;
             /** @description 项目能否被预约 */
             bookable: boolean;
+            category: components["schemas"]["ItemCategoryRef"] | null;
             /** Format: date-time */
             created_at: string;
             discountable: boolean;
@@ -4929,6 +4993,23 @@ export interface components {
             name: string;
             positions: components["schemas"]["ItemPosition"][];
             price: string;
+        };
+        ItemCategory: {
+            active: boolean;
+            id: string;
+            name: string;
+            /**
+             * Format: int32
+             * @description 项目业绩按此百分比的类别比例计入
+             */
+            performance_ratio: number;
+        };
+        ItemCategoryList: {
+            items: components["schemas"]["ItemCategory"][];
+        };
+        ItemCategoryRef: {
+            id: string;
+            name: string;
         };
         ItemList: {
             items: components["schemas"]["Item"][];
@@ -5628,6 +5709,11 @@ export interface components {
             business_date: string;
             /** @description 开卡、充值或补差价流水 */
             card_ledger_id: string | null;
+            /**
+             * Format: int32
+             * @description 加项目时留存的类别业绩比例
+             */
+            category_ratio: number;
             /** @description 结账来源，销售业绩为空 */
             checkout_id: string | null;
             id: string;
@@ -5650,7 +5736,10 @@ export interface components {
              * @enum {string|null}
              */
             purchase: "first" | "repeat" | null;
-            /** Format: int32 */
+            /**
+             * Format: int32
+             * @description 支付方式的业绩比例
+             */
             ratio: number;
             /** @description 卖红包的来源红包 */
             red_packet_id: string | null;
@@ -6546,10 +6635,19 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        UpdateItemCategoryInput: {
+            active: boolean;
+            id: string;
+            name: string;
+            /** Format: int32 */
+            performance_ratio: number;
+        };
         UpdateItemInput: {
             active: boolean;
             /** @description 能否被预约，新建时不填为可以 */
             bookable?: boolean;
+            /** @description 项目类别；不填或 null 表示不归类 */
+            category_id?: string | null;
             discountable: boolean;
             /**
              * Format: int64
@@ -7912,6 +8010,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Item"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    create_item_category: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateItemCategoryInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemCategory"];
                 };
             };
             /** @description Error */
@@ -10090,6 +10221,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImportBatchList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_item_categories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListItemsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemCategoryList"];
                 };
             };
             /** @description Error */
@@ -12796,6 +12960,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Item"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    update_item_category: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateItemCategoryInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemCategory"];
                 };
             };
             /** @description Error */

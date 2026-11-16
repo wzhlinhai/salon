@@ -12,8 +12,8 @@ SELECT * FROM orders WHERE store_id=$1 AND id=$2;
 SELECT * FROM orders WHERE store_id=$1 AND status='open' ORDER BY opened_at,id;
 
 -- name: CreateOrderItem :one
-INSERT INTO order_items (tenant_id,store_id,order_id,item_id,item_name,price,price_source,level_id,added_by,item_kind,labor_fee_amount,labor_fee_percent)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *;
+INSERT INTO order_items (tenant_id,store_id,order_id,item_id,item_name,price,price_source,level_id,added_by,item_kind,labor_fee_amount,labor_fee_percent,category_id,category_ratio)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *;
 
 -- name: AddOrderItemPosition :exec
 INSERT INTO order_item_positions (tenant_id,store_id,order_item_id,slot,position_id,required,staff_id,share_percent)

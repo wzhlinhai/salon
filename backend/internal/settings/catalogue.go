@@ -123,7 +123,7 @@ var Catalogue = []Def{
 	{Key: KeyCardCountOrder, Label: "扣次顺序", Hint: "扣次时先扣购买次数还是赠送次数，先扣的用完再扣另一种", Kind: KindChoice, Default: "paid_first", Options: []ChoiceOption{{Value: "paid_first", Label: "先扣购买次数"}, {Value: "gift_first", Label: "先扣赠送次数"}}},
 	{Key: KeyCardSelection, Label: "选卡规则", Hint: "结账只说用卡余额付、不指定哪张卡时怎么挑卡：手动选卡必须指定；按折扣率先扣这单实收最低的卡；按余额先扣余额少的卡，一张不够接着扣下一张", Kind: KindChoice, Default: "manual", Options: []ChoiceOption{{Value: "manual", Label: "手动选卡"}, {Value: "by_discount", Label: "按折扣率"}, {Value: "by_balance", Label: "按余额"}}},
 	{Key: KeyGuestCountSplit, Label: "客数归属", Kind: KindChoice, Default: "first_slot", Options: []ChoiceOption{{Value: "first_slot", Label: "第一个岗位的员工"}, {Value: "equal", Label: "单上员工均分"}}, Hint: "每张结账单的客次记给谁"},
-	{Key: KeyPerformanceSplit, Label: "多人分业绩", Kind: KindChoice, Default: "by_position", Options: []ChoiceOption{{Value: "by_position", Label: "按岗位比例"}, {Value: "equal", Label: "均分"}}, Hint: "一个项目几个人做时业绩怎么分；项目没设岗位比例时均分"},
+	{Key: KeyPerformanceSplit, Label: "多人分业绩", Kind: KindChoice, Default: "by_position", Options: []ChoiceOption{{Value: "by_position", Label: "按岗位比例"}, {Value: "equal", Label: "均分"}, {Value: "full", Label: "每人各记全额"}}, Hint: "一个项目几个人做时业绩怎么分；项目没设岗位比例时均分；选每人各记全额时每个岗位上的员工都记全额，全店业绩合计会大于实收"},
 	{Key: KeyPerformanceRatioCash, Label: "现金业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
 	{Key: KeyPerformanceRatioUnionpay, Label: "银联业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
 	{Key: KeyPerformanceRatioWechat, Label: "微信业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},

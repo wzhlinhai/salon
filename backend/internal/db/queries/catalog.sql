@@ -9,11 +9,11 @@ SELECT * FROM items WHERE store_id = $1 AND id = $2;
 SELECT * FROM items WHERE store_id = $1 AND id = $2 FOR NO KEY UPDATE;
 
 -- name: CreateItem :one
-INSERT INTO items (tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, kind, duration_minutes, bookable)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *;
+INSERT INTO items (tenant_id, store_id, name, price, discountable, labor_fee_amount, labor_fee_percent, kind, duration_minutes, bookable, category_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *;
 
 -- name: UpdateItem :one
-UPDATE items SET name=$2, price=$3, discountable=$4, labor_fee_amount=$5, labor_fee_percent=$6, active=$7, kind=$8, duration_minutes=$9, bookable=$10
+UPDATE items SET name=$2, price=$3, discountable=$4, labor_fee_amount=$5, labor_fee_percent=$6, active=$7, kind=$8, duration_minutes=$9, bookable=$10, category_id=$11
 WHERE id=$1 RETURNING *;
 
 -- name: ListItemLevelPrices :many
@@ -68,3 +68,26 @@ SELECT * FROM items WHERE store_id=sqlc.arg(store_id) AND id=ANY(sqlc.arg(ids)::
 SELECT id, name, duration_minutes FROM items
 WHERE store_id = $1 AND active AND bookable
 ORDER BY name, id;
+
+-- name: ListItemCategories :many
+SELECT * FROM item_categories WHERE store_id = $1 ORDER BY active DESC, name, id;
+
+-- name: GetItemCategories :many
+SELECT * FROM item_categories WHERE store_id = $1 AND id = ANY(sqlc.arg(ids)::uuid[]);
+
+-- name: ShareItemCategory :one
+SELECT * FROM item_categories WHERE store_id = $1 AND id = $2 FOR SHARE;
+
+-- name: CreateItemCategory :one
+INSERT INTO item_categories (tenant_id, store_id, name, performance_ratio, active)
+VALUES ($1, $2, $3, $4, $5) RETURNING *;
+
+-- name: GetItemCategory :one
+SELECT * FROM item_categories WHERE store_id = $1 AND id = $2;
+
+-- name: LockItemCategory :one
+SELECT * FROM item_categories WHERE store_id = $1 AND id = $2 FOR NO KEY UPDATE;
+
+-- name: UpdateItemCategory :one
+UPDATE item_categories SET name = $2, performance_ratio = $3, active = $4
+WHERE store_id = $1 AND id = $5 RETURNING *;

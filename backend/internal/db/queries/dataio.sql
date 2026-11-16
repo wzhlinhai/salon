@@ -140,9 +140,10 @@ ORDER BY p.id LIMIT sqlc.arg(row_limit);
 SELECT id, name, number, active, login_account, deactivated_at, created_at FROM staff WHERE store_id=$1 ORDER BY number, id;
 
 -- name: ExportItems :many
-SELECT id, name, kind, price::text AS price, discountable, COALESCE(labor_fee_amount,0)::text AS labor_fee_amount_text,
-       COALESCE(labor_fee_percent,0)::text AS labor_fee_percent_text, active
-FROM items WHERE store_id=$1 ORDER BY name, id;
+SELECT i.id, i.name, COALESCE(c.name,'') AS category_name, i.kind, i.price::text AS price, i.discountable, COALESCE(i.labor_fee_amount,0)::text AS labor_fee_amount_text,
+       COALESCE(i.labor_fee_percent,0)::text AS labor_fee_percent_text, i.active
+FROM items i LEFT JOIN item_categories c ON c.tenant_id=i.tenant_id AND c.id=i.category_id
+WHERE i.store_id=$1 ORDER BY i.name, i.id;
 
 -- name: ExportCardTypes :many
 SELECT id, name, kind, COALESCE(discount_percent,0)::text AS discount_percent_text, validity_kind, validity_date, validity_days, active

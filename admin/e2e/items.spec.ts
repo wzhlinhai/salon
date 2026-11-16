@@ -8,11 +8,12 @@ async function seed() {
   const first = await api<{ id: string, name: string }>(token, 'create_position', { name: `大工${suffix}` })
   const second = await api<{ id: string, name: string }>(token, 'create_position', { name: `助理${suffix}` })
   const cardType = await api(token, 'create_card_type', { name: `会员${suffix}`, kind: 'stored_value', validity_kind: 'none' })
-  return { token, suffix, level, first, second, cardType }
+  const category = await api<{ id: string, name: string, performance_ratio: number }>(token, 'create_item_category', { name: `类别${suffix}`, performance_ratio: 90 })
+  return { token, suffix, level, first, second, cardType, category }
 }
 
 test('项目完整新建、编辑和停用', async ({ page }) => {
-  const { token, suffix, level, first, second, cardType } = await seed()
+  const { token, suffix, level, first, second, cardType, category } = await seed()
   await login(page, owner.account, owner.password)
   await page.goto('/items')
   await page.getByRole('button', { name: '新建项目', exact: true }).click()
@@ -23,6 +24,8 @@ test('项目完整新建、编辑和停用', async ({ page }) => {
   await expect(createDialog.getByRole('combobox', { name: '种类', exact: true })).toContainText('服务')
   await createDialog.getByRole('combobox', { name: '种类', exact: true }).click()
   await page.getByRole('option', { name: '卖品', exact: true }).click()
+  await createDialog.getByRole('combobox', { name: '类别', exact: true }).click()
+  await page.getByRole('option', { name: category.name, exact: true }).click()
   await createDialog.getByRole('textbox', { name: '标准价', exact: true }).fill('1234.56')
   await createDialog.getByLabel('服务时长（分钟）', { exact: true }).fill('45')
   await createDialog.getByRole('switch', { name: '可以预约' }).click()
@@ -49,11 +52,13 @@ test('项目完整新建、编辑和停用', async ({ page }) => {
   const card = page.locator(`[data-item="${name}"]`)
   await expect(card).toContainText('1234.56')
   await expect(card).toContainText('种类 卖品')
+  await expect(card).toContainText(`类别 ${category.name}`)
   await expect(card).toContainText('不打折项目')
   await expect(card).toContainText('服务时长 45 分钟')
   await expect(card).toContainText('不可预约')
   await card.getByRole('button', { name: '编辑' }).click()
   await expect(editDialog.getByRole('combobox', { name: '种类', exact: true })).toContainText('卖品')
+  await expect(editDialog.getByRole('combobox', { name: '类别', exact: true })).toContainText(category.name)
   await editDialog.getByRole('combobox', { name: '种类', exact: true }).click()
   await page.getByRole('option', { name: '服务', exact: true }).click()
   await expect(editDialog.getByLabel('服务时长（分钟）', { exact: true })).toHaveValue('45')
@@ -72,7 +77,7 @@ test('项目完整新建、编辑和停用', async ({ page }) => {
   await editDialog.getByRole('button', { name: '保存', exact: true }).click()
   await expect(editDialog).not.toBeVisible()
   await expect(card).toContainText('停用')
-  const result = await api<{ items: { name: string, duration_minutes: number, bookable: boolean, positions: { position_id: string, required: boolean }[], level_prices: { level_id: string, price: string }[], member_prices: { card_type_id: string, price: string }[] }[] }>(token, 'list_items', {})
+  const result = await api<{ items: { name: string, duration_minutes: number, bookable: boolean, category: { id: string, name: string } | null, positions: { position_id: string, required: boolean }[], level_prices: { level_id: string, price: string }[], member_prices: { card_type_id: string, price: string }[] }[] }>(token, 'list_items', {})
   const item = result.items.find(i => i.name === name)!
   expect(item.positions.map(p => p.position_id)).toEqual([second.id, first.id])
   expect(item.positions.map(p => p.required)).toEqual([false, true])
@@ -80,6 +85,7 @@ test('项目完整新建、编辑和停用', async ({ page }) => {
   expect(item.member_prices).toEqual([{ card_type_id: cardType.id, price: '66.00' }])
   expect(item.duration_minutes).toBe(30)
   expect(item.bookable).toBe(true)
+  expect(item.category).toEqual({ id: category.id, name: category.name })
 })
 
 test('发型师没有项目入口，直接访问无权限', async ({ page }) => {

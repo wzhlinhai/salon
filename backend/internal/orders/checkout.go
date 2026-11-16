@@ -213,7 +213,8 @@ func checkoutOrders(ctx context.Context, env ops.Env, in *CheckoutOrdersInput) (
 				for _, p := range line.Positions {
 					slots = append(slots, performance.Slot{Slot: p.Slot, PositionID: p.PositionID, StaffID: p.StaffID, SharePercent: p.SharePercent})
 				}
-				performanceLines = append(performanceLines, performance.Line{OrderItemID: line.ID, Net: net, Price: line.Price, LaborFeeAmount: line.LaborFeeAmount, LaborFeePercent: line.LaborFeePercent, Slots: slots})
+				categoryRatio := line.CategoryRatio
+				performanceLines = append(performanceLines, performance.Line{OrderItemID: line.ID, Net: net, Price: line.Price, LaborFeeAmount: line.LaborFeeAmount, LaborFeePercent: line.LaborFeePercent, CategoryRatio: &categoryRatio, Slots: slots})
 			}
 			member, err := cards.HasValidCard(ctx, env.Q, env.Caller.StoreID, rows[i].CustomerID, day)
 			if err != nil {

@@ -9,11 +9,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/wzhlinhai/salon/backend/internal/db"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/optest"
+	"github.com/wzhlinhai/salon/backend/internal/orders"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
@@ -528,4 +530,69 @@ func TestCommissionStoreTenantScope(t *testing.T) {
 			t.Fatal(got)
 		}
 	}
+}
+
+func TestCommissionLinePriceIgnoresLabor(t *testing.T) {
+	s := open(t)
+	scheme := map[string]any{"rules": []any{map[string]any{"source": "item", "base": "line_price", "by_position": false, "by_designated": false, "by_member": false, "cells": []any{map[string]any{"percent": "10"}}}}, "overrides": []any{}, "excluded_staff": []any{}}
+	s.call("save_commission_scheme", map[string]any{"effective_from": settings.Date(s.Now()).Format(settings.DateLayout), "scheme": scheme}, 200)
+	in := s.itemInput("含手工费项目", 0)
+	in["labor_fee_amount"] = "10.00"
+	in["positions"] = []any{
+		map[string]any{"position_id": s.position, "required": false, "share_percent": 70},
+		map[string]any{"position_id": s.position, "required": false, "share_percent": 30},
+	}
+	item := s.call("create_item", in, 200)
+	line := orders.OrderItemInput{ItemID: id(item["id"]), Staff: []orders.OrderItemStaffInput{{Slot: 1, StaffID: s.Res.OwnerID}, {Slot: 2, StaffID: s.employee}}}
+	s.paid(s.customerOrder(line), payment("cash", "100"))
+	got := s.call("list_commissions", commissionArgs(s.Now()), 200)
+	if got["total"] != "10.00" || len(got["entries"].([]any)) != 2 {
+		t.Fatal(got)
+	}
+	for _, raw := range got["entries"].([]any) {
+		entry := raw.(map[string]any)
+		base := entry["explanation"].(map[string]any)["base"].(map[string]any)
+		want := "70.00"
+		if entry["explanation"].(map[string]any)["origin"].(map[string]any)["slot"] == float64(2) {
+			want = "30.00"
+		}
+		if base["line_paid"] != "100.00" || base["amount"] != want || base["unit_paid"] != want || base["line_price"] != "100.00" {
+			t.Fatal(entry)
+		}
+	}
+}
+
+func TestPerformanceLineFactsCountsItemsOnly(t *testing.T) {
+	s := open(t)
+	line := s.performanceLine(100)
+	order := s.customerOrder(line)
+	lineID := id(firstLine(order)["id"])
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	var snapshot uuid.UUID
+	var date pgtype.Date
+	if err := tx.QueryRow(context.Background(), "SELECT settings_snapshot_id, business_date FROM orders WHERE id=$1", order["id"]).Scan(&snapshot, &date); err != nil {
+		t.Fatal(err)
+	}
+	var checkout uuid.UUID
+	if err := tx.QueryRow(context.Background(), "INSERT INTO checkouts(tenant_id,store_id,business_date,checked_out_by) VALUES($1,$2,$3,$4) RETURNING id", s.Res.TenantID, s.Res.StoreID, date, s.Res.OwnerID).Scan(&checkout); err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range []struct {
+		kind, method, paid, amount string
+	}{
+		{"item", "cash", "40.00", "40.00"},
+		{"labor", "labor", "10.00", "10.00"},
+	} {
+		dbtest.Exec(t, tx, `INSERT INTO performance_entries(tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,ratio,category_ratio,amount,member)
+ VALUES($1,$2,$3,$4,$5,$6,$7,$8,1,$9,$10,$11,$12,100,100,$13,true)`,
+			s.Res.TenantID, s.Res.StoreID, entry.kind, date, order["id"], lineID, checkout, snapshot, s.position, s.Res.OwnerID, entry.method, entry.paid, entry.amount)
+	}
+	facts, err := dbgen.New(tx).PerformanceLineFacts(context.Background(), dbgen.PerformanceLineFactsParams{StoreID: s.Res.StoreID, Ids: []uuid.UUID{lineID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(facts) != 1 || facts[0].LinePaid != "40.00" {
+		t.Fatal(facts)
+	}
+	dbtest.Rollback(t, tx)
 }

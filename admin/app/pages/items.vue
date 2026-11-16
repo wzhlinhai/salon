@@ -5,12 +5,14 @@ definePageMeta({ permission: 'settings.manage' })
 type Item = components['schemas']['Item']
 type Level = components['schemas']['Level']
 type Position = components['schemas']['Position']
+type ItemCategory = components['schemas']['ItemCategory']
 const api = useApi()
 const toast = useToast()
 const items = ref<Item[]>([])
 const levels = ref<Level[]>([])
 const cardTypes = ref<components['schemas']['CardType'][]>([])
 const positions = ref<Position[]>([])
+const categories = ref<ItemCategory[]>([])
 const loading = ref(false)
 const loadGuard = useRequestGuard()
 
@@ -18,21 +20,23 @@ async function load() {
   const current = loadGuard.next()
   loading.value = true
   try {
-    const [i, l, p, t] = await Promise.all([
+    const [i, l, p, t, c] = await Promise.all([
       api.POST('/api/ops/list_items', { body: {} }),
       api.POST('/api/ops/list_levels', { body: {} }),
       api.POST('/api/ops/list_positions', { body: {} }),
-      api.POST('/api/ops/list_card_types', { body: {} })
+      api.POST('/api/ops/list_card_types', { body: {} }),
+      api.POST('/api/ops/list_item_categories', { body: {} })
     ])
     if (!current()) return
-    if (!i.data || !l.data || !p.data || !t.data) {
-      toast.add({ title: errorText(i.error ?? l.error ?? p.error ?? t.error), color: 'error' })
+    if (!i.data || !l.data || !p.data || !t.data || !c.data) {
+      toast.add({ title: errorText(i.error ?? l.error ?? p.error ?? t.error ?? c.error), color: 'error' })
       return
     }
     items.value = i.data.items
     levels.value = l.data.items
     positions.value = p.data.items
     cardTypes.value = t.data.items
+    categories.value = c.data.items
   } finally {
     if (current()) loading.value = false
   }
@@ -52,11 +56,16 @@ const bookable = ref(true)
 const active = ref(true)
 const feeKind = ref('none')
 const feeValue = ref('0.00')
+const categoryId = ref('none')
 const positionRows = ref<{ position_id: string, required: boolean, share_percent: string }[]>([])
 const memberRows = ref<{ card_type_id: string, price: string }[]>([])
 const memberOptions = computed(() => cardTypes.value.filter(t => t.active || editing.value?.member_prices.some(p => p.card_type_id === t.id)).map(t => ({ label: t.name + (t.active ? '' : '（停用）'), value: t.id })))
 const levelRows = ref<{ level_id: string, price: string }[]>([])
 const levelOptions = computed(() => levels.value.filter(l => l.active || editing.value?.level_prices.some(p => p.level_id === l.id)).map(l => ({ label: l.name + (l.active ? '' : '（停用）'), value: l.id })))
+const categoryOptions = computed(() => [
+  { label: '不归类', value: 'none' },
+  ...categories.value.filter(c => c.active || c.id === categoryId.value).map(c => ({ label: c.name + (c.active ? '' : '（停用）'), value: c.id }))
+])
 
 function positionOptions(index: number) {
   return positions.value.filter(p => p.active || editing.value?.positions[index]?.position_id === p.id).map(p => ({ label: p.name + (p.active ? '' : '（停用）'), value: p.id }))
@@ -74,6 +83,7 @@ function openEditor(item: Item | null) {
     active.value = item?.active ?? true
     feeKind.value = item?.labor_fee_amount != null ? 'amount' : item?.labor_fee_percent != null ? 'percent' : 'none'
     feeValue.value = item?.labor_fee_amount ?? item?.labor_fee_percent ?? '0.00'
+    categoryId.value = item?.category?.id ?? 'none'
     positionRows.value = item?.positions.map(p => ({ position_id: p.position_id, required: p.required, share_percent: p.share_percent == null ? '' : String(p.share_percent) })) ?? []
     memberRows.value = item?.member_prices.map(m => ({ ...m })) ?? []
     levelRows.value = item?.level_prices.map(l => ({ ...l })) ?? []
@@ -91,6 +101,7 @@ async function save() {
   const body = {
     name: name.value, kind: kind.value, price: price.value, discountable: discountable.value,
     duration_minutes: Number(durationMinutes.value), bookable: bookable.value,
+    category_id: categoryId.value === 'none' ? null : categoryId.value,
     labor_fee_amount: feeKind.value === 'amount' ? feeValue.value : null,
     labor_fee_percent: feeKind.value === 'percent' ? feeValue.value : null,
     positions: positionRows.value.map(p => ({ ...p, share_percent: p.share_percent === '' ? null : Number(p.share_percent) })),
@@ -132,6 +143,7 @@ function laborFee(item: Item) {
           <UBadge class="ml-2" color="neutral">{{ item.active ? '启用' : '停用' }}</UBadge>
           <p>种类 {{ item.kind === 'goods' ? '卖品' : '服务' }}</p>
           <p>标准价 {{ item.price }} 元 · 手工费 {{ laborFee(item) }}</p>
+          <p>类别 {{ item.category?.name ?? '未归类' }}</p>
           <p>服务时长 {{ item.duration_minutes || '未设置' }}{{ item.duration_minutes ? ' 分钟' : '' }} · {{ item.bookable ? '可预约' : '不可预约' }}</p>
         </div>
         <UButton variant="ghost" @click="openEditor(item)">编辑</UButton>
@@ -142,6 +154,7 @@ function laborFee(item: Item) {
         <div class="space-y-4">
           <UFormField label="项目名称"><UInput v-model="name" aria-label="项目名称" :maxlength="40" /></UFormField>
           <UFormField label="种类"><USelect v-model="kind" aria-label="种类" :items="[{ label: '服务', value: 'service' }, { label: '卖品', value: 'goods' }]" /></UFormField>
+          <UFormField label="类别"><USelect v-model="categoryId" aria-label="类别" :items="categoryOptions" /></UFormField>
           <UFormField label="标准价"><UInput v-model="price" aria-label="标准价" inputmode="decimal" /></UFormField>
           <UFormField label="服务时长（分钟）" help="0 表示未设置，最多 600"><UInput v-model="durationMinutes" type="number" min="0" max="600" aria-label="服务时长（分钟）" /></UFormField>
           <USwitch v-model="bookable" label="可以预约" />
