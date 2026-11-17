@@ -114,15 +114,17 @@ go test ./internal/dataio/...
 
 1. **安装**（按名称幂等）：建岗位 `大工`、`助理`；从 `business_employee_commission_monthly`
    当月 `employee_label` 解析 `<编号> 号 <级别> [<姓名>]`，建级别、员工（级别 `助理` 用岗位
-   `助理`，其他用 `大工`）和默认非老板角色 `发型师`。第 1 步的项目都补上
-   `[大工(必填), 助理(非必填)]`，不带岗位比例。先按 `scheme.json` 的 `settings` 调
-   `change_setting`（生效今天），再保存提成方案。
+   `助理`，其他用 `大工`）和默认非老板角色 `发型师`。每个项目都补上
+   `[大工(必填), 助理(非必填), 助理(非必填)]`，不带岗位比例；同一岗位可以占两个槽位。
+   随后按 `scheme.json` 的 `categories` 幂等地建类别并把列出的项目归类，未列出的项目不归类。
+   先按 `settings` 调 `change_setting`（生效今天），再保存提成方案。
 2. **期初余额**：按整月 `archive_visits` 单号和 `business_transaction_payments` 汇总每个
    `(customer_id, card_type)` 的 `卡金`/`赠金`，生成只有这些顾客和储值卡的中间 Excel，
    `preview`、`commit_import`、`get_import_batch` 后按 `source_key → entity_id` 映射。
    顾客名写 `回放顾客<customer_id>`，手机号留空；卡号写 `R<customer_id>-<card_type>`。
 3. **逐单回放**：按 `occurred_at` 顺序。`items` 用 `、` 分行，`staff` 用 `；` 分段，按项目名
-   出现顺序匹配；第一个员工进 slot 1（大工），第二个进 slot 2（助理）。每行
+   出现顺序匹配；第一到第三个员工依次进 slot 1（大工）、slot 2（助理）、slot 3（助理）。
+   超过三人记 `too_many_staff`，不回放。每行
    `open_order` → `add_order_item` → 价格不同时 `reprice_order_item`（原因 `美管加回放`）。
    支付：`卡金+赠金` 合并为一笔卡支付；微信/支付宝/现金/银联直接登记；点评支付和抖音团购
    各建一个价格等于金额的团购商品，用假平台核销新券并 `link_coupon_order`，由结账生成
@@ -143,13 +145,20 @@ go test ./internal/dataio/...
 提成方案由人/Claude 写好，工具只把名称换成编号，不推导规则。顶层：
 
 - `settings`：`{设置项: 值}`，先于所有单通过 `change_setting` 生效今天。
+- `categories`：`[{"name": "类别名", "performance_ratio": 100, "items": ["项目名"]}]`，
+  按名称创建或更新类别（`performance_ratio` 改变时更新），再把列出的项目设到该类别；
+  同一项目出现在两个类别或项目名不存在时中止并指出名称。未列出的项目不归类。
+  `category_name` 也能引用门店已有但不在本列表里的类别，和员工/项目名称一样按全店解析。
 - `commission`：后端 `CommissionScheme` 的名称版。
   - `rules[].cells[]` 用 `position_name` 代替 `position_id`；`source`、`base`、
     `by_position`、`by_designated`、`by_member`、`tiers`、`percent`、`fixed_amount`
     与后端一致。
-  - `overrides[]` 用 `staff_name` / `item_name` 代替 `staff_id` / `item_id`。
+  - `overrides[]` 用 `staff_name` / `item_name` 代替 `staff_id` / `item_id`，用
+    `position_name` / `category_name` 代替 `position_id` / `category_id`。
+    名称和编号不能混写；岗位×类别覆盖只作用于项目业绩、耗卡业绩和手工费。
   - `excluded_staff` 是员工姓名数组（也接受 `{"staff_name": "..."}`）。
   - 未知或重名 → 在回放单据前中止。
+- `settings.performance_split` 可以为 `by_position` 或 `full`，原样传给 `change_setting`。
 
 最小示例见 `scripts/mgj/replay-scheme.example.json`。
 

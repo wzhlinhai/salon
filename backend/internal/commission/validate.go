@@ -66,21 +66,28 @@ func validate(s *CommissionScheme) error {
 		if !rules[o.Source] {
 			return ops.Rule("覆盖比例的业绩来源必须有提成规则：" + sourceName(o.Source))
 		}
-		if o.StaffID == nil && o.ItemID == nil {
+		if o.StaffID == nil && o.ItemID == nil && o.PositionID == nil && o.CategoryID == nil {
 			return ops.Rule("覆盖比例至少指定员工或项目：" + sourceName(o.Source))
+		}
+		kind := overrideKind(o)
+		if kind == "" {
+			return ops.Rule("覆盖比例的目标必须且只能是员工、项目、员工×项目或岗位×类别：" + sourceName(o.Source))
 		}
 		if o.Source == "sale" && o.ItemID != nil {
 			return ops.Rule("销售业绩不能设置项目覆盖比例")
 		}
+		if o.Source == "sale" && kind == "override_position_category" {
+			return ops.Rule("销售业绩不能设置岗位×类别覆盖比例")
+		}
 		if (o.Percent == nil) == (o.FixedAmount == nil) {
 			return ops.Rule("覆盖比例必须且只能填写比例或固定金额之一：" + sourceName(o.Source))
 		}
-		key, err := json.Marshal([]any{o.Source, o.StaffID, o.ItemID})
+		key, err := json.Marshal([]any{o.Source, o.StaffID, o.ItemID, o.PositionID, o.CategoryID})
 		if err != nil {
 			return err
 		}
 		if keys[string(key)] {
-			return ops.Rule("覆盖比例的来源、员工、项目组合重复：" + sourceName(o.Source))
+			return ops.Rule("覆盖比例的目标组合重复：" + sourceName(o.Source))
 		}
 		keys[string(key)] = true
 	}
@@ -107,6 +114,20 @@ func validate(s *CommissionScheme) error {
 		}
 	}
 	return nil
+}
+
+func overrideKind(o Override) string {
+	switch {
+	case o.StaffID != nil && o.ItemID == nil && o.PositionID == nil && o.CategoryID == nil:
+		return "override_staff"
+	case o.StaffID == nil && o.ItemID != nil && o.PositionID == nil && o.CategoryID == nil:
+		return "override_item"
+	case o.StaffID != nil && o.ItemID != nil && o.PositionID == nil && o.CategoryID == nil:
+		return "override_staff_item"
+	case o.StaffID == nil && o.ItemID == nil && o.PositionID != nil && o.CategoryID != nil:
+		return "override_position_category"
+	}
+	return ""
 }
 
 func sourceName(source string) string {

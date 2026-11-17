@@ -50,7 +50,7 @@ func Commissions(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, from,
 		return c.BusinessDate < from.Format(time.DateOnly) || c.BusinessDate > to.Format(time.DateOnly)
 	})
 	sortCommissions(out)
-	staffIDs, positions, items := []uuid.UUID{}, []uuid.UUID{}, []uuid.UUID{}
+	staffIDs, positions, items, categories := []uuid.UUID{}, []uuid.UUID{}, []uuid.UUID{}, []uuid.UUID{}
 	for _, c := range out {
 		staffIDs = append(staffIDs, c.Staff.ID)
 		if c.Explanation.Origin.Position != nil {
@@ -58,6 +58,9 @@ func Commissions(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, from,
 		}
 		if c.Explanation.Origin.Item != nil {
 			items = append(items, c.Explanation.Origin.Item.ID)
+		}
+		if c.Explanation.Origin.Category != nil {
+			categories = append(categories, c.Explanation.Origin.Category.ID)
 		}
 	}
 	staffRefs, err := staff.References(ctx, q, storeID, staffIDs)
@@ -72,6 +75,10 @@ func Commissions(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, from,
 	if err != nil {
 		return nil, err
 	}
+	categoryRefs, err := catalog.CategoryReferences(ctx, q, storeID, categories)
+	if err != nil {
+		return nil, err
+	}
 	for i := range out {
 		c := &out[i]
 		c.Staff = staffRefs[c.Staff.ID]
@@ -81,6 +88,10 @@ func Commissions(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, from,
 		if c.Explanation.Origin.Item != nil {
 			ref := itemRefs[c.Explanation.Origin.Item.ID]
 			c.Explanation.Origin.Item = &staff.Ref{ID: ref.ID, Name: ref.Name}
+		}
+		if c.Explanation.Origin.Category != nil {
+			ref := categoryRefs[c.Explanation.Origin.Category.ID]
+			c.Explanation.Origin.Category = &catalog.ItemCategoryRef{ID: ref.ID, Name: ref.Name}
 		}
 	}
 	return out, nil

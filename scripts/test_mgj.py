@@ -661,6 +661,7 @@ class StubState:
             "positions": [],
             "level_prices": [],
             "member_prices": [],
+            "category": None,
         }
         self.next_id += 1
         self.items.append(item)
@@ -812,6 +813,7 @@ class ReplayStubState:
             {"id": "role-front", "name": "前台", "is_owner": False},
         ]
         self.items = []
+        self.item_categories = []
         self.requests = []
         self.settings = {"business_date": "2026-11-15"}
         self.import_detail = None
@@ -857,6 +859,7 @@ class ReplayStubState:
             "positions": [],
             "level_prices": [],
             "member_prices": [],
+            "category": None,
         }
         self.items.append(item)
         return item
@@ -1109,27 +1112,64 @@ class ReplayStubState:
             return {"items": self.items}
         if operation == "update_item":
             item = self.item_by_id(payload["id"])
-            item.update(
+            replacement = {
+                "id": item["id"],
+                "created_at": item["created_at"],
+                "name": payload["name"],
+                "kind": payload["kind"],
+                "price": payload["price"],
+                "discountable": payload["discountable"],
+                "labor_fee_amount": payload.get("labor_fee_amount"),
+                "labor_fee_percent": payload.get("labor_fee_percent"),
+                "duration_minutes": payload.get("duration_minutes", 0),
+                "bookable": payload.get("bookable", True),
+                "active": payload["active"],
+                "positions": [
+                    {
+                        "slot": index,
+                        "position_id": position["position_id"],
+                        "required": position["required"],
+                        "share_percent": None,
+                    }
+                    for index, position in enumerate(payload["positions"], start=1)
+                ],
+                "level_prices": payload.get("level_prices", []),
+                "member_prices": payload.get("member_prices", []),
+                "category": next(
+                    (
+                        {"id": category["id"], "name": category["name"]}
+                        for category in self.item_categories
+                        if category["id"] == payload.get("category_id")
+                    ),
+                    None,
+                ),
+            }
+            item.clear()
+            item.update(replacement)
+            return item
+        if operation == "list_item_categories":
+            return {"items": self.item_categories}
+        if operation == "create_item_category":
+            category = {
+                "id": self._id("category"),
+                "name": payload["name"],
+                "performance_ratio": payload.get("performance_ratio", 100),
+                "active": True,
+            }
+            self.item_categories.append(category)
+            return category
+        if operation == "update_item_category":
+            category = next(
+                item for item in self.item_categories if item["id"] == payload["id"]
+            )
+            category.update(
                 {
                     "name": payload["name"],
-                    "kind": payload["kind"],
-                    "price": payload["price"],
-                    "discountable": payload["discountable"],
+                    "performance_ratio": payload["performance_ratio"],
                     "active": payload["active"],
-                    "positions": [
-                        {
-                            "slot": index,
-                            "position_id": position["position_id"],
-                            "required": position["required"],
-                            "share_percent": None,
-                        }
-                        for index, position in enumerate(payload["positions"], start=1)
-                    ],
-                    "level_prices": payload.get("level_prices", []),
-                    "member_prices": payload.get("member_prices", []),
                 }
             )
-            return item
+            return category
         if operation == "create_item":
             return self.add_item(
                 payload["name"],
@@ -1549,12 +1589,62 @@ class ReplayTests(unittest.TestCase):
         )
         self.assertEqual(one[0]["staff"], ["张岩"])
 
-    def test_three_staff_rejected(self):
+    def test_three_staff_and_four_rejected(self):
+        three, _ = replay.match_staff(
+            replay.parse_items("剪发 ¥70"),
+            replay.parse_staff("剪发：张岩、李锦、浩宇"),
+        )
+        self.assertEqual(three[0]["staff"], ["张岩", "李锦", "浩宇"])
         with self.assertRaisesRegex(replay.ReplayError, "too_many_staff"):
             replay.match_staff(
                 replay.parse_items("剪发 ¥70"),
-                replay.parse_staff("剪发：张岩、李锦、浩宇"),
+                replay.parse_staff("剪发：张岩、李锦、浩宇、小周"),
             )
+
+    def test_three_staff_line_replays_to_three_slots(self):
+        state = ReplayStubState()
+        api = self.start_stub(state)
+        item = state.add_item("剪发", "70.00")
+        state.positions = [
+            {"id": "p1", "name": "大工", "active": True},
+            {"id": "p2", "name": "助理", "active": True},
+        ]
+        staff = {
+            name: {"id": "staff-" + name, "name": name}
+            for name in ("张岩", "李锦", "浩宇")
+        }
+        client = Client(api)
+        client.login("boss", "pw")
+        record = replay.replay_bill(
+            client,
+            {
+                "bill_no": "B-THREE",
+                "items": "剪发 ¥70",
+                "staff": "剪发：张岩、李锦、浩宇",
+                "gender": "女",
+                "designated": 0,
+                "customer_kind": "散客",
+                "customer_id": "",
+                "card_type": "",
+                "payments": [
+                    {"method": "现金", "amount": Decimal("70.00"), "text": "70"}
+                ],
+            },
+            {
+                "items_by_name": {"剪发": item},
+                "staff_by_name": staff,
+                "customer_map": {},
+                "card_map": {},
+                "deals": {},
+            },
+        )
+        self.assertEqual(record["status"], "replayed")
+        add = [
+            json.loads(request["body"])
+            for request in state.requests
+            if request["path"] == "/api/ops/add_order_item"
+        ][0]
+        self.assertEqual([entry["slot"] for entry in add["item"]["staff"]], [1, 2, 3])
 
     def test_payment_plan_merges_card_skips_zero_and_maps_groupbuy(self):
         rows = [
@@ -1664,7 +1754,8 @@ class ReplayTests(unittest.TestCase):
         staff = {"张岩": "staff-1", "李锦": "staff-2"}
         items = {"洗吹-造型": "item-1"}
         positions = {"大工": "position-1", "助理": "position-2"}
-        resolved = replay.resolve_scheme(scheme, staff, items, positions)
+        categories = {"洗剪类": "category-1"}
+        resolved = replay.resolve_scheme(scheme, staff, items, positions, categories)
         self.assertEqual(resolved["rules"][0]["cells"][0]["position_id"], "position-1")
 
         override_scheme = {
@@ -1675,13 +1766,23 @@ class ReplayTests(unittest.TestCase):
                     "staff_name": "张岩",
                     "item_name": "洗吹-造型",
                     "percent": "10.00",
-                }
+                },
+                {
+                    "source": "item",
+                    "position_name": "助理",
+                    "category_name": "洗剪类",
+                    "fixed_amount": "3.00",
+                },
             ],
             "excluded_staff": ["李锦"],
         }
-        resolved = replay.resolve_scheme(override_scheme, staff, items, positions)
+        resolved = replay.resolve_scheme(
+            override_scheme, staff, items, positions, categories
+        )
         self.assertEqual(resolved["overrides"][0]["staff_id"], "staff-1")
         self.assertEqual(resolved["overrides"][0]["item_id"], "item-1")
+        self.assertEqual(resolved["overrides"][1]["position_id"], "position-2")
+        self.assertEqual(resolved["overrides"][1]["category_id"], "category-1")
         self.assertEqual(resolved["excluded_staff"], ["staff-2"])
 
         bad = {
@@ -1695,7 +1796,22 @@ class ReplayTests(unittest.TestCase):
             ]
         }
         with self.assertRaisesRegex(RuntimeError, "不存在的岗位"):
-            replay.resolve_scheme(bad, staff, items, positions)
+            replay.resolve_scheme(bad, staff, items, positions, categories)
+        unknown_category = {
+            "rules": scheme["rules"],
+            "overrides": [
+                {
+                    "source": "item",
+                    "position_name": "助理",
+                    "category_name": "不存在",
+                    "fixed_amount": "3.00",
+                }
+            ],
+        }
+        with self.assertRaisesRegex(RuntimeError, "不存在的类别：不存在"):
+            replay.resolve_scheme(
+                unknown_category, staff, items, positions, categories
+            )
 
     def test_duplicate_names_abort(self):
         state = ReplayStubState()
@@ -1724,6 +1840,225 @@ class ReplayTests(unittest.TestCase):
         state.positions = [{"id": "p1", "name": "大工", "active": True}]
         with self.assertRaisesRegex(RuntimeError, "员工名称重复：张岩"):
             replay.setup_staff(client, [], {"首席": "l1"}, {"大工": "p1"})
+
+    def test_category_name_resolves_existing_store_category(self):
+        state = ReplayStubState()
+        api = self.start_stub(state)
+        client = Client(api)
+        client.login("boss", "pw")
+        state.item_categories = [
+            {
+                "id": "category-existing",
+                "name": "门店旧类别",
+                "performance_ratio": 100,
+                "active": True,
+            }
+        ]
+        positions = {"大工": "p1", "助理": "p2"}
+        _, by_name = replay.setup_categories(client, [], {}, positions)
+        resolved = replay.resolve_scheme(
+            {
+                "rules": [],
+                "overrides": [
+                    {
+                        "source": "item",
+                        "position_name": "助理",
+                        "category_name": "门店旧类别",
+                        "fixed_amount": "3.00",
+                    }
+                ],
+            },
+            {},
+            {},
+            positions,
+            {name: category["id"] for name, category in by_name.items()},
+        )
+        self.assertEqual(resolved["overrides"][0]["category_id"], "category-existing")
+
+    def test_item_setup_uses_three_slots(self):
+        state = ReplayStubState()
+        api = self.start_stub(state)
+        client = Client(api)
+        client.login("boss", "pw")
+        state.add_item("剪发", "88.00")
+        items = replay.setup_items(client, {"大工": "p1", "助理": "p2"})
+        positions = items["剪发"]["positions"]
+        self.assertEqual(
+            [row["position_id"] for row in positions], ["p1", "p2", "p2"]
+        )
+        self.assertEqual([row["required"] for row in positions], [True, False, False])
+
+    def test_categories_are_created_and_assigned_idempotently(self):
+        state = ReplayStubState()
+        api = self.start_stub(state)
+        client = Client(api)
+        client.login("boss", "pw")
+        hair = state.add_item("剪发", "88.00")
+        hair["labor_fee_amount"] = "5.00"
+        hair["duration_minutes"] = 45
+        hair["bookable"] = False
+        hair["level_prices"] = [{"level_id": "level-1", "price": "99.00"}]
+        hair["member_prices"] = [{"card_type_id": "card-1", "price": "79.00"}]
+        state.add_item("染发", "288.00")
+        state.add_item("护理", "88.00")
+        items = {item["name"]: item for item in state.items}
+        categories = [
+            {
+                "name": "洗剪类",
+                "performance_ratio": 90,
+                "items": ["剪发", "染发"],
+            }
+        ]
+        positions = {"大工": "p1", "助理": "p2"}
+        first, by_name = replay.setup_categories(client, categories, items, positions)
+        self.assertEqual(by_name["洗剪类"]["performance_ratio"], 90)
+        self.assertEqual(first["剪发"]["category"]["name"], "洗剪类")
+        self.assertEqual(first["染发"]["category"]["name"], "洗剪类")
+        self.assertIsNone(first["护理"]["category"])
+        creates = [
+            request
+            for request in state.requests
+            if request["path"] == "/api/ops/create_item_category"
+        ]
+        self.assertEqual(len(creates), 1)
+        updates = [
+            json.loads(request["body"])
+            for request in state.requests
+            if request["path"] == "/api/ops/update_item"
+        ]
+        self.assertEqual({payload["name"] for payload in updates}, {"剪发", "染发"})
+        for payload in updates:
+            self.assertIn("price", payload)
+            self.assertIn("discountable", payload)
+            self.assertIn("labor_fee_amount", payload)
+            self.assertIn("duration_minutes", payload)
+            self.assertIn("bookable", payload)
+            self.assertEqual(len(payload["positions"]), 3)
+            self.assertEqual(payload["category_id"], by_name["洗剪类"]["id"])
+        self.assertEqual(first["剪发"]["labor_fee_amount"], "5.00")
+        self.assertEqual(first["剪发"]["duration_minutes"], 45)
+        self.assertFalse(first["剪发"]["bookable"])
+        self.assertEqual(first["剪发"]["level_prices"], [{"level_id": "level-1", "price": "99.00"}])
+        self.assertEqual(first["剪发"]["member_prices"], [{"card_type_id": "card-1", "price": "79.00"}])
+        self.assertEqual([row["position_id"] for row in first["剪发"]["positions"]], ["p1", "p2", "p2"])
+        state.requests.clear()
+        second, _ = replay.setup_categories(client, categories, first, positions)
+        self.assertEqual(
+            [request["path"] for request in state.requests].count("/api/ops/update_item"),
+            0,
+        )
+        self.assertEqual(
+            [
+                request["path"]
+                for request in state.requests
+                if request["path"] == "/api/ops/create_item_category"
+            ],
+            [],
+        )
+        self.assertEqual(second["剪发"]["category"]["name"], "洗剪类")
+
+    def test_category_setup_rejects_duplicate_and_unknown_items(self):
+        state = ReplayStubState()
+        api = self.start_stub(state)
+        client = Client(api)
+        client.login("boss", "pw")
+        state.add_item("剪发", "88.00")
+        items = {"剪发": state.items[0]}
+        positions = {"大工": "p1", "助理": "p2"}
+        with self.assertRaisesRegex(RuntimeError, "类别项目重复：剪发"):
+            replay.setup_categories(
+                client,
+                [
+                    {"name": "甲", "performance_ratio": 90, "items": ["剪发"]},
+                    {"name": "乙", "performance_ratio": 90, "items": ["剪发"]},
+                ],
+                items,
+                positions,
+            )
+        with self.assertRaisesRegex(RuntimeError, "类别引用了不存在的项目：不存在"):
+            replay.setup_categories(
+                client,
+                [{"name": "甲", "performance_ratio": 90, "items": ["不存在"]}],
+                items,
+                positions,
+            )
+
+    def test_category_setup_updates_ratio_and_reactivates(self):
+        state = ReplayStubState()
+        api = self.start_stub(state)
+        client = Client(api)
+        client.login("boss", "pw")
+        item = state.add_item("剪发", "88.00")
+        state.item_categories = [
+            {
+                "id": "category-old",
+                "name": "洗剪类",
+                "performance_ratio": 80,
+                "active": False,
+            }
+        ]
+        positions = {"大工": "p1", "助理": "p2"}
+        items, by_name = replay.setup_categories(
+            client,
+            [{"name": "洗剪类", "performance_ratio": 90, "items": ["剪发"]}],
+            {"剪发": item},
+            positions,
+        )
+        self.assertEqual(by_name["洗剪类"]["performance_ratio"], 90)
+        self.assertTrue(by_name["洗剪类"]["active"])
+        self.assertEqual(items["剪发"]["category"]["id"], "category-old")
+        updates = [
+            json.loads(request["body"])
+            for request in state.requests
+            if request["path"] == "/api/ops/update_item_category"
+        ]
+        self.assertEqual(
+            updates,
+            [
+                {
+                    "id": "category-old",
+                    "name": "洗剪类",
+                    "performance_ratio": 90,
+                    "active": True,
+                }
+            ],
+        )
+        state.requests.clear()
+        replay.setup_categories(
+            client,
+            [{"name": "洗剪类", "performance_ratio": 90, "items": ["剪发"]}],
+            items,
+            positions,
+        )
+        self.assertEqual(
+            [
+                request["path"]
+                for request in state.requests
+                if request["path"] == "/api/ops/update_item_category"
+            ],
+            [],
+        )
+    def test_full_performance_split_is_passed_through(self):
+        state = ReplayStubState()
+        api = self.start_stub(state)
+        client = Client(api)
+        client.login("boss", "pw")
+        replay.apply_settings(client, {"performance_split": "full"}, "2026-11-15")
+        request = [
+            json.loads(item["body"])
+            for item in state.requests
+            if item["path"] == "/api/ops/change_setting"
+        ]
+        self.assertEqual(
+            request,
+            [
+                {
+                    "key": "performance_split",
+                    "value": "full",
+                    "effective_from": "2026-11-15",
+                }
+            ],
+        )
 
     def test_unknown_scheme_name_aborts_before_replay(self):
         state = ReplayStubState()

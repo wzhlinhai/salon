@@ -4135,12 +4135,13 @@ export interface components {
         CommissionMatch: {
             cell?: components["schemas"]["Cell"];
             /** @enum {string} */
-            kind: "cell" | "override_staff_item" | "override_item" | "override_staff";
+            kind: "cell" | "override_staff_item" | "override_item" | "override_position_category" | "override_staff";
             override?: components["schemas"]["Override"];
         };
         CommissionOrigin: {
             aftersale_id?: string;
             card_ledger_id?: string;
+            category?: components["schemas"]["ItemCategoryRef"];
             checkout_id?: string;
             item?: components["schemas"]["Ref"];
             order_id?: string;
@@ -4152,10 +4153,14 @@ export interface components {
             void_id?: string;
         };
         CommissionOverrideView: {
+            category?: components["schemas"]["ItemCategoryRef"];
+            category_id?: string;
             fixed_amount?: string;
             item?: components["schemas"]["Ref"];
             item_id?: string;
             percent?: string;
+            position?: components["schemas"]["Ref"];
+            position_id?: string;
             /** @enum {string} */
             source: "item" | "consume" | "labor" | "sale";
             staff?: components["schemas"]["Ref"];
@@ -5616,9 +5621,11 @@ export interface components {
             voided_by: string;
         };
         Override: {
+            category_id?: string;
             fixed_amount?: string;
             item_id?: string;
             percent?: string;
+            position_id?: string;
             /** @enum {string} */
             source: "item" | "consume" | "labor" | "sale";
             staff_id?: string;

@@ -42,6 +42,18 @@ func (s *fixture) position(active bool) string {
 	}
 	return p["id"].(string)
 }
+func TestItemAllowsRepeatedPositionSlots(t *testing.T) {
+	s := open(t)
+	position := s.position(true)
+	in := input("重复岗位项目")
+	in["positions"] = []any{map[string]any{"position_id": position, "required": true}, map[string]any{"position_id": position, "required": false}}
+	item := s.call("create_item", in, 200)
+	positions := item["positions"].([]any)
+	if len(positions) != 2 || positions[0].(map[string]any)["position_id"] != position || positions[1].(map[string]any)["position_id"] != position {
+		t.Fatal(item)
+	}
+}
+
 func update(in map[string]any, id any) map[string]any {
 	out := map[string]any{}
 	for k, v := range in {

@@ -4,6 +4,13 @@
     "performance_ratio_card_bonus": 100,
     "performance_split": "by_position"
   },
+  "categories": [
+    {
+      "name": "洗剪类",
+      "performance_ratio": 100,
+      "items": ["洗吹-造型"]
+    }
+  ],
   "commission": {
     "rules": [
       {
@@ -24,7 +31,14 @@
         ]
       }
     ],
-    "overrides": [],
+    "overrides": [
+      {
+        "source": "item",
+        "position_name": "助理",
+        "category_name": "洗剪类",
+        "fixed_amount": "3.00"
+      }
+    ],
     "excluded_staff": []
   }
 }

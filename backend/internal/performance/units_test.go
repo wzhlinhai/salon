@@ -12,7 +12,7 @@ import (
 )
 
 func unitFixture() ([]dbgen.PerformanceEntry, map[lineKey]lineFact) {
-	staff, item, line, checkout, position := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	staff, item, line, checkout, position, category := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	entries := []dbgen.PerformanceEntry{}
 	for _, slot := range []int16{1, 2} {
 		for i, method := range []string{"cash", "card_principal", "card_bonus", "red_packet"} {
@@ -25,11 +25,15 @@ func unitFixture() ([]dbgen.PerformanceEntry, map[lineKey]lineFact) {
 			entries = append(entries, dbgen.PerformanceEntry{ID: uuid.New(), Kind: "item", BusinessDate: pgtype.Date{Time: time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC), Valid: true}, CheckoutID: &checkout, OrderItemID: &line, StaffID: &staff, PositionID: &position, Slot: new(slot), Member: new(true), Method: method, PaidAmount: amount(paid), Amount: amount(value), Ratio: []int16{100, 50, 25, 10}[i], CreatedAt: pgtype.Timestamptz{Time: time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC), Valid: true}})
 		}
 	}
-	return entries, map[lineKey]lineFact{{line, checkout}: {itemID: item, price: amount("123.45"), paid: "100.00", designated: true}}
+	return entries, map[lineKey]lineFact{{line, checkout}: {itemID: item, categoryID: &category, price: amount("123.45"), paid: "100.00", designated: true}}
 }
 
 func TestUnitComposition(t *testing.T) {
 	entries, facts := unitFixture()
+	var category uuid.UUID
+	for _, fact := range facts {
+		category = *fact.categoryID
+	}
 	units := composeUnits(entries, nil, facts)
 	if len(units) != 2 {
 		t.Fatal(units)
@@ -51,7 +55,7 @@ func TestUnitComposition(t *testing.T) {
 				t.Fatal(u, tc, err)
 			}
 		}
-		if len(u.Entries) != 4 || u.Base.LinePrice.String() != "123.45" || u.Base.LinePaid != "100.00" || u.Base.LinePriceError != nil || !u.Designated || u.Member == nil || !*u.Member {
+		if len(u.Entries) != 4 || u.CategoryID == nil || *u.CategoryID != category || u.Base.LinePrice.String() != "123.45" || u.Base.LinePaid != "100.00" || u.Base.LinePriceError != nil || !u.Designated || u.Member == nil || !*u.Member {
 			t.Fatal(u)
 		}
 	}

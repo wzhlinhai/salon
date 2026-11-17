@@ -203,7 +203,7 @@ func (q *Queries) ListPerformance(ctx context.Context, arg ListPerformanceParams
 }
 
 const performanceLineFacts = `-- name: PerformanceLineFacts :many
-SELECT i.id, i.item_id, i.price, o.designated, e.checkout_id,
+SELECT i.id, i.item_id, i.category_id, i.price, o.designated, e.checkout_id,
 CASE
   WHEN COALESCE(sum(e.paid_amount) FILTER (WHERE e.kind = 'item' AND e.staff_id IS NOT NULL),0) > (i.price - i.discount)
   THEN (i.price - i.discount)::text
@@ -211,7 +211,7 @@ CASE
 END AS line_paid
 FROM performance_entries e JOIN order_items i ON i.id = e.order_item_id JOIN orders o ON o.id = e.order_id
 WHERE e.store_id = $1 AND e.order_item_id = ANY($2::uuid[]) AND e.reverses_id IS NULL
-GROUP BY i.id, i.item_id, i.price, i.discount, o.designated, e.checkout_id
+GROUP BY i.id, i.item_id, i.category_id, i.price, i.discount, o.designated, e.checkout_id
 `
 
 type PerformanceLineFactsParams struct {
@@ -222,6 +222,7 @@ type PerformanceLineFactsParams struct {
 type PerformanceLineFactsRow struct {
 	ID         uuid.UUID
 	ItemID     uuid.UUID
+	CategoryID *uuid.UUID
 	Price      money.Amount
 	Designated bool
 	CheckoutID *uuid.UUID
@@ -240,6 +241,7 @@ func (q *Queries) PerformanceLineFacts(ctx context.Context, arg PerformanceLineF
 		if err := rows.Scan(
 			&i.ID,
 			&i.ItemID,
+			&i.CategoryID,
 			&i.Price,
 			&i.Designated,
 			&i.CheckoutID,

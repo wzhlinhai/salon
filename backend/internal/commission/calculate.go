@@ -8,6 +8,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/wzhlinhai/salon/backend/internal/catalog"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/payrollmonth"
@@ -100,6 +101,9 @@ func calculateOriginal(u, baseUnit performance.Unit, versions []dbgen.Commission
 		var designated *bool
 		if e.Kind != "sale" {
 			origin.Item = &staff.Ref{ID: e.ItemID}
+			if e.CategoryID != nil {
+				origin.Category = &catalog.ItemCategoryRef{ID: *e.CategoryID}
+			}
 			origin.Position = &staff.Ref{ID: optional(e.PositionID)}
 			designated = &e.Designated
 		}
@@ -128,7 +132,23 @@ func prorateFixedFloor(fixed money.Amount, numerator, denominator int64) money.A
 
 func matchRule(r Rule, overrides []Override, e performance.Unit) (CommissionMatch, *Cell) {
 	// 逐层查找，不依赖覆盖在方案中的保存顺序。
-	for _, kind := range []string{"override_staff_item", "override_item", "override_staff"} {
+	order := []string{"override_staff_item", "override_item", "override_position_category", "override_staff", "cell"}
+	for _, kind := range order {
+		if kind == "cell" {
+			for _, c := range r.Cells {
+				if r.ByPosition && optional(c.PositionID) != optional(e.PositionID) {
+					continue
+				}
+				if r.ByDesignated && optional(c.Designated) != e.Designated {
+					continue
+				}
+				if r.ByMember && optional(c.Member) != optional(e.Member) {
+					continue
+				}
+				return CommissionMatch{Kind: "cell", Cell: &c}, &c
+			}
+			continue
+		}
 		for _, o := range overrides {
 			if o.Source != e.Kind {
 				continue
@@ -139,30 +159,17 @@ func matchRule(r Rule, overrides []Override, e performance.Unit) (CommissionMatc
 			if o.StaffID != nil && *o.StaffID != e.StaffID {
 				continue
 			}
-			target := "override_staff"
-			if o.ItemID != nil {
-				target = "override_item"
-				if o.StaffID != nil {
-					target = "override_staff_item"
+			if o.PositionID != nil || o.CategoryID != nil {
+				if e.Kind == "sale" || o.PositionID == nil || o.CategoryID == nil || e.PositionID == nil || e.CategoryID == nil || *o.PositionID != *e.PositionID || *o.CategoryID != *e.CategoryID {
+					continue
 				}
 			}
+			target := overrideKind(o)
 			if target != kind {
 				continue
 			}
 			return CommissionMatch{Kind: kind, Override: &o}, &Cell{Percent: o.Percent, FixedAmount: o.FixedAmount}
 		}
-	}
-	for _, c := range r.Cells {
-		if r.ByPosition && optional(c.PositionID) != optional(e.PositionID) {
-			continue
-		}
-		if r.ByDesignated && optional(c.Designated) != e.Designated {
-			continue
-		}
-		if r.ByMember && optional(c.Member) != optional(e.Member) {
-			continue
-		}
-		return CommissionMatch{Kind: "cell", Cell: &c}, &c
 	}
 	return CommissionMatch{}, nil
 }

@@ -149,13 +149,15 @@ func TestCommissionMatchOrder(t *testing.T) {
 	e, s, _ := calcFixture()
 	e = []performance.Unit{singleEntry(e[0])}
 	item := e[0].ItemID
-	overrides := []Override{{Source: "item", StaffID: &e[0].StaffID, Percent: pct("20")}, {Source: "item", ItemID: &item, Percent: pct("30")}, {Source: "item", StaffID: &e[0].StaffID, ItemID: &item, Percent: pct("40")}}
+	category := uuid.New()
+	e[0].CategoryID = &category
+	overrides := []Override{{Source: "item", StaffID: &e[0].StaffID, ItemID: &item, Percent: pct("40")}, {Source: "item", ItemID: &item, Percent: pct("30")}, {Source: "item", PositionID: e[0].PositionID, CategoryID: &category, Percent: pct("50")}, {Source: "item", StaffID: &e[0].StaffID, Percent: pct("20")}}
 	for _, tc := range []struct {
-		n            int
+		overrides    []Override
 		kind, amount string
-	}{{3, "override_staff_item", "5.60"}, {2, "override_item", "4.20"}, {1, "override_staff", "2.80"}, {0, "cell", "1.40"}} {
+	}{{overrides[0:4], "override_staff_item", "5.60"}, {overrides[1:4], "override_item", "4.20"}, {overrides[2:4], "override_position_category", "7.00"}, {overrides[3:4], "override_staff", "2.80"}, {nil, "cell", "1.40"}} {
 		t.Run(tc.kind, func(t *testing.T) {
-			s.Overrides = overrides[:tc.n]
+			s.Overrides = tc.overrides
 			out := runCalc(t, e, s)
 			if len(out) != 1 || out[0].Amount.String() != tc.amount || out[0].Explanation.Match.Kind != tc.kind {
 				t.Fatal(out)
@@ -163,7 +165,7 @@ func TestCommissionMatchOrder(t *testing.T) {
 		})
 	}
 	s.Rules[0].Cells = nil
-	s.Overrides = overrides[:1]
+	s.Overrides = overrides[3:]
 	out := runCalc(t, e, s)
 	if len(out) != 1 || out[0].Amount.String() != "2.80" {
 		t.Fatal(out)
@@ -179,7 +181,7 @@ func TestCommissionMatchOrder(t *testing.T) {
 	if len(out) != 1 || out[0].Explanation.Match.Kind != "override_staff" || out[0].Amount.String() != "2.80" {
 		t.Fatal(out)
 	}
-	s.Overrides = overrides[1:]
+	s.Overrides = overrides[1:3]
 	out = runCalc(t, e, s)
 	if len(out) != 1 || out[0].Explanation.Match.Kind != "cell" {
 		t.Fatal(out)
@@ -345,6 +347,17 @@ func TestCommissionUnitOrderAndTargets(t *testing.T) {
 		if c.Source == "sale" && (c.Amount.String() != "2.00" || c.Explanation.Member != nil || c.Explanation.Designated != nil) {
 			t.Fatal(c)
 		}
+	}
+}
+
+func TestCommissionExplanationWithoutCategoryDecodes(t *testing.T) {
+	raw := []byte(`{"origin":{"order_id":"00000000-0000-0000-0000-000000000001"},"entries":[],"designated":null,"member":null,"base":{"kind":"performance","amount":"1.00"},"match":{"kind":"cell"},"version":{"id":"00000000-0000-0000-0000-000000000002","version":1,"effective_from":"2026-09-01"}}`)
+	var explanation CommissionExplanation
+	if err := json.Unmarshal(raw, &explanation); err != nil {
+		t.Fatal(err)
+	}
+	if explanation.Origin.Category != nil || explanation.Origin.OrderID == nil {
+		t.Fatal(explanation)
 	}
 }
 
