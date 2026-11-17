@@ -47,7 +47,7 @@ func TestCommissionValidation(t *testing.T) {
 		}},
 		{"override both", "覆盖比例必须且只能填写比例或固定金额之一：项目业绩", func(sc, r map[string]any) { o := override(); o["fixed_amount"] = "2"; sc["overrides"] = []any{o} }},
 		{"override neither", "覆盖比例必须且只能填写比例或固定金额之一：项目业绩", func(sc, r map[string]any) { o := override(); delete(o, "percent"); sc["overrides"] = []any{o} }},
-		{"duplicate override", "覆盖比例的来源、员工、项目组合重复：项目业绩", func(sc, r map[string]any) { sc["overrides"] = []any{override(), override()} }},
+		{"duplicate override", "覆盖比例的目标组合重复：项目业绩", func(sc, r map[string]any) { sc["overrides"] = []any{override(), override()} }},
 		{"no rule", "覆盖比例的业绩来源必须有提成规则：项目业绩", func(sc, r map[string]any) { sc["rules"] = []any{}; sc["overrides"] = []any{override()} }},
 		{"duplicate excluded", "不计提成的员工不能重复", func(sc, r map[string]any) { sc["excluded_staff"] = []any{s.Res.OwnerID, s.Res.OwnerID} }},
 	} {
@@ -111,6 +111,50 @@ func TestCommissionSchemaEnums(t *testing.T) {
 		t.Fatal(n, err)
 	}
 	dbtest.Rollback(t, tx)
+}
+
+func TestCommissionInvalidOverrideTargets(t *testing.T) {
+	s := optest.OpenShop(t)
+	day := today(t, s).Format(time.DateOnly)
+	staff, item, position, category := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	for _, tc := range []struct {
+		name                            string
+		staff, item, position, category bool
+	}{
+		{"category only", false, false, false, true},
+		{"position only", false, false, true, false},
+		{"item and category", false, true, false, true},
+		{"item and position", false, true, true, false},
+		{"item position category", false, true, true, true},
+		{"staff and category", true, false, false, true},
+		{"staff and position", true, false, true, false},
+		{"staff position category", true, false, true, true},
+		{"staff item category", true, true, false, true},
+		{"staff item position", true, true, true, false},
+		{"all targets", true, true, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sc, r := emptyScheme(), rule("item")
+			sc["rules"] = []any{r}
+			o := map[string]any{"source": "item", "percent": "10"}
+			for present, id := range map[string]uuid.UUID{"staff_id": staff, "item_id": item, "position_id": position, "category_id": category} {
+				if map[string]bool{"staff_id": tc.staff, "item_id": tc.item, "position_id": tc.position, "category_id": tc.category}[present] {
+					o[present] = id
+				}
+			}
+			sc["overrides"] = []any{o}
+			reject(t, s.HTTPWithToken(t, s.Owner, "save_commission_scheme", map[string]any{"effective_from": day, "scheme": sc}), 409, "覆盖比例的目标必须且只能是员工、项目、员工×项目或岗位×类别：项目业绩")
+		})
+	}
+	sc, r := emptyScheme(), rule("sale")
+	sc["rules"] = []any{r}
+	sc["overrides"] = []any{map[string]any{"source": "sale", "position_id": position, "category_id": category, "percent": "10"}}
+	reject(t, s.HTTPWithToken(t, s.Owner, "save_commission_scheme", map[string]any{"effective_from": day, "scheme": sc}), 409, "销售业绩不能设置岗位×类别覆盖比例")
+	sc, r = emptyScheme(), rule("item")
+	sc["rules"] = []any{r}
+	duplicate := map[string]any{"source": "item", "position_id": position, "category_id": category, "percent": "10"}
+	sc["overrides"] = []any{duplicate, duplicate}
+	reject(t, s.HTTPWithToken(t, s.Owner, "save_commission_scheme", map[string]any{"effective_from": day, "scheme": sc}), 409, "覆盖比例的目标组合重复：项目业绩")
 }
 
 func TestCommissionPercentFormat(t *testing.T) {

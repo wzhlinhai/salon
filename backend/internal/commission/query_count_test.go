@@ -31,7 +31,8 @@ func TestCommissionReadQueryCount(t *testing.T) {
 			positions = append(positions, map[string]any{"position_id": position, "required": false, "share_percent": 50})
 			assignments = append(assignments, map[string]any{"slot": slot, "staff_id": staffID})
 		}
-		item := s.Call(t, s.Owner, "create_item", map[string]any{"name": fmt.Sprintf("项目%d", n), "kind": "service", "price": "100", "discountable": true, "labor_fee_amount": nil, "labor_fee_percent": nil, "positions": positions, "level_prices": []any{}, "member_prices": []any{}}, 200).Body["id"]
+		category := s.Call(t, s.Owner, "create_item_category", map[string]any{"name": fmt.Sprintf("类别%d", n), "performance_ratio": 100}, 200).Body["id"]
+		item := s.Call(t, s.Owner, "create_item", map[string]any{"name": fmt.Sprintf("项目%d", n), "kind": "service", "price": "100", "discountable": true, "labor_fee_amount": nil, "labor_fee_percent": nil, "positions": positions, "level_prices": []any{}, "member_prices": []any{}, "category_id": category}, 200).Body["id"]
 		order := s.Call(t, s.Owner, "open_order", map[string]any{"gender": "female", "designated": false, "items": []any{map[string]any{"item_id": item, "staff": assignments}, map[string]any{"item_id": item, "staff": assignments}}}, 200).Body
 		s.Call(t, s.Owner, "checkout_orders", map[string]any{"orders": []any{map[string]any{"order_id": order["id"], "payments": []any{map[string]any{"method": "cash", "amount": "200"}}}}}, 200)
 		return order["id"]

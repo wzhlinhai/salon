@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/wzhlinhai/salon/backend/internal/catalog"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
@@ -36,16 +37,17 @@ type CommissionExplanation struct {
 
 // CommissionOrigin 标识结账、项目岗位或销售流水来源，不含顾客资料。
 type CommissionOrigin struct {
-	OrderID      *uuid.UUID `json:"order_id,omitempty"`
-	OrderItemID  *uuid.UUID `json:"order_item_id,omitempty"`
-	Item         *staff.Ref `json:"item,omitempty"`
-	Slot         *int16     `json:"slot,omitempty"`
-	Position     *staff.Ref `json:"position,omitempty"`
-	CardLedgerID *uuid.UUID `json:"card_ledger_id,omitempty"`
-	RedPacketID  *uuid.UUID `json:"red_packet_id,omitempty"`
-	CheckoutID   *uuid.UUID `json:"checkout_id,omitempty"`
-	VoidID       *uuid.UUID `json:"void_id,omitempty"`
-	AftersaleID  *uuid.UUID `json:"aftersale_id,omitempty"`
+	OrderID      *uuid.UUID               `json:"order_id,omitempty"`
+	OrderItemID  *uuid.UUID               `json:"order_item_id,omitempty"`
+	Item         *staff.Ref               `json:"item,omitempty"`
+	Category     *catalog.ItemCategoryRef `json:"category,omitempty"`
+	Slot         *int16                   `json:"slot,omitempty"`
+	Position     *staff.Ref               `json:"position,omitempty"`
+	CardLedgerID *uuid.UUID               `json:"card_ledger_id,omitempty"`
+	RedPacketID  *uuid.UUID               `json:"red_packet_id,omitempty"`
+	CheckoutID   *uuid.UUID               `json:"checkout_id,omitempty"`
+	VoidID       *uuid.UUID               `json:"void_id,omitempty"`
+	AftersaleID  *uuid.UUID               `json:"aftersale_id,omitempty"`
 }
 
 // CommissionPerformanceEntry 是一笔提成所包含的支付方式业绩记录。
@@ -69,7 +71,7 @@ type CommissionBase struct {
 
 // CommissionMatch 说明命中的格子键或覆盖目标以及比例或固定金额。
 type CommissionMatch struct {
-	Kind     string    `json:"kind" enum:"cell,override_staff_item,override_item,override_staff"`
+	Kind     string    `json:"kind" enum:"cell,override_staff_item,override_item,override_position_category,override_staff"`
 	Cell     *Cell     `json:"cell,omitempty"`
 	Override *Override `json:"override,omitempty"`
 }

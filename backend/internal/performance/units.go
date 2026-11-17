@@ -21,6 +21,7 @@ type Unit struct {
 	CreatedAt                                                              time.Time
 	OrderID, OrderItemID                                                   *uuid.UUID
 	ItemID                                                                 uuid.UUID
+	CategoryID                                                             *uuid.UUID
 	Slot                                                                   *int16
 	PositionID, CheckoutID, CardLedgerID, RedPacketID, VoidID, AftersaleID *uuid.UUID
 	Member                                                                 *bool
@@ -52,6 +53,7 @@ type UnitBase struct {
 type lineKey struct{ item, checkout uuid.UUID }
 type lineFact struct {
 	itemID     uuid.UUID
+	categoryID *uuid.UUID
 	price      money.Amount
 	paid       string
 	designated bool
@@ -141,7 +143,7 @@ func Units(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, from, to ti
 	}
 	facts := map[lineKey]lineFact{}
 	for _, r := range rows {
-		facts[lineKey{r.ID, optional(r.CheckoutID)}] = lineFact{itemID: r.ItemID, price: r.Price, paid: r.LinePaid, designated: r.Designated}
+		facts[lineKey{r.ID, optional(r.CheckoutID)}] = lineFact{itemID: r.ItemID, categoryID: r.CategoryID, price: r.Price, paid: r.LinePaid, designated: r.Designated}
 	}
 	return composeUnits(entries, originals, facts), nil
 }
@@ -149,7 +151,7 @@ func Units(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, from, to ti
 func compose(u unit, f lineFact) Unit {
 	e := u.first
 	out := Unit{ID: e.ID, Kind: e.Kind, StaffID: *e.StaffID, BusinessDate: e.BusinessDate.Time, CreatedAt: u.createdAt,
-		OrderID: e.OrderID, OrderItemID: e.OrderItemID, ItemID: f.itemID, Slot: e.Slot, PositionID: e.PositionID,
+		OrderID: e.OrderID, OrderItemID: e.OrderItemID, ItemID: f.itemID, CategoryID: f.categoryID, Slot: e.Slot, PositionID: e.PositionID,
 		CheckoutID: e.CheckoutID, CardLedgerID: e.CardLedgerID, RedPacketID: e.RedPacketID, VoidID: e.VoidID, AftersaleID: e.AftersaleID,
 		Member: e.Member, Designated: f.designated, Entries: make([]UnitEntry, 0, len(u.entries))}
 	for _, row := range u.entries {

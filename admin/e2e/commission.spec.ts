@@ -49,7 +49,7 @@ async function saved(page: Page) {
 function inputScheme(view: View): Schema['CommissionScheme'] {
   return {
     rules: view.scheme.rules.map(r => ({ ...r, cells: r.cells.map(({ position: _position, ...c }) => c) })),
-    overrides: view.scheme.overrides.map(({ staff: _staff, item: _item, ...o }) => o),
+    overrides: view.scheme.overrides.map(({ staff: _staff, item: _item, position: _position, category: _category, ...o }) => o),
     excluded_staff: view.scheme.excluded_staff.map(s => s.staff_id)
   }
 }
@@ -110,6 +110,145 @@ test('老板新建方案', async ({ page }) => {
       { source: 'sale', base: 'performance', by_position: false, by_designated: false, by_member: false, cells: [{ fixed_amount: '5.00' }] }
     ], overrides: [{ source: 'item', staff_id: staff.id, percent: '20.00' }], excluded_staff: [staff.id]
   })
+})
+
+test('保存岗位×类别覆盖并在详情显示名称', async ({ page }) => {
+  const { token, version } = await seed()
+  const suffix = uniqueSuffix()
+  const position = await api<Schema['Position']>(token, 'create_position', { name: `类别岗位${suffix}` })
+  const category = await api<Schema['ItemCategory']>(token, 'create_item_category', { name: `类别${suffix}`, performance_ratio: 90 })
+  await api(token, 'create_item', { name: `类别项目${suffix}`, price: '100.00', positions: [], level_prices: [], discountable: true, labor_fee_amount: null, labor_fee_percent: null, category_id: category.id })
+  await login(page, owner.account, owner.password)
+  await page.goto('/commission')
+  const dialog = await openEditor(page)
+  await dialog.getByRole('button', { name: '添加覆盖', exact: true }).click()
+  const row = dialog.getByTestId('override-row')
+  await choose(page, row, '目标', '岗位 × 类别')
+  const source = row.getByRole('combobox', { name: '来源', exact: true })
+  await expect(source).toContainText('项目业绩')
+  await source.click()
+  await expect(page.getByRole('option', { name: '销售业绩', exact: true })).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await choose(page, row, '岗位', position.name)
+  await choose(page, row, '类别', category.name)
+  await choose(page, row, '数值类型', '固定金额')
+  await row.getByLabel('固定金额', { exact: true }).fill('3.00')
+  const result = await saved(page)
+  const detail = page.getByTestId('scheme-detail')
+  await expect(detail).toContainText(`${position.name} × ${category.name}`)
+  await expect(detail).toContainText('固定 3.00 元')
+  const actual = await api<View>(token, 'get_commission_scheme', { version: result.version })
+  expect(inputScheme(actual).overrides).toContainEqual({ source: 'item', position_id: position.id, category_id: category.id, fixed_amount: '3.00' })
+  expect(inputScheme(actual).rules).toEqual(inputScheme(version).rules)
+  await openEditor(page)
+  const again = await saved(page)
+  const reopened = await api<View>(token, 'get_commission_scheme', { version: again.version })
+  expect(inputScheme(reopened).overrides).toContainEqual({ source: 'item', position_id: position.id, category_id: category.id, fixed_amount: '3.00' })
+  await expect(page.getByTestId('scheme-detail')).toContainText(`${position.name} × ${category.name}`)
+})
+
+test('编辑提成方案时迟到的类别列表不覆盖重开后的选项', async ({ page }) => {
+  const { token } = await seed()
+  await login(page, owner.account, owner.password)
+  await page.goto('/commission')
+  await expect(page.getByTestId('scheme-detail')).toBeVisible()
+  const suffix = uniqueSuffix()
+  let release!: () => void
+  let started!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const pending = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  let calls = 0
+  await page.route('**/api/ops/list_item_categories', async (route) => {
+    calls++
+    if (calls === 1) {
+      const response = await route.fetch()
+      started()
+      await blocked
+      await route.fulfill({ response })
+    } else await route.continue()
+  })
+  await page.getByRole('button', { name: '修改方案', exact: true }).click()
+  await pending
+  const later = await api<Schema['ItemCategory']>(token, 'create_item_category', { name: `后建类别${suffix}`, performance_ratio: 100 })
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: '修改方案', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '修改提成方案', exact: true })
+  await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeEnabled()
+  release()
+  // eslint-disable-next-line no-restricted-syntax -- 旧响应没有可观察状态变化，等回调执行后核对类别选项。
+  await page.waitForTimeout(500)
+  await dialog.getByRole('button', { name: '添加覆盖', exact: true }).click()
+  const row = dialog.getByTestId('override-row')
+  await choose(page, row, '目标', '岗位 × 类别')
+  await row.getByRole('combobox', { name: '类别', exact: true }).click()
+  await expect(page.getByRole('option', { name: later.name, exact: true })).toBeVisible()
+})
+
+test('关闭修改方案后重开不保留类别加载状态', async ({ page }) => {
+  await seed()
+  await login(page, owner.account, owner.password)
+  await page.goto('/commission')
+  await expect(page.getByTestId('scheme-detail')).toBeVisible()
+  let release!: () => void
+  let started!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const pending = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  let categoryCalls = 0
+  let positionCalls = 0
+  await page.route('**/api/ops/list_item_categories', async (route) => {
+    categoryCalls++
+    if (categoryCalls === 1) {
+      const response = await route.fetch()
+      started()
+      await blocked
+      await route.fulfill({ response })
+    } else await route.continue()
+  })
+  await page.route('**/api/ops/list_positions', async (route) => {
+    positionCalls++
+    if (positionCalls === 2) {
+      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ detail: '岗位加载失败' }) })
+    } else await route.continue()
+  })
+  await page.getByRole('button', { name: '修改方案', exact: true }).click()
+  await pending
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: '修改方案', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '修改提成方案', exact: true })
+  await expect(dialog).toBeVisible()
+  await expect(page.getByText('加载类别中', { exact: true })).toHaveCount(0)
+  release()
+})
+
+test('类别列表断网后复位加载状态并可重试', async ({ page }) => {
+  await seed()
+  await login(page, owner.account, owner.password)
+  await page.goto('/commission')
+  await expect(page.getByTestId('scheme-detail')).toBeVisible()
+  let calls = 0
+  await page.route('**/api/ops/list_item_categories', async (route) => {
+    calls++
+    if (calls === 1) {
+      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ detail: '类别加载失败' }) })
+    } else await route.continue()
+  })
+  await page.getByRole('button', { name: '修改方案', exact: true }).click()
+  await expect(page.getByText('类别加载失败', { exact: true })).toBeVisible()
+  await expect(page.getByText('加载类别中', { exact: true })).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: '修改方案', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '修改提成方案', exact: true })
+  await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeEnabled()
+  await expect(page.getByText('加载类别中', { exact: true })).toHaveCount(0)
+  expect(calls).toBeGreaterThanOrEqual(2)
 })
 
 test('安排下一版并查看历史', async ({ page }) => {

@@ -30,6 +30,7 @@ func TestCommissionReferences(t *testing.T) {
 	day := today(t, s)
 	staffID, _ := s.Hire("员工", "002", "worker")
 	positionID := reference(t, s, "create_position", map[string]any{"name": "岗位"})
+	categoryID := reference(t, s, "create_item_category", map[string]any{"name": "类别", "performance_ratio": 90})
 	itemID := reference(t, s, "create_item", map[string]any{"name": "项目", "kind": "service", "price": "100", "discountable": true, "labor_fee_amount": nil, "labor_fee_percent": nil, "positions": []any{}, "level_prices": []any{}, "member_prices": []any{}})
 	for _, tc := range []struct {
 		op   string
@@ -37,6 +38,7 @@ func TestCommissionReferences(t *testing.T) {
 	}{
 		{"deactivate_staff", map[string]any{"staff_id": staffID}},
 		{"update_position", map[string]any{"id": positionID, "name": "岗位", "active": false}},
+		{"update_item_category", map[string]any{"id": categoryID, "name": "类别", "performance_ratio": 90, "active": false}},
 		{"update_item", map[string]any{"id": itemID, "name": "项目", "kind": "service", "price": "100", "discountable": true, "labor_fee_amount": nil, "labor_fee_percent": nil, "active": false, "positions": []any{}, "level_prices": []any{}, "member_prices": []any{}}},
 	} {
 		r := s.HTTPWithToken(t, s.Owner, tc.op, tc.args)
@@ -55,6 +57,7 @@ func TestCommissionReferences(t *testing.T) {
 		map[string]any{"source": "item", "staff_id": staffID, "percent": "10"},
 		map[string]any{"source": "item", "item_id": itemID, "fixed_amount": "2"},
 		map[string]any{"source": "item", "staff_id": staffID, "item_id": itemID, "percent": "100"},
+		map[string]any{"source": "item", "position_id": positionID, "category_id": categoryID, "fixed_amount": "3"},
 	}
 	sc["excluded_staff"] = []any{staffID}
 	saved := save(t, s, day, sc)
@@ -73,6 +76,9 @@ func TestCommissionReferences(t *testing.T) {
 		if overrides[0].(map[string]any)["staff"].(map[string]any)["name"] != "员工" || overrides[1].(map[string]any)["item"].(map[string]any)["name"] != "项目" {
 			t.Fatal(got)
 		}
+		if overrides[3].(map[string]any)["position"].(map[string]any)["name"] != "岗位" || overrides[3].(map[string]any)["category"].(map[string]any)["name"] != "类别" {
+			t.Fatal(got)
+		}
 		if scheme["excluded_staff"].([]any)[0].(map[string]any)["staff"].(map[string]any)["name"] != "员工" {
 			t.Fatal(got)
 		}
@@ -82,7 +88,7 @@ func TestCommissionReferences(t *testing.T) {
 	t.Logf("saved scheme input=%s\nreturned view=%s", input, output)
 	// 同租户第二家店，避免仅凭 RLS 的存在检查掩盖门店检查。
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	var otherStore, otherStaff, otherPosition, otherItem uuid.UUID
+	var otherStore, otherStaff, otherPosition, otherItem, otherCategory uuid.UUID
 	for _, entry := range []struct {
 		sql  string
 		dest *uuid.UUID
@@ -103,6 +109,9 @@ func TestCommissionReferences(t *testing.T) {
 	if err := tx.QueryRow(t.Context(), "INSERT INTO items(tenant_id,store_id,name,kind,price) VALUES($1,$2,'外店项目','service',1) RETURNING id", s.Res.TenantID, otherStore).Scan(&otherItem); err != nil {
 		t.Fatal(err)
 	}
+	if err := tx.QueryRow(t.Context(), "INSERT INTO item_categories(tenant_id,store_id,name) VALUES($1,$2,'外店类别') RETURNING id", s.Res.TenantID, otherStore).Scan(&otherCategory); err != nil {
+		t.Fatal(err)
+	}
 	dbtest.Commit(t, tx)
 	for _, tc := range []struct {
 		kind, detail string
@@ -112,6 +121,8 @@ func TestCommissionReferences(t *testing.T) {
 		{"excluded", "提成方案的员工必须属于本店", otherStaff},
 		{"position", "提成方案的岗位必须属于本店", otherPosition},
 		{"item", "提成方案的项目必须属于本店", otherItem},
+		{"override_position", "提成方案的岗位必须属于本店", otherPosition},
+		{"override_category", "提成方案的类别必须属于本店", otherCategory},
 	} {
 		t.Run(tc.kind, func(t *testing.T) {
 			bad := emptyScheme()
@@ -127,6 +138,10 @@ func TestCommissionReferences(t *testing.T) {
 				rr["cells"] = []any{map[string]any{"position_id": tc.id, "percent": "1"}}
 			case "item":
 				bad["overrides"] = []any{map[string]any{"source": "item", "item_id": tc.id, "percent": "1"}}
+			case "override_position":
+				bad["overrides"] = []any{map[string]any{"source": "item", "position_id": tc.id, "category_id": categoryID, "percent": "1"}}
+			case "override_category":
+				bad["overrides"] = []any{map[string]any{"source": "item", "position_id": positionID, "category_id": tc.id, "percent": "1"}}
 			}
 			reject(t, s.HTTPWithToken(t, s.Owner, "save_commission_scheme", map[string]any{"effective_from": day.Format(time.DateOnly), "scheme": bad}), 409, tc.detail)
 		})
@@ -153,9 +168,11 @@ func TestCommissionQueryCount(t *testing.T) {
 			name := fmt.Sprintf("%d-%d", n, i)
 			sid, _ := s.Hire(name, name, "staff"+name)
 			pid := reference(t, s, "create_position", map[string]any{"name": name})
+			cid := reference(t, s, "create_item_category", map[string]any{"name": name, "performance_ratio": 90})
 			iid := reference(t, s, "create_item", map[string]any{"name": name, "kind": "service", "price": "1", "discountable": true, "labor_fee_amount": nil, "labor_fee_percent": nil, "positions": []any{}, "level_prices": []any{}, "member_prices": []any{}})
 			cells = append(cells, map[string]any{"position_id": pid, "percent": "10"})
 			overrides = append(overrides, map[string]any{"source": "item", "staff_id": sid, "item_id": iid, "percent": "20"})
+			overrides = append(overrides, map[string]any{"source": "item", "position_id": pid, "category_id": cid, "fixed_amount": "3"})
 			excluded = append(excluded, sid)
 		}
 		r["cells"] = cells

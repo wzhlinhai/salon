@@ -45,7 +45,7 @@ AND (e.aftersale_id IS NULL OR EXISTS (SELECT 1 FROM aftersales a WHERE a.tenant
 SELECT * FROM performance_entries WHERE store_id = @store_id AND id = ANY(@ids::uuid[]);
 
 -- name: PerformanceLineFacts :many
-SELECT i.id, i.item_id, i.price, o.designated, e.checkout_id,
+SELECT i.id, i.item_id, i.category_id, i.price, o.designated, e.checkout_id,
 CASE
   WHEN COALESCE(sum(e.paid_amount) FILTER (WHERE e.kind = 'item' AND e.staff_id IS NOT NULL),0) > (i.price - i.discount)
   THEN (i.price - i.discount)::text
@@ -53,4 +53,4 @@ CASE
 END AS line_paid
 FROM performance_entries e JOIN order_items i ON i.id = e.order_item_id JOIN orders o ON o.id = e.order_id
 WHERE e.store_id = @store_id AND e.order_item_id = ANY(@ids::uuid[]) AND e.reverses_id IS NULL
-GROUP BY i.id, i.item_id, i.price, i.discount, o.designated, e.checkout_id;
+GROUP BY i.id, i.item_id, i.category_id, i.price, i.discount, o.designated, e.checkout_id;

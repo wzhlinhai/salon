@@ -20,7 +20,7 @@ func view(ctx context.Context, q *dbgen.Queries, row dbgen.CommissionSchemeVersi
 		return nil, err
 	}
 	staffIDs := append([]uuid.UUID{row.SavedBy}, scheme.ExcludedStaff...)
-	positions, items := []uuid.UUID{}, []uuid.UUID{}
+	positions, items, categories := []uuid.UUID{}, []uuid.UUID{}, []uuid.UUID{}
 	for _, r := range scheme.Rules {
 		for _, c := range r.Cells {
 			if c.PositionID != nil {
@@ -34,6 +34,12 @@ func view(ctx context.Context, q *dbgen.Queries, row dbgen.CommissionSchemeVersi
 		}
 		if o.ItemID != nil {
 			items = append(items, *o.ItemID)
+		}
+		if o.PositionID != nil {
+			positions = append(positions, *o.PositionID)
+		}
+		if o.CategoryID != nil {
+			categories = append(categories, *o.CategoryID)
 		}
 	}
 	staffRefs, err := staff.References(ctx, q, row.StoreID, staffIDs)
@@ -57,6 +63,13 @@ func view(ctx context.Context, q *dbgen.Queries, row dbgen.CommissionSchemeVersi
 	if err != nil {
 		return nil, err
 	}
+	categoryRefs, err := catalog.CategoryReferences(ctx, q, row.StoreID, categories)
+	if errors.Is(err, ops.ErrNotFound) {
+		return nil, ops.Rule("提成方案的类别必须属于本店")
+	}
+	if err != nil {
+		return nil, err
+	}
 	out := &CommissionSchemeVersionView{CommissionSchemeVersionSummary: CommissionSchemeVersionSummary{ID: row.ID, Version: row.Version, EffectiveFrom: row.EffectiveFrom.Time.Format(settings.DateLayout), SavedBy: staffRefs[row.SavedBy], SavedAt: row.SavedAt.Time}, Scheme: CommissionSchemeView{Rules: []CommissionRuleView{}, Overrides: []CommissionOverrideView{}, ExcludedStaff: []CommissionExcludedStaffView{}}}
 	for _, r := range scheme.Rules {
 		rv := CommissionRuleView{Source: r.Source, Base: r.Base, ByPosition: r.ByPosition, ByDesignated: r.ByDesignated, ByMember: r.ByMember, Cells: []CommissionCellView{}}
@@ -76,6 +89,12 @@ func view(ctx context.Context, q *dbgen.Queries, row dbgen.CommissionSchemeVersi
 		}
 		if o.ItemID != nil {
 			ov.Item = new(itemRefs[*o.ItemID])
+		}
+		if o.PositionID != nil {
+			ov.Position = new(positionRefs[*o.PositionID])
+		}
+		if o.CategoryID != nil {
+			ov.Category = new(categoryRefs[*o.CategoryID])
 		}
 		out.Scheme.Overrides = append(out.Scheme.Overrides, ov)
 	}

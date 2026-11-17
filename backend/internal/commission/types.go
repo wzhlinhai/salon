@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/wzhlinhai/salon/backend/internal/catalog"
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
@@ -37,11 +38,13 @@ type Cell struct {
 	FixedAmount *money.Amount  `json:"fixed_amount,omitempty"`
 }
 
-// Override 是员工、项目或员工与项目组合的覆盖比例。
+// Override 是员工、项目、员工与项目组合或岗位与类别组合的覆盖比例。
 type Override struct {
 	Source      string         `json:"source" enum:"item,consume,labor,sale"`
 	StaffID     *uuid.UUID     `json:"staff_id,omitempty"`
 	ItemID      *uuid.UUID     `json:"item_id,omitempty"`
+	PositionID  *uuid.UUID     `json:"position_id,omitempty"`
+	CategoryID  *uuid.UUID     `json:"category_id,omitempty"`
 	Percent     *money.Percent `json:"percent,omitempty"`
 	FixedAmount *money.Amount  `json:"fixed_amount,omitempty"`
 }
@@ -62,11 +65,13 @@ type CommissionRuleView struct {
 	Cells        []CommissionCellView `json:"cells"`
 }
 
-// CommissionOverrideView 是含员工和项目名称的覆盖比例。
+// CommissionOverrideView 是含员工、项目、岗位和类别名称的覆盖比例。
 type CommissionOverrideView struct {
 	Override
-	Staff *staff.Ref `json:"staff,omitempty"`
-	Item  *staff.Ref `json:"item,omitempty"`
+	Staff    *staff.Ref               `json:"staff,omitempty"`
+	Item     *staff.Ref               `json:"item,omitempty"`
+	Position *staff.Ref               `json:"position,omitempty"`
+	Category *catalog.ItemCategoryRef `json:"category,omitempty"`
 }
 
 // CommissionExcludedStaffView 是不计提成员工的标识和名称。

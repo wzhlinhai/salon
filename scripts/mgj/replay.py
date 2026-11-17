@@ -255,7 +255,7 @@ def match_staff(items, segments):
             raise ReplayError("staff_item_mismatch", segment["item_name"])
         used.add(index)
         staff = segment["staff"]
-        if len(staff) > 2:
+        if len(staff) > 3:
             raise ReplayError("too_many_staff", segment["item_name"])
         items[index]["staff"] = [entry["name"] for entry in staff]
         items[index]["staff_designated"] = [entry["designated"] for entry in staff]
@@ -749,6 +749,7 @@ def _desired_positions(positions):
     return [
         {"position_id": positions[MAIN_POSITION], "required": True},
         {"position_id": positions[ASSISTANT_POSITION], "required": False},
+        {"position_id": positions[ASSISTANT_POSITION], "required": False},
     ]
 
 
@@ -765,8 +766,9 @@ def _same_positions(current, desired):
     return True
 
 
-def item_payload(item, positions):
-    """保留项目当前定义，只替换岗位列表。"""
+def item_payload(item, positions, category_id=None, keep_category=True):
+    """保留项目当前定义，替换岗位列表，并保留或替换类别。"""
+    category = (item.get("category") or {}).get("id") if keep_category else category_id
     return {
         "id": item["id"],
         "name": item["name"],
@@ -786,12 +788,13 @@ def item_payload(item, positions):
             {"card_type_id": price["card_type_id"], "price": price["price"]}
             for price in item.get("member_prices", [])
         ],
+        "category_id": category,
         "active": item.get("active", True),
     }
 
 
 def setup_items(client, positions):
-    """给每个项目补上大工（必填）和助理（非必填）岗位。"""
+    """给每个项目补上大工（必填）和两个助理（非必填）岗位。"""
     items = _unique_by_name(client.op("list_items").get("items") or [], "项目")
     desired = _desired_positions(positions)
     for name, item in list(items.items()):
@@ -799,6 +802,60 @@ def setup_items(client, positions):
             continue
         items[name] = client.op("update_item", item_payload(item, positions))
     return items
+
+
+def setup_categories(client, categories, items, positions):
+    """按名称幂等地建类别、设项目类别；未列出的回放项目不归类。"""
+    existing = _unique_by_name(
+        client.op("list_item_categories").get("items") or [], "类别"
+    )
+    by_name = dict(existing)
+    configured = set()
+    desired = {}
+    for entry in categories:
+        name = _text(entry.get("name")).strip()
+        if name == "":
+            raise RuntimeError("类别名称不能为空")
+        if name in configured:
+            raise RuntimeError("类别名称重复：" + name)
+        configured.add(name)
+        ratio = int(entry.get("performance_ratio", 100))
+        current = existing.get(name)
+        if current is None:
+            current = client.op(
+                "create_item_category", {"name": name, "performance_ratio": ratio}
+            )
+        elif int(current.get("performance_ratio", 100)) != ratio or not current.get(
+            "active", True
+        ):
+            current = client.op(
+                "update_item_category",
+                {
+                    "id": current["id"],
+                    "name": name,
+                    "performance_ratio": ratio,
+                    "active": True,
+                },
+            )
+        existing[name] = current
+        by_name[name] = current
+        for value in entry.get("items") or []:
+            item_name = _text(value).strip()
+            if item_name in desired:
+                raise RuntimeError("类别项目重复：" + item_name)
+            if item_name not in items:
+                raise RuntimeError("类别引用了不存在的项目：" + item_name)
+            desired[item_name] = current["id"]
+    for name, item in list(items.items()):
+        category_id = desired.get(name)
+        current = (item.get("category") or {}).get("id")
+        if current == category_id:
+            continue
+        items[name] = client.op(
+            "update_item",
+            item_payload(item, positions, category_id, keep_category=False),
+        )
+    return items, by_name
 
 
 def apply_settings(client, settings_object, effective_from):
@@ -822,7 +879,9 @@ def _named_id(mapping, name, kind):
     return mapping[name]
 
 
-def resolve_scheme(scheme, staff_by_name, item_by_name, position_by_name):
+def resolve_scheme(
+    scheme, staff_by_name, item_by_name, position_by_name, category_by_name
+):
     """把提成方案里的名称替换成编号；未知名称直接中止。"""
     if not isinstance(scheme, dict):
         raise RuntimeError("scheme.json 缺少 commission 对象")
@@ -853,6 +912,18 @@ def resolve_scheme(scheme, staff_by_name, item_by_name, position_by_name):
                 raise RuntimeError("覆盖比例不能同时写 item_name 和 item_id")
             override["item_id"] = _named_id(
                 item_by_name, override.pop("item_name"), "项目"
+            )
+        if "position_name" in override:
+            if "position_id" in override:
+                raise RuntimeError("覆盖比例不能同时写 position_name 和 position_id")
+            override["position_id"] = _named_id(
+                position_by_name, override.pop("position_name"), "岗位"
+            )
+        if "category_name" in override:
+            if "category_id" in override:
+                raise RuntimeError("覆盖比例不能同时写 category_name 和 category_id")
+            override["category_id"] = _named_id(
+                category_by_name, override.pop("category_name"), "类别"
             )
         overrides.append(override)
     excluded = []
@@ -1897,6 +1968,13 @@ def run(db_path, month, api, account, password, scheme_path, out_dir, limit=None
         items_by_name = phase_call(
             "phase 1", "setup_items", lambda: setup_items(phase1, positions)
         )
+        items_by_name, categories_by_name = phase_call(
+            "phase 1",
+            "setup_categories",
+            lambda: setup_categories(
+                phase1, scheme.get("categories") or [], items_by_name, positions
+            ),
+        )
         phase_call(
             "phase 1",
             "apply_settings",
@@ -1910,6 +1988,7 @@ def run(db_path, month, api, account, password, scheme_path, out_dir, limit=None
                 {name: staff["id"] for name, staff in staff_by_name.items()},
                 {name: item["id"] for name, item in items_by_name.items()},
                 positions,
+                {name: category["id"] for name, category in categories_by_name.items()},
             ),
         )
         phase_call(

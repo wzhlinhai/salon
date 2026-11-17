@@ -27,3 +27,21 @@ func References(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, ids []
 	}
 	return out, nil
 }
+
+// CategoryReferences 批量读取本店项目类别的标识和名称，允许任何状态，不加行锁。
+func CategoryReferences(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]ItemCategoryRef, error) {
+	rows, err := q.GetItemCategories(ctx, dbgen.GetItemCategoriesParams{StoreID: storeID, Ids: ids})
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]ItemCategoryRef, len(rows))
+	for _, row := range rows {
+		out[row.ID] = ItemCategoryRef{ID: row.ID, Name: row.Name}
+	}
+	for _, id := range ids {
+		if _, ok := out[id]; !ok {
+			return nil, ops.ErrNotFound
+		}
+	}
+	return out, nil
+}

@@ -10,7 +10,8 @@ type Cell = Schema['Cell']
 type View = Schema['CommissionSchemeVersionView']
 interface GridCell { key: string, dimensions: Cell, value: CommissionValue }
 interface RuleForm extends Omit<Schema['Rule'], 'cells'> { enabled: boolean, cells: GridCell[] }
-interface OverrideForm { source: Source, staff_id: string, item_id: string, value: CommissionValue }
+type OverrideTarget = 'staff_item' | 'position_category'
+interface OverrideForm { source: Source, target: OverrideTarget, staff_id: string, item_id: string, position_id: string, category_id: string, value: CommissionValue }
 const sources: { value: Source, label: string }[] = [
   { value: 'item', label: '项目业绩' }, { value: 'consume', label: '耗卡业绩' },
   { value: 'labor', label: '手工费' }, { value: 'sale', label: '销售业绩' }
@@ -18,6 +19,9 @@ const sources: { value: Source, label: string }[] = [
 const bases = [
   { value: 'line_price', label: '项目行价格（原价）' }, { value: 'paid', label: '实收（折后价）' },
   { value: 'performance', label: '业绩' }, { value: 'cash_performance', label: '现金业绩' }, { value: 'card_performance', label: '卡金业绩' }
+]
+const targets: { value: OverrideTarget, label: string }[] = [
+  { value: 'staff_item', label: '员工 / 项目' }, { value: 'position_category', label: '岗位 × 类别' }
 ]
 const api = useApi()
 const toast = useToast()
@@ -86,6 +90,8 @@ const ready = ref(false)
 const effectiveFrom = ref('')
 const minDate = ref('')
 const positions = ref<Schema['Ref'][]>([])
+const categories = ref<Schema['ItemCategoryRef'][]>([])
+const categoryLoading = ref(false)
 const staff = ref<Schema['StaffOption'][]>([])
 const items = ref<Schema['Item'][]>([])
 const rules = ref<RuleForm[]>([])
@@ -93,6 +99,7 @@ const overrides = ref<OverrideForm[]>([])
 const excludedStaff = ref<string[]>([])
 const enabledSources = computed(() => sources.filter(s => rules.value.some(r => r.source === s.value && r.enabled)))
 const staffOptions = computed(() => staff.value.map(s => ({ value: s.id, label: `${s.name}${s.active ? '' : '（离职）'}` })))
+const categoryOptions = computed(() => categories.value.map(c => ({ value: c.id, label: c.name })))
 
 function formValue(cell?: Cell): CommissionValue {
   return {
@@ -125,6 +132,7 @@ async function edit() {
     rules.value = []
     overrides.value = []
     excludedStaff.value = []
+    categoryLoading.value = false
   })
   await editor.load(async (current) => {
     const [p, s, i, latest] = await Promise.all([
@@ -138,6 +146,7 @@ async function edit() {
         return
       }
     }
+    if (!(await loadCategories(current))) return
     const last = latest.data?.versions[0]
     const response = last ? await api.POST('/api/ops/get_commission_scheme', { body: { version: last.version } }) : undefined
     if (!current()) return
@@ -152,6 +161,10 @@ async function edit() {
     }
     staff.value = s.data?.staff ?? []
     items.value = i.data?.items ?? []
+    for (const override of scheme?.overrides ?? []) {
+      if (override.position && !positions.value.some(p => p.id === override.position!.id)) positions.value.push(override.position)
+      if (override.category && !categories.value.some(c => c.id === override.category!.id)) categories.value.push(override.category)
+    }
     minDate.value = last && last.effective_from > today.value ? last.effective_from : today.value
     effectiveFrom.value = minDate.value
     rules.value = sources.map(({ value: source }) => {
@@ -164,10 +177,32 @@ async function edit() {
       rebuild(rule)
       return rule
     })
-    overrides.value = scheme?.overrides.map(o => ({ source: o.source, staff_id: o.staff_id ?? '__all__', item_id: o.item_id ?? '__all__', value: formValue(o) })) ?? []
+    overrides.value = scheme?.overrides.map(o => ({
+      source: o.source,
+      target: o.position_id ? 'position_category' : 'staff_item',
+      staff_id: o.staff_id ?? '__all__', item_id: o.item_id ?? '__all__',
+      position_id: o.position_id ?? '__all__', category_id: o.category_id ?? '__all__',
+      value: formValue(o)
+    })) ?? []
     excludedStaff.value = scheme?.excluded_staff.map(s => s.staff_id) ?? []
     ready.value = true
   })
+}
+
+async function loadCategories(current: () => boolean): Promise<boolean> {
+  categoryLoading.value = true
+  try {
+    const { data, error } = await api.POST('/api/ops/list_item_categories', { body: {} })
+    if (!current()) return false
+    if (!data) {
+      toast.add({ title: errorText(error), color: 'error' })
+      return false
+    }
+    categories.value = [...data.items]
+    return true
+  } finally {
+    if (current()) categoryLoading.value = false
+  }
 }
 
 function payloadValue(value: CommissionValue): Cell {
@@ -184,7 +219,9 @@ async function save() {
         by_position: r.by_position, by_designated: r.by_designated, by_member: r.by_member,
         cells: r.cells.filter(c => c.value.kind !== 'none').map(c => ({ ...c.dimensions, ...payloadValue(c.value) }))
       })),
-      overrides: overrides.value.map(o => ({ source: o.source, staff_id: o.staff_id === '__all__' ? undefined : o.staff_id, item_id: o.source === 'sale' || o.item_id === '__all__' ? undefined : o.item_id, ...payloadValue(o.value) })),
+      overrides: overrides.value.map(o => o.target === 'position_category'
+        ? { source: o.source, position_id: o.position_id === '__all__' ? undefined : o.position_id, category_id: o.category_id === '__all__' ? undefined : o.category_id, ...payloadValue(o.value) }
+        : { source: o.source, staff_id: o.staff_id === '__all__' ? undefined : o.staff_id, item_id: o.source === 'sale' || o.item_id === '__all__' ? undefined : o.item_id, ...payloadValue(o.value) }),
       excluded_staff: excludedStaff.value
     }
     const { data, error } = await api.POST('/api/ops/save_commission_scheme', { body: { effective_from: effectiveFrom.value, scheme } })
@@ -195,6 +232,22 @@ async function save() {
       await reload(data.version)
     } else toast.add({ title: errorText(error), color: 'error' })
   })
+}
+
+function changeTarget(o: OverrideForm) {
+  if (o.target === 'position_category') {
+    o.staff_id = '__all__'
+    o.item_id = '__all__'
+    if (o.source === 'sale') o.source = enabledSources.value.find(s => s.value !== 'sale')?.value ?? 'item'
+  } else {
+    o.position_id = '__all__'
+    o.category_id = '__all__'
+  }
+}
+
+function changeSource(o: OverrideForm) {
+  if (o.target === 'position_category' && o.source === 'sale') o.source = enabledSources.value.find(s => s.value !== 'sale')?.value ?? 'item'
+  if (o.source === 'sale') o.item_id = '__all__'
 }
 </script>
 
@@ -237,7 +290,12 @@ async function save() {
       </section>
       <h3 class="font-medium">覆盖比例</h3>
       <p v-if="!detail.scheme.overrides.length">无</p>
-      <p v-for="(o, index) in detail.scheme.overrides" :key="index">{{ sources.find(s => s.value === o.source)?.label }} · {{ o.staff?.name ?? '全部员工' }} · {{ o.item?.name ?? '全部项目' }} · {{ valueText(o) }}</p>
+      <p v-for="(o, index) in detail.scheme.overrides" :key="index">
+        {{ sources.find(s => s.value === o.source)?.label }} ·
+        <template v-if="o.position_id">{{ o.position?.name }} × {{ o.category?.name }}</template>
+        <template v-else>{{ o.staff?.name ?? '全部员工' }} · {{ o.item?.name ?? '全部项目' }}</template>
+        · {{ valueText(o) }}
+      </p>
       <h3 class="mt-4 font-medium">不计提成的员工</h3>
       <p>{{ detail.scheme.excluded_staff.map(s => s.staff.name).join('、') || '无' }}</p>
     </UCard>
@@ -245,6 +303,7 @@ async function save() {
     <UModal v-model:open="open" title="修改提成方案" :ui="{ content: 'sm:max-w-5xl' }">
       <template #body>
         <p v-if="loading">加载中</p>
+        <p v-if="categoryLoading">加载类别中</p>
         <div v-if="ready" class="space-y-5">
           <UFormField label="生效日期" help="不能早于今天，也不能早于最新版本；同一天保存多次，取最后保存的。"><UInput v-model="effectiveFrom" type="date" :min="minDate" /></UFormField>
           <section v-for="rule in rules" :key="rule.source" :data-rule="rule.source" class="space-y-3 rounded border border-default p-4">
@@ -265,15 +324,22 @@ async function save() {
           </section>
           <section class="space-y-3">
             <h3 class="font-medium">覆盖比例</h3>
-            <p class="text-sm text-muted">覆盖比例是比例或固定金额，不带阶梯；项目覆盖只作用于项目业绩、耗卡业绩和手工费。</p>
+            <p class="text-sm text-muted">覆盖比例是比例或固定金额，不带阶梯；项目覆盖和岗位 × 类别覆盖只作用于项目业绩、耗卡业绩和手工费。</p>
             <div v-for="(o, index) in overrides" :key="index" data-testid="override-row" class="space-y-2 rounded border border-default p-3">
-              <UFormField label="来源"><USelect v-model="o.source" :items="enabledSources" @update:model-value="o.item_id = o.source === 'sale' ? '__all__' : o.item_id" /></UFormField>
-              <UFormField label="员工"><USelect v-model="o.staff_id" :items="[{ label: '全部员工', value: '__all__' }, ...staffOptions]" /></UFormField>
-              <UFormField v-if="o.source !== 'sale'" label="项目"><USelect v-model="o.item_id" :items="[{ label: '全部项目', value: '__all__' }, ...items.map(i => ({ label: i.name, value: i.id }))]" /></UFormField>
+              <UFormField label="目标"><USelect v-model="o.target" :items="targets" @update:model-value="changeTarget(o)" /></UFormField>
+              <UFormField label="来源"><USelect v-model="o.source" :items="o.target === 'position_category' ? enabledSources.filter(s => s.value !== 'sale') : enabledSources" @update:model-value="changeSource(o)" /></UFormField>
+              <template v-if="o.target === 'position_category'">
+                <UFormField label="岗位"><USelect v-model="o.position_id" :items="[{ label: '请选择岗位', value: '__all__' }, ...positions.map(p => ({ label: p.name, value: p.id }))]" /></UFormField>
+                <UFormField label="类别"><USelect v-model="o.category_id" :items="[{ label: '请选择类别', value: '__all__' }, ...categoryOptions]" /></UFormField>
+              </template>
+              <template v-else>
+                <UFormField label="员工"><USelect v-model="o.staff_id" :items="[{ label: '全部员工', value: '__all__' }, ...staffOptions]" /></UFormField>
+                <UFormField v-if="o.source !== 'sale'" label="项目"><USelect v-model="o.item_id" :items="[{ label: '全部项目', value: '__all__' }, ...items.map(i => ({ label: i.name, value: i.id }))]" /></UFormField>
+              </template>
               <CommissionValueEditor v-model="o.value" />
               <UButton variant="ghost" @click="overrides.splice(index, 1)">删除覆盖</UButton>
             </div>
-            <UButton :disabled="!enabledSources.length" variant="outline" @click="overrides.push({ source: enabledSources[0]!.value, staff_id: '__all__', item_id: '__all__', value: formValue({ percent: '' }) })">添加覆盖</UButton>
+            <UButton :disabled="!enabledSources.length" variant="outline" @click="overrides.push({ source: enabledSources[0]!.value, target: 'staff_item', staff_id: '__all__', item_id: '__all__', position_id: '__all__', category_id: '__all__', value: formValue({ percent: '' }) })">添加覆盖</UButton>
           </section>
           <UFormField label="不计提成的员工"><USelect v-model="excludedStaff" multiple :items="staffOptions" class="w-full" /></UFormField>
         </div>
