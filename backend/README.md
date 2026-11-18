@@ -104,7 +104,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
   - 当天有执行班次时，整段预约落在班次上班到下班之间；没有班次只受营业时段限制；
   - 不与同一发型师的待确认/已确认预约或私约占位重叠，相切允许；顾客看到的冲突提示不带其他记录 ID；
   - 每位顾客在本店最多同时保留 3 个未来待到店的自助预约，按顾客咨询锁串行，并发也不能超过。
-- 规则拒绝为 409 并返回可直接展示的中文提示。`my_available_slots` 一次读取发型师、项目、当天规则、班次与当天占用，再在内存中逐槽过滤，查询数不随槽数或预约数增长；项目时长为所选项目之和，都为 0 时取 `booking_default_minutes`。`cancel_my_appointment` 只取消本人在本店、状态为待确认或已确认且尚未开始的预约；别人的、别的门店的和不存在的都按不存在处理。
+- 规则拒绝为 409 并返回可直接展示的中文提示。`my_available_slots` 一次读取发型师、项目、当天规则、班次与当天占用，再在内存中逐槽过滤，查询数不随槽数、预约数或挂单数增长；当天占用也包括其他顾客当前营业日挂单的主做时段。项目时长为所选项目之和，都为 0 时取 `booking_default_minutes`。`cancel_my_appointment` 只取消本人在本店、状态为待确认或已确认且尚未开始的预约；别人的、别的门店的和不存在的都按不存在处理。
 
 ## 门店设置（ADR-0002）
 
@@ -112,7 +112,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 - 项目类别是门店数据，不是设置项：门店自行维护类别名称、0–100 的类别比例和启用状态，名称在门店内唯一。项目可以归一个类别，也可以不归类；停用的类别不能再新设到项目上，已经设了的项目保留。加项目行时把项目当时的类别和该类别比例复制到项目行，之后改项目的类别或类别的比例都不影响已经加的行。
 - 考勤宽限分钟 `attendance_grace_minutes` 默认 0，范围 0–60，当天可生效，仅决定迟到、早退是否计异常。
 断网补录：可补录天数 `backfill_max_days` 默认 3，范围 0–31，0 为只能补录当天；按今天执行的设置检查纸单日期。小票设置 `receipt_paper_width` 为 58mm 或 80mm（默认 80mm），`receipt_header`/`receipt_footer` 为最多 60 字的单行文字（抬头留空表示打印门店名称，页尾默认“谢谢惠顾”），`receipt_show_customer_name`、`receipt_show_staff`、`receipt_show_payments`、`receipt_show_card_balance` 为显示/不显示（默认都显示），均可当天生效。
-- 轮牌设置：`rotation_order_rule` 新一天队列的初始顺序（先到先排、接昨天顺序、每晚按成员默认顺序重置，默认先到先排）；`rotation_designated_takes_turn` 点客结账后是否占轮排到队尾（默认占轮）；`rotation_skip_when_serving_designated` 队首正在服务点客时是否自动跳过并记录（默认跳过）；`rotation_skip_policy` 被跳过时排到队尾还是保留原位（默认排到队尾）；`rotation_half_rule` 半轮规则（不记、按价格、按项目、按预约，默认不记）；`rotation_half_price_below` 按价格记半轮的实收上限（元，默认 0 表示不按价格）。预约设置：`booking_min_lead_minutes` 顾客自助预约至少提前的分钟数（默认 0，前台代约不检查）；`booking_max_days_ahead` 从今天起最多可约的天数（默认 30）；`booking_default_minutes` 未选项目时的默认服务时长（默认 60）。营业时段复用 `business_hours`，预约必须完整落在开门到关门之间，关门须晚于开门，不支持跨天。规则按营业日生效，收银推进和每次轮牌操作都读取调用时刻执行的设置。
+- 轮牌设置：`rotation_order_rule` 新一天队列的初始顺序（先到先排、接昨天顺序、每晚按成员默认顺序重置，默认先到先排）；`rotation_designated_takes_turn` 点客结账后是否占轮排到队尾（默认占轮）；`rotation_skip_when_serving_designated` 队首正在服务点客时是否自动跳过并记录（默认跳过）；`rotation_skip_policy` 被跳过时排到队尾还是保留原位（默认排到队尾）；`rotation_half_rule` 半轮规则（不记、按价格、按项目、按预约，默认不记）；`rotation_half_price_below` 按价格记半轮的实收上限（元，默认 0 表示不按价格）。预约设置：`booking_min_lead_minutes` 顾客自助预约至少提前的分钟数（默认 0，前台代约不检查）；`booking_max_days_ahead` 从今天起最多可约的天数（默认 30）；`booking_default_minutes` 预约没选项目或项目都没设时长时的默认服务时长，挂单的项目都没设时长时也按它占一次（默认 60）。营业时段复用 `business_hours`，预约必须完整落在开门到关门之间，关门须晚于开门，不支持跨天。规则按营业日生效，收银推进和每次轮牌操作都读取调用时刻执行的设置。
 - 设置项在 `internal/settings` 的 `Catalogue` 里声明：名称、值的形式、系统默认做法和校验。新的业务规则（例如各项业务的做法选择）在这里加一项，再给 `Rules` 加一个读取它的方法。
 - 每次修改都在 `setting_changes` 追加一行：改前、改后、生效日期、修改人、修改时间。`salon_app` 只有 SELECT 和 INSERT 权限。某个营业日执行的值，取生效日期不晚于这一天的最大者，同一生效日期取最后保存的一次（修改时间，再按 ID）；没有修改，或者改成了"恢复默认"，就用系统当前的默认做法。这条选法只在 `internal/inforce` 写一份，门店设置、提成方案版本和底薪共用，各类历史提供自己的保存顺序（提成方案按版本号；设置和底薪按保存时间、ID），SQL 只按门店读出历史；设置的"恢复默认"只在 settings 的 `resolve` 换成目录默认值。生效日期不能早于今天；划分营业日的设置（`fromTomorrow`，例如营业日结束时间）最早明天生效。同一项设置的修改用咨询锁排队，改前值才接得上前一次的改后值。
 - 业务模块不直接查设置表：
@@ -138,7 +138,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 Reconcile 按 `collections.business_date`（补录单写入纸单日；为空的历史行按 `created_at` 换算）的营业日、通道和当前状态汇总金额与笔数；它是查询当时的收款汇总，供日结保存快照，不是按退款发生日统计的资金流水。collections 仅可更新 status、updated_at、external_ref；collection_events 与 order_payments 都只追加。
 
-开单必须选择男客或女客、指定或非指定；未提供顾客时自动创建未识别顾客，由开单权限覆盖。开单保存规则快照和营业日，后续加项目读取快照规则。
+开单必须选择男客或女客、指定或非指定；未提供顾客时自动创建未识别顾客，由开单权限覆盖。开单保存规则快照和营业日，后续加项目读取快照规则。挂单视图带 `booking_conflicts`，列出与该单挂单占用重叠的其他顾客预约和私约占位；结账、已合并或已撤单的单为空数组。
 
 `open_order` 的 `paper_date` 表示补录单纸单上的营业日：营业日就是这一天，规则快照取这一天生效的设置；日期不能晚于今天、不能早于 `backfill_max_days` 个营业日，且不能是已封账的日子。单据行记 `backfill=true`，所有单据视图（含全量导出的“单据”表“补录单”列）都返回它。结账一张补录单时，收款、业绩、提成来源、卡流水、欠款、红包和客次都归到纸单营业日，结账记录本身也用这一天；一次结账只能有一个有效营业日，补录单不能和别的营业日一起结。补录单不推进当天的轮牌，也不能通过 `assign_turn` 接轮牌；`merge_orders` 拒绝补录单和普通单混合合并。纸单营业日所在的工资结算月已锁定时，开单和结账都拒绝补录（再次检查是因为开单后可能锁月）。撤单仍按撤单当天记录反向单和退回流水；改单/撤单的时间窗口、预览的卡有效期按单自己的营业日判断。`get_receipt`（Read/AIDirect，`payment.collect`）按结账单返回门店名称、当天执行的小票设置、脱敏后的顾客姓名（不返回手机号）、项目与员工、按方式汇总的支付（团购带门店标价）、小票总额，以及本次结账用到卡的结账后余额/剩余次数（取自结账写入的卡流水，重打不随后续充值变化）。顾客不在调用者的查看范围时只把该顾客的姓名置空、卡余额隐藏，其余小票内容仍返回。项目行保留添加时的项目名称、项目类别和类别比例，并复制项目岗位，允许必填岗位暂空；级别价来自第一个岗位的员工，没有员工或级别价时取标准价。多人贡献只在项目行记录一次价格，应收按项目行求和。
 
@@ -468,9 +468,11 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 `internal/booking` 管理预约和私约占位。`appointments` 同时保存两种记录：`kind=appointment` 是顾客预约（员工代约或顾客自助），必须有顾客；`kind=block` 是员工自己登记的私约占位，不关联顾客。状态为 pending、confirmed、completed、cancelled、no_show；员工代约和私约占位新建即 confirmed，顾客自助预约新建为 pending，由门店确认。状态只能按 pending → confirmed/cancelled、confirmed → completed/cancelled/no_show 变化，私约占位只能 confirmed → cancelled。
 
-营业时段复用 `business_hours`，另有三项设置：`booking_min_lead_minutes` 提前量（前台代约不检查，导出 `booking.CheckLeadTime` 供 P0-19）、`booking_max_days_ahead` 可约天数和 `booking_default_minutes` 未选项目时的默认时长。预约必须提供顾客、顾客手机号或姓名；三者都没有时拒绝。预约开始必须在今天及以后、不早于当前时刻 5 分钟以上，结束必须晚于开始且与开始同一天、完整落在营业时段内。结束时间默认取所选项目 `duration_minutes` 之和，未选项目或项目都未设时长时取门店默认时长，前台传 `ends_at` 可手改。项目新增 `duration_minutes`（0–600，0 表示未设置）和 `bookable`（默认可以）；预约只接受启用且可约的项目。
+营业时段复用 `business_hours`，另有三项设置：`booking_min_lead_minutes` 提前量（前台代约不检查，导出 `booking.CheckLeadTime` 供 P0-19）、`booking_max_days_ahead` 可约天数和 `booking_default_minutes` 未选项目或项目都没设时长时的默认时长（挂单的项目都没设时长时也按它占一次）。预约必须提供顾客、顾客手机号或姓名；三者都没有时拒绝。预约开始必须在今天及以后、不早于当前时刻 5 分钟以上，结束必须晚于开始且与开始同一天、完整落在营业时段内。结束时间默认取所选项目 `duration_minutes` 之和，未选项目或项目都未设时长时取门店默认时长，前台传 `ends_at` 可手改。项目新增 `duration_minutes`（0–600，0 表示未设置）和 `bookable`（默认可以）；预约只接受启用且可约的项目。
 
 私约占位只检查同一员工的时段冲突和 `ends_at > starts_at`，最长 24 小时，结束时间必须在当前时刻之后；不检查营业时段、可约天数或是否跨天，也不要求顾客。同一员工的 pending/confirmed 记录时段不能重叠，`appointments` 用 `tstzrange` 上的 PostgreSQL EXCLUDE 约束（btree_gist）兜底并发；写入前先查冲突，员工侧的提示里带出冲突记录 ID，顾客侧的提示不带 ID。相切边界允许，已取消、已完成、爽约的记录不占时段。`appointment_items` 保存项目及顺序；`appointment_events` 只追加，每次创建、改约、确认、完成、取消、爽约都记录改前改后的时间、发型师、原因、说明和操作人。取消预约必须选择顾客取消、门店取消、改约或其他，选其他要写说明；顾客自助取消固定记“顾客取消”；取消私约占位不需要原因。
+
+挂单占用不写进 `appointments`，也不参与 EXCLUDE 约束：开单从不因排他约束失败，占用在读取时由当前营业日的挂单算出。只算 `status=open`、`backfill=false`、`business_date` 为当前营业日的单；只算未去掉（`removed_at IS NULL`）的服务项目行，每行只取 slot 最小的岗位（主做）上的员工，助理岗位不占。同一张单、同一员工的多个项目按 `added_at, id` 依次排：游标从 `opened_at` 开始，每段从游标和项目行的 `added_at` 较晚者起算，加上项目当前 `duration_minutes`，连续或重叠的段合并；整组项目都没设时长时，从第一行的起点按 `booking_default_minutes` 占一次，组内部分行没设时长则不额外占。合并单的项目行归到保留单，游标从保留单的 `opened_at` 起算。占用到算出的结束时刻自然失效，不随挂单未结账延长，也不裁剪到当前时刻。占用区间是绝对时间，可以跨过营业日结束；查询下一个营业日的可约时段时也按绝对时间判断重叠。小程序可约时段和顾客自助预约会避开其他顾客的挂单占用（同一顾客自己的挂单除外）；前台代约、改约与挂单占用重叠时返回 409「该时段发型师在服务到店顾客，预计 HH:MM 结束」，同一顾客自己的挂单除外；私约占位不检查挂单占用，两者都只表示“人在忙”。开单与预约在同一瞬间提交的并发窗口接受：开单照样成功，冲突会出现在单据的 `booking_conflicts` 里，供前台改约或换人。`list_appointments` 另返回与查询范围重叠的 `walk_ins`（单、发型师、起止时间，不含顾客资料），遵守员工筛选和本人范围；单据的 `booking_conflicts` 按视图批查询，条数不随挂单数增长。
 
 `appointments.created_by` 与 `created_by_customer` 恰好一个非空：员工创建记员工，顾客自助预约记顾客本人。`appointment_events.actor_staff_id` 与 `actor_customer_id` 同理。两者都是历史操作者，顾客合并时不改挂，只随 `appointments.customer_id` 改挂预约所属顾客。预约视图的 `created_by` 与事件 `actor` 返回 `kind=staff|customer`：顾客操作者在员工有顾客查看范围且顾客有姓名时显示姓名，否则显示「顾客本人」。顾客合并后仍能看到并取消保留顾客名下的自助预约。`staff.self_bookable` 默认为 false，只有开启的在职员工出现在顾客可预约列表中。
 

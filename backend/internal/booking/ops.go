@@ -84,6 +84,29 @@ func checkOverlap(ctx context.Context, env ops.Env, staffID uuid.UUID, startsAt,
 	return err
 }
 
+// checkWalkinOverlap 检查预约是否与同一发型师正在服务的挂单占用重叠；同一顾客自己的挂单不算冲突。
+func checkWalkinOverlap(ctx context.Context, env ops.Env, staffID, customerID uuid.UUID, startsAt, endsAt time.Time) error {
+	occupancies, err := WalkinOccupancies(ctx, env, &staffID)
+	if err != nil {
+		return err
+	}
+	var busyUntil time.Time
+	for _, occ := range occupancies {
+		if occ.CustomerID == customerID {
+			continue
+		}
+		if startsAt.Before(occ.EndsAt) && endsAt.After(occ.StartsAt) {
+			if occ.EndsAt.After(busyUntil) {
+				busyUntil = occ.EndsAt
+			}
+		}
+	}
+	if !busyUntil.IsZero() {
+		return ops.Rule("该时段发型师在服务到店顾客，预计 " + busyUntil.In(settings.Location).Format("15:04") + " 结束")
+	}
+	return nil
+}
+
 func addEvent(ctx context.Context, env ops.Env, appointmentID uuid.UUID, kind string, fromStart, fromEnd *time.Time, toStart, toEnd time.Time, fromStaff *uuid.UUID, toStaff uuid.UUID, reason, note *string) error {
 	params := dbgen.AddAppointmentEventParams{
 		TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, AppointmentID: appointmentID, Kind: kind,
@@ -185,6 +208,9 @@ func createAppointment(ctx context.Context, env ops.Env, in *CreateAppointmentIn
 	if err := checkOverlap(ctx, env, in.StaffID, in.StartsAt, endsAt, nil); err != nil {
 		return nil, err
 	}
+	if err := checkWalkinOverlap(ctx, env, in.StaffID, customerID, in.StartsAt, endsAt); err != nil {
+		return nil, err
+	}
 	createdBy := env.Caller.StaffID
 	row, err := env.Q.CreateAppointment(ctx, dbgen.CreateAppointmentParams{
 		TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, StaffID: in.StaffID, CustomerID: &customerID,
@@ -266,6 +292,9 @@ func rescheduleAppointment(ctx context.Context, env ops.Env, in *RescheduleAppoi
 		return nil, err
 	}
 	if err := checkOverlap(ctx, env, staffID, startsAt, endsAt, &row.ID); err != nil {
+		return nil, err
+	}
+	if err := checkWalkinOverlap(ctx, env, staffID, *row.CustomerID, startsAt, endsAt); err != nil {
 		return nil, err
 	}
 	before, err := loadAppointment(ctx, env, row)

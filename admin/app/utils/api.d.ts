@@ -3557,6 +3557,7 @@ export interface components {
         };
         AppointmentList: {
             entries: components["schemas"]["Appointment"][];
+            walk_ins: components["schemas"]["WalkinOccupancyView"][];
         };
         AppointmentStatusInput: {
             id: string;
@@ -3651,6 +3652,16 @@ export interface components {
             item_ids: string[];
             note?: string;
             staff_id: string;
+            /** Format: date-time */
+            starts_at: string;
+        };
+        BookingConflict: {
+            appointment_id: string;
+            /** Format: date-time */
+            ends_at: string;
+            /** @enum {string} */
+            kind: "appointment" | "block";
+            staff: components["schemas"]["Ref"];
             /** Format: date-time */
             starts_at: string;
         };
@@ -5510,6 +5521,7 @@ export interface components {
         Order: {
             /** @description 断网后用纸单补录的单，营业日是纸单上的日期 */
             backfill: boolean;
+            booking_conflicts: components["schemas"]["BookingConflict"][];
             /** Format: date */
             business_date: string;
             checkout_id: string | null;
@@ -5809,6 +5821,7 @@ export interface components {
         PreviewCheckout: {
             /** @description 断网后用纸单补录的单，营业日是纸单上的日期 */
             backfill: boolean;
+            booking_conflicts: components["schemas"]["BookingConflict"][];
             /** Format: date */
             business_date: string;
             checkout_id: string | null;
@@ -6737,6 +6750,14 @@ export interface components {
             /** Format: date-time */
             opened_at: string;
             staff_id: string;
+        };
+        WalkinOccupancyView: {
+            /** Format: date-time */
+            ends_at: string;
+            order_id: string;
+            staff: components["schemas"]["Ref"];
+            /** Format: date-time */
+            starts_at: string;
         };
     };
     responses: never;

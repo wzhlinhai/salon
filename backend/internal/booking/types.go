@@ -111,7 +111,16 @@ type Appointment struct {
 
 // AppointmentList 是某个日期范围内的预约和占位。
 type AppointmentList struct {
-	Entries []Appointment `json:"entries"`
+	Entries []Appointment         `json:"entries"`
+	WalkIns []WalkinOccupancyView `json:"walk_ins"`
+}
+
+// WalkinOccupancyView 是预约日历上挂单占用的时段，不含顾客资料。
+type WalkinOccupancyView struct {
+	OrderID  uuid.UUID `json:"order_id"`
+	Staff    staff.Ref `json:"staff"`
+	StartsAt time.Time `json:"starts_at"`
+	EndsAt   time.Time `json:"ends_at"`
 }
 
 // AppointmentItemInput 是预约选择的一个项目。

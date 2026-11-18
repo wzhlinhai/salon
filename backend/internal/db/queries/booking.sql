@@ -98,3 +98,35 @@ WHERE store_id=sqlc.arg(store_id) AND customer_id=sqlc.arg(customer_id)
 
 -- name: LockCustomerSelfBooking :exec
 SELECT pg_advisory_xact_lock(hashtextextended((sqlc.arg(store_id)::uuid)::text || '/self_booking/' || (sqlc.arg(customer_id)::uuid)::text, 0));
+
+-- name: ListWalkinLines :many
+SELECT o.id AS order_id, o.customer_id, o.opened_at,
+       oi.id AS line_id, oi.added_at, oi.removed_at, oi.item_kind,
+       i.duration_minutes, p.staff_id
+FROM orders o
+JOIN order_items oi ON oi.tenant_id=o.tenant_id AND oi.order_id=o.id
+JOIN items i ON i.tenant_id=oi.tenant_id AND i.id=oi.item_id
+LEFT JOIN LATERAL (
+ SELECT pos.staff_id
+ FROM order_item_positions pos
+ WHERE pos.tenant_id=oi.tenant_id AND pos.order_item_id=oi.id
+ ORDER BY pos.slot
+ LIMIT 1
+) p ON true
+WHERE o.store_id=sqlc.arg(store_id)
+ AND o.status='open'
+ AND NOT o.backfill
+ AND o.business_date=sqlc.arg(business_date)::date
+ AND (sqlc.narg(staff_id)::uuid IS NULL OR p.staff_id=sqlc.narg(staff_id))
+ORDER BY o.id, oi.added_at, oi.id;
+
+-- name: ListWalkinConflictCandidates :many
+SELECT a.id AS appointment_id, a.kind, a.staff_id, a.customer_id, a.order_id,
+       a.starts_at, a.ends_at, s.name AS staff_name
+FROM appointments a
+JOIN staff s ON s.tenant_id=a.tenant_id AND s.id=a.staff_id
+WHERE a.store_id=sqlc.arg(store_id)
+ AND a.status IN ('pending','confirmed')
+ AND a.staff_id=ANY(sqlc.arg(staff_ids)::uuid[])
+ AND a.starts_at < sqlc.arg(to_at) AND a.ends_at > sqlc.arg(from_at)
+ORDER BY a.starts_at, a.id;

@@ -548,6 +548,140 @@ func (q *Queries) ListStaffOccupied(ctx context.Context, arg ListStaffOccupiedPa
 	return items, nil
 }
 
+const listWalkinConflictCandidates = `-- name: ListWalkinConflictCandidates :many
+SELECT a.id AS appointment_id, a.kind, a.staff_id, a.customer_id, a.order_id,
+       a.starts_at, a.ends_at, s.name AS staff_name
+FROM appointments a
+JOIN staff s ON s.tenant_id=a.tenant_id AND s.id=a.staff_id
+WHERE a.store_id=$1
+ AND a.status IN ('pending','confirmed')
+ AND a.staff_id=ANY($2::uuid[])
+ AND a.starts_at < $3 AND a.ends_at > $4
+ORDER BY a.starts_at, a.id
+`
+
+type ListWalkinConflictCandidatesParams struct {
+	StoreID  uuid.UUID
+	StaffIds []uuid.UUID
+	ToAt     pgtype.Timestamptz
+	FromAt   pgtype.Timestamptz
+}
+
+type ListWalkinConflictCandidatesRow struct {
+	AppointmentID uuid.UUID
+	Kind          string
+	StaffID       uuid.UUID
+	CustomerID    *uuid.UUID
+	OrderID       *uuid.UUID
+	StartsAt      pgtype.Timestamptz
+	EndsAt        pgtype.Timestamptz
+	StaffName     string
+}
+
+func (q *Queries) ListWalkinConflictCandidates(ctx context.Context, arg ListWalkinConflictCandidatesParams) ([]ListWalkinConflictCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, listWalkinConflictCandidates,
+		arg.StoreID,
+		arg.StaffIds,
+		arg.ToAt,
+		arg.FromAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListWalkinConflictCandidatesRow
+	for rows.Next() {
+		var i ListWalkinConflictCandidatesRow
+		if err := rows.Scan(
+			&i.AppointmentID,
+			&i.Kind,
+			&i.StaffID,
+			&i.CustomerID,
+			&i.OrderID,
+			&i.StartsAt,
+			&i.EndsAt,
+			&i.StaffName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWalkinLines = `-- name: ListWalkinLines :many
+SELECT o.id AS order_id, o.customer_id, o.opened_at,
+       oi.id AS line_id, oi.added_at, oi.removed_at, oi.item_kind,
+       i.duration_minutes, p.staff_id
+FROM orders o
+JOIN order_items oi ON oi.tenant_id=o.tenant_id AND oi.order_id=o.id
+JOIN items i ON i.tenant_id=oi.tenant_id AND i.id=oi.item_id
+LEFT JOIN LATERAL (
+ SELECT pos.staff_id
+ FROM order_item_positions pos
+ WHERE pos.tenant_id=oi.tenant_id AND pos.order_item_id=oi.id
+ ORDER BY pos.slot
+ LIMIT 1
+) p ON true
+WHERE o.store_id=$1
+ AND o.status='open'
+ AND NOT o.backfill
+ AND o.business_date=$2::date
+ AND ($3::uuid IS NULL OR p.staff_id=$3)
+ORDER BY o.id, oi.added_at, oi.id
+`
+
+type ListWalkinLinesParams struct {
+	StoreID      uuid.UUID
+	BusinessDate pgtype.Date
+	StaffID      *uuid.UUID
+}
+
+type ListWalkinLinesRow struct {
+	OrderID         uuid.UUID
+	CustomerID      uuid.UUID
+	OpenedAt        pgtype.Timestamptz
+	LineID          uuid.UUID
+	AddedAt         pgtype.Timestamptz
+	RemovedAt       pgtype.Timestamptz
+	ItemKind        string
+	DurationMinutes int32
+	StaffID         *uuid.UUID
+}
+
+func (q *Queries) ListWalkinLines(ctx context.Context, arg ListWalkinLinesParams) ([]ListWalkinLinesRow, error) {
+	rows, err := q.db.Query(ctx, listWalkinLines, arg.StoreID, arg.BusinessDate, arg.StaffID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListWalkinLinesRow
+	for rows.Next() {
+		var i ListWalkinLinesRow
+		if err := rows.Scan(
+			&i.OrderID,
+			&i.CustomerID,
+			&i.OpenedAt,
+			&i.LineID,
+			&i.AddedAt,
+			&i.RemovedAt,
+			&i.ItemKind,
+			&i.DurationMinutes,
+			&i.StaffID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockAppointment = `-- name: LockAppointment :one
 SELECT tenant_id, store_id, id, staff_id, customer_id, kind, starts_at, ends_at, status, note, order_id, created_by, created_at, created_by_customer FROM appointments WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
 `

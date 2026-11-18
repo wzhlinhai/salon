@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/wzhlinhai/salon/backend/internal/audit"
+	"github.com/wzhlinhai/salon/backend/internal/booking"
 	"github.com/wzhlinhai/salon/backend/internal/catalog"
 	"github.com/wzhlinhai/salon/backend/internal/closingguard"
 	"github.com/wzhlinhai/salon/backend/internal/customers"
@@ -20,6 +21,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/payrollmonth"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
+	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 
 // Register 声明开单、项目行修改和挂单读操作。
@@ -292,6 +294,35 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 			nets[i.OrderID] = nets[i.OrderID].AddProduct(net, 1)
 		}
 	}
+	conflicts := map[uuid.UUID][]BookingConflict{}
+	openIDs := map[uuid.UUID]bool{}
+	for _, r := range rows {
+		if r.Status == "open" {
+			openIDs[r.ID] = true
+		}
+	}
+	if len(openIDs) > 0 {
+		occupancies, err := booking.WalkinOccupancies(ctx, env, nil)
+		if err != nil {
+			return nil, err
+		}
+		own := make([]booking.WalkinOccupancy, 0, len(occupancies))
+		for _, occ := range occupancies {
+			if openIDs[occ.OrderID] {
+				own = append(own, occ)
+			}
+		}
+		found, err := booking.WalkinConflicts(ctx, env, own)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range found {
+			conflicts[c.OrderID] = append(conflicts[c.OrderID], BookingConflict{
+				AppointmentID: c.AppointmentID, Kind: c.Kind, Staff: staff.Ref{ID: c.StaffID, Name: c.StaffName},
+				StartsAt: c.StartsAt, EndsAt: c.EndsAt,
+			})
+		}
+	}
 	out := make([]Order, 0, len(rows))
 	for _, r := range rows {
 		items := byOrder[r.ID]
@@ -306,7 +337,11 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 		if gb == nil {
 			gb = []OrderGroupbuy{}
 		}
-		out = append(out, Order{Void: byVoid[r.ID], CheckoutID: r.CheckoutID, Payments: ps, Groupbuy: gb, ID: r.ID, CustomerID: r.CustomerID, Gender: r.Gender, Designated: r.Designated, Status: r.Status, MergedInto: r.MergedInto, BusinessDate: r.BusinessDate.Time.Format(time.DateOnly), Backfill: r.Backfill, OpenedBy: r.OpenedBy, OpenedAt: r.OpenedAt.Time, Items: items, Receivable: totals[r.ID].Format(), Discount: discounts[r.ID].Format(), Net: nets[r.ID].Format()})
+		bc := conflicts[r.ID]
+		if bc == nil {
+			bc = []BookingConflict{}
+		}
+		out = append(out, Order{Void: byVoid[r.ID], CheckoutID: r.CheckoutID, Payments: ps, Groupbuy: gb, ID: r.ID, CustomerID: r.CustomerID, Gender: r.Gender, Designated: r.Designated, Status: r.Status, MergedInto: r.MergedInto, BusinessDate: r.BusinessDate.Time.Format(time.DateOnly), Backfill: r.Backfill, OpenedBy: r.OpenedBy, OpenedAt: r.OpenedAt.Time, Items: items, BookingConflicts: bc, Receivable: totals[r.ID].Format(), Discount: discounts[r.ID].Format(), Net: nets[r.ID].Format()})
 	}
 	return out, nil
 }
