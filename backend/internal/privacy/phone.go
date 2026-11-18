@@ -1,7 +1,11 @@
 // Package privacy 提供返回业务数据时共用的隐私处理。
 package privacy
 
-import "strings"
+import (
+	"fmt"
+	"reflect"
+	"strings"
+)
 
 // MaskName 保留姓名第一个字，其余每个字替换为 *；空姓名返回空串。
 func MaskName(name string) string {
@@ -24,4 +28,44 @@ func MaskPhone(phone string) string {
 		}
 	}
 	return phone[:3] + "****" + phone[7:]
+}
+
+// PhoneKey 报告 JSON 键名是否承载手机号：键名为 phone 或以 _phone 结尾。
+func PhoneKey(key string) bool {
+	return key == "phone" || strings.HasSuffix(key, "_phone")
+}
+
+// PhoneKeyword 报告键名是否像手机号字段名；供无法读取字段名的动态键使用。
+func PhoneKeyword(key string) bool {
+	return strings.Contains(strings.ToLower(key), "phone")
+}
+
+// PhoneField 判断结构体字段是否承载手机号，并检查它的 JSON 键名能否被打码。
+// 不是手机号字段时返回 false；键名或选项不合规时返回错误。
+func PhoneField(t reflect.Type, field reflect.StructField) (bool, error) {
+	fieldType := field.Type
+	if fieldType.Kind() == reflect.Pointer {
+		fieldType = fieldType.Elem()
+	}
+	if !field.IsExported() && (!field.Anonymous || fieldType.Kind() != reflect.Struct) {
+		return false, nil
+	}
+	tag := field.Tag.Get("json")
+	if tag == "-" {
+		return false, nil
+	}
+	key, options, _ := strings.Cut(tag, ",")
+	if key == "" {
+		key = field.Name
+	}
+	if !PhoneKeyword(field.Name) || fieldType.Kind() != reflect.String {
+		return false, nil
+	}
+	if !PhoneKey(key) {
+		return true, fmt.Errorf("privacy: field %s.%s has JSON key %q; phone numbers must use the key \"phone\" or a key ending in \"_phone\" so they can be masked", t.Name(), field.Name, key)
+	}
+	if strings.Contains(","+options+",", ",string,") {
+		return true, fmt.Errorf("privacy: field %s.%s has JSON key %q and uses the JSON string option; quoted phone numbers cannot be masked", t.Name(), field.Name, key)
+	}
+	return true, nil
 }

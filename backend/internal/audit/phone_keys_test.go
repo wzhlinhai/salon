@@ -14,6 +14,9 @@ func TestCheckPhoneKeys(t *testing.T) {
 	type Order struct {
 		CustomerPhone string `json:"customer_phone"`
 	}
+	type BadOrder struct {
+		MobilePhone string `json:"contact"`
+	}
 	type PointerOrder struct {
 		CustomerPhone *string `json:"customer_phone"`
 	}
@@ -52,20 +55,22 @@ func TestCheckPhoneKeys(t *testing.T) {
 		{"map pointer", map[string]any{"phone_number": &phone}, `map key "phone_number"`},
 		{"map phone pointer", map[string]any{"phone": &phone}, ""},
 		{"map nil pointer", map[string]any{"phone_number": (*string)(nil)}, ""},
-		{"string", Order{phone}, `Order.CustomerPhone is logged as "customer_phone"`},
-		{"pointer", PointerOrder{&phone}, `PointerOrder.CustomerPhone is logged as "customer_phone"`},
-		{"nil phone pointer", PointerOrder{}, `PointerOrder.CustomerPhone is logged as "customer_phone"`},
-		{"slice", []Order{{phone}}, `Order.CustomerPhone is logged as "customer_phone"`},
-		{"array", [1]Order{{phone}}, `Order.CustomerPhone is logged as "customer_phone"`},
-		{"interface", struct{ Value any }{Order{phone}}, `Order.CustomerPhone is logged as "customer_phone"`},
-		{"embedded", Embedded{Order{phone}}, `Order.CustomerPhone is logged as "customer_phone"`},
+		{"customer phone key", Order{phone}, ""},
+		{"pointer", PointerOrder{&phone}, ""},
+		{"nil phone pointer", PointerOrder{}, ""},
+		{"slice", []Order{{phone}}, ""},
+		{"array", [1]Order{{phone}}, ""},
+		{"interface", struct{ Value any }{Order{phone}}, ""},
+		{"embedded", Embedded{Order{phone}}, ""},
+		{"non-conforming field", BadOrder{phone}, `BadOrder.MobilePhone has JSON key "contact"`},
+		{"non-conforming slice", []BadOrder{{phone}}, `BadOrder.MobilePhone has JSON key "contact"`},
 		{"map", map[string]any{"phone_number": phone}, `map key "phone_number"`},
 		{"map case", map[string]any{"PHONE": phone}, `map key "PHONE"`},
-		{"map nested", map[string]any{"order": &Order{phone}}, `Order.CustomerPhone is logged as "customer_phone"`},
-		{"default field name", struct{ Phone string }{phone}, `.Phone is logged as "Phone"`},
+		{"map nested", map[string]any{"order": &BadOrder{phone}}, `BadOrder.MobilePhone has JSON key "contact"`},
+		{"default field name", struct{ Phone string }{phone}, `.Phone has JSON key "Phone"`},
 		{"tag options", struct {
 			Phone string `json:"phone_number,omitempty"`
-		}{phone}, `.Phone is logged as "phone_number"`},
+		}{phone}, `.Phone has JSON key "phone_number"`},
 		{"phone", struct {
 			Phone *string `json:"phone"`
 		}{&phone}, ""},
@@ -102,7 +107,7 @@ func TestCheckPhoneKeys(t *testing.T) {
 
 func TestRecordRejectsPhoneKeysBeforeDatabase(t *testing.T) {
 	invalid := struct {
-		CustomerPhone string `json:"customer_phone"`
+		MobilePhone string `json:"contact"`
 	}{"13800131234"}
 	for _, tt := range []struct {
 		name          string
@@ -118,7 +123,7 @@ func TestRecordRejectsPhoneKeysBeforeDatabase(t *testing.T) {
 				}
 			}()
 			err := Record(context.Background(), ops.Env{}, "test", StaffTarget(uuid.Nil), tt.before, tt.after)
-			if err == nil || !strings.Contains(err.Error(), `CustomerPhone is logged as "customer_phone"`) {
+			if err == nil || !strings.Contains(err.Error(), `MobilePhone has JSON key "contact"`) {
 				t.Fatalf("Record() = %v, want phone key error", err)
 			}
 		})

@@ -449,6 +449,123 @@ func TestDraftPrivacy(t *testing.T) {
 	if phone(confirmed.Body, "params") != "139****5678" {
 		t.Fatal(confirmed)
 	}
+	raw := call(t, s, token, "create_draft", map[string]any{"operation": "create_customer", "params": map[string]any{"phone": "13712345678"}, "summary": "草稿读取", "utterance": ""})
+	if phone(raw.Body, "params") != "137****5678" {
+		t.Fatal(raw)
+	}
+	rejectedDraft := call(t, s, token, "reject_draft", map[string]any{"id": raw.Body["id"], "reason": "不需要"})
+	if phone(rejectedDraft.Body, "params") != "137****5678" {
+		t.Fatal(rejectedDraft)
+	}
+}
+
+func TestDraftCreateAppointmentPhoneMask(t *testing.T) {
+	s := optest.OpenShop(t)
+	staff, token := s.Hire("发型师", "002", "stylist", s.Role("发型师"))
+	params := func(phone string) map[string]any {
+		return map[string]any{
+			"customer_name":  "李四",
+			"customer_phone": phone,
+			"staff_id":       staff.String(),
+			"starts_at":      "2026-11-20T15:00:00+08:00",
+		}
+	}
+	phoneOf := func(m map[string]any, key string) string {
+		t.Helper()
+		params, ok := m[key].(map[string]any)
+		if !ok {
+			t.Fatalf("%s: %v", key, m)
+		}
+		return params["customer_phone"].(string)
+	}
+	owner := s.MustCaller(s.Owner)
+	r := s.AI(t, owner, "create_appointment", params("13800001234"))
+	if r.Status != 200 {
+		t.Fatal(r)
+	}
+	d := r.Body
+	if phoneOf(d, "params") != "13800001234" || phoneOf(d, "original_params") != "13800001234" {
+		t.Fatal(d)
+	}
+	updated := call(t, s, s.Owner, "update_draft_params", map[string]any{"id": d["id"], "params": params("13900001234")})
+	if phoneOf(updated.Body, "params") != "13900001234" || phoneOf(updated.Body, "original_params") != "13800001234" {
+		t.Fatal(updated)
+	}
+	c := s.MustCaller(token)
+	for _, ch := range s.Channels() {
+		list := ch.Call(t, c, "list_drafts", map[string]any{})
+		if list.Status != 200 {
+			t.Fatal(ch.Name, list)
+		}
+		entries := list.Body["drafts"].([]any)
+		if len(entries) != 1 {
+			t.Fatal(ch.Name, list)
+		}
+		entry := entries[0].(map[string]any)
+		if phoneOf(entry, "params") != "139****1234" || phoneOf(entry, "original_params") != "138****1234" {
+			t.Fatal(ch.Name, list)
+		}
+		got := ch.Call(t, c, "get_draft", id(d))
+		if got.Status != 200 {
+			t.Fatal(ch.Name, got)
+		}
+		if phoneOf(got.Body, "params") != "139****1234" || phoneOf(got.Body, "original_params") != "138****1234" {
+			t.Fatal(ch.Name, got)
+		}
+		events := got.Body["events"].([]any)
+		if len(events) != 2 {
+			t.Fatal(ch.Name, got)
+		}
+		created, modified := events[0].(map[string]any), events[1].(map[string]any)
+		if created["before_params"] != nil || phoneOf(created, "after_params") != "138****1234" {
+			t.Fatal(ch.Name, created)
+		}
+		if phoneOf(modified, "before_params") != "138****1234" || phoneOf(modified, "after_params") != "139****1234" {
+			t.Fatal(ch.Name, modified)
+		}
+	}
+	ownerView := call(t, s, s.Owner, "get_draft", id(d)).Body
+	if phoneOf(ownerView, "params") != "13900001234" || phoneOf(ownerView, "original_params") != "13800001234" {
+		t.Fatal(ownerView)
+	}
+	for _, raw := range ownerView["events"].([]any) {
+		event := raw.(map[string]any)
+		if event["before_params"] != nil && !strings.HasSuffix(phoneOf(event, "before_params"), "00001234") {
+			t.Fatal(event)
+		}
+		if !strings.HasSuffix(phoneOf(event, "after_params"), "00001234") {
+			t.Fatal(event)
+		}
+	}
+	createdDraft := call(t, s, token, "create_draft", map[string]any{"operation": "create_appointment", "params": params("13700001234"), "summary": "起草预约", "utterance": ""})
+	if phoneOf(createdDraft.Body, "params") != "137****1234" {
+		t.Fatal(createdDraft)
+	}
+}
+
+func TestDraftPreviewRedacted(t *testing.T) {
+	s := optest.OpenShop(t)
+	role := call(t, s, s.Owner, "create_role", map[string]any{"name": "预览无完整手机", "permissions": []any{map[string]any{"permission": "customer.edit"}}}).Body["id"].(string)
+	_, token := s.Hire("员工", "002", "preview", uuid.MustParse(role))
+	s.Registry.SetDraftPreview("create_customer", func(context.Context, ops.Env, json.RawMessage) (any, error) {
+		return map[string]any{"phone": "13800001234"}, nil
+	})
+	d := call(t, s, token, "create_draft", map[string]any{"operation": "create_customer", "params": map[string]any{"name": "预览"}, "summary": "", "utterance": ""}).Body
+	c := s.MustCaller(token)
+	for _, ch := range s.Channels() {
+		got := ch.Call(t, c, "get_draft", id(d))
+		if got.Status != 200 {
+			t.Fatal(ch.Name, got)
+		}
+		preview, ok := got.Body["preview"].(map[string]any)
+		if !ok || preview["phone"] != "138****1234" {
+			t.Fatal(ch.Name, got)
+		}
+	}
+	owner := call(t, s, s.Owner, "get_draft", id(d)).Body
+	if owner["preview"].(map[string]any)["phone"] != "13800001234" {
+		t.Fatal(owner)
+	}
 }
 
 type queryCounter struct{ n atomic.Int64 }

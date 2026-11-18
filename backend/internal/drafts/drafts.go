@@ -266,6 +266,11 @@ func (s service) get(ctx context.Context, env ops.Env, in *IDInput) (*Detail, er
 			return nil, err
 		}
 		out.PreviewError = err.Error()
+	} else {
+		out.Preview, err = redact(env, out.Preview)
+		if err != nil {
+			return nil, err
+		}
 	}
 	for _, e := range rows {
 		e.BeforeParams, err = redact(env, e.BeforeParams)
