@@ -108,7 +108,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 ## 门店设置（ADR-0002）
 
-- 设置值支持 time（时刻）、time_range（时段）、choice（Options 中的字符串）、integer（Min/Max 内的非负整数）和 text（单行文字，可为空，最多 Max 个字符）。`member_price_rule` 默认会员价优先，也可取较低价；`points_per_recharge_yuan` 为每积一分所需充值本金元数，默认 0（不积分），范围 0–100000。开卡、充值和升级补差价按当日规则积分，赠送金、转余额和调整余额不积分。`guest_count_split` 默认将客次记给第一个岗位的员工，也可选择单上员工均分，当天可生效。`performance_split` 默认按岗位比例分多人业绩，也可选择均分，项目没设岗位比例时均分；还可选择“每人各记全额”，一个项目几个人做时每个岗位上的员工都记全额，全店业绩合计会大于实收；`performance_ratio_*` 为九种支付方式各自的 0–100 业绩比例，本金、现金、银联、微信、支付宝、团购和挂账默认 100%，赠送金和红包默认 0%；购买次数、赠送次数的耗卡业绩比例默认分别为 100%、0%，均可当天生效。退卡赠送金 `card_refund_bonus` 默认不退、作废，可选择扣回未被撤单退回的消费赠送金；`card_refund_fee_percent` 为 0–100 的退款手续费百分比，默认 0，当天可生效。撤单授权窗口 `void_window_minutes` 为 0（默认关闭）或 1–60 分钟，当天可生效。
+- 设置值支持 time（时刻）、time_range（时段）、choice（Options 中的字符串）、integer（Min/Max 内的非负整数）和 text（单行文字，可为空，最多 Max 个字符）。`member_price_rule` 默认会员价优先，也可取较低价；`points_per_recharge_yuan` 为每积一分所需充值本金元数，默认 0（不积分），范围 0–100000。开卡、充值和升级补差价按当日规则积分，赠送金、转余额和调整余额不积分。`guest_count_split` 默认将客次记给第一个岗位的员工，也可选择单上员工均分，当天可生效。`performance_split` 默认按岗位比例分多人业绩，也可选择均分，项目没设岗位比例时均分；还可选择“每人各记全额”，一个项目几个人做时每个岗位上的员工都记全额，全店业绩合计会大于实收；`commission_split` 默认“跟业绩分法一样”，也可选择均分或按岗位比例，只在 `performance_split` 为“每人各记全额”时起作用，其他分法下提成总跟业绩一样，项目没设岗位比例时按均分；结账时随业绩一起按快照留存，之后改设置不影响已结账的单。`performance_ratio_*` 为九种支付方式各自的 0–100 业绩比例，本金、现金、银联、微信、支付宝、团购和挂账默认 100%，赠送金和红包默认 0%；购买次数、赠送次数的耗卡业绩比例默认分别为 100%、0%，均可当天生效。退卡赠送金 `card_refund_bonus` 默认不退、作废，可选择扣回未被撤单退回的消费赠送金；`card_refund_fee_percent` 为 0–100 的退款手续费百分比，默认 0，当天可生效。撤单授权窗口 `void_window_minutes` 为 0（默认关闭）或 1–60 分钟，当天可生效。
 - 项目类别是门店数据，不是设置项：门店自行维护类别名称、0–100 的类别比例和启用状态，名称在门店内唯一。项目可以归一个类别，也可以不归类；停用的类别不能再新设到项目上，已经设了的项目保留。加项目行时把项目当时的类别和该类别比例复制到项目行，之后改项目的类别或类别的比例都不影响已经加的行。
 - 考勤宽限分钟 `attendance_grace_minutes` 默认 0，范围 0–60，当天可生效，仅决定迟到、早退是否计异常。
 断网补录：可补录天数 `backfill_max_days` 默认 3，范围 0–31，0 为只能补录当天；按今天执行的设置检查纸单日期。小票设置 `receipt_paper_width` 为 58mm 或 80mm（默认 80mm），`receipt_header`/`receipt_footer` 为最多 60 字的单行文字（抬头留空表示打印门店名称，页尾默认“谢谢惠顾”），`receipt_show_customer_name`、`receipt_show_staff`、`receipt_show_payments`、`receipt_show_card_balance` 为显示/不显示（默认都显示），均可当天生效。
@@ -313,6 +313,8 @@ performance_entries.member 在非 sale 时必填，既有非销售行迁移为 f
 
 耗卡业绩（consume）按扣次支付所关联次数流水的购买次数或赠送次数，取 card_items 随卡留存的单次金额，乘单的快照比例、再乘项目行留存的类别比例，分给岗位员工；单次金额为零时不记。项目业绩同样乘支付方式比例和类别比例，两者一起只四舍五入一次到分；手工费和销售业绩的类别比例固定为 100。手工费（labor）对所有有效项目行按次计，包括扣次行，取加项目时留存的固定金额，或结账项目行价格（折扣前，含会员价）的百分比，四舍五入到分后按相同岗位规则分配；无人或已填岗位权重和为零时不记门店手工费。零手工费不记。`performance_split` 为 full 时，项目业绩和耗卡业绩的每个已填岗位各记整格，手工费仍和 by_position 一样只分一次，避免重复支付手工费。
 
+每条 item、consume 业绩同时留存提成份额 `commission_paid_amount` 和提成业绩 `commission_amount`。`commission_split` 为跟业绩分法一样（默认）、`performance_split` 不是 full，或其他分法时，两者等于 paid_amount、amount；只在 `performance_split` 为 full 且 `commission_split` 为均分或按岗位比例时，提成份额按该分法重新分格子（与业绩分配同样先向下取整、余数给最前岗位，按岗位比例在缺少比例时回退均分），提成业绩由提成份额乘支付方式比例和类别比例一次四舍五入得到。门店未分配记录、手工费和销售业绩的 commission_* 总等于 paid_amount、amount。业绩本身仍用 paid_amount、amount 计算和展示。
+
 销售业绩（sale）与其他业绩共用 performance_entries，在来源事务中追加。开卡（card_open）计本金加随卡 card_items 的 unit_price × paid_count_opened 之和，次卡本金为零，套餐计本金加购买次数折算额；赠送金、赠送次数不计。充值（card_recharge）和手动升级补差价（card_upgrade）只计本金；充值触发的自动升级不另记。卖红包（red_packet_sold）计售价，送红包不计。多人按输入的业绩归属人顺序均分，先向下取整到分，余数全给第一人；零值和零份额不写。销售没有支付方式，不应用门店支付比例，ratio 固定 100、amount 等于 paid_amount。营业日取卡流水或红包的营业日。来源分别以租户组合外键关联 card_ledger_id 或 red_packet_id；销售的单、项目行、结账、设置快照和岗位均为空，purchase 保留 first 或 repeat。
 
 首购是顾客在本店第一张卡的开卡，任何状态（包括已退）和顾客合并移入的既有卡都算此前已有卡；其余开卡、充值、补差价和卖红包都是复购。开卡先以 FOR NO KEY UPDATE 锁顾客，再检查是否有既有卡，同顾客的并发开卡由此串行，不能同时判为首购。调整、转余额、消费、退款和撤单退回不记销售；撤回卖出的红包不改销售。此步不冲回销售，退款扣业绩属于 #48；ReverseOrder 仍只按 order_id 冲回结账业绩。
@@ -322,6 +324,8 @@ performance_entries.member 在非 sale 时必填，既有非销售行迁移为 f
 ## 提成
 
 `internal/commission` 保存提成方案与版本，并从 performance 提供的业绩单位计算提成，支持整笔跳档和超额累进。整体方案含 rules、overrides、excluded_staff。每种来源 item、consume、labor、sale 至多一条规则；项目业绩可选 line_price（原价）、paid（折后价）、performance、cash_performance、card_performance，其他来源只允许 performance。规则按岗位、指定或非指定、会员或散客的开关决定格子键，每个键恰在相应开关开启时出现，格子键不重复；销售业绩不允许这些区分。格子可为空表，未填格子不计提成；每格恰有比例（0–100）、非负固定金额或阶梯之一，使用 money 的精确字符串类型。
+
+项目提成和耗卡提成的计提基数改为 `commission_paid_amount` / `commission_amount`：paid、performance、cash_performance、card_performance、line_price 都按提成份额汇总，line_price 的分母也用提成份额（保留 price - discount 上限和只计 item 过滤）。这样“每人各记全额”的业绩与按份额计提的提成可以同时成立。`commission_split` 默认跟业绩分法一样，所以行为不变；固定金额提成按每笔提成单位计，不随提成份额缩放（每人每次 3.00 仍是 3.00）。提成份额在结账时固定；售后按原提成份额的比例冲回，撤单原样复制。阶梯的当月累计也使用同一提成基数。
 
 覆盖比例的目标只能是员工、项目、员工 × 项目或岗位 × 类别；岗位 × 类别必须同时给岗位和类别，且不填员工、项目。每个来源、员工、项目、岗位、类别组合不能重复，来源必须在同一方案内有规则；销售业绩不能有项目覆盖或岗位 × 类别覆盖。覆盖值也是比例或固定金额之一。不计提成员工不能重复。所有岗位、类别、项目、员工引用由所属包一类一次批量查询校验本店归属，允许离职或停用，不加行锁：这些表无 DELETE 权限，状态也不影响合法性。会员含义为结账时顾客名下有有效卡，结账时留存会员判断，不在查询时重新判断。
 

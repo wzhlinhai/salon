@@ -2,7 +2,8 @@
   "settings": {
     "card_deduction_order": "principal_first",
     "performance_ratio_card_bonus": 100,
-    "performance_split": "by_position"
+    "performance_split": "by_position",
+    "commission_split": "same"
   },
   "categories": [
     {

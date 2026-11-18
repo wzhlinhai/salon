@@ -54,29 +54,31 @@ func (q *Queries) AddAftersaleEvent(ctx context.Context, arg AddAftersaleEventPa
 }
 
 const addAftersalePerformanceEntry = `-- name: AddAftersalePerformanceEntry :exec
-INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,ratio,category_ratio,amount,reverses_id,aftersale_id,member)
-VALUES ($1,$2,'item',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,commission_paid_amount,ratio,category_ratio,amount,commission_amount,reverses_id,aftersale_id,member)
+VALUES ($1,$2,'item',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
 `
 
 type AddAftersalePerformanceEntryParams struct {
-	TenantID           uuid.UUID
-	StoreID            uuid.UUID
-	BusinessDate       pgtype.Date
-	OrderID            *uuid.UUID
-	OrderItemID        *uuid.UUID
-	CheckoutID         *uuid.UUID
-	SettingsSnapshotID *uuid.UUID
-	Slot               *int16
-	PositionID         *uuid.UUID
-	StaffID            *uuid.UUID
-	Method             string
-	PaidAmount         money.Amount
-	Ratio              int16
-	CategoryRatio      int16
-	Amount             money.Amount
-	ReversesID         *uuid.UUID
-	AftersaleID        *uuid.UUID
-	Member             *bool
+	TenantID             uuid.UUID
+	StoreID              uuid.UUID
+	BusinessDate         pgtype.Date
+	OrderID              *uuid.UUID
+	OrderItemID          *uuid.UUID
+	CheckoutID           *uuid.UUID
+	SettingsSnapshotID   *uuid.UUID
+	Slot                 *int16
+	PositionID           *uuid.UUID
+	StaffID              *uuid.UUID
+	Method               string
+	PaidAmount           money.Amount
+	CommissionPaidAmount money.Amount
+	Ratio                int16
+	CategoryRatio        int16
+	Amount               money.Amount
+	CommissionAmount     money.Amount
+	ReversesID           *uuid.UUID
+	AftersaleID          *uuid.UUID
+	Member               *bool
 }
 
 func (q *Queries) AddAftersalePerformanceEntry(ctx context.Context, arg AddAftersalePerformanceEntryParams) error {
@@ -93,9 +95,11 @@ func (q *Queries) AddAftersalePerformanceEntry(ctx context.Context, arg AddAfter
 		arg.StaffID,
 		arg.Method,
 		arg.PaidAmount,
+		arg.CommissionPaidAmount,
 		arg.Ratio,
 		arg.CategoryRatio,
 		arg.Amount,
+		arg.CommissionAmount,
 		arg.ReversesID,
 		arg.AftersaleID,
 		arg.Member,
@@ -595,7 +599,7 @@ func (q *Queries) OrderCardPrincipalPaid(ctx context.Context, arg OrderCardPrinc
 }
 
 const orderItemPerformanceEntries = `-- name: OrderItemPerformanceEntries :many
-SELECT tenant_id, store_id, id, kind, business_date, order_id, order_item_id, checkout_id, settings_snapshot_id, slot, position_id, staff_id, method, paid_amount, ratio, amount, void_id, reverses_id, created_at, card_ledger_id, red_packet_id, purchase, member, aftersale_id, category_ratio FROM performance_entries
+SELECT tenant_id, store_id, id, kind, business_date, order_id, order_item_id, checkout_id, settings_snapshot_id, slot, position_id, staff_id, method, paid_amount, ratio, amount, void_id, reverses_id, created_at, card_ledger_id, red_packet_id, purchase, member, aftersale_id, category_ratio, commission_paid_amount, commission_amount FROM performance_entries
 WHERE store_id=$1 AND order_id=$2 AND kind='item' AND reverses_id IS NULL
 ORDER BY id
 `
@@ -640,6 +644,8 @@ func (q *Queries) OrderItemPerformanceEntries(ctx context.Context, arg OrderItem
 			&i.Member,
 			&i.AftersaleID,
 			&i.CategoryRatio,
+			&i.CommissionPaidAmount,
+			&i.CommissionAmount,
 		); err != nil {
 			return nil, err
 		}
@@ -671,7 +677,7 @@ func (q *Queries) OrderRefundableBase(ctx context.Context, arg OrderRefundableBa
 }
 
 const priorAftersalePerformanceReversals = `-- name: PriorAftersalePerformanceReversals :many
-SELECT p.reverses_id,COALESCE(sum(p.paid_amount),0)::text AS paid,COALESCE(sum(p.amount),0)::text AS amount
+SELECT p.reverses_id,COALESCE(sum(p.paid_amount),0)::text AS paid,COALESCE(sum(p.commission_paid_amount),0)::text AS commission_paid,COALESCE(sum(p.amount),0)::text AS amount,COALESCE(sum(p.commission_amount),0)::text AS commission_amount
 FROM performance_entries p JOIN aftersales a ON a.tenant_id=p.tenant_id AND a.id=p.aftersale_id
 WHERE p.store_id=$1 AND p.order_id=$2 AND p.aftersale_id IS NOT NULL AND p.reverses_id IS NOT NULL AND a.status='approved'
 GROUP BY p.reverses_id
@@ -683,9 +689,11 @@ type PriorAftersalePerformanceReversalsParams struct {
 }
 
 type PriorAftersalePerformanceReversalsRow struct {
-	ReversesID *uuid.UUID
-	Paid       string
-	Amount     string
+	ReversesID       *uuid.UUID
+	Paid             string
+	CommissionPaid   string
+	Amount           string
+	CommissionAmount string
 }
 
 func (q *Queries) PriorAftersalePerformanceReversals(ctx context.Context, arg PriorAftersalePerformanceReversalsParams) ([]PriorAftersalePerformanceReversalsRow, error) {
@@ -697,7 +705,13 @@ func (q *Queries) PriorAftersalePerformanceReversals(ctx context.Context, arg Pr
 	var items []PriorAftersalePerformanceReversalsRow
 	for rows.Next() {
 		var i PriorAftersalePerformanceReversalsRow
-		if err := rows.Scan(&i.ReversesID, &i.Paid, &i.Amount); err != nil {
+		if err := rows.Scan(
+			&i.ReversesID,
+			&i.Paid,
+			&i.CommissionPaid,
+			&i.Amount,
+			&i.CommissionAmount,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

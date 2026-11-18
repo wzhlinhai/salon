@@ -16,7 +16,7 @@ func TestConsumeLaborDatabase(t *testing.T) {
 	for _, override := range []map[string]any{
 		{"kind": "consume", "method": "cash"}, {"kind": "item", "method": "count_paid"},
 		{"kind": "labor", "method": "count_gift"}, {"kind": "consume", "method": "labor"},
-		{"kind": "labor", "method": "labor", "ratio": 99, "paid_amount": "100", "amount": "99"},
+		{"kind": "labor", "method": "labor", "ratio": 99, "paid_amount": "100", "commission_paid_amount": "100", "amount": "99", "commission_amount": "99"},
 		{"kind": "other", "method": "cash"}, {"kind": "item", "method": "other"},
 	} {
 		s.cloneRefused("performance_entries", source, override, "23514")

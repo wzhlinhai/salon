@@ -4170,6 +4170,10 @@ export interface components {
             amount: string;
             /** Format: int32 */
             category_ratio: number;
+            /** @description 计入提成的业绩金额 */
+            commission_amount: string;
+            /** @description 计入提成的实收份额 */
+            commission_paid_amount: string;
             id: string;
             method: string;
             paid_amount: string;

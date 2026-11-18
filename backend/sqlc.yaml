@@ -188,6 +188,14 @@ sql:
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money
               type: Amount
+          - column: performance_entries.commission_paid_amount
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
+          - column: performance_entries.commission_amount
+            go_type:
+              import: github.com/wzhlinhai/salon/backend/internal/money
+              type: Amount
           - column: staff_base_salaries.amount
             go_type:
               import: github.com/wzhlinhai/salon/backend/internal/money

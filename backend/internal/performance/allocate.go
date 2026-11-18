@@ -44,15 +44,17 @@ type allocationLine struct {
 }
 
 type allocation struct {
-	kind                string
-	orderItemID         uuid.UUID
-	slot                *int16
-	positionID, staffID *uuid.UUID
-	method              string
-	paidAmount          money.Amount
-	ratio               int16
-	categoryRatio       int16
-	amount              money.Amount
+	kind                 string
+	orderItemID          uuid.UUID
+	slot                 *int16
+	positionID, staffID  *uuid.UUID
+	method               string
+	paidAmount           money.Amount
+	commissionPaidAmount money.Amount
+	ratio                int16
+	categoryRatio        int16
+	amount               money.Amount
+	commissionAmount     money.Amount
 }
 
 func fen(a money.Amount) int64 { return a.Fen() }
@@ -73,7 +75,7 @@ func mulDiv(a, b, n int64) int64 {
 	return product.Quo(&product, &denominator).Int64()
 }
 
-func allocate(lines []allocationLine, categories []category, split string, ratios map[string]int) []allocation {
+func allocate(lines []allocationLine, categories []category, split, commissionSplit string, ratios map[string]int) []allocation {
 	methods := allocationMethods()
 	lines = slices.DeleteFunc(slices.Clone(lines), func(l allocationLine) bool { return l.Count != nil })
 	amounts := make([]int64, len(methods))
@@ -118,7 +120,7 @@ func allocate(lines []allocationLine, categories []category, split string, ratio
 			if cells[i][j] == 0 {
 				continue
 			}
-			out = append(out, splitCell(l, method, cells[i][j], split, ratios[method], l.categoryRatio())...)
+			out = append(out, splitCell(l, method, cells[i][j], split, commissionSplit, ratios[method], l.categoryRatio())...)
 		}
 	}
 	return out
@@ -131,7 +133,48 @@ func (l Line) categoryRatio() int16 {
 	return *l.CategoryRatio
 }
 
-func splitCell(line allocationLine, method string, cell int64, split string, ratio int, categoryRatio int16) []allocation {
+// splitShares 返回已填岗位按 split 分到的金额；store 表示这笔金额记给门店。
+func splitShares(cell int64, slots, filled []Slot, split string) (shares []int64, store bool) {
+	if split == "full" {
+		if len(filled) == 0 {
+			return nil, true
+		}
+		shares = make([]int64, len(filled))
+		for i := range shares {
+			shares[i] = cell
+		}
+		return shares, false
+	}
+	byPosition := split == "by_position"
+	for _, s := range slots {
+		if s.SharePercent == nil {
+			byPosition = false
+		}
+	}
+	weights := []int64{}
+	var sum int64
+	for _, s := range filled {
+		weight := int64(1)
+		if byPosition {
+			weight = int64(*s.SharePercent)
+		}
+		weights = append(weights, weight)
+		sum += weight
+	}
+	if sum == 0 {
+		return nil, true
+	}
+	shares = make([]int64, len(filled))
+	remaining := cell
+	for i, w := range weights {
+		shares[i] = mulDiv(cell, w, sum)
+		remaining -= shares[i]
+	}
+	shares[0] += remaining
+	return shares, false
+}
+
+func splitCell(line allocationLine, method string, cell int64, split, commissionSplit string, ratio int, categoryRatio int16) []allocation {
 	slots := slices.Clone(line.Slots)
 	slices.SortFunc(slots, func(a, b Slot) int { return int(a.Slot) - int(b.Slot) })
 	filled := []Slot{}
@@ -140,65 +183,45 @@ func splitCell(line allocationLine, method string, cell int64, split string, rat
 			filled = append(filled, s)
 		}
 	}
-	entry := func(paid int64) allocation {
+	entry := func(paid, commissionPaid int64) allocation {
 		a := fromFen(paid)
-		return allocation{kind: "item", orderItemID: line.OrderItemID, method: method, paidAmount: a, ratio: int16(ratio), categoryRatio: categoryRatio, amount: a.PercentOfProduct(ratio, int(categoryRatio))}
-	}
-	if split == "full" {
-		if len(filled) == 0 {
-			return []allocation{entry(cell)}
-		}
-		out := []allocation{}
-		for _, s := range filled {
-			a := entry(cell)
-			a.slot, a.positionID, a.staffID = &s.Slot, &s.PositionID, s.StaffID
-			out = append(out, a)
-		}
-		return out
-	}
-	shares := split == "by_position"
-	for _, s := range slots {
-		if s.SharePercent == nil {
-			shares = false
+		commission := fromFen(commissionPaid)
+		return allocation{
+			kind: "item", orderItemID: line.OrderItemID, method: method,
+			paidAmount: a, commissionPaidAmount: commission, ratio: int16(ratio), categoryRatio: categoryRatio,
+			amount: a.PercentOfProduct(ratio, int(categoryRatio)), commissionAmount: commission.PercentOfProduct(ratio, int(categoryRatio)),
 		}
 	}
-	weights := []int64{}
-	var sum int64
-	for _, s := range filled {
-		weight := int64(1)
-		if shares {
-			weight = int64(*s.SharePercent)
+	performance, store := splitShares(cell, slots, filled, split)
+	if store {
+		return []allocation{entry(cell, cell)}
+	}
+	commission := performance
+	if split == "full" && (commissionSplit == "equal" || commissionSplit == "by_position") {
+		shares, commissionStore := splitShares(cell, slots, filled, commissionSplit)
+		if commissionStore {
+			commission = make([]int64, len(filled))
+		} else {
+			commission = shares
 		}
-		weights = append(weights, weight)
-		sum += weight
 	}
-	if sum == 0 {
-		return []allocation{entry(cell)}
-	}
-	paid := make([]int64, len(filled))
-	remaining := cell
-	for i, w := range weights {
-		paid[i] = mulDiv(cell, w, sum)
-		remaining -= paid[i]
-	}
-	paid[0] += remaining
 	out := []allocation{}
 	for i, s := range filled {
-		if paid[i] == 0 {
+		if performance[i] == 0 {
 			continue
 		}
-		a := entry(paid[i])
+		a := entry(performance[i], commission[i])
 		a.slot, a.positionID, a.staffID = &s.Slot, &s.PositionID, s.StaffID
 		out = append(out, a)
 	}
 	return out
 }
 
-func consumeAndLabor(lines []allocationLine, split string, ratios map[string]int) []allocation {
+func consumeAndLabor(lines []allocationLine, split, commissionSplit string, ratios map[string]int) []allocation {
 	out := []allocation{}
 	for _, line := range lines {
 		if line.Count != nil && fen(line.Count.UnitPrice) != 0 {
-			entries := splitCell(line, line.Count.Method, fen(line.Count.UnitPrice), split, ratios[line.Count.Method], line.categoryRatio())
+			entries := splitCell(line, line.Count.Method, fen(line.Count.UnitPrice), split, commissionSplit, ratios[line.Count.Method], line.categoryRatio())
 			for _, e := range entries {
 				e.kind = "consume"
 				out = append(out, e)
@@ -218,7 +241,7 @@ func consumeAndLabor(lines []allocationLine, split string, ratios map[string]int
 		if laborSplit == "full" {
 			laborSplit = "by_position"
 		}
-		for _, e := range splitCell(line, "labor", fen(fee), laborSplit, 100, 100) {
+		for _, e := range splitCell(line, "labor", fen(fee), laborSplit, "same", 100, 100) {
 			// 手工费只给服务员工，无人或已填岗位权重为零时不记门店记录。
 			if e.staffID == nil {
 				continue

@@ -65,6 +65,7 @@ const (
 	KeyPointsPerRechargeYuan             = "points_per_recharge_yuan"
 	KeyGuestCountSplit                   = "guest_count_split"
 	KeyPerformanceSplit                  = "performance_split"
+	KeyCommissionSplit                   = "commission_split"
 	KeyPerformanceRatioCash              = "performance_ratio_cash"
 	KeyPerformanceRatioUnionpay          = "performance_ratio_unionpay"
 	KeyPerformanceRatioWechat            = "performance_ratio_wechat"
@@ -124,6 +125,7 @@ var Catalogue = []Def{
 	{Key: KeyCardSelection, Label: "选卡规则", Hint: "结账只说用卡余额付、不指定哪张卡时怎么挑卡：手动选卡必须指定；按折扣率先扣这单实收最低的卡；按余额先扣余额少的卡，一张不够接着扣下一张", Kind: KindChoice, Default: "manual", Options: []ChoiceOption{{Value: "manual", Label: "手动选卡"}, {Value: "by_discount", Label: "按折扣率"}, {Value: "by_balance", Label: "按余额"}}},
 	{Key: KeyGuestCountSplit, Label: "客数归属", Kind: KindChoice, Default: "first_slot", Options: []ChoiceOption{{Value: "first_slot", Label: "第一个岗位的员工"}, {Value: "equal", Label: "单上员工均分"}}, Hint: "每张结账单的客次记给谁"},
 	{Key: KeyPerformanceSplit, Label: "多人分业绩", Kind: KindChoice, Default: "by_position", Options: []ChoiceOption{{Value: "by_position", Label: "按岗位比例"}, {Value: "equal", Label: "均分"}, {Value: "full", Label: "每人各记全额"}}, Hint: "一个项目几个人做时业绩怎么分；项目没设岗位比例时均分；选每人各记全额时每个岗位上的员工都记全额，全店业绩合计会大于实收"},
+	{Key: KeyCommissionSplit, Label: "提成按什么分", Kind: KindChoice, Default: "same", Options: []ChoiceOption{{Value: "same", Label: "跟业绩分法一样"}, {Value: "equal", Label: "均分"}, {Value: "by_position", Label: "按岗位比例"}}, Hint: "只在多人分业绩选「每人各记全额」时起作用；其他分法下提成跟业绩一样；结账时固定，之后改设置不影响已结账的单；固定金额提成按人计，不分摊"},
 	{Key: KeyPerformanceRatioCash, Label: "现金业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
 	{Key: KeyPerformanceRatioUnionpay, Label: "银联业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
 	{Key: KeyPerformanceRatioWechat, Label: "微信业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},

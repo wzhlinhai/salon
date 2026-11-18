@@ -158,7 +158,7 @@ go test ./internal/dataio/...
     名称和编号不能混写；岗位×类别覆盖只作用于项目业绩、耗卡业绩和手工费。
   - `excluded_staff` 是员工姓名数组（也接受 `{"staff_name": "..."}`）。
   - 未知或重名 → 在回放单据前中止。
-- `settings.performance_split` 可以为 `by_position` 或 `full`，原样传给 `change_setting`。
+- `settings.performance_split` 可以为 `by_position` 或 `full`；`settings.commission_split` 可以为 `same`、`equal` 或 `by_position`，都原样传给 `change_setting`。
 
 最小示例见 `scripts/mgj/replay-scheme.example.json`。
 

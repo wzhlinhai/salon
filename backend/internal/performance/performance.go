@@ -54,15 +54,17 @@ func RecordCheckout(ctx context.Context, env ops.Env, in CheckoutInput) error {
 	for _, method := range paymentMethods {
 		ratios[method.name] = in.Rules.PerformanceRatio(method.ratioKey)
 	}
-	entries := allocate(lines, categories, in.Rules.PerformanceSplit(), ratios)
-	entries = append(entries, consumeAndLabor(lines, in.Rules.PerformanceSplit(), ratios)...)
+	split, commissionSplit := in.Rules.PerformanceSplit(), in.Rules.CommissionSplit()
+	entries := allocate(lines, categories, split, commissionSplit, ratios)
+	entries = append(entries, consumeAndLabor(lines, split, commissionSplit, ratios)...)
 	for _, e := range entries {
 		err := env.Q.AddPerformanceEntry(ctx, dbgen.AddPerformanceEntryParams{
 			TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID,
 			BusinessDate: pgtype.Date{Time: in.BusinessDate, Valid: true},
 			OrderID:      &in.OrderID, OrderItemID: &e.orderItemID, CheckoutID: &in.CheckoutID, SettingsSnapshotID: &in.SettingsSnapshotID,
 			Slot: e.slot, PositionID: e.positionID, StaffID: e.staffID,
-			Member: &in.Member, Kind: e.kind, Method: e.method, PaidAmount: e.paidAmount, Ratio: e.ratio, CategoryRatio: e.categoryRatio, Amount: e.amount,
+			Member: &in.Member, Kind: e.kind, Method: e.method, PaidAmount: e.paidAmount, CommissionPaidAmount: e.commissionPaidAmount,
+			Ratio: e.ratio, CategoryRatio: e.categoryRatio, Amount: e.amount, CommissionAmount: e.commissionAmount,
 		})
 		if err != nil {
 			return err

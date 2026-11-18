@@ -14,8 +14,8 @@ func TestPerformanceDatabase(t *testing.T) {
 	entries := s.performanceList()["entries"].([]any)
 	source := entries[0].(map[string]any)["id"]
 	for _, override := range []map[string]any{
-		{"kind": "other"}, {"method": "card"}, {"ratio": 101, "amount": "101"}, {"ratio": -1, "amount": "-1"},
-		{"amount": "99.99"}, {"paid_amount": "0", "amount": "0"}, {"paid_amount": "-1", "amount": "-1"},
+		{"kind": "other"}, {"method": "card"}, {"ratio": 101, "amount": "101", "commission_amount": "101"}, {"ratio": -1, "amount": "-1", "commission_amount": "-1"},
+		{"amount": "99.99"}, {"paid_amount": "0", "commission_paid_amount": "0", "amount": "0", "commission_amount": "0"}, {"paid_amount": "-1", "amount": "-1"},
 		{"slot": nil}, {"position_id": nil}, {"staff_id": nil},
 		{"void_id": nil, "reverses_id": source},
 		{"void_id": uuid.NewString(), "reverses_id": nil},

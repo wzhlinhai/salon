@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/wzhlinhai/salon/backend/internal/db"
+	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/orders"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
@@ -253,6 +254,7 @@ func TestCategoryMigrationDownRefusesCategoryPerformance(t *testing.T) {
 	item := s.call("create_item", in, 200)
 	line := orders.OrderItemInput{ItemID: id(item["id"]), Staff: []orders.OrderItemStaffInput{{Slot: 1, StaffID: s.Res.OwnerID}}}
 	s.paid(s.customerOrder(line), payment("cash", "100"))
+	dbtest.MigrateDownTo(t, s.Pool, 54)
 	err := db.MigrateDown(context.Background(), s.Pool)
 	if err == nil || !strings.Contains(err.Error(), "无法回滚 00054：存在类别比例不是 100 的业绩记录") {
 		t.Fatal(err)

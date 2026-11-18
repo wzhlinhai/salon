@@ -820,31 +820,33 @@ type PayrollLine struct {
 }
 
 type PerformanceEntry struct {
-	TenantID           uuid.UUID
-	StoreID            uuid.UUID
-	ID                 uuid.UUID
-	Kind               string
-	BusinessDate       pgtype.Date
-	OrderID            *uuid.UUID
-	OrderItemID        *uuid.UUID
-	CheckoutID         *uuid.UUID
-	SettingsSnapshotID *uuid.UUID
-	Slot               *int16
-	PositionID         *uuid.UUID
-	StaffID            *uuid.UUID
-	Method             string
-	PaidAmount         money.Amount
-	Ratio              int16
-	Amount             money.Amount
-	VoidID             *uuid.UUID
-	ReversesID         *uuid.UUID
-	CreatedAt          pgtype.Timestamptz
-	CardLedgerID       *uuid.UUID
-	RedPacketID        *uuid.UUID
-	Purchase           *string
-	Member             *bool
-	AftersaleID        *uuid.UUID
-	CategoryRatio      int16
+	TenantID             uuid.UUID
+	StoreID              uuid.UUID
+	ID                   uuid.UUID
+	Kind                 string
+	BusinessDate         pgtype.Date
+	OrderID              *uuid.UUID
+	OrderItemID          *uuid.UUID
+	CheckoutID           *uuid.UUID
+	SettingsSnapshotID   *uuid.UUID
+	Slot                 *int16
+	PositionID           *uuid.UUID
+	StaffID              *uuid.UUID
+	Method               string
+	PaidAmount           money.Amount
+	Ratio                int16
+	Amount               money.Amount
+	VoidID               *uuid.UUID
+	ReversesID           *uuid.UUID
+	CreatedAt            pgtype.Timestamptz
+	CardLedgerID         *uuid.UUID
+	RedPacketID          *uuid.UUID
+	Purchase             *string
+	Member               *bool
+	AftersaleID          *uuid.UUID
+	CategoryRatio        int16
+	CommissionPaidAmount money.Amount
+	CommissionAmount     money.Amount
 }
 
 type Position struct {
