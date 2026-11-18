@@ -12,13 +12,15 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/orders"
 )
 
-type previewDayCounter struct{ queries atomic.Int64 }
+type previewDayCounter struct{ queries, history atomic.Int64 }
 
 func (c *previewDayCounter) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
 	// 换算营业日只读营业日结束时间这一项设置的历史。
 	if strings.HasPrefix(data.SQL, "-- name: SettingHistory :") {
 		if key, ok := data.Args[1].(*string); ok && key != nil && *key == "business_day_end" {
 			c.queries.Add(1)
+		} else {
+			c.history.Add(1)
 		}
 	}
 	return ctx
@@ -55,9 +57,10 @@ func TestPreviewCheckoutBusinessDateQueries(t *testing.T) {
 				want = 1
 			}
 			counter.queries.Store(0)
+			counter.history.Store(0)
 			result := ch.Call(t, s.MustCaller(s.Owner), "preview_checkout", input)
-			if result.Status != 200 || counter.queries.Load() != want {
-				t.Fatal(ch.Name, mode, result, counter.queries.Load())
+			if result.Status != 200 || counter.queries.Load() != want || counter.history.Load() == 0 {
+				t.Fatal(ch.Name, mode, result, counter.queries.Load(), counter.history.Load())
 			}
 		}
 	}

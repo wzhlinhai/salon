@@ -127,7 +127,7 @@ func SelfBookingSlots(ctx context.Context, env ops.Env, customerID, staffID uuid
 	if err != nil {
 		return nil, err
 	}
-	window, err := loadSelfBookingWindow(ctx, env, day, staffID, rules)
+	window, err := loadSelfBookingWindow(ctx, env, day, staffID, customerID, rules)
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +193,7 @@ func CreateSelfAppointment(ctx context.Context, env ops.Env, customerID, staffID
 	if err != nil {
 		return nil, err
 	}
-	window, err := loadSelfBookingWindow(ctx, env, day, staffID, rules)
+	window, err := loadSelfBookingWindow(ctx, env, day, staffID, customerID, rules)
 	if err != nil {
 		return nil, err
 	}
@@ -357,7 +357,7 @@ func validateSelectedItems(ids []uuid.UUID, rows map[uuid.UUID]dbgen.Item) ([]db
 	return items, total, nil
 }
 
-func loadSelfBookingWindow(ctx context.Context, env ops.Env, day time.Time, staffID uuid.UUID, rules settings.Rules) (selfBookingWindow, error) {
+func loadSelfBookingWindow(ctx context.Context, env ops.Env, day time.Time, staffID, customerID uuid.UUID, rules settings.Rules) (selfBookingWindow, error) {
 	today, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, env.Now)
 	if err != nil {
 		return selfBookingWindow{}, err
@@ -392,6 +392,16 @@ func loadSelfBookingWindow(ctx context.Context, env ops.Env, day time.Time, staf
 	window.occupied = make([]occupiedInterval, 0, len(rows))
 	for _, row := range rows {
 		window.occupied = append(window.occupied, occupiedInterval{Start: row.StartsAt.Time, End: row.EndsAt.Time})
+	}
+	walkIns, err := WalkinOccupancies(ctx, env, &staffID)
+	if err != nil {
+		return selfBookingWindow{}, err
+	}
+	for _, occ := range walkIns {
+		if occ.CustomerID == customerID {
+			continue
+		}
+		window.occupied = append(window.occupied, occupiedInterval{Start: occ.StartsAt, End: occ.EndsAt})
 	}
 	return window, nil
 }

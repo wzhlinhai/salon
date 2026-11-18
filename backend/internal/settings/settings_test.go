@@ -166,6 +166,34 @@ func TestBusinessDateFollowsDayEndEffectiveThatDay(t *testing.T) {
 	})
 }
 
+func TestCurrentRulesUsesSameBusinessDateBoundary(t *testing.T) {
+	s := open(t)
+	s.change(s.owner, "business_day_end", "02:00", day(1), http.StatusOK)
+	cases := []struct {
+		name string
+		t    time.Time
+		want string
+	}{
+		{"before day end", at(2, "01:30"), day(1)},
+		{"at day end", at(2, "02:00"), day(2)},
+	}
+	s.inTenant(func(ctx context.Context, q *dbgen.Queries) error {
+		for _, c := range cases {
+			day, rules, err := settings.CurrentRules(ctx, q, s.Res.StoreID, c.t)
+			if err != nil {
+				return err
+			}
+			if got := day.Format(settings.DateLayout); got != c.want {
+				t.Errorf("%s: CurrentRules(%v) day = %s, want %s", c.name, c.t, got, c.want)
+			}
+			if got := rules.BusinessDayEnd(); got != "02:00" {
+				t.Errorf("%s: BusinessDayEnd = %s, want 02:00", c.name, got)
+			}
+		}
+		return nil
+	})
+}
+
 func TestSnapshotKeepsRulesInForceWhenTaken(t *testing.T) {
 	s := open(t)
 	// 已安排但还没生效的修改不进入今天的快照。

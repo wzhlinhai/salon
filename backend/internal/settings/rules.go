@@ -160,6 +160,20 @@ func BusinessDate(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, t ti
 	return days[0], nil
 }
 
+// CurrentRules 返回时刻 t 所属营业日和该营业日执行的设置，只读取一次设置历史。
+func CurrentRules(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, t time.Time) (time.Time, Rules, error) {
+	h, err := loadHistory(ctx, q, storeID, nil)
+	if err != nil {
+		return time.Time{}, Rules{}, err
+	}
+	end, err := businessDayEnd(h, t)
+	if err != nil {
+		return time.Time{}, Rules{}, err
+	}
+	day := businessDate(t, end)
+	return day, rulesAt(h, day), nil
+}
+
 func businessDate(t time.Time, end string) time.Time {
 	local := t.In(Location)
 	today := Date(local)
@@ -303,17 +317,24 @@ func BusinessDates(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, tim
 	if err != nil {
 		return nil, err
 	}
-	def, _ := Lookup(KeyBusinessDayEnd)
 	out := make([]time.Time, 0, len(times))
 	for _, t := range times {
 		// 营业日 D 的结束时间取 D 那天执行的设置：时刻 t 的日历日前一天执行的值。
-		var end string
-		if err := json.Unmarshal(h.at(def, Date(t).AddDate(0, 0, -1)).value, &end); err != nil {
+		end, err := businessDayEnd(h, t)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, businessDate(t, end))
 	}
 	return out, nil
+}
+
+// businessDayEnd 返回时刻 t 换算营业日时使用的营业日结束时间。
+func businessDayEnd(h history, t time.Time) (string, error) {
+	def, _ := Lookup(KeyBusinessDayEnd)
+	var end string
+	err := json.Unmarshal(h.at(def, Date(t).AddDate(0, 0, -1)).value, &end)
+	return end, err
 }
 
 // AttendanceGraceMinutes 返回判断迟到、早退的宽限分钟数。
@@ -380,13 +401,18 @@ func EffectiveDays(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, day
 	}
 	out := make([]Rules, len(days))
 	for i, day := range days {
-		values := make(map[string]json.RawMessage, len(Catalogue))
-		for _, d := range Catalogue {
-			values[d.Key] = h.at(d, day).value
-		}
-		out[i] = rulesFrom(values)
+		out[i] = rulesAt(h, day)
 	}
 	return out, nil
+}
+
+// rulesAt 返回营业日 day 执行的全部设置。
+func rulesAt(h history, day time.Time) Rules {
+	values := make(map[string]json.RawMessage, len(Catalogue))
+	for _, d := range Catalogue {
+		values[d.Key] = h.at(d, day).value
+	}
+	return rulesFrom(values)
 }
 
 // CollectionChannelEnabled 返回该收款通道是否启用。

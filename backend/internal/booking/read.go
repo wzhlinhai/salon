@@ -225,7 +225,7 @@ func listAppointments(ctx context.Context, env ops.Env, in *ListAppointmentsInpu
 		}
 		return nil, err
 	}
-	out := &AppointmentList{Entries: []Appointment{}}
+	out := &AppointmentList{Entries: []Appointment{}, WalkIns: []WalkinOccupancyView{}}
 	if q.Empty {
 		return out, nil
 	}
@@ -240,7 +240,62 @@ func listAppointments(ctx context.Context, env ops.Env, in *ListAppointmentsInpu
 		return nil, err
 	}
 	out.Entries = views
+	out.WalkIns, err = loadWalkinViews(ctx, env, q.StaffID, from, to)
+	if err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// loadWalkinViews 按日期范围、员工筛选和本人范围返回挂单占用，供预约日历显示。
+func loadWalkinViews(ctx context.Context, env ops.Env, staffID *uuid.UUID, from, to time.Time) ([]WalkinOccupancyView, error) {
+	rows, err := WalkinOccupancies(ctx, env, nil)
+	if err != nil {
+		return nil, err
+	}
+	filtered := filterWalkinOccupancies(env, rows, staffID, from, to)
+	if len(filtered) == 0 {
+		return []WalkinOccupancyView{}, nil
+	}
+	staffIDs := make([]uuid.UUID, 0, len(filtered))
+	seen := map[uuid.UUID]bool{}
+	for _, row := range filtered {
+		if !seen[row.StaffID] {
+			seen[row.StaffID] = true
+			staffIDs = append(staffIDs, row.StaffID)
+		}
+	}
+	refs, err := env.Q.StaffNames(ctx, dbgen.StaffNamesParams{StoreID: env.Caller.StoreID, Ids: staffIDs})
+	if err != nil {
+		return nil, err
+	}
+	names := make(map[uuid.UUID]staff.Ref, len(refs))
+	for _, row := range refs {
+		names[row.ID] = staff.Ref{ID: row.ID, Name: row.Name}
+	}
+	out := make([]WalkinOccupancyView, 0, len(filtered))
+	for _, row := range filtered {
+		out = append(out, WalkinOccupancyView{OrderID: row.OrderID, Staff: names[row.StaffID], StartsAt: row.StartsAt, EndsAt: row.EndsAt})
+	}
+	return out, nil
+}
+
+// filterWalkinOccupancies 只保留日期范围内、请求员工和调用者查看范围内的挂单占用。
+func filterWalkinOccupancies(env ops.Env, rows []WalkinOccupancy, staffID *uuid.UUID, from, to time.Time) []WalkinOccupancy {
+	out := make([]WalkinOccupancy, 0, len(rows))
+	for _, row := range rows {
+		if !inStaffScope(env, row.StaffID) {
+			continue
+		}
+		if staffID != nil && row.StaffID != *staffID {
+			continue
+		}
+		if !row.StartsAt.Before(to) || !row.EndsAt.After(from) {
+			continue
+		}
+		out = append(out, row)
+	}
+	return out
 }
 
 // ListForCustomer 读取顾客本人的预约：待确认和已确认的在未来先列，其余最近 90 天按时间倒序。

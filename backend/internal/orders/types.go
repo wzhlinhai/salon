@@ -8,28 +8,39 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/wzhlinhai/salon/backend/internal/money"
+	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 
 // Order 是单据视图，只引用顾客 ID，不包含顾客姓名或手机号。
 type Order struct {
-	Void         *OrderVoid      `json:"void"`
-	CheckoutID   *uuid.UUID      `json:"checkout_id" nullable:"true"`
-	Payments     []OrderPayment  `json:"payments"`
-	Groupbuy     []OrderGroupbuy `json:"groupbuy"`
-	ID           uuid.UUID       `json:"id"`
-	CustomerID   uuid.UUID       `json:"customer_id"`
-	Gender       string          `json:"gender" enum:"male,female"`
-	Designated   bool            `json:"designated"`
-	Status       string          `json:"status" enum:"open,merged,paid,voided"`
-	MergedInto   *uuid.UUID      `json:"merged_into" nullable:"true"`
-	BusinessDate string          `json:"business_date" format:"date"`
-	Backfill     bool            `json:"backfill" doc:"断网后用纸单补录的单，营业日是纸单上的日期"`
-	OpenedBy     uuid.UUID       `json:"opened_by"`
-	OpenedAt     time.Time       `json:"opened_at"`
-	Items        []OrderItem     `json:"items"`
-	Discount     string          `json:"discount"`
-	Net          string          `json:"net"`
-	Receivable   string          `json:"receivable"`
+	Void             *OrderVoid        `json:"void"`
+	CheckoutID       *uuid.UUID        `json:"checkout_id" nullable:"true"`
+	Payments         []OrderPayment    `json:"payments"`
+	Groupbuy         []OrderGroupbuy   `json:"groupbuy"`
+	ID               uuid.UUID         `json:"id"`
+	CustomerID       uuid.UUID         `json:"customer_id"`
+	Gender           string            `json:"gender" enum:"male,female"`
+	Designated       bool              `json:"designated"`
+	Status           string            `json:"status" enum:"open,merged,paid,voided"`
+	MergedInto       *uuid.UUID        `json:"merged_into" nullable:"true"`
+	BusinessDate     string            `json:"business_date" format:"date"`
+	Backfill         bool              `json:"backfill" doc:"断网后用纸单补录的单，营业日是纸单上的日期"`
+	OpenedBy         uuid.UUID         `json:"opened_by"`
+	OpenedAt         time.Time         `json:"opened_at"`
+	Items            []OrderItem       `json:"items"`
+	BookingConflicts []BookingConflict `json:"booking_conflicts"`
+	Discount         string            `json:"discount"`
+	Net              string            `json:"net"`
+	Receivable       string            `json:"receivable"`
+}
+
+// BookingConflict 是挂单占用与已有预约或私约占位的冲突，供前台改约或换人。
+type BookingConflict struct {
+	AppointmentID uuid.UUID `json:"appointment_id"`
+	Kind          string    `json:"kind" enum:"appointment,block"`
+	Staff         staff.Ref `json:"staff"`
+	StartsAt      time.Time `json:"starts_at"`
+	EndsAt        time.Time `json:"ends_at"`
 }
 
 // OrderGroupbuy 是一张单上关联的团购券及其平台购买价、门店标价和抵扣金额。

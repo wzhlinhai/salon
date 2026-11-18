@@ -159,7 +159,7 @@ var Catalogue = []Def{
 	{Key: KeyRotationHalfPriceBelow, Label: "半轮价格线", Hint: "按价格记半轮时，实收低于多少元算半轮；0 表示不按价格记半轮", Kind: KindInteger, Min: 0, Max: 1000000, Default: 0},
 	{Key: KeyBookingMinLeadMinutes, Label: "预约提前量", Hint: "顾客自助预约至少要提前多少分钟；0 为不限制。前台代约不受此项限制", Kind: KindInteger, Min: 0, Max: 10080, Default: 0},
 	{Key: KeyBookingMaxDaysAhead, Label: "可约天数", Hint: "从今天起最多可以预约多少天内的时段，0 为只能约今天", Kind: KindInteger, Min: 0, Max: 365, Default: 30},
-	{Key: KeyBookingDefaultMinutes, Label: "默认服务时长", Hint: "预约没有选择项目时默认占用的分钟数", Kind: KindInteger, Min: 1, Max: 600, Default: 60},
+	{Key: KeyBookingDefaultMinutes, Label: "默认服务时长", Hint: "预约没选项目或项目都没设时长时默认占用的分钟数；挂单的项目都没设时长时同样按此占用", Kind: KindInteger, Min: 1, Max: 600, Default: 60},
 	{
 		Key: KeyAftersaleWindowDays, Label: "售后期限", Kind: KindInteger, Min: 0, Max: 36500, Default: 30,
 		Hint: "原单营业日到当前营业日不超过多少天可以开售后单，0 为只能当天售后",

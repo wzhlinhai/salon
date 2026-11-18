@@ -591,6 +591,9 @@ func TestSelfBookingSlotsQueryCount(t *testing.T) {
 		return counter.all.Load()
 	}
 	before := count()
+	if before == 0 {
+		t.Fatal("my_available_slots baseline query count is zero")
+	}
 	for _, clock := range []string{"10:00", "11:00", "12:00"} {
 		call(t, s.Shop, "create_appointment", map[string]any{
 			"customer_id": s.customerA, "staff_id": s.stylist, "starts_at": s.at(10, clock), "ends_at": s.at(10, clock).Add(30 * time.Minute), "items": []any{map[string]any{"item_id": s.item}},
@@ -599,6 +602,19 @@ func TestSelfBookingSlotsQueryCount(t *testing.T) {
 	after := count()
 	if before != after {
 		t.Fatalf("my_available_slots SQL grew with appointments: %d vs %d", before, after)
+	}
+
+	s.SetNow(s.at(0, "14:00"))
+	walkinItem := s.createPositionedItem("主做长项目", 60, 1, "")
+	s.openWalkin(s.customerA, s.stylist, walkinItem, 1)
+	app.SetNow(s.Now())
+	todayArgs := map[string]any{"staff_id": s.stylist, "date": s.day(0), "item_ids": []uuid.UUID{s.item}}
+	counter.all.Store(0)
+	if r := app.HTTPWithToken(t, token, "my_available_slots", todayArgs); r.Status != http.StatusOK {
+		t.Fatal(r)
+	}
+	if today := counter.all.Load(); today == 0 {
+		t.Fatal("today's my_available_slots query count is zero")
 	}
 }
 
