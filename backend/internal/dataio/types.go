@@ -23,6 +23,12 @@ const (
 	MaxRowsPerSheet = 20000
 	// MaxSummaryRows 是汇总工作表的数据行上限；汇总只允许一行，仍留出足够的错误位置。
 	MaxSummaryRows = 1000
+	// MaxSharedStringsBytes 是共享字符串表解压后的字节上限。
+	MaxSharedStringsBytes = 8 << 20
+	// MaxCellRunes 是单个单元格文本的字符上限。
+	MaxCellRunes = 200
+	// MaxColumns 是每行允许的最大列数，宽于任何一张业务表的表头。
+	MaxColumns = 20
 
 	sheetCustomers   = "顾客"
 	sheetStoredCards = "储值卡"

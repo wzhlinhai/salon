@@ -1,6 +1,7 @@
 package dataio
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -8,20 +9,65 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/xuri/excelize/v2"
 
 	"github.com/wzhlinhai/salon/backend/internal/money"
 )
 
+// columnSpec 是一列的表头和去掉空白后的最大字符数。
+type columnSpec struct {
+	header   string
+	maxRunes int
+}
+
 var (
-	customerHeaders = []string{"来源顾客ID", "姓名", "手机号(可空)", "性别(男/女/空)"}
-	storedHeaders   = []string{"来源卡号", "来源顾客ID", "卡种", "本金", "赠送金", "到期日(YYYY-MM-DD,可空)", "积分(整数,可空)"}
-	countHeaders    = []string{"来源卡号", "来源顾客ID", "卡种", "项目", "剩余购买次数", "剩余赠送次数", "到期日(可空)"}
-	summaryHeaders  = []string{"顾客数", "储值卡数", "本金合计", "赠送金合计", "次卡套餐卡数"}
+	customerColumns = []columnSpec{
+		{"来源顾客ID", 64},
+		{"姓名", 40},
+		{"手机号(可空)", 20},
+		{"性别(男/女/空)", 2},
+	}
+	storedColumns = []columnSpec{
+		{"来源卡号", 64},
+		{"来源顾客ID", 64},
+		{"卡种", 40},
+		{"本金", 20},
+		{"赠送金", 20},
+		{"到期日(YYYY-MM-DD,可空)", 20},
+		{"积分(整数,可空)", 20},
+	}
+	countColumns = []columnSpec{
+		{"来源卡号", 64},
+		{"来源顾客ID", 64},
+		{"卡种", 40},
+		{"项目", 40},
+		{"剩余购买次数", 20},
+		{"剩余赠送次数", 20},
+		{"到期日(可空)", 20},
+	}
+	summaryColumns = []columnSpec{
+		{"顾客数", 20},
+		{"储值卡数", 20},
+		{"本金合计", 20},
+		{"赠送金合计", 20},
+		{"次卡套餐卡数", 20},
+	}
+	customerHeaders = headerNames(customerColumns)
+	storedHeaders   = headerNames(storedColumns)
+	countHeaders    = headerNames(countColumns)
 	phonePattern    = regexp.MustCompile(`^1[0-9]{10}$`)
 	dateLayout      = time.DateOnly
 )
+
+func headerNames(columns []columnSpec) []string {
+	out := make([]string, len(columns))
+	for i := range columns {
+		out[i] = columns[i].header
+	}
+	return out
+}
 
 // fileError 是整份文件不能预览的错误，HTTP 返回 422。
 type fileError struct{ message string }
@@ -80,10 +126,17 @@ type parsedCount struct {
 	Err          string
 }
 
-// parseWorkbook 读取并校验中间 Excel 的工作表、表头和每行格式；行级问题写在 Err 里。
+// parseWorkbook 先流式预检再读取中间 Excel 的工作表、表头和每行格式；行级问题写在 Err 里。
 func parseWorkbook(r io.Reader) (*parsedFile, error) {
+	data, err := readUpload(r)
+	if err != nil {
+		return nil, err
+	}
+	if err := prescanWorkbook(data); err != nil {
+		return nil, err
+	}
 	// 解压上限必须显式设置，避免 xlsx 压缩炸弹在读取时才耗尽内存/临时空间。
-	f, err := excelize.OpenReader(r, excelize.Options{UnzipSizeLimit: MaxUnzipBytes, UnzipXMLSizeLimit: MaxUnzipXMLBytes})
+	f, err := excelize.OpenReader(bytes.NewReader(data), excelize.Options{UnzipSizeLimit: MaxUnzipBytes, UnzipXMLSizeLimit: MaxUnzipXMLBytes})
 	if err != nil {
 		return nil, badFile("无法读取 Excel 文件")
 	}
@@ -95,7 +148,7 @@ func parseWorkbook(r io.Reader) (*parsedFile, error) {
 		}
 	}
 	out := &parsedFile{}
-	err = readSheet(f, sheetCustomers, MaxRowsPerSheet, customerHeaders, func(rowNumber int32, row []string) error {
+	err = readSheet(f, sheetCustomers, MaxRowsPerSheet, customerColumns, func(rowNumber int32, row []string) error {
 		if emptyRow(row) {
 			return nil
 		}
@@ -127,7 +180,7 @@ func parseWorkbook(r io.Reader) (*parsedFile, error) {
 		return nil, err
 	}
 
-	err = readSheet(f, sheetStoredCards, MaxRowsPerSheet, storedHeaders, func(rowNumber int32, row []string) error {
+	err = readSheet(f, sheetStoredCards, MaxRowsPerSheet, storedColumns, func(rowNumber int32, row []string) error {
 		if emptyRow(row) {
 			return nil
 		}
@@ -173,7 +226,7 @@ func parseWorkbook(r io.Reader) (*parsedFile, error) {
 		return nil, err
 	}
 
-	err = readSheet(f, sheetCountCards, MaxRowsPerSheet, countHeaders, func(rowNumber int32, row []string) error {
+	err = readSheet(f, sheetCountCards, MaxRowsPerSheet, countColumns, func(rowNumber int32, row []string) error {
 		if emptyRow(row) {
 			return nil
 		}
@@ -219,7 +272,7 @@ func parseWorkbook(r io.Reader) (*parsedFile, error) {
 	}
 
 	var summaries [][]string
-	err = readSheet(f, sheetSummary, MaxSummaryRows, summaryHeaders, func(_ int32, row []string) error {
+	err = readSheet(f, sheetSummary, MaxSummaryRows, summaryColumns, func(_ int32, row []string) error {
 		if emptyRow(row) {
 			return nil
 		}
@@ -263,8 +316,9 @@ func parseWorkbook(r io.Reader) (*parsedFile, error) {
 	return out, nil
 }
 
-// readSheet 用流式 Rows 逐行读取，边读边数，超过上限立即报文件错误，不把整张表读进内存。
-func readSheet(f *excelize.File, sheet string, maxRows int, headers []string, handle func(int32, []string) error) error {
+// readSheet 用流式 Rows 逐行读取，边读边数；逐行拒绝超出表头宽度或字符上限的单元格，再把值补到表头宽度。
+func readSheet(f *excelize.File, sheet string, maxRows int, columns []columnSpec, handle func(int32, []string) error) error {
+	headers := headerNames(columns)
 	rows, err := f.Rows(sheet)
 	if err != nil {
 		return badFile("无法读取工作表 %s", sheet)
@@ -293,12 +347,31 @@ func readSheet(f *excelize.File, sheet string, maxRows int, headers []string, ha
 		if err != nil {
 			return badFile("无法读取工作表 %s", sheet)
 		}
-		if err := handle(int32(dataRows)+1, padRow(row, len(headers))); err != nil {
+		if err := checkRow(sheet, dataRows+1, row, columns); err != nil {
+			return err
+		}
+		if err := handle(int32(dataRows)+1, padRow(row, len(columns))); err != nil {
 			return err
 		}
 	}
 	if err := rows.Error(); err != nil {
 		return badFile("无法读取工作表 %s", sheet)
+	}
+	return nil
+}
+
+func checkRow(sheet string, rowNumber int, row []string, columns []columnSpec) error {
+	for i, cell := range row {
+		value := strings.TrimSpace(cell)
+		if i >= len(columns) {
+			if value != "" {
+				return badFile("工作表 %s 第 %d 行超出表头列数", sheet, rowNumber)
+			}
+			continue
+		}
+		if n := utf8.RuneCountInString(value); n > columns[i].maxRunes {
+			return badFile("工作表 %s 第 %d 行「%s」超过 %d 字", sheet, rowNumber, columns[i].header, columns[i].maxRunes)
+		}
 	}
 	return nil
 }

@@ -24,6 +24,26 @@ type cardTypeInfo struct {
 	items map[string]dbgen.CardTypeItem
 }
 
+// previewBusyError 表示已有导入预览正在解析，HTTP 返回 429。
+type previewBusyError struct{}
+
+func (*previewBusyError) Error() string { return "正在处理其他导入，请稍后再试" }
+
+var (
+	errPreviewBusy = error(&previewBusyError{})
+	previewParse   = make(chan struct{}, 1)
+)
+
+func parsePreview(r io.Reader) (*parsedFile, error) {
+	select {
+	case previewParse <- struct{}{}:
+		defer func() { <-previewParse }()
+	default:
+		return nil, errPreviewBusy
+	}
+	return parseWorkbook(r)
+}
+
 func cardTypes(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID) (map[string]cardTypeInfo, error) {
 	rows, err := q.ListCardTypes(ctx, storeID)
 	if err != nil {
@@ -60,7 +80,7 @@ func Preview(ctx context.Context, pool *pgxpool.Pool, caller ops.Caller, now tim
 	if !caller.Has(perm.DataImport) {
 		return nil, ops.ErrForbidden
 	}
-	file, err := parseWorkbook(r)
+	file, err := parsePreview(r)
 	if err != nil {
 		return nil, err
 	}

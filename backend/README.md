@@ -237,7 +237,7 @@ Reconcile 按 `collections.business_date`（补录单写入纸单日；为空的
 
 ## 数据导入导出
 
-`internal/dataio` 从美管加中间 Excel 导入历史顾客、储值卡余额、次卡套餐次数和积分，并导出本店全量数据。历史水单、支付、提成和员工不导入。写操作 `commit_import`、`undo_import` 为 AINone；`list_import_batches`、`get_import_batch` 为 AIDirect。四个操作都需要 `data.import`。上传预览 `POST /api/import/preview`（multipart 字段 `file`）和全量导出 `GET /api/export/all.xlsx` 是普通 Echo 接口，分别需要 `data.import`、`data.export`。两个权限默认只有老板拥有，店长等角色可由老板在角色设置里授予。单文件上限 8 MiB，解压后总大小最多 64 MiB、单表 XML 最多 16 MiB；每张业务表最多 20000 行数据，`汇总` 最多 1000 行。读取使用 excelize 的流式 `Rows`，边读边数，超限或 XML 损坏返回 422 文件错误。
+`internal/dataio` 从美管加中间 Excel 导入历史顾客、储值卡余额、次卡套餐次数和积分，并导出本店全量数据。历史水单、支付、提成和员工不导入。写操作 `commit_import`、`undo_import` 为 AINone；`list_import_batches`、`get_import_batch` 为 AIDirect。四个操作都需要 `data.import`。上传预览 `POST /api/import/preview`（multipart 字段 `file`）和全量导出 `GET /api/export/all.xlsx` 是普通 Echo 接口，分别需要 `data.import`、`data.export`。两个权限默认只有老板拥有，店长等角色可由老板在角色设置里授予。单文件上限 8 MiB，解压后总大小最多 64 MiB、单表 XML 最多 16 MiB；每张业务表最多 20000 行数据，`汇总` 最多 1000 行。读取使用 excelize 的流式 `Rows`，边读边数，超限或 XML 损坏返回 422 文件错误。预览前还会用 `archive/zip` 流式预检：共享字符串表解压后最多 8 MiB，单个共享字符串、行内字符串或缓存值最多 200 字，任何工作表里有值的列最多 20 列；解析后按业务列限制字符数（`来源顾客ID`/`来源卡号` 64，`姓名` 40，`手机号` 20，`性别` 2，`卡种`/`项目` 40，金额、次数、积分、日期和汇总列 20）。同一时间只解析一份导入预览，忙时返回 429 `正在处理其他导入，请稍后再试`。
 
 ### 中间 Excel 契约
 
