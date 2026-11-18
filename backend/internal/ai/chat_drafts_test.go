@@ -1,6 +1,7 @@
 package ai_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -28,6 +29,48 @@ type draftFixture struct {
 	customer uuid.UUID
 	cardType uuid.UUID
 	card     uuid.UUID
+}
+
+func TestChatDraftPreviewPhoneMasked(t *testing.T) {
+	s := optest.OpenShop(t)
+	_, stylistToken := s.Hire("发型师", "002", "chat-mask", s.Role("发型师"))
+	s.Registry.SetDraftPreview("create_customer", func(context.Context, ops.Env, json.RawMessage) (any, error) {
+		return map[string]any{"phone": "13800001234"}, nil
+	})
+	args, err := json.Marshal(map[string]any{"name": "聊天顾客", "phone": "13900001234"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		name  string
+		token string
+		want  string
+	}{
+		{"masked", stylistToken, "138****1234"},
+		{"full", s.Owner, "13800001234"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := &fakeModel{reply: func(call int, _ []ai.Message, _ []ops.Tool) (ai.Message, error) {
+				if call == 1 {
+					return toolCall("call_1", "create_customer", string(args)), nil
+				}
+				return assistant("已起草。"), nil
+			}}
+			s.SetAIModel(fake)
+			r := chatCall(t, s, tt.token, []map[string]any{user("建一个顾客")})
+			if r.Status != http.StatusOK {
+				t.Fatal(r)
+			}
+			drafts, ok := r.Body["drafts"].([]any)
+			if !ok || len(drafts) != 1 {
+				t.Fatal(r)
+			}
+			preview, ok := drafts[0].(map[string]any)["preview"].(map[string]any)
+			if !ok || preview["phone"] != tt.want {
+				t.Fatal(drafts[0])
+			}
+		})
+	}
 }
 
 func newDraftFixture(t *testing.T) *draftFixture {

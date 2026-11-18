@@ -40,8 +40,8 @@ func PhoneKeyword(key string) bool {
 	return strings.Contains(strings.ToLower(key), "phone")
 }
 
-// PhoneField 判断结构体字段是否承载手机号，并检查它的 JSON 键名能否被打码。
-// 不是手机号字段时返回 false；键名或选项不合规时返回错误。
+// PhoneField 判断结构体字段是否参与序列化，并检查其中的手机号字段。
+// 返回 false 表示字段不会进入日志或草稿，调用者不应检查也不应递归。
 func PhoneField(t reflect.Type, field reflect.StructField) (bool, error) {
 	fieldType := field.Type
 	if fieldType.Kind() == reflect.Pointer {
@@ -59,7 +59,7 @@ func PhoneField(t reflect.Type, field reflect.StructField) (bool, error) {
 		key = field.Name
 	}
 	if !PhoneKeyword(field.Name) || fieldType.Kind() != reflect.String {
-		return false, nil
+		return true, nil
 	}
 	if !PhoneKey(key) {
 		return true, fmt.Errorf("privacy: field %s.%s has JSON key %q; phone numbers must use the key \"phone\" or a key ending in \"_phone\" so they can be masked", t.Name(), field.Name, key)

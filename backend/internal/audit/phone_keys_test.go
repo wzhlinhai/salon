@@ -23,6 +23,12 @@ func TestCheckPhoneKeys(t *testing.T) {
 	type Embedded struct {
 		Order
 	}
+	type ignoredNested struct {
+		Cache *BadOrder `json:"-"`
+	}
+	type privateNested struct {
+		cache *BadOrder
+	}
 	type node struct{ Next *node }
 	n := node{}
 	n.Next = &n
@@ -62,6 +68,8 @@ func TestCheckPhoneKeys(t *testing.T) {
 		{"array", [1]Order{{phone}}, ""},
 		{"interface", struct{ Value any }{Order{phone}}, ""},
 		{"embedded", Embedded{Order{phone}}, ""},
+		{"ignored nested", ignoredNested{&BadOrder{phone}}, ""},
+		{"unexported nested", privateNested{&BadOrder{phone}}, ""},
 		{"non-conforming field", BadOrder{phone}, `BadOrder.MobilePhone has JSON key "contact"`},
 		{"non-conforming slice", []BadOrder{{phone}}, `BadOrder.MobilePhone has JSON key "contact"`},
 		{"map", map[string]any{"phone_number": phone}, `map key "phone_number"`},

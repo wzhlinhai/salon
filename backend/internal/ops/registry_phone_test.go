@@ -47,6 +47,14 @@ type phoneDynamic struct {
 	Value any `json:"value"`
 }
 
+type phoneIgnored struct {
+	Cache *phoneDirect `json:"-"`
+}
+
+type phonePrivate struct {
+	cache *phoneDirect
+}
+
 func TestAIDraftPhoneKeysRejectedAtRegistration(t *testing.T) {
 	for _, tt := range []struct {
 		name     string
@@ -77,6 +85,12 @@ func TestAIDraftPhoneKeysAcceptConformingAndDynamicFields(t *testing.T) {
 			tt.register(t)
 		})
 	}
+}
+
+func TestAIDraftPhoneKeysIgnoreUnserialisedFields(t *testing.T) {
+	_ = phonePrivate{cache: &phoneDirect{}}
+	registerPhoneOp[phoneIgnored](t, ops.AIDraft)
+	registerPhoneOp[phonePrivate](t, ops.AIDraft)
 }
 
 func TestAINonePhoneKeysNotChecked(t *testing.T) {

@@ -243,7 +243,7 @@ func (c *Chat) draftView(ctx context.Context, caller ops.Caller, now time.Time, 
 		return DraftView{}, false
 	}
 	view := DraftView{Draft: d}
-	preview, err := c.registry.PreviewDraft(ctx, ops.Env{Now: now, Caller: caller}, d.Operation, d.Params)
+	preview, err := drafts.PreviewDraft(ctx, c.registry, ops.Env{Now: now, Caller: caller}, d.Operation, d.Params)
 	if err != nil {
 		if ops.StatusOf(err) >= 500 {
 			slog.Error("draft preview failed", "err", err, "draft_id", d.ID, "operation", d.Operation)

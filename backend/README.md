@@ -533,7 +533,7 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 `draft_dual_confirm` 为 off/on，默认 off，可当天生效；on 时 adjust_card、void_order、refund_card、reprice_order_item 须另一人确认。`audit.Record` 自动把 `Env.DraftID` 写入 audit_log，日志输出 draft_id，get_draft 返回 audit_log_ids。
 
-`Registry.SetDraftPreview(operation, fn)` 为可起草操作接入只读预览；预览不写表，`get_draft` 在原有的可重复读只读事务里执行它。`open_order`、`add_order_item`、`open_groupbuy_order` 有预览：逐行返回项目名、岗位上员工名，以及按第一个岗位员工计算的一个适用价格（标准价或级别价及来源，第一个岗位为空时取标准价），与 `open_order`/`add_order_item` 的计价一致；顾客的可用卡按类型返回余额和本项目剩余次数，储值类卡的会员价按行（含行号和项目）返回，并按该行第一个岗位员工的级别价与会员价规则计算。没有 `customer.view` 或顾客不在查看范围时，预览仍返回项目和员工，但不返回卡。补录预览与补录开单共用日期校验，未来的、超过补录天数的、已封账或工资月已锁定的日期返回同一条规则提示。预览查询全部按批读取，条数不随行数增长；`get_draft` 返回 `preview`，规则拒绝时返回 `preview_error` 文字，内部错误则整次读取失败。`list_drafts` 不生成预览，避免列表的 N× 成本。草稿参数、事件和预览里的手机号都按同一规则打码，没有 `customer.full_phone` 的调用者看不到完整号码。
+`Registry.SetDraftPreview(operation, fn)` 为可起草操作接入只读预览；预览不写表，`get_draft` 在原有的可重复读只读事务里执行它。`open_order`、`add_order_item`、`open_groupbuy_order` 有预览：逐行返回项目名、岗位上员工名，以及按第一个岗位员工计算的一个适用价格（标准价或级别价及来源，第一个岗位为空时取标准价），与 `open_order`/`add_order_item` 的计价一致；顾客的可用卡按类型返回余额和本项目剩余次数，储值类卡的会员价按行（含行号和项目）返回，并按该行第一个岗位员工的级别价与会员价规则计算。没有 `customer.view` 或顾客不在查看范围时，预览仍返回项目和员工，但不返回卡。补录预览与补录开单共用日期校验，未来的、超过补录天数的、已封账或工资月已锁定的日期返回同一条规则提示。预览查询全部按批读取，条数不随行数增长；`get_draft` 返回 `preview`，规则拒绝时返回 `preview_error` 文字，内部错误则整次读取失败。`list_drafts` 不生成预览，避免列表的 N× 成本。草稿参数、事件和预览里的手机号都按同一规则打码，没有 `customer.full_phone` 的调用者看不到完整号码。手机号字段按 Go 字段名包含 "phone" 识别，所以新增手机号输入必须这样命名，并使用 `phone` 或 `*_phone` 键。`summary` 和 `utterance` 是自由文本，不打码。
 
 草稿控制的 create/update/reject 声明为专用 `AIManageDraft`，仅这三个操作允许使用；它们只写草稿。`confirm_draft` 为 AINone，只允许人通过 HTTP 确认，AI 无法自行确认业务写入。
 

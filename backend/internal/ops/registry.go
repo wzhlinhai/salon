@@ -188,8 +188,12 @@ func validateInputPhones(input reflect.Type) error {
 		case reflect.Struct:
 			for i := 0; i < t.NumField(); i++ {
 				field := t.Field(i)
-				if _, err := privacy.PhoneField(t, field); err != nil {
+				serialised, err := privacy.PhoneField(t, field)
+				if err != nil {
 					return err
+				}
+				if !serialised {
+					continue
 				}
 				if err := walk(field.Type); err != nil {
 					return err

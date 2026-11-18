@@ -108,8 +108,12 @@ func checkPhoneValue(v reflect.Value, depth int) error {
 		t := v.Type()
 		for i := range t.NumField() {
 			field := t.Field(i)
-			if _, err := privacy.PhoneField(t, field); err != nil {
+			serialised, err := privacy.PhoneField(t, field)
+			if err != nil {
 				return err
+			}
+			if !serialised {
+				continue
 			}
 			if err := checkPhoneValue(v.Field(i), depth+1); err != nil {
 				return err
