@@ -1,6 +1,7 @@
 package commission
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -52,12 +53,42 @@ type CommissionOrigin struct {
 
 // CommissionPerformanceEntry 是一笔提成所包含的支付方式业绩记录。
 type CommissionPerformanceEntry struct {
-	ID            uuid.UUID    `json:"id"`
-	Method        string       `json:"method"`
-	PaidAmount    money.Amount `json:"paid_amount"`
-	Ratio         int16        `json:"ratio"`
-	CategoryRatio int16        `json:"category_ratio"`
-	Amount        money.Amount `json:"amount"`
+	ID                   uuid.UUID    `json:"id"`
+	Method               string       `json:"method"`
+	PaidAmount           money.Amount `json:"paid_amount"`
+	CommissionPaidAmount money.Amount `json:"commission_paid_amount" doc:"计入提成的实收份额"`
+	Ratio                int16        `json:"ratio"`
+	CategoryRatio        int16        `json:"category_ratio"`
+	Amount               money.Amount `json:"amount"`
+	CommissionAmount     money.Amount `json:"commission_amount" doc:"计入提成的业绩金额"`
+}
+
+// UnmarshalJSON 兼容本次改动前保存的解释：老记录没有提成两列，按实收和业绩补齐。
+func (e *CommissionPerformanceEntry) UnmarshalJSON(raw []byte) error {
+	var v struct {
+		ID                   uuid.UUID     `json:"id"`
+		Method               string        `json:"method"`
+		PaidAmount           money.Amount  `json:"paid_amount"`
+		CommissionPaidAmount *money.Amount `json:"commission_paid_amount"`
+		Ratio                int16         `json:"ratio"`
+		CategoryRatio        int16         `json:"category_ratio"`
+		Amount               money.Amount  `json:"amount"`
+		CommissionAmount     *money.Amount `json:"commission_amount"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return err
+	}
+	*e = CommissionPerformanceEntry{
+		ID: v.ID, Method: v.Method, PaidAmount: v.PaidAmount, CommissionPaidAmount: v.PaidAmount,
+		Ratio: v.Ratio, CategoryRatio: v.CategoryRatio, Amount: v.Amount, CommissionAmount: v.Amount,
+	}
+	if v.CommissionPaidAmount != nil {
+		e.CommissionPaidAmount = *v.CommissionPaidAmount
+	}
+	if v.CommissionAmount != nil {
+		e.CommissionAmount = *v.CommissionAmount
+	}
+	return nil
 }
 
 // CommissionBase 说明计提基数及项目行价格按实收份额的分摊。

@@ -37,6 +37,8 @@ func deductPerformance(ctx context.Context, env ops.Env, orderID, aftersaleID uu
 	}
 	priorPaid := map[uuid.UUID]int64{}
 	priorAmount := map[uuid.UUID]int64{}
+	priorCommissionPaid := map[uuid.UUID]int64{}
+	priorCommissionAmount := map[uuid.UUID]int64{}
 	for _, row := range prior {
 		if row.ReversesID == nil {
 			continue
@@ -49,8 +51,18 @@ func deductPerformance(ctx context.Context, env ops.Env, orderID, aftersaleID uu
 		if err != nil {
 			return err
 		}
+		commissionPaid, err := parseAmount(row.CommissionPaid)
+		if err != nil {
+			return err
+		}
+		commissionAmount, err := parseAmount(row.CommissionAmount)
+		if err != nil {
+			return err
+		}
 		priorPaid[*row.ReversesID] += paid.Fen()
 		priorAmount[*row.ReversesID] += amount.Fen()
+		priorCommissionPaid[*row.ReversesID] += commissionPaid.Fen()
+		priorCommissionAmount[*row.ReversesID] += commissionAmount.Fen()
 	}
 	cumulative := state.approved.AddTotal(refundTotal)
 	cumulativeFen := cumulative.Fen()
@@ -67,8 +79,19 @@ func deductPerformance(ctx context.Context, env ops.Env, orderID, aftersaleID uu
 			return err
 		}
 		targetAmountFen := targetPaid.PercentOfProduct(int(entry.Ratio), int(entry.CategoryRatio)).Fen()
+		targetCommissionPaidFen := mulDiv(entry.CommissionPaidAmount.Fen(), cumulativeFen, state.baseFen)
+		if targetCommissionPaidFen > entry.CommissionPaidAmount.Fen() {
+			targetCommissionPaidFen = entry.CommissionPaidAmount.Fen()
+		}
+		targetCommissionPaid, err := money.FromFen(targetCommissionPaidFen)
+		if err != nil {
+			return err
+		}
+		targetCommissionAmountFen := targetCommissionPaid.PercentOfProduct(int(entry.Ratio), int(entry.CategoryRatio)).Fen()
 		deltaPaid := targetPaidFen - priorPaid[entry.ID]
 		deltaAmount := targetAmountFen - priorAmount[entry.ID]
+		deltaCommissionPaid := targetCommissionPaidFen - priorCommissionPaid[entry.ID]
+		deltaCommissionAmount := targetCommissionAmountFen - priorCommissionAmount[entry.ID]
 		if deltaPaid <= 0 {
 			continue
 		}
@@ -78,6 +101,15 @@ func deductPerformance(ctx context.Context, env ops.Env, orderID, aftersaleID uu
 		if deltaAmount > deltaPaid {
 			deltaAmount = deltaPaid
 		}
+		if deltaCommissionPaid < 0 {
+			deltaCommissionPaid = 0
+		}
+		if deltaCommissionAmount < 0 {
+			deltaCommissionAmount = 0
+		}
+		if deltaCommissionAmount > deltaCommissionPaid {
+			deltaCommissionAmount = deltaCommissionPaid
+		}
 		paid, err := money.FromFen(deltaPaid)
 		if err != nil {
 			return err
@@ -86,12 +118,21 @@ func deductPerformance(ctx context.Context, env ops.Env, orderID, aftersaleID uu
 		if err != nil {
 			return err
 		}
+		commissionPaid, err := money.FromFen(deltaCommissionPaid)
+		if err != nil {
+			return err
+		}
+		commissionAmount, err := money.FromFen(deltaCommissionAmount)
+		if err != nil {
+			return err
+		}
 		if err := env.Q.AddAftersalePerformanceEntry(ctx, dbgen.AddAftersalePerformanceEntryParams{
 			TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID,
 			BusinessDate: pgtype.Date{Time: day, Valid: true},
 			OrderID:      entry.OrderID, OrderItemID: entry.OrderItemID, CheckoutID: entry.CheckoutID, SettingsSnapshotID: entry.SettingsSnapshotID,
 			Slot: entry.Slot, PositionID: entry.PositionID, StaffID: entry.StaffID, Method: entry.Method,
-			PaidAmount: paid, Ratio: entry.Ratio, CategoryRatio: entry.CategoryRatio, Amount: amount,
+			PaidAmount: paid, CommissionPaidAmount: commissionPaid, Ratio: entry.Ratio, CategoryRatio: entry.CategoryRatio,
+			Amount: amount, CommissionAmount: commissionAmount,
 			ReversesID: &entry.ID, AftersaleID: &aftersaleID, Member: entry.Member,
 		}); err != nil {
 			return err

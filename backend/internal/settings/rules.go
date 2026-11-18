@@ -276,6 +276,13 @@ func (r Rules) PerformanceSplit() string {
 	return v
 }
 
+// CommissionSplit 返回多人做同一个项目时提成的分配做法。
+func (r Rules) CommissionSplit() string {
+	var v string
+	r.decode(KeyCommissionSplit, &v)
+	return v
+}
+
 // GuestCountSplit 返回每张结账单客次的归属做法。
 func (r Rules) GuestCountSplit() string {
 	var v string

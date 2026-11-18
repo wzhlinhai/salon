@@ -32,7 +32,7 @@ func TestConsumeLabor(t *testing.T) {
 		{"zero unit", allocationLine{Line: Line{}, Count: &consumption{Method: "count_paid"}}, "equal", "", "", nil, nil, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := consumeAndLabor([]allocationLine{tc.line}, tc.split, map[string]int{"count_paid": 100, "count_gift": 0})
+			got := consumeAndLabor([]allocationLine{tc.line}, tc.split, "same", map[string]int{"count_paid": 100, "count_gift": 0})
 			if len(got) != len(tc.paid) {
 				t.Fatal(got)
 			}
@@ -47,7 +47,7 @@ func TestConsumeLabor(t *testing.T) {
 
 func TestItemSkipsCount(t *testing.T) {
 	countID, cashID := uuid.New(), uuid.New()
-	got := allocate([]allocationLine{{Line: Line{OrderItemID: countID, Net: amount("100")}, Count: &consumption{Method: "count_paid", UnitPrice: amount("25")}}, {Line: Line{OrderItemID: cashID, Net: amount("1")}}}, []category{{Method: "cash", Amount: amount("1")}}, "equal", map[string]int{"cash": 100})
+	got := allocate([]allocationLine{{Line: Line{OrderItemID: countID, Net: amount("100")}, Count: &consumption{Method: "count_paid", UnitPrice: amount("25")}}, {Line: Line{OrderItemID: cashID, Net: amount("1")}}}, []category{{Method: "cash", Amount: amount("1")}}, "equal", "same", map[string]int{"cash": 100})
 	if len(got) != 1 || got[0].orderItemID != cashID || got[0].paidAmount.String() != "1.00" {
 		t.Fatal(got)
 	}

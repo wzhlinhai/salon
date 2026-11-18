@@ -455,8 +455,8 @@ func TestCommissionLinePriceFacts(t *testing.T) {
 	o := s.paid(s.customerOrder(line), payment("cash", "100"))
 	// 同一行加门店未分配记录，确保分母包含它，而列表不产生门店提成。
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	dbtest.Exec(t, tx, `INSERT INTO performance_entries(tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,method,paid_amount,ratio,amount,member)
- SELECT tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,'cash',100,100,100,member FROM performance_entries WHERE order_id=$1 LIMIT 1`, o["id"])
+	dbtest.Exec(t, tx, `INSERT INTO performance_entries(tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,method,paid_amount,commission_paid_amount,ratio,amount,commission_amount,member)
+ SELECT tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,'cash',100,100,100,100,100,member FROM performance_entries WHERE order_id=$1 LIMIT 1`, o["id"])
 	dbtest.Commit(t, tx)
 	for _, ch := range s.Channels() {
 		got := ch.Call(t, s.MustCaller(s.Owner), "list_commissions", commissionArgs(s.Now()))
@@ -583,8 +583,8 @@ func TestPerformanceLineFactsCountsItemsOnly(t *testing.T) {
 		{"item", "cash", "40.00", "40.00"},
 		{"labor", "labor", "10.00", "10.00"},
 	} {
-		dbtest.Exec(t, tx, `INSERT INTO performance_entries(tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,ratio,category_ratio,amount,member)
- VALUES($1,$2,$3,$4,$5,$6,$7,$8,1,$9,$10,$11,$12,100,100,$13,true)`,
+		dbtest.Exec(t, tx, `INSERT INTO performance_entries(tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,commission_paid_amount,ratio,category_ratio,amount,commission_amount,member)
+ VALUES($1,$2,$3,$4,$5,$6,$7,$8,1,$9,$10,$11,$12,$12,100,100,$13,$13,true)`,
 			s.Res.TenantID, s.Res.StoreID, entry.kind, date, order["id"], lineID, checkout, snapshot, s.position, s.Res.OwnerID, entry.method, entry.paid, entry.amount)
 	}
 	facts, err := dbgen.New(tx).PerformanceLineFacts(context.Background(), dbgen.PerformanceLineFactsParams{StoreID: s.Res.StoreID, Ids: []uuid.UUID{lineID}})

@@ -14,28 +14,30 @@ import (
 )
 
 const addPerformanceEntry = `-- name: AddPerformanceEntry :exec
-INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,ratio,category_ratio,amount,member)
-VALUES ($1,$2,$16,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$17)
+INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,commission_paid_amount,ratio,category_ratio,amount,commission_amount,member)
+VALUES ($1,$2,$18,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$19)
 `
 
 type AddPerformanceEntryParams struct {
-	TenantID           uuid.UUID
-	StoreID            uuid.UUID
-	BusinessDate       pgtype.Date
-	OrderID            *uuid.UUID
-	OrderItemID        *uuid.UUID
-	CheckoutID         *uuid.UUID
-	SettingsSnapshotID *uuid.UUID
-	Slot               *int16
-	PositionID         *uuid.UUID
-	StaffID            *uuid.UUID
-	Method             string
-	PaidAmount         money.Amount
-	Ratio              int16
-	CategoryRatio      int16
-	Amount             money.Amount
-	Kind               string
-	Member             *bool
+	TenantID             uuid.UUID
+	StoreID              uuid.UUID
+	BusinessDate         pgtype.Date
+	OrderID              *uuid.UUID
+	OrderItemID          *uuid.UUID
+	CheckoutID           *uuid.UUID
+	SettingsSnapshotID   *uuid.UUID
+	Slot                 *int16
+	PositionID           *uuid.UUID
+	StaffID              *uuid.UUID
+	Method               string
+	PaidAmount           money.Amount
+	CommissionPaidAmount money.Amount
+	Ratio                int16
+	CategoryRatio        int16
+	Amount               money.Amount
+	CommissionAmount     money.Amount
+	Kind                 string
+	Member               *bool
 }
 
 func (q *Queries) AddPerformanceEntry(ctx context.Context, arg AddPerformanceEntryParams) error {
@@ -52,9 +54,11 @@ func (q *Queries) AddPerformanceEntry(ctx context.Context, arg AddPerformanceEnt
 		arg.StaffID,
 		arg.Method,
 		arg.PaidAmount,
+		arg.CommissionPaidAmount,
 		arg.Ratio,
 		arg.CategoryRatio,
 		arg.Amount,
+		arg.CommissionAmount,
 		arg.Kind,
 		arg.Member,
 	)
@@ -62,8 +66,8 @@ func (q *Queries) AddPerformanceEntry(ctx context.Context, arg AddPerformanceEnt
 }
 
 const addSalePerformance = `-- name: AddSalePerformance :exec
-INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,staff_id,method,paid_amount,ratio,amount,card_ledger_id,red_packet_id,purchase)
-VALUES ($1,$2,'sale',$3,$4,$5,$6,100,$6,$7,$8,$9)
+INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,staff_id,method,paid_amount,commission_paid_amount,ratio,amount,commission_amount,card_ledger_id,red_packet_id,purchase)
+VALUES ($1,$2,'sale',$3,$4,$5,$6,$6,100,$6,$6,$7,$8,$9)
 `
 
 type AddSalePerformanceParams struct {
@@ -94,7 +98,7 @@ func (q *Queries) AddSalePerformance(ctx context.Context, arg AddSalePerformance
 }
 
 const listPerformance = `-- name: ListPerformance :many
-SELECT e.tenant_id, e.store_id, e.id, e.kind, e.business_date, e.order_id, e.order_item_id, e.checkout_id, e.settings_snapshot_id, e.slot, e.position_id, e.staff_id, e.method, e.paid_amount, e.ratio, e.amount, e.void_id, e.reverses_id, e.created_at, e.card_ledger_id, e.red_packet_id, e.purchase, e.member, e.aftersale_id, e.category_ratio, i.item_name, s.name AS staff_name
+SELECT e.tenant_id, e.store_id, e.id, e.kind, e.business_date, e.order_id, e.order_item_id, e.checkout_id, e.settings_snapshot_id, e.slot, e.position_id, e.staff_id, e.method, e.paid_amount, e.ratio, e.amount, e.void_id, e.reverses_id, e.created_at, e.card_ledger_id, e.red_packet_id, e.purchase, e.member, e.aftersale_id, e.category_ratio, e.commission_paid_amount, e.commission_amount, i.item_name, s.name AS staff_name
 FROM performance_entries e
 LEFT JOIN order_items i ON i.id=e.order_item_id
 LEFT JOIN staff s ON s.id=e.staff_id
@@ -117,33 +121,35 @@ type ListPerformanceParams struct {
 }
 
 type ListPerformanceRow struct {
-	TenantID           uuid.UUID
-	StoreID            uuid.UUID
-	ID                 uuid.UUID
-	Kind               string
-	BusinessDate       pgtype.Date
-	OrderID            *uuid.UUID
-	OrderItemID        *uuid.UUID
-	CheckoutID         *uuid.UUID
-	SettingsSnapshotID *uuid.UUID
-	Slot               *int16
-	PositionID         *uuid.UUID
-	StaffID            *uuid.UUID
-	Method             string
-	PaidAmount         money.Amount
-	Ratio              int16
-	Amount             money.Amount
-	VoidID             *uuid.UUID
-	ReversesID         *uuid.UUID
-	CreatedAt          pgtype.Timestamptz
-	CardLedgerID       *uuid.UUID
-	RedPacketID        *uuid.UUID
-	Purchase           *string
-	Member             *bool
-	AftersaleID        *uuid.UUID
-	CategoryRatio      int16
-	ItemName           *string
-	StaffName          *string
+	TenantID             uuid.UUID
+	StoreID              uuid.UUID
+	ID                   uuid.UUID
+	Kind                 string
+	BusinessDate         pgtype.Date
+	OrderID              *uuid.UUID
+	OrderItemID          *uuid.UUID
+	CheckoutID           *uuid.UUID
+	SettingsSnapshotID   *uuid.UUID
+	Slot                 *int16
+	PositionID           *uuid.UUID
+	StaffID              *uuid.UUID
+	Method               string
+	PaidAmount           money.Amount
+	Ratio                int16
+	Amount               money.Amount
+	VoidID               *uuid.UUID
+	ReversesID           *uuid.UUID
+	CreatedAt            pgtype.Timestamptz
+	CardLedgerID         *uuid.UUID
+	RedPacketID          *uuid.UUID
+	Purchase             *string
+	Member               *bool
+	AftersaleID          *uuid.UUID
+	CategoryRatio        int16
+	CommissionPaidAmount money.Amount
+	CommissionAmount     money.Amount
+	ItemName             *string
+	StaffName            *string
 }
 
 func (q *Queries) ListPerformance(ctx context.Context, arg ListPerformanceParams) ([]ListPerformanceRow, error) {
@@ -189,6 +195,8 @@ func (q *Queries) ListPerformance(ctx context.Context, arg ListPerformanceParams
 			&i.Member,
 			&i.AftersaleID,
 			&i.CategoryRatio,
+			&i.CommissionPaidAmount,
+			&i.CommissionAmount,
 			&i.ItemName,
 			&i.StaffName,
 		); err != nil {
@@ -205,9 +213,9 @@ func (q *Queries) ListPerformance(ctx context.Context, arg ListPerformanceParams
 const performanceLineFacts = `-- name: PerformanceLineFacts :many
 SELECT i.id, i.item_id, i.category_id, i.price, o.designated, e.checkout_id,
 CASE
-  WHEN COALESCE(sum(e.paid_amount) FILTER (WHERE e.kind = 'item' AND e.staff_id IS NOT NULL),0) > (i.price - i.discount)
+  WHEN COALESCE(sum(e.commission_paid_amount) FILTER (WHERE e.kind = 'item' AND e.staff_id IS NOT NULL),0) > (i.price - i.discount)
   THEN (i.price - i.discount)::text
-  ELSE COALESCE(sum(e.paid_amount) FILTER (WHERE e.kind = 'item'),0)::text
+  ELSE COALESCE(sum(e.commission_paid_amount) FILTER (WHERE e.kind = 'item'),0)::text
 END AS line_paid
 FROM performance_entries e JOIN order_items i ON i.id = e.order_item_id JOIN orders o ON o.id = e.order_id
 WHERE e.store_id = $1 AND e.order_item_id = ANY($2::uuid[]) AND e.reverses_id IS NULL
@@ -258,7 +266,7 @@ func (q *Queries) PerformanceLineFacts(ctx context.Context, arg PerformanceLineF
 }
 
 const performanceOriginalEntries = `-- name: PerformanceOriginalEntries :many
-SELECT tenant_id, store_id, id, kind, business_date, order_id, order_item_id, checkout_id, settings_snapshot_id, slot, position_id, staff_id, method, paid_amount, ratio, amount, void_id, reverses_id, created_at, card_ledger_id, red_packet_id, purchase, member, aftersale_id, category_ratio FROM performance_entries WHERE store_id = $1 AND id = ANY($2::uuid[])
+SELECT tenant_id, store_id, id, kind, business_date, order_id, order_item_id, checkout_id, settings_snapshot_id, slot, position_id, staff_id, method, paid_amount, ratio, amount, void_id, reverses_id, created_at, card_ledger_id, red_packet_id, purchase, member, aftersale_id, category_ratio, commission_paid_amount, commission_amount FROM performance_entries WHERE store_id = $1 AND id = ANY($2::uuid[])
 `
 
 type PerformanceOriginalEntriesParams struct {
@@ -301,6 +309,8 @@ func (q *Queries) PerformanceOriginalEntries(ctx context.Context, arg Performanc
 			&i.Member,
 			&i.AftersaleID,
 			&i.CategoryRatio,
+			&i.CommissionPaidAmount,
+			&i.CommissionAmount,
 		); err != nil {
 			return nil, err
 		}
@@ -364,7 +374,7 @@ func (q *Queries) PerformanceTotals(ctx context.Context, arg PerformanceTotalsPa
 }
 
 const performanceUnitEntries = `-- name: PerformanceUnitEntries :many
-SELECT e.tenant_id, e.store_id, e.id, e.kind, e.business_date, e.order_id, e.order_item_id, e.checkout_id, e.settings_snapshot_id, e.slot, e.position_id, e.staff_id, e.method, e.paid_amount, e.ratio, e.amount, e.void_id, e.reverses_id, e.created_at, e.card_ledger_id, e.red_packet_id, e.purchase, e.member, e.aftersale_id, e.category_ratio FROM performance_entries e
+SELECT e.tenant_id, e.store_id, e.id, e.kind, e.business_date, e.order_id, e.order_item_id, e.checkout_id, e.settings_snapshot_id, e.slot, e.position_id, e.staff_id, e.method, e.paid_amount, e.ratio, e.amount, e.void_id, e.reverses_id, e.created_at, e.card_ledger_id, e.red_packet_id, e.purchase, e.member, e.aftersale_id, e.category_ratio, e.commission_paid_amount, e.commission_amount FROM performance_entries e
 WHERE e.store_id = $1 AND e.business_date BETWEEN $2::date AND $3::date
 AND e.staff_id IS NOT NULL AND ($4::uuid IS NULL OR e.staff_id = $4)
 AND (e.aftersale_id IS NULL OR EXISTS (SELECT 1 FROM aftersales a WHERE a.tenant_id=e.tenant_id AND a.id=e.aftersale_id AND a.status='approved' AND a.deduct_commission))
@@ -417,6 +427,8 @@ func (q *Queries) PerformanceUnitEntries(ctx context.Context, arg PerformanceUni
 			&i.Member,
 			&i.AftersaleID,
 			&i.CategoryRatio,
+			&i.CommissionPaidAmount,
+			&i.CommissionAmount,
 		); err != nil {
 			return nil, err
 		}
@@ -429,8 +441,8 @@ func (q *Queries) PerformanceUnitEntries(ctx context.Context, arg PerformanceUni
 }
 
 const reversePerformanceOrder = `-- name: ReversePerformanceOrder :exec
-INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,ratio,category_ratio,amount,void_id,reverses_id,member)
-SELECT e.tenant_id,e.store_id,e.kind,$1,e.order_id,e.order_item_id,e.checkout_id,e.settings_snapshot_id,e.slot,e.position_id,e.staff_id,e.method,e.paid_amount,e.ratio,e.category_ratio,e.amount,$2,e.id,e.member
+INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,commission_paid_amount,ratio,category_ratio,amount,commission_amount,void_id,reverses_id,member)
+SELECT e.tenant_id,e.store_id,e.kind,$1,e.order_id,e.order_item_id,e.checkout_id,e.settings_snapshot_id,e.slot,e.position_id,e.staff_id,e.method,e.paid_amount,e.commission_paid_amount,e.ratio,e.category_ratio,e.amount,e.commission_amount,$2,e.id,e.member
 FROM performance_entries e
 WHERE e.store_id=$3 AND e.order_id=$4 AND e.reverses_id IS NULL
 AND NOT EXISTS (SELECT 1 FROM performance_entries r WHERE r.reverses_id=e.id AND r.void_id IS NOT NULL)

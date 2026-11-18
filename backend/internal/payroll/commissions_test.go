@@ -144,3 +144,54 @@ func TestPayrollCommissionsQueryCount(t *testing.T) {
 		}
 	}
 }
+
+func TestPayrollSettledExplanationCommissionFallback(t *testing.T) {
+	s, m := pastShop(t)
+	id, _ := s.Hire("旧解释员工", "002", "legacy-explanation")
+	historicalStaff(t, s, id, m, nil)
+	schemeAt(t, s, m.AddDate(0, -1, 0), 1, "10")
+	payPerformance(t, s, id, m, false)
+	s.Call(t, s.Owner, "lock_payroll_month", map[string]any{"month": month(m)}, 200)
+
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	var commissionID uuid.UUID
+	var paid, amount string
+	if err := tx.QueryRow(t.Context(), `SELECT id, explanation->'entries'->0->>'paid_amount', explanation->'entries'->0->>'amount' FROM settled_commissions WHERE store_id=$1 AND jsonb_array_length(explanation->'entries')>0 LIMIT 1`, s.Res.StoreID).Scan(&commissionID, &paid, &amount); err != nil {
+		t.Fatal(err)
+	}
+	dbtest.Exec(t, tx, "RESET ROLE")
+	dbtest.Exec(t, tx, `UPDATE settled_commissions SET explanation = jsonb_set(explanation, '{entries,0}', (explanation->'entries'->0) - 'commission_paid_amount' - 'commission_amount') WHERE id=$1`, commissionID)
+	dbtest.Commit(t, tx)
+
+	check := func(wantPaid, wantAmount string) {
+		t.Helper()
+		caller := s.MustCaller(s.Owner)
+		for _, ch := range s.Channels() {
+			r := ch.Call(t, caller, "list_payroll_commissions", map[string]any{"month": month(m), "staff_id": id})
+			if r.Status != 200 {
+				t.Fatal(ch.Name, r)
+			}
+			var found map[string]any
+			for _, raw := range entries(t, r) {
+				entry := raw.(map[string]any)
+				if entry["id"] == commissionID.String() {
+					found = entry
+				}
+			}
+			if found == nil {
+				t.Fatal(ch.Name, "commission missing")
+			}
+			performance := found["explanation"].(map[string]any)["entries"].([]any)[0].(map[string]any)
+			if performance["commission_paid_amount"] != wantPaid || performance["commission_amount"] != wantAmount {
+				t.Fatal(ch.Name, performance)
+			}
+		}
+	}
+	check(paid, amount)
+
+	tx = dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	dbtest.Exec(t, tx, "RESET ROLE")
+	dbtest.Exec(t, tx, `UPDATE settled_commissions SET explanation = jsonb_set(jsonb_set(explanation, '{entries,0,commission_paid_amount}', '"1.23"'::jsonb), '{entries,0,commission_amount}', '"4.56"'::jsonb) WHERE id=$1`, commissionID)
+	dbtest.Commit(t, tx)
+	check("1.23", "4.56")
+}

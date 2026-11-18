@@ -96,7 +96,7 @@ func payPerformance(t *testing.T, s *optest.Shop, id uuid.UUID, m time.Time, rev
 	}
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	for _, source := range []struct{ kind, method string }{{"consume", "count_paid"}, {"labor", "labor"}} {
-		dbtest.Exec(t, tx, `INSERT INTO performance_entries(tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,ratio,amount,created_at,member) SELECT tenant_id,store_id,$1,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,$2,paid_amount,100,paid_amount,created_at,member FROM performance_entries WHERE order_id=$3 AND kind='item'`, source.kind, source.method, order["id"])
+		dbtest.Exec(t, tx, `INSERT INTO performance_entries(tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,commission_paid_amount,ratio,amount,commission_amount,created_at,member) SELECT tenant_id,store_id,$1,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,$2,paid_amount,commission_paid_amount,100,paid_amount,commission_amount,created_at,member FROM performance_entries WHERE order_id=$3 AND kind='item'`, source.kind, source.method, order["id"])
 	}
 	dbtest.Commit(t, tx)
 	customer := s.Call(t, s.Owner, "create_customer", map[string]any{"name": "顾客", "gender": "female"}, 200).Body["customer"].(map[string]any)["id"]

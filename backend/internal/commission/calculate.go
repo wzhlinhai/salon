@@ -177,7 +177,7 @@ func matchRule(r Rule, overrides []Override, e performance.Unit) (CommissionMatc
 func entryViews(entries []performance.UnitEntry) []CommissionPerformanceEntry {
 	out := make([]CommissionPerformanceEntry, 0, len(entries))
 	for _, e := range entries {
-		out = append(out, CommissionPerformanceEntry{ID: e.ID, Method: e.Method, PaidAmount: e.PaidAmount, Ratio: e.Ratio, CategoryRatio: e.CategoryRatio, Amount: e.Amount})
+		out = append(out, CommissionPerformanceEntry{ID: e.ID, Method: e.Method, PaidAmount: e.PaidAmount, CommissionPaidAmount: e.CommissionPaidAmount, Ratio: e.Ratio, CategoryRatio: e.CategoryRatio, Amount: e.Amount, CommissionAmount: e.CommissionAmount})
 	}
 	return out
 }

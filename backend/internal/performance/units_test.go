@@ -22,7 +22,7 @@ func unitFixture() ([]dbgen.PerformanceEntry, map[lineKey]lineFact) {
 				paid = []string{"6", "9", "12", "3"}[i]
 				value = []string{"6", "4.50", "3", "0.30"}[i]
 			}
-			entries = append(entries, dbgen.PerformanceEntry{ID: uuid.New(), Kind: "item", BusinessDate: pgtype.Date{Time: time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC), Valid: true}, CheckoutID: &checkout, OrderItemID: &line, StaffID: &staff, PositionID: &position, Slot: new(slot), Member: new(true), Method: method, PaidAmount: amount(paid), Amount: amount(value), Ratio: []int16{100, 50, 25, 10}[i], CreatedAt: pgtype.Timestamptz{Time: time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC), Valid: true}})
+			entries = append(entries, dbgen.PerformanceEntry{ID: uuid.New(), Kind: "item", BusinessDate: pgtype.Date{Time: time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC), Valid: true}, CheckoutID: &checkout, OrderItemID: &line, StaffID: &staff, PositionID: &position, Slot: new(slot), Member: new(true), Method: method, PaidAmount: amount(paid), CommissionPaidAmount: amount(paid), Amount: amount(value), CommissionAmount: amount(value), Ratio: []int16{100, 50, 25, 10}[i], CreatedAt: pgtype.Timestamptz{Time: time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC), Valid: true}})
 		}
 	}
 	return entries, map[lineKey]lineFact{{line, checkout}: {itemID: item, categoryID: &category, price: amount("123.45"), paid: "100.00", designated: true}}
@@ -175,6 +175,7 @@ func TestUnitLinePriceErrors(t *testing.T) {
 	fact.paid = "100.00"
 	f[key] = fact
 	e[0].PaidAmount = amount("99999999.99")
+	e[0].CommissionPaidAmount = amount("99999999.99")
 	second := e[0]
 	second.ID = uuid.New()
 	out = composeUnits(append(e, second), nil, f)

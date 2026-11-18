@@ -726,7 +726,7 @@ perf AS (
          COALESCE(sum(CASE WHEN e.reverses_id IS NULL THEN e.paid_amount ELSE -e.paid_amount END)
                   FILTER (WHERE e.method='groupbuy' AND (NOT e.full OR e.slot_rank=1)),0)::text AS groupbuy_paid
   FROM (
-    SELECT pe.tenant_id, pe.store_id, pe.id, pe.kind, pe.business_date, pe.order_id, pe.order_item_id, pe.checkout_id, pe.settings_snapshot_id, pe.slot, pe.position_id, pe.staff_id, pe.method, pe.paid_amount, pe.ratio, pe.amount, pe.void_id, pe.reverses_id, pe.created_at, pe.card_ledger_id, pe.red_packet_id, pe.purchase, pe.member, pe.aftersale_id, pe.category_ratio, COALESCE(ss.rules->>'performance_split','by_position')='full' AS full,
+    SELECT pe.tenant_id, pe.store_id, pe.id, pe.kind, pe.business_date, pe.order_id, pe.order_item_id, pe.checkout_id, pe.settings_snapshot_id, pe.slot, pe.position_id, pe.staff_id, pe.method, pe.paid_amount, pe.ratio, pe.amount, pe.void_id, pe.reverses_id, pe.created_at, pe.card_ledger_id, pe.red_packet_id, pe.purchase, pe.member, pe.aftersale_id, pe.category_ratio, pe.commission_paid_amount, pe.commission_amount, COALESCE(ss.rules->>'performance_split','by_position')='full' AS full,
            row_number() OVER (PARTITION BY pe.order_item_id, pe.method, pe.checkout_id, pe.void_id, pe.aftersale_id, (pe.reverses_id IS NULL), pe.business_date
                               ORDER BY pe.slot NULLS FIRST, pe.id) AS slot_rank
     FROM performance_entries pe
