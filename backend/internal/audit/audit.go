@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -49,7 +48,7 @@ func DayCloseTarget(id uuid.UUID) Target { return Target{kind: "day_close", id: 
 // ClosingTarget 创建封账或撤销封账事件日志目标。
 func ClosingTarget(id uuid.UUID) Target { return Target{kind: "closing", id: id} }
 
-// Record 在业务操作的同一事务中追加日志；nil 表示新建前或删除后不存在；手机号必须用键名 phone。
+// Record 在业务操作的同一事务中追加日志；nil 表示新建前或删除后不存在；手机号必须用键名 phone 或以 _phone 结尾。
 func Record(ctx context.Context, env ops.Env, action string, target Target, before, after any) error {
 	if err := checkPhoneKeys(before); err != nil {
 		return err
@@ -86,7 +85,7 @@ func Record(ctx context.Context, env ops.Env, action string, target Target, befo
 	return env.Q.AddAuditLog(ctx, params)
 }
 
-// checkPhoneKeys 遍历日志值，确保手机号字段使用读取时会打码的 phone 键名。
+// checkPhoneKeys 遍历日志值，确保手机号字段使用读取时会打码的键名。
 func checkPhoneKeys(v any) error {
 	return checkPhoneValue(reflect.ValueOf(v), 0)
 }
@@ -109,28 +108,12 @@ func checkPhoneValue(v reflect.Value, depth int) error {
 		t := v.Type()
 		for i := range t.NumField() {
 			field := t.Field(i)
-			fieldType := field.Type
-			if fieldType.Kind() == reflect.Pointer {
-				fieldType = fieldType.Elem()
+			serialised, err := privacy.PhoneField(t, field)
+			if err != nil {
+				return err
 			}
-			if !field.IsExported() && (!field.Anonymous || fieldType.Kind() != reflect.Struct) {
+			if !serialised {
 				continue
-			}
-			tag := field.Tag.Get("json")
-			if tag == "-" {
-				continue
-			}
-			key, options, _ := strings.Cut(tag, ",")
-			if key == "" {
-				key = field.Name
-			}
-			if strings.Contains(strings.ToLower(field.Name), "phone") && fieldType.Kind() == reflect.String {
-				if key != "phone" {
-					return fmt.Errorf("audit: field %s.%s is logged as %q; phone numbers must use the key \"phone\" so list_audit_log can mask them", t.Name(), field.Name, key)
-				}
-				if strings.Contains(","+options+",", ",string,") {
-					return fmt.Errorf("audit: field %s.%s uses the JSON string option; quoted phone numbers cannot be masked by list_audit_log", t.Name(), field.Name)
-				}
 			}
 			if err := checkPhoneValue(v.Field(i), depth+1); err != nil {
 				return err
@@ -153,8 +136,8 @@ func checkPhoneValue(v reflect.Value, depth int) error {
 			for (value.Kind() == reflect.Interface || value.Kind() == reflect.Pointer) && !value.IsNil() {
 				value = value.Elem()
 			}
-			if key.Kind() == reflect.String && strings.Contains(strings.ToLower(key.String()), "phone") && value.Kind() == reflect.String && key.String() != "phone" {
-				return fmt.Errorf("audit: map key %q contains a phone number; phone numbers must use the key \"phone\" so list_audit_log can mask them", key.String())
+			if key.Kind() == reflect.String && value.Kind() == reflect.String && privacy.PhoneKeyword(key.String()) && !privacy.PhoneKey(key.String()) {
+				return fmt.Errorf("audit: map key %q contains a phone number; phone numbers must use the key \"phone\" or a key ending in \"_phone\" so they can be masked", key.String())
 			}
 		}
 	}
@@ -239,7 +222,7 @@ func Register(r *ops.Registry) {
 	})
 }
 
-// maskPhones 递归打码日志中名为 phone 的字符串值，保留其他字段和数字精度。
+// maskPhones 递归打码日志中 phone 或以 _phone 结尾的字符串值，保留其他字段和数字精度。
 func maskPhones(raw json.RawMessage) (json.RawMessage, error) {
 	if len(raw) == 0 {
 		return raw, nil
@@ -259,7 +242,7 @@ func maskPhoneValues(value any) {
 	switch v := value.(type) {
 	case map[string]any:
 		for key, child := range v {
-			if phone, ok := child.(string); key == "phone" && ok {
+			if phone, ok := child.(string); ok && privacy.PhoneKey(key) {
 				v[key] = privacy.MaskPhone(phone)
 			} else {
 				maskPhoneValues(child)

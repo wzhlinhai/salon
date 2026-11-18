@@ -137,6 +137,15 @@ func redact(env ops.Env, raw json.RawMessage) (json.RawMessage, error) {
 	return audit.MaskPhones(raw)
 }
 
+// PreviewDraft 生成草稿预览并按调用者权限打码；没有预览时返回 nil。
+func PreviewDraft(ctx context.Context, registry *ops.Registry, env ops.Env, operation string, params json.RawMessage) (json.RawMessage, error) {
+	preview, err := registry.PreviewDraft(ctx, env, operation, params)
+	if err != nil {
+		return nil, err
+	}
+	return redact(env, preview)
+}
+
 func (s service) create(ctx context.Context, env ops.Env, name string, params json.RawMessage, utterance, summary string) (any, error) {
 	if err := s.registry.CheckDraft(env.Caller, name, params); err != nil {
 		return nil, err
@@ -260,7 +269,7 @@ func (s service) get(ctx context.Context, env ops.Env, in *IDInput) (*Detail, er
 		return nil, err
 	}
 	out := &Detail{Draft: *item, Events: []Event{}, AuditLogIDs: append([]uuid.UUID{}, ids...)}
-	out.Preview, err = s.registry.PreviewDraft(ctx, env, d.Operation, d.Params)
+	out.Preview, err = PreviewDraft(ctx, s.registry, env, d.Operation, d.Params)
 	if err != nil {
 		if ops.StatusOf(err) >= 500 {
 			return nil, err

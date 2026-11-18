@@ -17,6 +17,7 @@ import (
 
 	"github.com/wzhlinhai/salon/backend/internal/db"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
+	"github.com/wzhlinhai/salon/backend/internal/privacy"
 )
 
 // PathPrefix 是所有业务操作的 HTTP 路径前缀。
@@ -59,6 +60,11 @@ func Register[I, O any](r *Registry, op Operation[I, O]) {
 	}
 	if err := validateInputDefaults(reflect.TypeFor[I]()); err != nil {
 		panic(fmt.Sprintf("ops: invalid operation %q: %v", op.Name, err))
+	}
+	if op.AI == AIDraft {
+		if err := validateInputPhones(reflect.TypeFor[I]()); err != nil {
+			panic(fmt.Sprintf("ops: invalid operation %q: %v", op.Name, err))
+		}
 	}
 	if _, dup := r.ops[op.Name]; dup {
 		panic(fmt.Sprintf("ops: duplicate operation %q", op.Name))
@@ -161,6 +167,42 @@ func validateInputDefaults(input reflect.Type) error {
 		return nil
 	}
 	return walk(input, "")
+}
+
+// validateInputPhones 拒绝 AIDraft 输入里读取时无法打码的手机号键名。
+func validateInputPhones(input reflect.Type) error {
+	seen := map[reflect.Type]bool{}
+	var walk func(reflect.Type) error
+	walk = func(t reflect.Type) error {
+		if seen[t] {
+			return nil
+		}
+		seen[t] = true
+		switch t.Kind() {
+		case reflect.Pointer:
+			return walk(t.Elem())
+		case reflect.Slice, reflect.Array:
+			return walk(t.Elem())
+		case reflect.Map:
+			return walk(t.Elem())
+		case reflect.Struct:
+			for i := 0; i < t.NumField(); i++ {
+				field := t.Field(i)
+				serialised, err := privacy.PhoneField(t, field)
+				if err != nil {
+					return err
+				}
+				if !serialised {
+					continue
+				}
+				if err := walk(field.Type); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	return walk(input)
 }
 
 // invoke 是所有调用的共同路径：渠道、权限检查后按操作声明提供租户事务。

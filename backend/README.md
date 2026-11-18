@@ -288,7 +288,7 @@ Reconcile 按 `collections.business_date`（补录单写入纸单日；为空的
 
 - `audit_log` 只追加，`salon_app` 只有 SELECT 和 INSERT 权限。日志与业务操作在同一事务里写入，任何一步失败都会一起回滚。同一员工或角色的修改用行锁排队，在读取改前快照前加锁，日志的改前才接得上前一次的改后。
 - 当前记录角色的新建、修改、删除，以及员工的新建、档案修改、登录设置、停用、恢复和角色分配；保留改前改后，删除角色时还保留持有员工的 ID、姓名。`list_audit_log` 需要操作日志权限，可按目标 ID 查询。每条日志记录目标种类及其关联顾客；`list_audit_log` 按调用者的顾客查看范围过滤关联顾客的日志。班次（`shift`）、员工班次（`staff_shift`，目标为员工 ID）、补卡与作废补卡（`punch`，目标为打卡 ID）、考勤核准与撤销（`attendance_approval`，目标为核准 ID）均不关联顾客，只需要操作日志权限即可查看；底薪（`base_salary`，目标为员工 ID）、加减项（`payroll_adjustment`，目标为加减项 ID）、工资锁月（`payroll_month`，目标为提成结算 ID，均不关联顾客）、提成方案（`commission_scheme`，不关联顾客）、团购商品（`groupbuy_deal`）、项目类别（`item_category`）、团购月结算（`groupbuy_settlement`）、预约（`appointment`，关联顾客）和私约占位（`appointment_block`，不关联顾客）、卡类型、开卡、充值、开单、加项目、去掉项目、换岗位员工、改价、合并单、结账已记录日志。员工本人打卡（`clock_in`）不写操作日志，打卡行本身即记录。新增关联顾客的种类（例如单）时，添加接收顾客 ID 的构造函数，并扩展迁移中的 CHECK 列表。
-- 新操作在成功路径末尾用同一个 `env` 调用 `audit.Record`，传入不含密码或密码哈希的返回值视图；新建前、删除后传 nil。手机号字段的 JSON 键名必须是 `phone`，`audit.Record` 遇到别的键名会拒绝写入（读取时只按这个键名打码）。
+- 新操作在成功路径末尾用同一个 `env` 调用 `audit.Record`，传入不含密码或密码哈希的返回值视图；新建前、删除后传 nil。手机号字段的 JSON 键名必须是 `phone` 或以 `_phone` 结尾，`audit.Record` 和 AIDraft 注册遇到别的键名会拒绝写入或启动即失败（读取时按同一规则打码）。
 - 操作者可以是员工或顾客本人：`audit_log.actor_id` 与 `actor_customer_id` 恰好一个非空。小程序登录新建顾客、首次绑定、顾客自助预约和自助取消都用顾客本人写日志；`list_audit_log` 对顾客操作者返回 `kind=customer`，没有姓名时显示「顾客本人」，手机号仍按调用者权限打码。
 
 ## 共享修改与引用检查
@@ -533,7 +533,7 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 `draft_dual_confirm` 为 off/on，默认 off，可当天生效；on 时 adjust_card、void_order、refund_card、reprice_order_item 须另一人确认。`audit.Record` 自动把 `Env.DraftID` 写入 audit_log，日志输出 draft_id，get_draft 返回 audit_log_ids。
 
-`Registry.SetDraftPreview(operation, fn)` 为可起草操作接入只读预览；预览不写表，`get_draft` 在原有的可重复读只读事务里执行它。`open_order`、`add_order_item`、`open_groupbuy_order` 有预览：逐行返回项目名、岗位上员工名，以及按第一个岗位员工计算的一个适用价格（标准价或级别价及来源，第一个岗位为空时取标准价），与 `open_order`/`add_order_item` 的计价一致；顾客的可用卡按类型返回余额和本项目剩余次数，储值类卡的会员价按行（含行号和项目）返回，并按该行第一个岗位员工的级别价与会员价规则计算。没有 `customer.view` 或顾客不在查看范围时，预览仍返回项目和员工，但不返回卡。补录预览与补录开单共用日期校验，未来的、超过补录天数的、已封账或工资月已锁定的日期返回同一条规则提示。预览查询全部按批读取，条数不随行数增长；`get_draft` 返回 `preview`，规则拒绝时返回 `preview_error` 文字，内部错误则整次读取失败。`list_drafts` 不生成预览，避免列表的 N× 成本。草稿参数里的手机号仍按原规则打码，预览不返回顾客手机号。
+`Registry.SetDraftPreview(operation, fn)` 为可起草操作接入只读预览；预览不写表，`get_draft` 在原有的可重复读只读事务里执行它。`open_order`、`add_order_item`、`open_groupbuy_order` 有预览：逐行返回项目名、岗位上员工名，以及按第一个岗位员工计算的一个适用价格（标准价或级别价及来源，第一个岗位为空时取标准价），与 `open_order`/`add_order_item` 的计价一致；顾客的可用卡按类型返回余额和本项目剩余次数，储值类卡的会员价按行（含行号和项目）返回，并按该行第一个岗位员工的级别价与会员价规则计算。没有 `customer.view` 或顾客不在查看范围时，预览仍返回项目和员工，但不返回卡。补录预览与补录开单共用日期校验，未来的、超过补录天数的、已封账或工资月已锁定的日期返回同一条规则提示。预览查询全部按批读取，条数不随行数增长；`get_draft` 返回 `preview`，规则拒绝时返回 `preview_error` 文字，内部错误则整次读取失败。`list_drafts` 不生成预览，避免列表的 N× 成本。草稿参数、事件和预览里的手机号都按同一规则打码，没有 `customer.full_phone` 的调用者看不到完整号码。手机号字段按 Go 字段名包含 "phone" 识别，所以新增手机号输入必须这样命名，并使用 `phone` 或 `*_phone` 键。`summary` 和 `utterance` 是自由文本，不打码。
 
 草稿控制的 create/update/reject 声明为专用 `AIManageDraft`，仅这三个操作允许使用；它们只写草稿。`confirm_draft` 为 AINone，只允许人通过 HTTP 确认，AI 无法自行确认业务写入。
 
