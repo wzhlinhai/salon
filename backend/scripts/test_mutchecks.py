@@ -242,7 +242,8 @@ class AllManifestTests(unittest.TestCase):
         return code, output.getvalue(), error.getvalue()
 
     def test_requires_since_for_real_runs_and_rejects_names(self):
-        for args in ([], ['--jobs', '2'], ['--since', 'main', 'unknown'],
+        for args in ([], ['--jobs', '2'], ['--whole-file'], ['--locate', '--whole-file'],
+                     ['--since', 'main', 'unknown'],
                      ['--since', 'main', 'unknown', 'other']):
             with self.subTest(args=args), tempfile.TemporaryDirectory() as folder:
                 with self.assertRaises(SystemExit) as raised:
@@ -492,9 +493,9 @@ class SelectionTests(unittest.TestCase):
         ]
         commit_fixture(self.root)
 
-    def affected(self):
+    def affected(self, entries=None):
         with patch.object(mutchecks, 'ROOT', self.root), patch('sys.stderr', new=io.StringIO()) as error:
-            selected = mutchecks.affected_entries(self.entries, 'HEAD')
+            selected = mutchecks.affected_entries(self.entries if entries is None else entries, 'HEAD')
         return {entry['name'] for entry in selected}, error.getvalue()
 
     def test_changed_migration_table_selects_only_related_entries(self):
@@ -562,6 +563,231 @@ class SelectionTests(unittest.TestCase):
         with patch.object(mutchecks, 'ROOT', self.root), patch('sys.stderr', new=io.StringIO()):
             selected = mutchecks.affected_entries([fk], 'HEAD')
         self.assertEqual([entry['name'] for entry in selected], ['m-fk'])
+
+    def test_unresolvable_query_tables_need_a_changed_migration(self):
+        unknown = query_entry('q-unknown', 'backend/internal/db/queries/unknown.sql',
+                              'SELECT * FROM generate_series(1, 10);')
+        write(self.queries / 'unknown.sql',
+              '-- name: GetUnknown :many\nSELECT * FROM generate_series(1, 10);\n')
+        commit_fixture(self.root)
+        write(self.root / 'backend/internal/demo.go', 'package demo\n')
+        selected, _ = self.affected([unknown])
+        self.assertEqual(selected, set())
+        write(self.migrations / '00002_change.sql', 'ALTER TABLE alpha ADD COLUMN name text;\n')
+        selected, _ = self.affected([unknown])
+        self.assertEqual(selected, {'q-unknown'})
+
+
+class GoDeclarationSelectionTests(unittest.TestCase):
+    def setUp(self):
+        self.folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        self.root = Path(self.folder.name)
+        init_repo(self.root)
+        self.demo = self.root / 'backend/internal/demo'
+        self.other = self.root / 'backend/internal/other'
+        write(self.demo / 'demo.go', '''package demo
+
+import (
+\t"fmt"
+)
+
+// Guarded doc.
+func Guarded() string {
+\treturn fmt.Sprint("guarded")
+}
+var afterGuarded = true
+
+func Other() string {
+\treturn "other"
+}
+''')
+        write(self.demo / 'demo_test.go', '''package demo
+
+import "testing"
+
+func TestGuarded(t *testing.T) {
+\tif Guarded() == "" {
+\t\tt.Fatal("empty")
+\t}
+}
+
+func TestOther(t *testing.T) {
+\tif Other() == "" {
+\t\tt.Fatal("empty")
+\t}
+}
+
+func TestUnlisted(t *testing.T) {
+\thelper()
+}
+
+func helper() string {
+\treturn "test helper"
+}
+''')
+        write(self.demo / 'dup.go', '''package demo
+
+var duplicate = "duplicate"
+var duplicateAgain = "duplicate"
+
+func DupOther() string {
+\treturn "dup other"
+}
+''')
+        write(self.demo / 'cross.go', '''package demo
+
+func Cross() string {
+\treturn "cross"
+}
+''')
+        write(self.demo / 'other_guard_test.go', '''package demo
+
+import "testing"
+
+func TestB(t *testing.T) {
+\tif Cross() == "" {
+\t\tt.Fatal("empty")
+\t}
+}
+''')
+        write(self.other / 'other.go', '''package other
+
+func Other() string {
+\treturn "other package"
+}
+''')
+        write(self.other / 'other_test.go', '''package other
+
+import "testing"
+
+func TestOtherPackage(t *testing.T) {
+\tif Other() == "" {
+\t\tt.Fatal("empty")
+\t}
+}
+''')
+        self.entries = [
+            self.entry('guarded', 'backend/internal/demo/demo.go',
+                       'return fmt.Sprint("guarded")', ['TestGuarded'], './internal/demo'),
+            self.entry('other', 'backend/internal/demo/demo.go',
+                       'return "other"', ['TestOther'], './internal/demo'),
+            self.entry('other-package', 'backend/internal/other/other.go',
+                       'return "other package"', ['TestOtherPackage'], './internal/other'),
+            self.entry('cross', 'backend/internal/demo/cross.go',
+                       'return "cross"', ['TestB'], './internal/demo'),
+        ]
+        commit_fixture(self.root)
+
+    @staticmethod
+    def entry(name, file, original, guards, package):
+        return dict(kind='go', step='1', name=name, file=file, original=original,
+                    replacement=original + ' // mutated', guards=guards, packages=[package])
+
+    def affected(self, entries=None, whole_file=False, summary=None):
+        original_run = subprocess.run
+        directories = {'./internal/demo': self.demo, './internal/other': self.other}
+
+        def run(command, *args, **kwargs):
+            if command[0] == 'go':
+                return SimpleNamespace(stdout=str(directories[command[-1]]) + '\n', returncode=0, stderr='')
+            return original_run(command, *args, **kwargs)
+
+        with patch.object(mutchecks, 'ROOT', self.root), \
+                patch.object(mutchecks.subprocess, 'run', side_effect=run), \
+                patch('sys.stderr', new=io.StringIO()) as error:
+            selected = mutchecks.affected_entries(
+                self.entries if entries is None else entries, 'HEAD',
+                summary=summary, whole_file=whole_file)
+        return {entry['name'] for entry in selected}, error.getvalue()
+
+    def edit(self, name, old, new):
+        path = self.demo / name
+        path.write_text(path.read_text().replace(old, new))
+
+    def test_edit_inside_protected_function_selects_it(self):
+        self.edit('demo.go', 'func Guarded() string {\n', 'func Guarded() string {\n\t_ = "changed"\n')
+        selected, _ = self.affected()
+        self.assertEqual(selected, {'guarded'})
+
+    def test_edit_in_another_function_does_not_select_the_protected_entry(self):
+        self.edit('demo.go', 'func Other() string {\n', 'func Other() string {\n\t_ = "changed"\n')
+        selected, _ = self.affected()
+        self.assertEqual(selected, {'other'})
+
+    def test_import_edit_selects_nothing_and_reports_the_skipped_count(self):
+        self.edit('demo.go', '\t"fmt"\n', '\t"fmt"\n\t"strings"\n')
+        selected, error = self.affected()
+        self.assertEqual(selected, set())
+        self.assertIn('--since: skipped 2 go entries by declaration rule', error)
+        summary = {'skipped': 0, 'go_skipped': 0, 'tables': set(), 'all': False, 'reason': None}
+        self.affected(summary=summary)
+        self.assertEqual(summary['go_skipped'], 2)
+
+    def test_doc_comment_edit_selects_the_declaration(self):
+        self.edit('demo.go', '// Guarded doc.', '// Guarded docs.')
+        selected, _ = self.affected()
+        self.assertEqual(selected, {'guarded'})
+
+    def test_pure_deletion_after_the_closing_brace_selects_the_declaration(self):
+        self.edit('demo.go', 'var afterGuarded = true\n', '')
+        selected, _ = self.affected()
+        self.assertEqual(selected, {'guarded'})
+
+    def test_original_occurring_twice_is_selected(self):
+        duplicate = self.entry('duplicate', 'backend/internal/demo/dup.go',
+                               '"duplicate"', ['TestGuarded'], './internal/demo')
+        self.edit('dup.go', 'return "dup other"', 'return "changed"')
+        selected, _ = self.affected([duplicate])
+        self.assertEqual(selected, {'duplicate'})
+
+    def test_untracked_protected_file_is_selected(self):
+        write(self.demo / 'new.go', '''package demo
+
+func New() string {
+\treturn "new"
+}
+''')
+        new = self.entry('new', 'backend/internal/demo/new.go',
+                         'return "new"', ['TestGuarded'], './internal/demo')
+        selected, _ = self.affected([new])
+        self.assertEqual(selected, {'new'})
+
+    def test_renamed_protected_file_is_selected_on_both_sides(self):
+        git(self.root, 'mv', 'backend/internal/other/other.go', 'backend/internal/other/renamed.go')
+        old = self.entry('old-path', 'backend/internal/other/other.go',
+                         'return "other package"', ['TestOtherPackage'], './internal/other')
+        new = self.entry('new-path', 'backend/internal/other/renamed.go',
+                         'return "other package"', ['TestOtherPackage'], './internal/other')
+        selected, _ = self.affected([old, new])
+        self.assertEqual(selected, {'old-path', 'new-path'})
+
+    def test_edit_inside_a_guard_test_selects_only_its_entry(self):
+        self.edit('demo_test.go', 'if Guarded() == ""', 'if Guarded() == "changed"')
+        selected, _ = self.affected()
+        self.assertEqual(selected, {'guarded'})
+
+    def test_edit_inside_a_non_guard_test_selects_nothing(self):
+        self.edit('demo_test.go', '\thelper()\n', '\t_ = helper()\n')
+        selected, _ = self.affected()
+        self.assertEqual(selected, set())
+
+    def test_edit_inside_a_test_helper_selects_every_package_entry(self):
+        self.edit('demo_test.go', '\treturn "test helper"', '\treturn "changed helper"')
+        selected, _ = self.affected()
+        self.assertEqual(selected, {'guarded', 'other', 'cross'})
+
+    def test_deleted_test_file_selects_its_package_entries(self):
+        (self.demo / 'demo_test.go').unlink()
+        selected, _ = self.affected()
+        self.assertEqual(selected, {'guarded', 'other'})
+
+    def test_whole_file_restores_file_level_selection(self):
+        self.edit('demo.go', '\t"fmt"\n', '\t"fmt"\n\t"strings"\n')
+        strict, _ = self.affected()
+        whole, _ = self.affected(whole_file=True)
+        self.assertEqual(strict, set())
+        self.assertEqual(whole, {'guarded', 'other'})
 
 
 class TableExtractionTests(unittest.TestCase):
@@ -1177,8 +1403,8 @@ class SharedServerTests(unittest.TestCase):
             script = root / 'backend/scripts/mutchecks.py'
             script.parent.mkdir(parents=True)
             text = Path(mutchecks.__file__).read_text()
-            text = text.replace('selected = affected_entries(selected, args.since, summary=summary)', 'selected = selected')
-            text = text.replace('selected = affected_entries(selected, args.since)', 'selected = selected')
+            text = text.replace('selected = affected_entries(selected, args.since, summary=summary, whole_file=args.whole_file)', 'selected = selected')
+            text = text.replace('selected = affected_entries(selected, args.since, whole_file=args.whole_file)', 'selected = selected')
             text = text.replace(
                 'def main():',
                 'SharedServers._host_accepts_tcp = staticmethod(lambda port, timeout=1.0: True)\n\n\ndef main():',
@@ -1566,8 +1792,8 @@ class WorkerTests(unittest.TestCase):
                 script = root / 'backend/scripts/mutchecks.py'
                 script.parent.mkdir(parents=True)
                 text = Path(mutchecks.__file__).read_text()
-                text = text.replace('selected = affected_entries(selected, args.since, summary=summary)', 'selected = selected')
-                text = text.replace('selected = affected_entries(selected, args.since)', 'selected = selected')
+                text = text.replace('selected = affected_entries(selected, args.since, summary=summary, whole_file=args.whole_file)', 'selected = selected')
+                text = text.replace('selected = affected_entries(selected, args.since, whole_file=args.whole_file)', 'selected = selected')
                 script.write_text(text)
                 (root / 'backend/scripts/mutcheck.sh').write_text(
                     '#!/bin/bash\nprintf mutated > "$3"\nmkdir -p .dev\ntouch .dev/ready\nsleep 30\n')
