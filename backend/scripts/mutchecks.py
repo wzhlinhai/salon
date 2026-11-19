@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""按清单验证保护：mutchecks.py [manifest.py] [--since <git-ref>] [--locate] [--jobs N] [names...]。
+"""按清单验证保护：mutchecks.py [manifest.py] [--since <git-ref>] [--whole-file] [--locate] [--jobs N] [names...]。
 
 清单只包含字面量数据，不允许执行代码。
 --set <manifest> <name> <field> <value-file> 只替换所选字段的 AST 字面量范围。
@@ -26,9 +26,15 @@ e2e 项另有 spec，即相对 admin/ 的测试文件，
 并在 default 项目中按完整标题选择测试。名称可用裸名称或 step/name。
 原文必须恰好出现一次。--locate 只检查匹配，不修改文件、不运行测试。
 --since 将名称选择进一步缩小到 git-ref 与工作树（含未跟踪文件）之间受影响的项：
-保护文件、所在包中定义 guard 的 _test.go，或 e2e 的 spec 改动都会选中；
+go 项只在改动行落在保护原文所在的顶层声明（含直接位于其上方的文档注释）内时选中；
+只改 package/import 或其他声明不选中。未跟踪、新增、删除、重命名/复制（任一侧）或无法解析的 diff
+仍按整文件选中。改动的 _test.go 落在 guard 测试函数内时只选中 guards 含该测试的项；落在 helper、
+其他函数、TestMain 或 var/type/const 内时选中该包目录的全部项；只改 import/package 不选中。
+新增/未跟踪/重命名/复制的测试文件只按该文件内定义的 guard 选中，删除的测试文件按 ref 里的 guard
+选中、读不到时选中该包全部项。e2e 的 spec 改动按文件选中；
 迁移项只在其自身文件改动、或改动的迁移涉及它保护的表时选中；查询项只在其自身 .sql 文件改动、
-或改动的迁移涉及它查询的表时选中。表从迁移中的 CREATE/ALTER/DROP TABLE、CREATE [UNIQUE] INDEX … ON、
+或改动的迁移涉及它查询的表时选中。只有 migrations 下文件改动时才应用表规则；没有迁移改动时，
+迁移/查询项只按自身文件（以及 guard 测试）选中。表从迁移中的 CREATE/ALTER/DROP TABLE、CREATE [UNIQUE] INDEX … ON、
 REFERENCES、INSERT INTO、UPDATE、DELETE FROM、DELETE … USING、逗号 FROM、UPDATE … FROM、
 CREATE/DROP TRIGGER … ON、CREATE POLICY … ON（含 USING/WITH CHECK 里的 FROM/JOIN）、GRANT … ON、
 ALTER TABLE … RENAME TO 的前后两个名字读取；带引号的名字按表名解析，解析不了的表位置保守选中。
@@ -36,7 +42,8 @@ ALTER TABLE … RENAME TO 的前后两个名字读取；带引号的名字按表
 CREATE/REPLACE FUNCTION、DO、DROP FUNCTION、CREATE/ALTER/DROP VIEW、CREATE RULE、
 ALTER DEFAULT PRIVILEGES 或无法归属到表的语句时，选中全部迁移和查询项；查询用到迁移里
 CREATE VIEW 创建的名字时也保守选中。选中名称逐行输出到 stderr；另输出一行改动表和按表规则
-跳过的迁移/查询项数量。
+跳过的迁移/查询项数量，以及一行按声明规则跳过的 go 项数量。
+--whole-file 只能与 --since 一起使用，恢复按整文件选中 go 项，便于诊断。
 无 --since 的 --locate 始终检查名称选择范围（不指定名称时为整份清单）。
 省略清单时按路径排序处理 .dev/codex/*/manifest.py：
 mutchecks.py --locate [--since <git-ref>] 只定位；
@@ -746,26 +753,94 @@ def migration_view_names():
     return names
 
 
-def changed_paths(ref):
-    """Return changed paths, including both sides of renames and copies."""
+def changed_path_statuses(ref):
+    """Return (whole_file, modified) changed paths, including untracked files."""
     result = subprocess.run(['git', 'diff', '--name-status', '-z', ref, '--'],
                             cwd=ROOT, capture_output=True, check=True)
     tokens = [os.fsdecode(token) for token in result.stdout.split(b'\0') if token]
-    paths = set()
+    whole, modified = set(), set()
     index = 0
     while index < len(tokens):
         status = tokens[index]
         index += 1
         if status.startswith(('R', 'C')):
-            paths.update(tokens[index:index + 2])
+            whole.update(tokens[index:index + 2])
             index += 2
+        elif status.startswith(('A', 'D')):
+            whole.add(tokens[index])
+            index += 1
         else:
-            paths.add(tokens[index])
+            modified.add(tokens[index])
             index += 1
     untracked = subprocess.run(['git', 'ls-files', '--others', '--exclude-standard', '-z'],
                                cwd=ROOT, capture_output=True, check=True)
-    paths.update(os.fsdecode(path) for path in untracked.stdout.split(b'\0') if path)
-    return paths
+    whole.update(os.fsdecode(path) for path in untracked.stdout.split(b'\0') if path)
+    return whole, modified
+
+
+def changed_paths(ref):
+    """Return changed paths, including both sides of renames and copies."""
+    whole, modified = changed_path_statuses(ref)
+    return whole | modified
+
+
+def changed_lines(ref, paths, whole, modified):
+    """Return changed new-side line ranges per path; None means the whole file."""
+    ranges_by_path = {}
+    for path in paths:
+        if path in whole or path not in modified:
+            ranges_by_path[path] = None
+            continue
+        diff = subprocess.run(['git', 'diff', '-U0', '--no-color', '--no-ext-diff', ref, '--', path],
+                              cwd=ROOT, capture_output=True)
+        ranges = []
+        if diff.returncode:
+            ranges = None
+        else:
+            for line in diff.stdout.decode('utf-8', errors='replace').splitlines():
+                if not line.startswith('@@'):
+                    continue
+                match = re.match(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@', line)
+                if match is None:
+                    ranges = None
+                    break
+                start = int(match.group(1))
+                count = 1 if match.group(2) is None else int(match.group(2))
+                ranges.append((start, start + 1) if count == 0 else (start, start + count - 1))
+            if not ranges:
+                ranges = None
+        ranges_by_path[path] = ranges
+    return ranges_by_path
+
+
+def go_declarations(source):
+    """Return (first, last, name) top-level declarations in gofmt-formatted source."""
+    lines = source.splitlines()
+    starts = [index for index, line in enumerate(lines)
+              if line.startswith(('func ', 'type ', 'var ', 'const '))]
+    docs = []
+    for start in starts:
+        doc = start
+        while doc > 0 and lines[doc - 1].startswith('//'):
+            doc -= 1
+        docs.append(doc)
+    boundaries = set(docs)
+    boundaries.update(index for index, line in enumerate(lines)
+                      if line.startswith(('import', 'package')))
+    declarations = []
+    for start, doc in zip(starts, docs):
+        end = next((boundary for boundary in sorted(boundaries) if boundary > start), len(lines))
+        while end > start + 1 and not lines[end - 1].strip():
+            end -= 1
+        match = re.match(r'func\s+(?:\([^)]*\)\s*)?(\w+)', lines[start])
+        declarations.append((doc + 1, end, match.group(1) if match else None))
+    return declarations
+
+
+def go_test_names(source):
+    """Return top-level test functions in a Go test file, excluding TestMain."""
+    return {name for _, _, name in go_declarations(source)
+            if name is not None and name.startswith('Test') and name != 'TestMain'}
 
 
 def ref_file(ref, path):
@@ -1400,28 +1475,129 @@ def select_entries(entries, names):
     return [e for e in entries if not names or e['name'] in names or e['step'] + '/' + e['name'] in names]
 
 
-def affected_entries(entries, ref, summary=None):
-    changed = changed_paths(ref)
+def declaration_narrows(entry):
+    """Return whether a go entry's protected file is selected by declaration."""
+    path = entry['file']
+    return (entry['kind'] == 'go' and path.endswith('.go') and not path.endswith('_test.go')
+            and not path.startswith(('backend/internal/db/queries/', 'backend/internal/db/migrations/')))
+
+
+def declaration_selected(entry, ranges, source):
+    """Return whether a changed line intersects the declaration containing the original."""
+    if ranges is None or source is None:
+        return True
+    if source.count(entry['original']) != 1:
+        return True
+    position = source.find(entry['original'])
+    last_position = position + max(0, len(entry['original']) - 1)
+    first_line = source.count('\n', 0, position) + 1
+    last_line = source.count('\n', 0, last_position) + 1
+    declarations = [(first, last) for first, last, _ in go_declarations(source)
+                    if first <= last_line and last >= first_line]
+    if not declarations:
+        return bool(ranges)
+    return any(first <= changed_last and last >= changed_first
+               for first, last in declarations for changed_first, changed_last in ranges)
+
+
+def changed_test_states(ref, changed, ranges_by_path, modified):
+    """Return package-directory guard-test selection states for changed _test.go files."""
+    states = {}
+    for path in sorted(changed):
+        if not path.endswith('_test.go'):
+            continue
+        directory = ROOT / Path(path).parent
+        state = states.setdefault(directory, {'guards': set(), 'select_all': False})
+        ranges = ranges_by_path.get(path)
+        if ranges is None:
+            if not (ROOT / path).is_file():
+                status, source = ref_file(ref, path)
+                if status == 'present':
+                    state['guards'] |= go_test_names(source)
+                else:
+                    state['select_all'] = True
+            elif path in modified:
+                state['select_all'] = True
+            else:
+                try:
+                    state['guards'] |= go_test_names((ROOT / path).read_text())
+                except OSError:
+                    state['select_all'] = True
+            continue
+        try:
+            source = (ROOT / path).read_text()
+        except OSError:
+            state['select_all'] = True
+            continue
+        declarations = go_declarations(source)
+        for first, last in ranges:
+            for declaration_first, declaration_last, name in declarations:
+                if declaration_first > last or declaration_last < first:
+                    continue
+                if name is not None and name.startswith('Test') and name != 'TestMain':
+                    state['guards'].add(name)
+                else:
+                    state['select_all'] = True
+    return states
+
+
+def affected_entries(entries, ref, summary=None, whole_file=False):
+    whole, modified = changed_path_statuses(ref)
+    changed = whole | modified
     changed_sql = any(path.startswith(('backend/internal/db/queries/', 'backend/internal/db/migrations/'))
                       for path in changed)
+    migrations_changed = any(path.startswith('backend/internal/db/migrations/') for path in changed)
     all_tables, changed_tables, reason = changed_migration_tables(changed, ref)
     views = migration_view_names()
-    tests = {}
+    old_tests = {}
     for path in changed:
         if path.endswith('_test.go') and (ROOT / path).is_file():
-            tests[ROOT / Path(path).parent] = tests.get(ROOT / Path(path).parent, set()) | set(
+            old_tests[ROOT / Path(path).parent] = old_tests.get(ROOT / Path(path).parent, set()) | set(
                 re.findall(r'^\s*func\s+(\w+)\s*\(', (ROOT / path).read_text(), re.M))
+    ranges_by_path = {} if whole_file else changed_lines(
+        ref, {path for path in changed if path.endswith('.go')}, whole, modified)
+    test_states = {} if whole_file else changed_test_states(ref, changed, ranges_by_path, modified)
     package_dirs = {}
     migration_sources, query_sources = {}, {}
     selected = []
-    skipped = 0
+    skipped = go_skipped = 0
+    sources = {}
     env = dict(os.environ)
     env.pop('GOFLAGS', None)
+
+    def package_paths(package):
+        if package not in package_dirs:
+            result = subprocess.run(['go', 'list', '-f', '{{.Dir}}', package],
+                                    cwd=ROOT / 'backend', env=env,
+                                    capture_output=True, text=True, check=True)
+            package_dirs[package] = [Path(line) for line in result.stdout.splitlines()]
+        return package_dirs[package]
+
+    def working_source(path):
+        if path not in sources:
+            try:
+                sources[path] = (ROOT / path).read_text()
+            except OSError:
+                sources[path] = None
+        return sources[path]
+
+    def old_guard_selected(entry):
+        return any(set(entry['guards']) & old_tests.get(directory, set())
+                   for package in entry.get('packages', []) for directory in package_paths(package))
+
+    def new_guard_selected(entry):
+        for package in entry.get('packages', []):
+            for directory in package_paths(package):
+                state = test_states.get(directory)
+                if state is not None and (state['select_all'] or set(entry['guards']) & state['guards']):
+                    return True
+        return False
+
     for entry in entries:
         path = entry['file']
         affected = path in changed
         if path.startswith(('backend/internal/db/queries/', 'backend/internal/db/migrations/')):
-            if not affected:
+            if not affected and migrations_changed:
                 if all_tables:
                     affected = True
                 elif path.startswith('backend/internal/db/migrations/'):
@@ -1446,15 +1622,18 @@ def affected_entries(entries, ref, summary=None):
                     affected = tables is None or bool(tables & changed_tables)
         if entry['kind'] == 'e2e':
             affected |= 'admin/' + entry['spec'] in changed
-        elif not affected and tests:
-            for package in entry['packages']:
-                if package not in package_dirs:
-                    result = subprocess.run(['go', 'list', '-f', '{{.Dir}}', package],
-                                            cwd=ROOT / 'backend', env=env,
-                                            capture_output=True, text=True, check=True)
-                    package_dirs[package] = [Path(line) for line in result.stdout.splitlines()]
-                affected |= any(set(entry['guards']) & tests.get(directory, set())
-                                for directory in package_dirs[package])
+        else:
+            if not whole_file and affected and declaration_narrows(entry):
+                affected = declaration_selected(entry, ranges_by_path.get(path), working_source(path))
+            if whole_file and not affected and old_tests:
+                affected |= old_guard_selected(entry)
+            if not whole_file and not affected and test_states and entry['kind'] == 'go':
+                affected |= new_guard_selected(entry)
+            if not affected and entry['kind'] == 'go':
+                old_selected = path in changed
+                if not old_selected and old_tests:
+                    old_selected = old_guard_selected(entry)
+                go_skipped += int(old_selected)
         if changed_sql and not affected and path.startswith(('backend/internal/db/queries/', 'backend/internal/db/migrations/')):
             skipped += 1
         if affected:
@@ -1466,8 +1645,10 @@ def affected_entries(entries, ref, summary=None):
             found = ', '.join(sorted(changed_tables)) or '(none)'
         print(f'--since: changed tables: {found}; skipped {skipped} migration/query entries by table rule',
               file=sys.stderr)
+        print(f'--since: skipped {go_skipped} go entries by declaration rule', file=sys.stderr)
     else:
         summary['skipped'] += skipped
+        summary['go_skipped'] += go_skipped
         summary['tables'] |= changed_tables
         summary['all'] |= all_tables
         if all_tables and summary['reason'] is None:
@@ -1788,10 +1969,12 @@ def main():
     parser.add_argument('--worker-logs', type=Path, help=argparse.SUPPRESS)
     parser.add_argument('--locate', action='store_true')
     parser.add_argument('--since', metavar='git-ref')
+    parser.add_argument('--whole-file', action='store_true',
+                        help='--since 时按整文件选择 go 项（诊断用）')
     parser.add_argument('names', nargs='*')
     args = parser.parse_intermixed_args()
     if args.set or args.append:
-        if args.manifest or args.names or args.locate or args.since or args.worker_logs or args.jobs != 1 or args.no_shared_pg:
+        if args.manifest or args.names or args.locate or args.since or args.worker_logs or args.jobs != 1 or args.no_shared_pg or args.whole_file:
             parser.error('editing commands cannot be combined with run options')
         try:
             if args.set:
@@ -1804,6 +1987,8 @@ def main():
             print(str(exc), file=sys.stderr)
             return 1
         return 0
+    if args.whole_file and args.since is None:
+        parser.error('--whole-file requires --since')
     if args.jobs < 1:
         parser.error('--jobs must be positive')
     requested_jobs = args.jobs
@@ -1867,13 +2052,13 @@ def execute(args, parser):
         failed = False
         total_selected = total_passed = total_failed = total_environment = 0
         selections = []
-        summary = {'skipped': 0, 'tables': set(), 'all': False, 'reason': None}
+        summary = {'skipped': 0, 'go_skipped': 0, 'tables': set(), 'all': False, 'reason': None}
         for manifest in sorted((ROOT / '.dev/codex').glob('*/manifest.py')):
             try:
                 entries = load_manifest(manifest)['ENTRIES']
                 selected = entries
                 if args.since is not None:
-                    selected = affected_entries(selected, args.since, summary=summary)
+                    selected = affected_entries(selected, args.since, summary=summary, whole_file=args.whole_file)
             except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as exc:
                 print(f'{manifest.relative_to(ROOT)}: {exc}', file=sys.stderr)
                 failed = True
@@ -1888,6 +2073,7 @@ def execute(args, parser):
                 found = ', '.join(sorted(summary['tables'])) or '(none)'
             print(f"--since: changed tables: {found}; skipped {summary['skipped']} migration/query entries by table rule",
                   file=sys.stderr)
+            print(f"--since: skipped {summary['go_skipped']} go entries by declaration rule", file=sys.stderr)
         if not args.locate:
             counts, code = run_manifests(selections, args)
             if code == 130:
@@ -1919,7 +2105,7 @@ def execute(args, parser):
         entries = load_manifest(manifest)['ENTRIES']
         selected = select_entries(entries, args.names)
         if args.since is not None:
-            selected = affected_entries(selected, args.since)
+            selected = affected_entries(selected, args.since, whole_file=args.whole_file)
     except subprocess.CalledProcessError as exc:
         parser.error(exc.stderr.decode(errors='replace') if isinstance(exc.stderr, bytes) else exc.stderr)
     except (OSError, ValueError, KeyError) as exc:
