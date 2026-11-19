@@ -10,6 +10,7 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/perm"
 )
 
 const (
@@ -30,6 +31,15 @@ func uploadHandler(pool *pgxpool.Pool, now func() time.Time) echo.HandlerFunc {
 		caller, ok := ops.CallerFrom(c.Request().Context())
 		if !ok {
 			return detail(c, http.StatusUnauthorized, "unauthenticated")
+		}
+		if !caller.Has(perm.DataImport) {
+			return mapError(c, ops.ErrForbidden)
+		}
+		select {
+		case previewParse <- struct{}{}:
+			defer func() { <-previewParse }()
+		default:
+			return mapError(c, errPreviewBusy)
 		}
 		req := c.Request()
 		req.Body = http.MaxBytesReader(c.Response(), req.Body, MaxUploadBytes+1<<20)

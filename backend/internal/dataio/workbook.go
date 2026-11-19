@@ -362,6 +362,9 @@ func readSheet(f *excelize.File, sheet string, maxRows int, columns []columnSpec
 
 func checkRow(sheet string, rowNumber int, row []string, columns []columnSpec) error {
 	for i, cell := range row {
+		if n := utf8.RuneCountInString(cell); n > MaxCellRunes {
+			return badFile("工作表 %s 第 %d 行单元格内容超过 %d 字", sheet, rowNumber, MaxCellRunes)
+		}
 		value := strings.TrimSpace(cell)
 		if i >= len(columns) {
 			if value != "" {

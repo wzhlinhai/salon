@@ -19,6 +19,11 @@ type rawSheet struct {
 
 func buildRawXLSX(t *testing.T, sheets []rawSheet, sharedStrings string) []byte {
 	t.Helper()
+	return buildRawXLSXName(t, sheets, sharedStrings, "xl/sharedStrings.xml")
+}
+
+func buildRawXLSXName(t *testing.T, sheets []rawSheet, sharedStrings, sharedStringsName string) []byte {
+	t.Helper()
 	var buf bytes.Buffer
 	writer := zip.NewWriter(&buf)
 	add := func(name, content string) {
@@ -45,7 +50,7 @@ func buildRawXLSX(t *testing.T, sheets []rawSheet, sharedStrings string) []byte 
 	if sharedStrings != "" {
 		overrides += `<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>`
 		relationships += `<Relationship Id="rId100" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>`
-		add("xl/sharedStrings.xml", sharedStrings)
+		add(sharedStringsName, sharedStrings)
 	}
 	add("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
 		`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">`+
@@ -153,5 +158,37 @@ func TestSharedStringBombAllocation(t *testing.T) {
 	t.Logf("shared-string bomb allocated %d bytes during parse", allocated)
 	if allocated >= 64<<20 {
 		t.Fatalf("bomb allocated %d bytes, want < %d", allocated, 64<<20)
+	}
+}
+
+func TestAliasedSharedStringBombAllocation(t *testing.T) {
+	const rows = 20000
+	customerRows := make([]string, rows)
+	for i := 1; i <= rows; i++ {
+		customerRows[i-1] = rawRow(i+1, inlineCell("A"+strconv.Itoa(i+1), "C"+strconv.Itoa(i)), sharedCell("B"+strconv.Itoa(i+1), 0))
+	}
+	data := buildRawXLSXName(t, validRawSheets(customerRows...), sharedStringsXML(strings.Repeat("x", 200000)), `xl\sharedstrings.xml`)
+
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	_, err := parseWorkbook(bytes.NewReader(data))
+	runtime.ReadMemStats(&after)
+	var fileErr *fileError
+	if !errors.As(err, &fileErr) || fileErr.Error() != errUnsupportedStructure {
+		t.Fatalf("aliased bomb error = %v", err)
+	}
+	allocated := after.TotalAlloc - before.TotalAlloc
+	t.Logf("aliased shared-string bomb allocated %d bytes during parse", allocated)
+	if allocated >= 64<<20 {
+		t.Fatalf("aliased bomb allocated %d bytes, want < %d", allocated, 64<<20)
+	}
+}
+
+func TestCheckRowRawLength(t *testing.T) {
+	err := checkRow(sheetCustomers, 2, []string{strings.Repeat(" ", 201) + "X"}, customerColumns)
+	var fileErr *fileError
+	if !errors.As(err, &fileErr) || fileErr.Error() != "工作表 顾客 第 2 行单元格内容超过 200 字" {
+		t.Fatalf("raw checkRow = %v", err)
 	}
 }

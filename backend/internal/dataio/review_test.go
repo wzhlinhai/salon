@@ -86,17 +86,17 @@ func TestWorkbookReadErrorsBecomeFileErrors(t *testing.T) {
 			t.Fatalf("corrupt xml = %d %v", r.Status, r.Body)
 		}
 	})
-	t.Run("invalid cell reference", func(t *testing.T) {
+	t.Run("cell row beyond excelize limit", func(t *testing.T) {
 		data := workbook(t, [][]string{{"来源顾客ID", "姓名", "手机号(可空)", "性别(男/女/空)"}},
 			[][]string{{"来源卡号", "来源顾客ID", "卡种", "本金", "赠送金", "到期日(YYYY-MM-DD,可空)", "积分(整数,可空)"}},
 			[][]string{{"来源卡号", "来源顾客ID", "卡种", "项目", "剩余购买次数", "剩余赠送次数", "到期日(可空)"}},
 			[][]string{{"顾客数", "储值卡数", "本金合计", "赠送金合计", "次卡套餐卡数"}, {"0", "0", "0", "0", "0"}})
 		broken := rewriteZip(t, data, map[string][]byte{partForSheet(t, data, "顾客"): rawWorksheet(
-			rawRow(1, `<c r="A"><v>1</v></c>`),
+			rawRow(1, `<c r="A1048577"><v>1</v></c>`),
 		)}, "", 0)
 		r := f.upload(f.Owner, broken, "badref.xlsx")
 		if r.Status != http.StatusUnprocessableEntity || !strings.Contains(r.Body["detail"].(string), "无法读取工作表 顾客") {
-			t.Fatalf("invalid cell reference = %d %v", r.Status, r.Body)
+			t.Fatalf("row beyond excelize limit = %d %v", r.Status, r.Body)
 		}
 	})
 	t.Run("unzip bomb", func(t *testing.T) {

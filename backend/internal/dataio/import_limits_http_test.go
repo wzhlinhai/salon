@@ -3,11 +3,14 @@ package dataio_test
 import (
 	"archive/zip"
 	"bytes"
-	"context"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -71,6 +74,148 @@ func rewriteParts(t *testing.T, data []byte, replace, add map[string][]byte) []b
 		t.Fatal(err)
 	}
 	return buf.Bytes()
+}
+
+type testZipEntry struct {
+	name   string
+	method uint16
+	data   []byte
+}
+
+func readZipEntries(t *testing.T, data []byte) []testZipEntry {
+	t.Helper()
+	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := make([]testZipEntry, 0, len(reader.File))
+	for _, file := range reader.File {
+		in, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		content, err := io.ReadAll(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := in.Close(); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, testZipEntry{name: file.Name, method: file.Method, data: content})
+	}
+	return out
+}
+
+func writeZipEntries(t *testing.T, entries []testZipEntry) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	writer := zip.NewWriter(&buf)
+	for _, entry := range entries {
+		out, err := writer.CreateHeader(&zip.FileHeader{Name: entry.name, Method: entry.method})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := out.Write(entry.data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func mutateZip(t *testing.T, data []byte, fn func([]testZipEntry) []testZipEntry) []byte {
+	t.Helper()
+	return writeZipEntries(t, fn(readZipEntries(t, data)))
+}
+
+func partData(t *testing.T, data []byte, name string) []byte {
+	t.Helper()
+	for _, entry := range readZipEntries(t, data) {
+		if entry.name == name {
+			return entry.data
+		}
+	}
+	t.Fatalf("zip part %s not found", name)
+	return nil
+}
+
+func withPartData(t *testing.T, data []byte, name string, content []byte) []byte {
+	t.Helper()
+	return mutateZip(t, data, func(entries []testZipEntry) []testZipEntry {
+		for i := range entries {
+			if entries[i].name == name {
+				entries[i].data = content
+				return entries
+			}
+		}
+		return append(entries, testZipEntry{name: name, method: zip.Deflate, data: content})
+	})
+}
+
+const emptySharedStrings = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"></sst>`
+
+func withSharedStringsName(t *testing.T, data []byte, name string) []byte {
+	t.Helper()
+	return mutateZip(t, data, func(entries []testZipEntry) []testZipEntry {
+		for i := range entries {
+			if strings.EqualFold(entries[i].name, "xl/sharedstrings.xml") {
+				entries[i].name = name
+				return entries
+			}
+		}
+		return append(entries, testZipEntry{name: name, method: zip.Deflate, data: []byte(emptySharedStrings)})
+	})
+}
+
+func addSharedStringsAlias(t *testing.T, data []byte, name string) []byte {
+	t.Helper()
+	return mutateZip(t, data, func(entries []testZipEntry) []testZipEntry {
+		return append(entries, testZipEntry{name: name, method: zip.Deflate, data: []byte(emptySharedStrings)})
+	})
+}
+
+func (f *fixture) uploadReader(token string, body io.Reader, contentType string) upload {
+	f.t.Helper()
+	req := httptest.NewRequest(http.MethodPost, dataio.UploadPath, body)
+	req.Header.Set("Content-Type", contentType)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	rec := httptest.NewRecorder()
+	f.Handler.ServeHTTP(rec, req)
+	var out map[string]any
+	if rec.Body.Len() > 0 {
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			f.t.Fatalf("decode upload response %q: %v", rec.Body.String(), err)
+		}
+	}
+	return upload{Status: rec.Code, Body: out}
+}
+
+func multipartBody(t *testing.T, data []byte, name string) ([]byte, string) {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return body.Bytes(), writer.FormDataContentType()
+}
+
+func assertFileError(t *testing.T, r upload, detail string) {
+	t.Helper()
+	if r.Status != http.StatusUnprocessableEntity || r.Body["detail"] != detail {
+		t.Fatalf("status = %d %v, want 422 %q", r.Status, r.Body, detail)
+	}
 }
 
 func partForSheet(t *testing.T, data []byte, sheet string) string {
@@ -481,29 +626,234 @@ func (r *blockingReader) Read(p []byte) (int, error) {
 
 func TestPreviewConcurrency(t *testing.T) {
 	f := open(t)
-	reader := &blockingReader{
-		data:    defaultWorkbook(t),
-		started: make(chan struct{}),
-		release: make(chan struct{}),
+	_, managerToken := f.Hire("店长", "002", "manager", f.Role("店长"))
+	firstBody, firstType := multipartBody(t, defaultWorkbook(t), "first.xlsx")
+	reader := &blockingReader{data: firstBody, started: make(chan struct{}), release: make(chan struct{})}
+	released := false
+	release := func() {
+		if !released {
+			released = true
+			close(reader.release)
+		}
 	}
-	done := make(chan error, 1)
-	go func() {
-		_, err := dataio.Preview(context.Background(), f.Pool, f.MustCaller(f.Owner), time.Now(), "first.xlsx", reader)
-		done <- err
-	}()
+	defer release()
+	firstDone := make(chan upload, 1)
+	go func() { firstDone <- f.uploadReader(f.Owner, reader, firstType) }()
 	<-reader.started
 
-	second := f.upload(f.Owner, defaultWorkbook(t), "second.xlsx")
-	if second.Status != http.StatusTooManyRequests || second.Body["detail"] != "正在处理其他导入，请稍后再试" {
-		t.Fatalf("busy = %d %v", second.Status, second.Body)
+	secondBody, secondType := multipartBody(t, defaultWorkbook(t), "second.xlsx")
+	secondDone := make(chan upload, 1)
+	go func() { secondDone <- f.uploadReader(f.Owner, bytes.NewReader(secondBody), secondType) }()
+	select {
+	case second := <-secondDone:
+		if second.Status != http.StatusTooManyRequests || second.Body["detail"] != "正在处理其他导入，请稍后再试" {
+			t.Fatalf("busy = %d %v", second.Status, second.Body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("second request did not return 429 while intake slot is held")
 	}
 
-	close(reader.release)
-	if err := <-done; err != nil {
-		t.Fatalf("first preview = %v", err)
+	forbiddenBody, forbiddenType := multipartBody(t, defaultWorkbook(t), "forbidden.xlsx")
+	forbiddenDone := make(chan upload, 1)
+	go func() { forbiddenDone <- f.uploadReader(managerToken, bytes.NewReader(forbiddenBody), forbiddenType) }()
+	select {
+	case forbidden := <-forbiddenDone:
+		if forbidden.Status != http.StatusForbidden || forbidden.Body["detail"] != "permission denied" {
+			t.Fatalf("forbidden = %d %v", forbidden.Status, forbidden.Body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("forbidden request did not return 403")
+	}
+
+	release()
+	select {
+	case first := <-firstDone:
+		if first.Status != http.StatusOK {
+			t.Fatalf("first preview = %d %v", first.Status, first.Body)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("first preview did not finish after release")
 	}
 	third := f.upload(f.Owner, defaultWorkbook(t), "third.xlsx")
 	if third.Status != http.StatusOK {
 		t.Fatalf("after release = %d %v", third.Status, third.Body)
+	}
+}
+
+func TestCanonicalEntryNames(t *testing.T) {
+	f := open(t)
+	t.Run("backslash shared strings", func(t *testing.T) {
+		data := withSharedStringsName(t, defaultWorkbook(t), `xl\sharedStrings.xml`)
+		assertFileError(t, f.upload(f.Owner, data, "alias.xlsx"), "Excel 文件结构不受支持")
+	})
+	t.Run("duplicate lowercase", func(t *testing.T) {
+		data := addSharedStringsAlias(t, defaultWorkbook(t), "XL/SharedStrings.XML")
+		assertFileError(t, f.upload(f.Owner, data, "duplicate.xlsx"), "Excel 文件结构不受支持")
+	})
+	t.Run("backslash worksheet", func(t *testing.T) {
+		data := defaultWorkbook(t)
+		part := partForSheet(t, data, "顾客")
+		data = mutateZip(t, data, func(entries []testZipEntry) []testZipEntry {
+			for i := range entries {
+				if entries[i].name == part {
+					entries[i].name = strings.ReplaceAll(part, "/", `\`)
+				}
+			}
+			return entries
+		})
+		assertFileError(t, f.upload(f.Owner, data, "sheet-alias.xlsx"), "Excel 文件结构不受支持")
+	})
+}
+
+func TestSharedStringAliasNames(t *testing.T) {
+	f := open(t)
+	for _, name := range []string{"xl/sharedstrings.xml", "XL/SharedStrings.XML"} {
+		t.Run(name, func(t *testing.T) {
+			data := withSharedStringsName(t, defaultWorkbook(t), name)
+			assertFileError(t, f.upload(f.Owner, data, "sst-alias.xlsx"), "Excel 文件结构不受支持")
+		})
+	}
+}
+
+func TestRootRelationshipTarget(t *testing.T) {
+	f := open(t)
+	data := defaultWorkbook(t)
+	original := partData(t, data, "_rels/.rels")
+	rels := bytes.Replace(original, []byte(`Target="xl/workbook.xml"`), []byte(`Target="xl/workbook2.xml"`), 1)
+	if bytes.Equal(original, rels) {
+		t.Fatal("root officeDocument target not found")
+	}
+	data = withPartData(t, data, "xl/workbook2.xml", partData(t, data, "xl/workbook.xml"))
+	data = withPartData(t, data, "xl/_rels/workbook2.xml.rels", partData(t, data, "xl/_rels/workbook.xml.rels"))
+	data = withPartData(t, data, "_rels/.rels", rels)
+	assertFileError(t, f.upload(f.Owner, data, "root-target.xlsx"), "Excel 文件结构不受支持")
+}
+
+func TestWorksheetTargetOutside(t *testing.T) {
+	f := open(t)
+	t.Run("outside prefix with existing part", func(t *testing.T) {
+		data := defaultWorkbook(t)
+		part := partForSheet(t, data, "顾客")
+		data = withPartData(t, data, "xl/evil/sheet1.xml", partData(t, data, part))
+		original := partData(t, data, "xl/_rels/workbook.xml.rels")
+		rels := bytes.Replace(original, []byte(`Target="`+strings.TrimPrefix(part, "xl/")+`"`), []byte(`Target="/xl/evil/sheet1.xml"`), 1)
+		if bytes.Equal(original, rels) {
+			t.Fatal("customer worksheet relationship not found")
+		}
+		data = withPartData(t, data, "xl/_rels/workbook.xml.rels", rels)
+		assertFileError(t, f.upload(f.Owner, data, "outside.xlsx"), "Excel 文件结构不受支持")
+	})
+	t.Run("missing target", func(t *testing.T) {
+		data := defaultWorkbook(t)
+		part := partForSheet(t, data, "顾客")
+		original := partData(t, data, "xl/_rels/workbook.xml.rels")
+		rels := bytes.Replace(original, []byte(`Target="`+strings.TrimPrefix(part, "xl/")+`"`), []byte(`Target="/xl/worksheets/missing.xml"`), 1)
+		if bytes.Equal(original, rels) {
+			t.Fatal("customer worksheet relationship not found")
+		}
+		data = withPartData(t, data, "xl/_rels/workbook.xml.rels", rels)
+		assertFileError(t, f.upload(f.Owner, data, "missing-target.xlsx"), "Excel 文件结构不受支持")
+	})
+}
+
+func TestDuplicateBusinessSheet(t *testing.T) {
+	f := open(t)
+	data := defaultWorkbook(t)
+	workbook := partData(t, data, "xl/workbook.xml")
+	re := regexp.MustCompile(`<sheet[^>]*name="顾客"[^>]*></sheet>`)
+	loc := re.FindIndex(workbook)
+	if loc == nil {
+		t.Fatal("customer sheet element not found")
+	}
+	modified := make([]byte, 0, len(workbook)+loc[1]-loc[0])
+	modified = append(modified, workbook[:loc[1]]...)
+	modified = append(modified, workbook[loc[0]:loc[1]]...)
+	modified = append(modified, workbook[loc[1]:]...)
+	data = withPartData(t, data, "xl/workbook.xml", modified)
+	assertFileError(t, f.upload(f.Owner, data, "duplicate-sheet.xlsx"), "Excel 文件结构不受支持")
+}
+
+func TestAbsoluteCellRefs(t *testing.T) {
+	f := open(t)
+	cases := map[string]string{
+		"$U$2":                  "工作表 顾客 第 2 行列数过多",
+		"$XFD$2":                "工作表 顾客 第 2 行列数过多",
+		"ZZZZZZZZZZZZZZZZZZZZ2": "工作表 顾客 第 2 行列数过多",
+	}
+	for ref, want := range cases {
+		ref, want := ref, want
+		t.Run(ref, func(t *testing.T) {
+			data := defaultWorkbook(t)
+			data = withPartData(t, data, partForSheet(t, data, "顾客"), rawCustomerSheet(
+				rawRow(2, rawCell("A2", "C1"), rawCell("B2", "顾客"), rawCell("C2", ""), rawCell("D2", ""), `<c r="`+ref+`"><v>1</v></c>`),
+			))
+			assertFileError(t, f.upload(f.Owner, data, "absolute.xlsx"), want)
+		})
+	}
+}
+
+func TestCellsWithoutRef(t *testing.T) {
+	f := open(t)
+	cells := make([]string, 21)
+	for i := range cells {
+		cells[i] = `<c><v>1</v></c>`
+	}
+	data := defaultWorkbook(t)
+	data = withPartData(t, data, partForSheet(t, data, "顾客"), rawCustomerSheet(rawRow(2, cells...)))
+	assertFileError(t, f.upload(f.Owner, data, "no-ref.xlsx"), "工作表 顾客 第 2 行列数过多")
+}
+
+func TestWhitespaceCellContent(t *testing.T) {
+	f := open(t)
+	t.Run("whitespace cached value at column 21", func(t *testing.T) {
+		data := defaultWorkbook(t)
+		data = withPartData(t, data, partForSheet(t, data, "顾客"), rawCustomerSheet(
+			rawRow(2, rawCell("A2", "C1"), rawCell("B2", "顾客"), rawCell("C2", ""), rawCell("D2", ""), `<c r="U2"><v> </v></c>`),
+		))
+		assertFileError(t, f.upload(f.Owner, data, "space.xlsx"), "工作表 顾客 第 2 行列数过多")
+	})
+	t.Run("padded inline string", func(t *testing.T) {
+		data := defaultWorkbook(t)
+		data = withPartData(t, data, partForSheet(t, data, "顾客"), rawCustomerSheet(
+			rawRow(2, rawCell("A2", "C1"), rawCell("B2", strings.Repeat(" ", 201)+"X"), rawCell("C2", ""), rawCell("D2", "")),
+		))
+		assertFileError(t, f.upload(f.Owner, data, "padded.xlsx"), "工作表 顾客 第 2 行单元格内容超过 200 字")
+	})
+}
+
+func TestExtraSheetIgnored(t *testing.T) {
+	f := open(t)
+	data := defaultWorkbook(t)
+	extra := rawWorksheet(rawRow(1, rawCell("AD1", strings.Repeat("说", 300))))
+	data = withPartData(t, data, "xl/worksheets/sheet99.xml", extra)
+	workbook := bytes.Replace(partData(t, data, "xl/workbook.xml"), []byte(`</sheets>`), []byte(`<sheet name="说明" sheetId="99" r:id="rId99"/></sheets>`), 1)
+	data = withPartData(t, data, "xl/workbook.xml", workbook)
+	rels := bytes.Replace(partData(t, data, "xl/_rels/workbook.xml.rels"), []byte(`</Relationships>`), []byte(`<Relationship Id="rId99" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet99.xml"/></Relationships>`), 1)
+	data = withPartData(t, data, "xl/_rels/workbook.xml.rels", rels)
+	r := f.upload(f.Owner, data, "extra-sheet.xlsx")
+	if r.Status != http.StatusOK {
+		t.Fatalf("extra sheet = %d %v", r.Status, r.Body)
+	}
+}
+
+func TestSSTPhoneticRunIgnored(t *testing.T) {
+	f := open(t)
+	data := defaultWorkbook(t)
+	var sst []byte
+	for _, entry := range readZipEntries(t, data) {
+		if entry.name == "xl/sharedStrings.xml" {
+			sst = entry.data
+			break
+		}
+	}
+	if sst == nil {
+		sst = []byte(emptySharedStrings)
+	}
+	si := `<si><t>短</t><rPh sb="0" eb="1"><t>` + strings.Repeat("音", 300) + `</t></rPh></si>`
+	sst = bytes.Replace(sst, []byte(`</sst>`), []byte(si+`</sst>`), 1)
+	data = withPartData(t, data, "xl/sharedStrings.xml", sst)
+	r := f.upload(f.Owner, data, "phonetic.xlsx")
+	if r.Status != http.StatusOK {
+		t.Fatalf("phonetic run = %d %v", r.Status, r.Body)
 	}
 }

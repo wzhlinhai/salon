@@ -34,16 +34,6 @@ var (
 	previewParse   = make(chan struct{}, 1)
 )
 
-func parsePreview(r io.Reader) (*parsedFile, error) {
-	select {
-	case previewParse <- struct{}{}:
-		defer func() { <-previewParse }()
-	default:
-		return nil, errPreviewBusy
-	}
-	return parseWorkbook(r)
-}
-
 func cardTypes(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID) (map[string]cardTypeInfo, error) {
 	rows, err := q.ListCardTypes(ctx, storeID)
 	if err != nil {
@@ -80,7 +70,7 @@ func Preview(ctx context.Context, pool *pgxpool.Pool, caller ops.Caller, now tim
 	if !caller.Has(perm.DataImport) {
 		return nil, ops.ErrForbidden
 	}
-	file, err := parsePreview(r)
+	file, err := parseWorkbook(r)
 	if err != nil {
 		return nil, err
 	}
