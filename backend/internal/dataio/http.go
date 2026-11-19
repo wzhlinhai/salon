@@ -10,6 +10,7 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/perm"
 )
 
 const (
@@ -31,6 +32,15 @@ func uploadHandler(pool *pgxpool.Pool, now func() time.Time) echo.HandlerFunc {
 		if !ok {
 			return detail(c, http.StatusUnauthorized, "unauthenticated")
 		}
+		if !caller.Has(perm.DataImport) {
+			return mapError(c, ops.ErrForbidden)
+		}
+		select {
+		case previewParse <- struct{}{}:
+			defer func() { <-previewParse }()
+		default:
+			return mapError(c, errPreviewBusy)
+		}
 		req := c.Request()
 		req.Body = http.MaxBytesReader(c.Response(), req.Body, MaxUploadBytes+1<<20)
 		if err := req.ParseMultipartForm(MaxUploadBytes + 1<<20); err != nil {
@@ -45,9 +55,6 @@ func uploadHandler(pool *pgxpool.Pool, now func() time.Time) echo.HandlerFunc {
 			return detail(c, http.StatusUnprocessableEntity, "请选择要导入的 Excel 文件")
 		}
 		defer func() { _ = file.Close() }()
-		if header.Size > MaxUploadBytes {
-			return detail(c, http.StatusUnprocessableEntity, "文件超过大小上限")
-		}
 		out, err := Preview(req.Context(), pool, caller, now(), header.Filename, file)
 		if err != nil {
 			return mapError(c, err)
@@ -96,6 +103,8 @@ func (l *lazyHeaderWriter) Write(p []byte) (int, error) {
 func mapError(c *echo.Context, err error) error {
 	var fileErr *fileError
 	switch {
+	case errors.Is(err, errPreviewBusy):
+		return detail(c, http.StatusTooManyRequests, errPreviewBusy.Error())
 	case errors.As(err, &fileErr):
 		return detail(c, http.StatusUnprocessableEntity, fileErr.Error())
 	case errors.Is(err, ops.ErrForbidden):
