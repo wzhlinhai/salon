@@ -17,17 +17,34 @@ func MaskName(name string) string {
 	return string(runes[0]) + strings.Repeat("*", len(runes)-1)
 }
 
-// MaskPhone 将十一位数字号码打码，其他字符串保持原样。
+// MaskPhone 先按 normalizePhone 的规则去掉空白和短横线；得到十一位数字时保留前三位和后四位，
+// 否则把输入中的每个 ASCII 数字替换为 *。
 func MaskPhone(phone string) string {
-	if len(phone) != 11 {
-		return phone
-	}
-	for _, digit := range phone {
-		if digit < '0' || digit > '9' {
-			return phone
+	cleaned := strings.Map(func(r rune) rune {
+		switch r {
+		case '-', ' ', '\t', '\n', '\r':
+			return -1
+		}
+		return r
+	}, phone)
+	if len(cleaned) == 11 {
+		digits := true
+		for _, r := range cleaned {
+			if r < '0' || r > '9' {
+				digits = false
+				break
+			}
+		}
+		if digits {
+			return cleaned[:3] + "****" + cleaned[7:]
 		}
 	}
-	return phone[:3] + "****" + phone[7:]
+	return strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return '*'
+		}
+		return r
+	}, phone)
 }
 
 // PhoneKey 报告 JSON 键名是否承载手机号：键名为 phone 或以 _phone 结尾。

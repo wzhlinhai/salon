@@ -4278,6 +4278,11 @@ export interface components {
             id: string;
             order_id?: string;
         };
+        ConfirmInput: {
+            id: string;
+            /** Format: int32 */
+            version: number;
+        };
         CouponRequest: {
             coupon_code: string;
             key: string;
@@ -4647,6 +4652,8 @@ export interface components {
             status: string;
             summary: string;
             utterance: string;
+            /** Format: int32 */
+            version: number;
         };
         Draft: {
             business_date: string;
@@ -4666,6 +4673,8 @@ export interface components {
             status: string;
             summary: string;
             utterance: string;
+            /** Format: int32 */
+            version: number;
         };
         DraftView: {
             business_date: string;
@@ -4687,6 +4696,8 @@ export interface components {
             status: string;
             summary: string;
             utterance: string;
+            /** Format: int32 */
+            version: number;
         };
         DragTurnInput: {
             queue_id: string;
@@ -7668,7 +7679,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["IDInput"];
+                "application/json": components["schemas"]["ConfirmInput"];
             };
         };
         responses: {

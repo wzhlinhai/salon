@@ -27,10 +27,15 @@ func (r *Registry) PreviewDraft(ctx context.Context, env Env, operation string, 
 	if preview == nil {
 		return nil, nil
 	}
+	e, ok := r.ops[operation]
+	if !ok {
+		return nil, ErrUnknownOperation
+	}
+	if err := checkOperationPermission(env.Caller, e); err != nil {
+		return nil, Rule("已无该操作权限，无法预览")
+	}
 	run := func(env Env) (json.RawMessage, error) {
-		if e, ok := r.ops[operation]; ok {
-			env.Grant = env.Caller.Grant(e.permission)
-		}
+		env.Grant = env.Caller.Grant(e.permission)
 		out, err := preview(ctx, env, params)
 		if err != nil {
 			return nil, err
@@ -64,13 +69,16 @@ func (r *Registry) DraftPermission(name string) (Permission, error) {
 	return e.permission, nil
 }
 
-// DraftAllowed 报告调用者是否拥有起草或确认目标操作所需的全部权限。
-func (r *Registry) DraftAllowed(c Caller, name string) (bool, error) {
+// DraftVisible 报告非发起人能否看到目标操作的草稿：需要该操作的全部权限，且主权限的数据范围不是本人。
+func (r *Registry) DraftVisible(c Caller, name string) (bool, error) {
 	e, ok := r.ops[name]
 	if !ok || e.ai != AIDraft {
 		return false, ErrUnknownOperation
 	}
-	return checkOperationPermission(c, e) == nil, nil
+	if checkOperationPermission(c, e) != nil {
+		return false, nil
+	}
+	return c.Grant(e.permission).Scope != ScopeSelf, nil
 }
 
 // CheckDraft 校验目标可起草、调用者权限及与工具相同的参数 schema。

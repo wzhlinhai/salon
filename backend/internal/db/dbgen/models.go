@@ -71,6 +71,7 @@ type AiDraft struct {
 	DecidedAt      pgtype.Timestamptz
 	DecidedBy      *uuid.UUID
 	RejectReason   *string
+	Version        int32
 }
 
 type AiDraftEvent struct {

@@ -349,8 +349,8 @@ func TestSealedDraftConfirmRejected(t *testing.T) {
 	f.Call(t, f.Owner, "close_day", map[string]any{"date": "2026-10-01", "cash_counted": "10", "unionpay_actual": "0", "wechat_actual": "0", "alipay_actual": "0"}, 200)
 	seal(t, f, "2026-10-01")
 	caller := f.MustCaller(f.Owner)
-	draft := f.AI(t, caller, "void_order", map[string]any{"order_id": order, "reason": "封账后撤单"}).Body["id"]
-	r := f.HTTP(t, &caller, "confirm_draft", map[string]any{"id": draft})
+	draft := f.AI(t, caller, "void_order", map[string]any{"order_id": order, "reason": "封账后撤单"}).Body
+	r := f.HTTP(t, &caller, "confirm_draft", map[string]any{"id": draft["id"], "version": draft["version"]})
 	if r.Status != http.StatusConflict || r.Detail() != "该营业日已封账（2026-10-01）" {
 		t.Fatal(r)
 	}

@@ -6,6 +6,29 @@ import (
 	"testing"
 )
 
+func TestMaskPhone(t *testing.T) {
+	for _, tt := range []struct {
+		name, phone, want string
+	}{
+		{"eleven digits", "13812345678", "138****5678"},
+		{"spaced", "138 1234 5678", "138****5678"},
+		{"dashed", "138-1234-5678", "138****5678"},
+		{"whitespace", " 138\t1234\n5678\r", "138****5678"},
+		{"too short", "1381234", "*******"},
+		{"too long", "138123456789", "************"},
+		{"non-digit text", "abc", "abc"},
+		{"mixed text", "order 138-1234", "order ***-****"},
+		{"already masked", "138****5678", "***********"},
+		{"empty", "", ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := MaskPhone(tt.phone); got != tt.want {
+				t.Fatalf("MaskPhone(%q) = %q, want %q", tt.phone, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestPhoneKey(t *testing.T) {
 	for _, tt := range []struct {
 		key  string

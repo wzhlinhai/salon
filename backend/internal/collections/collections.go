@@ -200,6 +200,14 @@ func CancelOrder(ctx context.Context, env ops.Env, orderID uuid.UUID) error {
 		return err
 	}
 	for _, row := range rows {
+		if row.Status == "refunded" {
+			return ops.Rule("该单有已退款的收款，不能撤单")
+		}
+	}
+	for _, row := range rows {
+		if row.Status == "failed" || row.Status == "cancelled" {
+			continue
+		}
 		if _, err := change(ctx, env, &ChangeCollectionInput{ID: row.ID, Reason: "撤单"}, "cancelled"); err != nil {
 			return err
 		}
