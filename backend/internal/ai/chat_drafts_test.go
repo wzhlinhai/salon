@@ -164,7 +164,7 @@ func TestChatDraftOpenOrderPreviewAndConfirmation(t *testing.T) {
 	if member["price"] != "80.00" || member["price_source"] != "member" {
 		t.Fatal(member)
 	}
-	done := s.Call(t, s.Owner, "confirm_draft", map[string]any{"id": draft["id"]}, 200).Body
+	done := s.Call(t, s.Owner, "confirm_draft", map[string]any{"id": draft["id"], "version": draft["version"]}, 200).Body
 	if done["status"] != "confirmed" || len(s.openOrders()) != 1 {
 		t.Fatal(done)
 	}
@@ -202,7 +202,7 @@ func TestChatDraftChangeOrderStaff(t *testing.T) {
 	if before["items"].([]any)[0].(map[string]any)["positions"].([]any)[0].(map[string]any)["staff_id"] != s.stylist.String() {
 		t.Fatal(before)
 	}
-	s.Call(t, s.Owner, "confirm_draft", map[string]any{"id": draft["id"]}, 200)
+	s.Call(t, s.Owner, "confirm_draft", map[string]any{"id": draft["id"], "version": draft["version"]}, 200)
 	after := s.Call(t, s.Owner, "get_order", map[string]any{"id": order["id"]}, 200).Body
 	if after["items"].([]any)[0].(map[string]any)["positions"].([]any)[0].(map[string]any)["staff_id"] != assistantID.String() {
 		t.Fatal(after)
@@ -243,7 +243,7 @@ func TestChatDraftGroupbuyOrder(t *testing.T) {
 	if draft["operation"] != "open_groupbuy_order" || len(s.openOrders()) != 0 || draft["preview"] == nil {
 		t.Fatal(draft)
 	}
-	s.Call(t, s.Owner, "confirm_draft", map[string]any{"id": draft["id"]}, 200)
+	s.Call(t, s.Owner, "confirm_draft", map[string]any{"id": draft["id"], "version": draft["version"]}, 200)
 	orders := s.openOrders()
 	if len(orders) != 1 {
 		t.Fatal(orders)
@@ -274,13 +274,13 @@ func TestChatDraftAdjustCardDualConfirm(t *testing.T) {
 	if draft["operation"] != "adjust_card" {
 		t.Fatal(draft)
 	}
-	owner := s.HTTPWithToken(t, s.Owner, "confirm_draft", map[string]any{"id": draft["id"]})
+	owner := s.HTTPWithToken(t, s.Owner, "confirm_draft", map[string]any{"id": draft["id"], "version": draft["version"]})
 	if owner.Status != http.StatusConflict || !strings.Contains(owner.Detail(), "金额草稿必须由另一人确认") {
 		t.Fatal(owner)
 	}
 	role := s.Call(t, s.Owner, "create_role", map[string]any{"name": "调卡员", "permissions": []any{map[string]any{"permission": "card.adjust"}, map[string]any{"permission": "customer.view"}}}, 200).Body
 	_, token := s.Hire("店长甲", "004", "draft-manager", uuid.MustParse(role["id"].(string)))
-	done := s.HTTPWithToken(t, token, "confirm_draft", map[string]any{"id": draft["id"]})
+	done := s.HTTPWithToken(t, token, "confirm_draft", map[string]any{"id": draft["id"], "version": draft["version"]})
 	if done.Status != http.StatusOK || done.Body["status"] != "confirmed" {
 		t.Fatal(done)
 	}
@@ -316,7 +316,7 @@ func TestChatUpdateOwnDraftThenConfirm(t *testing.T) {
 	if draft["params"].(map[string]any)["gender"] != "male" {
 		t.Fatal(draft)
 	}
-	done := s.Call(t, s.Owner, "confirm_draft", map[string]any{"id": draft["id"]}, 200).Body
+	done := s.Call(t, s.Owner, "confirm_draft", map[string]any{"id": draft["id"], "version": draft["version"]}, 200).Body
 	if done["status"] != "confirmed_modified" {
 		t.Fatal(done)
 	}
@@ -354,8 +354,8 @@ func TestChatConfirmRequiresTargetPermission(t *testing.T) {
 	s := newDraftFixture(t)
 	draft := s.Call(t, s.Owner, "create_draft", map[string]any{"operation": "open_order", "params": s.orderParams(), "summary": "开单", "utterance": "开单"}, 200).Body
 	_, token := s.Hire("助理", "005", "draft-no-permission")
-	r := s.HTTPWithToken(t, token, "confirm_draft", map[string]any{"id": draft["id"]})
-	if r.Status != http.StatusForbidden || !strings.Contains(r.Detail(), "permission denied") {
+	r := s.HTTPWithToken(t, token, "confirm_draft", map[string]any{"id": draft["id"], "version": draft["version"]})
+	if r.Status != http.StatusNotFound || r.Detail() != "not found" {
 		t.Fatal(r)
 	}
 	if got := s.Call(t, s.Owner, "get_draft", map[string]any{"id": draft["id"]}, 200).Body; got["status"] != "pending" {

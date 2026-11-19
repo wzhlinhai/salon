@@ -52,7 +52,7 @@ func TestOpenGroupbuyOrderAIDraftAndConfirm(t *testing.T) {
 	before := e.linkSnapshot()
 	optest.RequireDraftCreated(t, e.AI(t, e.caller, "open_groupbuy_order", e.openGroupbuy(c.id, deal, item, e.staff)), before == e.linkSnapshot())
 	draft := e.Call(t, e.Owner, "list_drafts", map[string]any{}, 200).Body["drafts"].([]any)[0].(map[string]any)
-	e.Call(t, e.Owner, "confirm_draft", map[string]any{"id": draft["id"]}, 200)
+	e.Call(t, e.Owner, "confirm_draft", map[string]any{"id": draft["id"], "version": draft["version"]}, 200)
 	list := e.Call(t, e.Owner, "list_open_orders", map[string]any{}, 200).Body["items"].([]any)
 	if len(list) != 1 {
 		t.Fatal(list)
@@ -87,7 +87,7 @@ func TestOpenGroupbuyOrderRequiresBothPermissions(t *testing.T) {
 	rejectionDetail(t, e.AI(t, orderOnly, "create_draft", map[string]any{"operation": "open_groupbuy_order", "params": in, "summary": "团购开单", "utterance": "团购开单"}), 403, "permission denied")
 	rejectionDetail(t, e.HTTP(t, &orderOnly, "open_groupbuy_order", in), 403, "permission denied")
 	draft := e.Call(t, e.Owner, "create_draft", map[string]any{"operation": "open_groupbuy_order", "params": in, "summary": "团购开单", "utterance": "团购开单"}, 200).Body
-	rejectionDetail(t, e.HTTP(t, &orderOnly, "confirm_draft", map[string]any{"id": draft["id"]}), 403, "permission denied")
+	rejectionDetail(t, e.HTTP(t, &orderOnly, "confirm_draft", map[string]any{"id": draft["id"], "version": draft["version"]}), 403, "permission denied")
 	noOrder := e.MustCaller(e.Owner)
 	delete(noOrder.Permissions, "order.create")
 	rejectionDetail(t, e.HTTP(t, &noOrder, "open_groupbuy_order", in), 403, "permission denied")
@@ -203,5 +203,28 @@ func TestOpenGroupbuyOrderAINeverVerifiesOrRedeems(t *testing.T) {
 		if r.Status != 404 {
 			t.Fatalf("%s = %d %v", name, r.Status, r.Body)
 		}
+	}
+}
+
+func TestGroupbuyLinkRequiresOrderCreate(t *testing.T) {
+	e := newOrderEnv(t)
+	role := e.Call(t, e.Owner, "create_role", map[string]any{"name": "只核销", "permissions": []any{map[string]any{"permission": "groupbuy.redeem"}}}, 200).Body["id"].(string)
+	_, token := e.Hire("核销员", "012", "redeem-only", uuid.MustParse(role))
+	redeemOnly := e.MustCaller(token)
+	for _, tc := range []struct {
+		op     string
+		params map[string]any
+	}{
+		{"link_coupon_order", map[string]any{"redemption_id": uuid.NewString(), "deal_id": uuid.NewString(), "order_id": uuid.NewString()}},
+		{"unlink_coupon_order", map[string]any{"redemption_id": uuid.NewString()}},
+	} {
+		draft := e.Call(t, e.Owner, "create_draft", map[string]any{"operation": tc.op, "params": tc.params, "summary": "团购", "utterance": "团购"}, 200).Body
+		for _, ch := range e.Channels() {
+			if r := ch.Call(t, redeemOnly, "get_draft", map[string]any{"id": draft["id"]}); r.Status != 404 {
+				t.Fatal(ch.Name, tc.op, r)
+			}
+		}
+		rejectionDetail(t, e.HTTP(t, &redeemOnly, tc.op, tc.params), 403, "permission denied")
+		rejectionDetail(t, e.AI(t, redeemOnly, tc.op, tc.params), 403, "permission denied")
 	}
 }

@@ -536,3 +536,41 @@ func (s *fixture) orderColumns(o map[string]any) string {
 	}
 	return columns
 }
+
+func TestVoidWithTerminalCollections(t *testing.T) {
+	for _, tt := range []struct {
+		status, detail, orderStatus string
+		code                        int
+	}{
+		{"failed", "", "voided", 200},
+		{"cancelled", "", "voided", 200},
+		{"refunded", "该单有已退款的收款，不能撤单", "paid", 409},
+	} {
+		t.Run(tt.status, func(t *testing.T) {
+			s := open(t)
+			o := s.paid(s.customerOrder(s.checkoutLine()), payment("cash", "100"))
+			items := s.call("list_collections", map[string]any{"order_id": o["id"]}, 200)["items"].([]any)
+			if len(items) != 1 {
+				t.Fatal(items)
+			}
+			collection := items[0].(map[string]any)
+			tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+			dbtest.Exec(t, tx, "UPDATE collections SET status=$2 WHERE id=$1", collection["id"], tt.status)
+			dbtest.Commit(t, tx)
+			before := dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "orders", "collections", "collection_events", "order_voids", "order_payments", "cards", "card_ledger")
+			r := s.HTTP(t, new(s.MustCaller(s.Owner)), "void_order", voidInput(o))
+			if r.Status != tt.code || (tt.detail != "" && r.Detail() != tt.detail) {
+				t.Fatal(r)
+			}
+			if got := s.call("get_collection", map[string]any{"id": collection["id"]}, 200); got["status"] != tt.status {
+				t.Fatal(got)
+			}
+			if got := s.call("get_order", map[string]any{"id": o["id"]}, 200); got["status"] != tt.orderStatus {
+				t.Fatal(got)
+			}
+			if tt.code != 200 && dbtest.Snapshot(t, s.Pool, s.Res.TenantID, "orders", "collections", "collection_events", "order_voids", "order_payments", "cards", "card_ledger") != before {
+				t.Fatal("rejection changed data")
+			}
+		})
+	}
+}

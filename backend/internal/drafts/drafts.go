@@ -27,6 +27,7 @@ type Draft struct {
 	OriginalParams json.RawMessage `json:"original_params"`
 	Summary        string          `json:"summary"`
 	Status         string          `json:"status"`
+	Version        int32           `json:"version"`
 	BusinessDate   string          `json:"business_date"`
 	ExpiresAt      time.Time       `json:"expires_at"`
 	CreatedAt      time.Time       `json:"created_at"`
@@ -67,6 +68,12 @@ type IDInput struct {
 	ID uuid.UUID `json:"id"`
 }
 
+// ConfirmInput 指定要确认的草稿及其查看时的版本。
+type ConfirmInput struct {
+	ID      uuid.UUID `json:"id"`
+	Version int32     `json:"version" minimum:"1"`
+}
+
 // UpdateInput 是确认前的人工作业参数。
 type UpdateInput struct {
 	ID     uuid.UUID      `json:"id"`
@@ -104,14 +111,14 @@ func Register(r *ops.Registry) {
 	ops.Register(r, ops.Operation[struct{}, List]{Name: "list_drafts", Summary: "查看可见草稿", Kind: ops.Read, Permission: ops.LoggedIn, AI: ops.AIDirect, Handle: s.list})
 	ops.Register(r, ops.Operation[IDInput, Detail]{Name: "get_draft", Summary: "查看草稿与留痕", Kind: ops.Read, Permission: ops.LoggedIn, AI: ops.AIDirect, Handle: s.get})
 	ops.Register(r, ops.Operation[UpdateInput, Draft]{Name: "update_draft_params", Summary: "修改待确认草稿参数", Kind: ops.Write, Permission: ops.LoggedIn, AI: ops.AIManageDraft, Handle: s.update})
-	ops.Register(r, ops.Operation[IDInput, Draft]{Name: "confirm_draft", Summary: "由人复检权限并确认执行草稿", Kind: ops.Write, Permission: ops.LoggedIn, AI: ops.AINone, Handle: s.confirm})
+	ops.Register(r, ops.Operation[ConfirmInput, Draft]{Name: "confirm_draft", Summary: "由人复检权限并确认执行草稿", Kind: ops.Write, Permission: ops.LoggedIn, AI: ops.AINone, Handle: s.confirm})
 	ops.Register(r, ops.Operation[RejectInput, Draft]{Name: "reject_draft", Summary: "拒绝草稿并保存原因", Kind: ops.Write, Permission: ops.LoggedIn, AI: ops.AIManageDraft, Handle: s.reject})
 }
 
 func stamp(t time.Time) pgtype.Timestamptz { return pgtype.Timestamptz{Time: t, Valid: true} }
 
 func view(env ops.Env, d dbgen.AiDraft) (*Draft, error) {
-	out := &Draft{ID: d.ID, Initiator: d.Initiator, Operation: d.Operation, Utterance: d.Utterance, Params: d.Params, OriginalParams: d.OriginalParams, Summary: d.Summary, Status: d.Status, BusinessDate: d.BusinessDate.Time.Format(time.DateOnly), ExpiresAt: d.ExpiresAt.Time, CreatedAt: d.CreatedAt.Time, DecidedBy: d.DecidedBy, RejectReason: d.RejectReason}
+	out := &Draft{ID: d.ID, Initiator: d.Initiator, Operation: d.Operation, Utterance: d.Utterance, Params: d.Params, OriginalParams: d.OriginalParams, Summary: d.Summary, Status: d.Status, Version: d.Version, BusinessDate: d.BusinessDate.Time.Format(time.DateOnly), ExpiresAt: d.ExpiresAt.Time, CreatedAt: d.CreatedAt.Time, DecidedBy: d.DecidedBy, RejectReason: d.RejectReason}
 	if out.Status == "pending" && !env.Now.Before(d.ExpiresAt.Time) {
 		out.Status = "expired"
 	}
@@ -183,7 +190,7 @@ func (s service) visible(env ops.Env, d dbgen.AiDraft) bool {
 	if d.Initiator == env.Caller.StaffID {
 		return true
 	}
-	ok, err := s.registry.DraftAllowed(env.Caller, d.Operation)
+	ok, err := s.registry.DraftVisible(env.Caller, d.Operation)
 	return err == nil && ok
 }
 
@@ -321,13 +328,16 @@ func (s service) update(ctx context.Context, env ops.Env, in *UpdateInput) (*Dra
 // 金额类白名单统一在这里声明。
 var monetary = map[string]bool{"adjust_card": true, "void_order": true, "refund_card": true, "reprice_order_item": true}
 
-func (s service) confirm(ctx context.Context, env ops.Env, in *IDInput) (*Draft, error) {
-	d, err := s.lock(ctx, env, in.ID, false)
+func (s service) confirm(ctx context.Context, env ops.Env, in *ConfirmInput) (*Draft, error) {
+	d, err := s.lock(ctx, env, in.ID, true)
 	if err != nil {
 		return nil, err
 	}
 	if err := pending(d); err != nil {
 		return nil, err
+	}
+	if d.Version != in.Version {
+		return nil, ops.Rule("草稿已被修改，请重新查看后确认")
 	}
 	execute, err := s.registry.PrepareDraft(env.Caller, d.Operation, d.Params)
 	if err != nil {

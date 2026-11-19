@@ -15,21 +15,11 @@ import (
 )
 
 func registerLink(r *ops.Registry) {
-	ops.Register(r, ops.Operation[LinkCouponOrderInput, Redemption]{Name: "link_coupon_order", Summary: "把已核销的团购券关联到挂单，记录平台购买价和门店标价", Kind: ops.Write, Permission: perm.GroupBuyRedeem, AI: ops.AIDraft, Handle: linkCouponOrder})
-	ops.Register(r, ops.Operation[UnlinkCouponOrderInput, Redemption]{Name: "unlink_coupon_order", Summary: "取消团购券与挂单的关联", Kind: ops.Write, Permission: perm.GroupBuyRedeem, AI: ops.AIDraft, Handle: unlinkCouponOrder})
-}
-
-func requireOrderCreate(caller ops.Caller) error {
-	if !caller.Has(perm.OrderCreate) {
-		return ops.ErrForbidden
-	}
-	return nil
+	ops.Register(r, ops.Operation[LinkCouponOrderInput, Redemption]{Name: "link_coupon_order", Summary: "把已核销的团购券关联到挂单，记录平台购买价和门店标价", Kind: ops.Write, Permission: perm.GroupBuyRedeem, AlsoRequires: []ops.Permission{perm.OrderCreate}, AI: ops.AIDraft, Handle: linkCouponOrder})
+	ops.Register(r, ops.Operation[UnlinkCouponOrderInput, Redemption]{Name: "unlink_coupon_order", Summary: "取消团购券与挂单的关联", Kind: ops.Write, Permission: perm.GroupBuyRedeem, AlsoRequires: []ops.Permission{perm.OrderCreate}, AI: ops.AIDraft, Handle: unlinkCouponOrder})
 }
 
 func linkCouponOrder(ctx context.Context, env ops.Env, in *LinkCouponOrderInput) (*Redemption, error) {
-	if err := requireOrderCreate(env.Caller); err != nil {
-		return nil, err
-	}
 	var before, after *Redemption
 	_, err := orders.ChangeOpenOrder(ctx, env, "link_coupon_order", in.OrderID, func(*dbgen.Order) error {
 		row, err := env.Q.LockRedemptionByID(ctx, dbgen.LockRedemptionByIDParams{StoreID: env.Caller.StoreID, ID: in.RedemptionID})
@@ -64,9 +54,6 @@ func linkCouponOrder(ctx context.Context, env ops.Env, in *LinkCouponOrderInput)
 }
 
 func unlinkCouponOrder(ctx context.Context, env ops.Env, in *UnlinkCouponOrderInput) (*Redemption, error) {
-	if err := requireOrderCreate(env.Caller); err != nil {
-		return nil, err
-	}
 	row, err := env.Q.GetRedemptionByID(ctx, dbgen.GetRedemptionByIDParams{StoreID: env.Caller.StoreID, ID: in.RedemptionID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

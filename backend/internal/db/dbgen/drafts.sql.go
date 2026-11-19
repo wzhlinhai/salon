@@ -44,7 +44,7 @@ func (q *Queries) AddDraftEvent(ctx context.Context, arg AddDraftEventParams) er
 
 const createDraft = `-- name: CreateDraft :one
 INSERT INTO ai_drafts (tenant_id,store_id,initiator,operation,utterance,params,original_params,summary,status,business_date,expires_at,created_at)
-VALUES ($1,$2,$3,$4,$5,$6,$6,$7,'pending',$8,$9,$10) RETURNING id, tenant_id, store_id, initiator, operation, utterance, params, original_params, summary, status, business_date, expires_at, created_at, decided_at, decided_by, reject_reason
+VALUES ($1,$2,$3,$4,$5,$6,$6,$7,'pending',$8,$9,$10) RETURNING id, tenant_id, store_id, initiator, operation, utterance, params, original_params, summary, status, business_date, expires_at, created_at, decided_at, decided_by, reject_reason, version
 `
 
 type CreateDraftParams struct {
@@ -91,6 +91,7 @@ func (q *Queries) CreateDraft(ctx context.Context, arg CreateDraftParams) (AiDra
 		&i.DecidedAt,
 		&i.DecidedBy,
 		&i.RejectReason,
+		&i.Version,
 	)
 	return i, err
 }
@@ -171,7 +172,7 @@ WITH locked AS MATERIALIZED (
 ), expired AS (
  UPDATE ai_drafts d SET status='expired',decided_at= $2
  FROM locked l WHERE d.id=l.id
- RETURNING d.id, d.tenant_id, d.store_id, d.initiator, d.operation, d.utterance, d.params, d.original_params, d.summary, d.status, d.business_date, d.expires_at, d.created_at, d.decided_at, d.decided_by, d.reject_reason
+ RETURNING d.id, d.tenant_id, d.store_id, d.initiator, d.operation, d.utterance, d.params, d.original_params, d.summary, d.status, d.business_date, d.expires_at, d.created_at, d.decided_at, d.decided_by, d.reject_reason, d.version
 )
 INSERT INTO ai_draft_events (tenant_id,store_id,draft_id,kind,before_params,after_params,actor_id,at)
 SELECT tenant_id,store_id,id,'expired',params,params,$1,$2 FROM expired
@@ -189,7 +190,7 @@ func (q *Queries) ExpireStoreDrafts(ctx context.Context, arg ExpireStoreDraftsPa
 }
 
 const getDraft = `-- name: GetDraft :one
-SELECT id, tenant_id, store_id, initiator, operation, utterance, params, original_params, summary, status, business_date, expires_at, created_at, decided_at, decided_by, reject_reason FROM ai_drafts WHERE store_id=$1 AND id=$2
+SELECT id, tenant_id, store_id, initiator, operation, utterance, params, original_params, summary, status, business_date, expires_at, created_at, decided_at, decided_by, reject_reason, version FROM ai_drafts WHERE store_id=$1 AND id=$2
 `
 
 type GetDraftParams struct {
@@ -217,12 +218,13 @@ func (q *Queries) GetDraft(ctx context.Context, arg GetDraftParams) (AiDraft, er
 		&i.DecidedAt,
 		&i.DecidedBy,
 		&i.RejectReason,
+		&i.Version,
 	)
 	return i, err
 }
 
 const listDrafts = `-- name: ListDrafts :many
-SELECT id, tenant_id, store_id, initiator, operation, utterance, params, original_params, summary, status, business_date, expires_at, created_at, decided_at, decided_by, reject_reason FROM ai_drafts WHERE store_id=$1 ORDER BY created_at, id
+SELECT id, tenant_id, store_id, initiator, operation, utterance, params, original_params, summary, status, business_date, expires_at, created_at, decided_at, decided_by, reject_reason, version FROM ai_drafts WHERE store_id=$1 ORDER BY created_at, id
 `
 
 func (q *Queries) ListDrafts(ctx context.Context, storeID uuid.UUID) ([]AiDraft, error) {
@@ -251,6 +253,7 @@ func (q *Queries) ListDrafts(ctx context.Context, storeID uuid.UUID) ([]AiDraft,
 			&i.DecidedAt,
 			&i.DecidedBy,
 			&i.RejectReason,
+			&i.Version,
 		); err != nil {
 			return nil, err
 		}
@@ -263,7 +266,7 @@ func (q *Queries) ListDrafts(ctx context.Context, storeID uuid.UUID) ([]AiDraft,
 }
 
 const lockDraft = `-- name: LockDraft :one
-SELECT id, tenant_id, store_id, initiator, operation, utterance, params, original_params, summary, status, business_date, expires_at, created_at, decided_at, decided_by, reject_reason FROM ai_drafts WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
+SELECT id, tenant_id, store_id, initiator, operation, utterance, params, original_params, summary, status, business_date, expires_at, created_at, decided_at, decided_by, reject_reason, version FROM ai_drafts WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
 `
 
 type LockDraftParams struct {
@@ -291,13 +294,14 @@ func (q *Queries) LockDraft(ctx context.Context, arg LockDraftParams) (AiDraft, 
 		&i.DecidedAt,
 		&i.DecidedBy,
 		&i.RejectReason,
+		&i.Version,
 	)
 	return i, err
 }
 
 const saveDraft = `-- name: SaveDraft :one
-UPDATE ai_drafts SET params=$3,status=$4,decided_at=$5,decided_by=$6,reject_reason=$7
-WHERE store_id=$1 AND id=$2 RETURNING id, tenant_id, store_id, initiator, operation, utterance, params, original_params, summary, status, business_date, expires_at, created_at, decided_at, decided_by, reject_reason
+UPDATE ai_drafts SET params=$3,status=$4,decided_at=$5,decided_by=$6,reject_reason=$7,version=version+1
+WHERE store_id=$1 AND id=$2 RETURNING id, tenant_id, store_id, initiator, operation, utterance, params, original_params, summary, status, business_date, expires_at, created_at, decided_at, decided_by, reject_reason, version
 `
 
 type SaveDraftParams struct {
@@ -338,6 +342,7 @@ func (q *Queries) SaveDraft(ctx context.Context, arg SaveDraftParams) (AiDraft, 
 		&i.DecidedAt,
 		&i.DecidedBy,
 		&i.RejectReason,
+		&i.Version,
 	)
 	return i, err
 }

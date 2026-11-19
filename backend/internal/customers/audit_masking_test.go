@@ -60,7 +60,11 @@ func TestAuditLogMasksNestedPhones(t *testing.T) {
 						foundNested = true
 						for _, key := range []string{"before", "after"} {
 							value := e[key].(map[string]any)
-							assertEqual(t, value["phone"], "123")
+							wantShort := "***"
+							if c.Has(perm.CustomerFullPhone) {
+								wantShort = "123"
+							}
+							assertEqual(t, value["phone"], wantShort)
 							phone := value["objects"].([]any)[0].(map[string]any)["deep"].(map[string]any)["phone"]
 							want := "138****1234"
 							if c.Has(perm.CustomerFullPhone) {

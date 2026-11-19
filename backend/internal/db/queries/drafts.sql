@@ -12,7 +12,7 @@ SELECT * FROM ai_drafts WHERE store_id=$1 AND id=$2;
 SELECT * FROM ai_drafts WHERE store_id=$1 ORDER BY created_at, id;
 
 -- name: SaveDraft :one
-UPDATE ai_drafts SET params=$3,status=$4,decided_at=$5,decided_by=$6,reject_reason=$7
+UPDATE ai_drafts SET params=$3,status=$4,decided_at=$5,decided_by=$6,reject_reason=$7,version=version+1
 WHERE store_id=$1 AND id=$2 RETURNING *;
 
 -- name: AddDraftEvent :exec
