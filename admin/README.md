@@ -1,6 +1,6 @@
 # 管理后台
 
-Nuxt 4 + Nuxt UI（ADR-0007）。纯前端渲染，所有数据通过后端的业务操作接口读写。
+Nuxt 4 + Nuxt UI（ADR-0007）。纯前端渲染，所有数据通过后端的业务操作接口读写。页面的布局、颜色、字体和组件用法按 [DESIGN.md](DESIGN.md)。
 
 ```bash
 npm install
