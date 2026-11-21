@@ -103,23 +103,27 @@ onMounted(load)
 </script>
 
 <template>
-  <section class="space-y-3" data-testid="red-packets">
-    <div class="flex items-center justify-between">
-      <h3 class="font-medium">红包</h3>
-      <UButton v-if="can('card.sell') && !merged" size="sm" @click="editIssue">发放红包</UButton>
+  <section data-testid="red-packets">
+    <div class="sec">
+      红包<span class="ms-1 font-normal text-dimmed">{{ packets.length }}</span>
+      <UButton v-if="can('card.sell') && !merged" size="sm" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto" @click="editIssue">发放红包</UButton>
     </div>
-    <p v-if="loading">正在读取红包…</p>
-    <p v-else-if="!packets.length" class="text-sm text-muted">暂无红包</p>
-    <UCard v-for="packet in packets" :key="packet.id" :data-red-packet="packet.id">
-      <div class="space-y-2 text-sm">
-        <p>{{ packet.kind === 'sold' ? '卖' : '送' }} · 面额 {{ packet.face_value }} · {{ statusNames[packet.status] }}</p>
-        <p v-if="packet.price">售价 {{ packet.price }} · 业绩归属人：{{ packet.sales_staff.map(s => s.name).join('、') }}</p>
-        <p>有效期至 {{ packet.expires_on }}</p>
-        <p v-if="packet.order_id">已用单据 {{ packet.order_id }} · 抵扣 {{ packet.used_amount }}</p>
-        <p v-if="packet.revoke_reason">撤回原因：{{ packet.revoke_reason }}</p>
-        <UButton v-if="can('card.adjust') && (packet.status === 'available' || packet.status === 'expired')" size="sm" color="error" variant="outline" @click="editRevoke(packet)">撤回</UButton>
+    <div class="box overflow-hidden p-0">
+      <p v-if="loading" class="px-3 py-2.5 text-sm text-muted">正在读取红包…</p>
+      <p v-else-if="!packets.length" class="px-3 py-2.5 text-sm text-muted">暂无红包</p>
+      <div v-for="packet in packets" :key="packet.id" :data-red-packet="packet.id" class="group/row space-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0" :class="packet.status === 'available' ? '' : 'text-muted'">
+        <p class="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span class="tag bg-tag-gray">{{ packet.kind === 'sold' ? '卖' : '送' }}</span>
+          <span class="font-medium tabular-nums"><span class="font-normal text-muted">面额</span> {{ yuanFixed(packet.face_value) }}</span>
+          <span v-if="packet.status !== 'available'" class="tag bg-tag-gray">{{ statusNames[packet.status] }}</span>
+          <span class="ms-auto text-meta text-muted">有效期至 {{ packet.expires_on }}</span>
+        </p>
+        <p v-if="packet.price" class="text-meta text-muted">售价 {{ yuanFixed(packet.price) }} · 业绩归属人：{{ packet.sales_staff.map(s => s.name).join('、') }}</p>
+        <p v-if="packet.order_id" class="text-meta text-muted">已用单据 {{ packet.order_id }} · 抵扣 {{ yuanFixed(packet.used_amount) }}</p>
+        <p v-if="packet.revoke_reason" class="text-meta text-muted">撤回原因：{{ packet.revoke_reason }}</p>
+        <UButton v-if="can('card.adjust') && (packet.status === 'available' || packet.status === 'expired')" size="sm" color="error" variant="ghost" class="-mx-1.5" @click="editRevoke(packet)">撤回</UButton>
       </div>
-    </UCard>
+    </div>
   </section>
   <UModal v-model:open="issueOpen" title="发放红包">
     <template #body>
