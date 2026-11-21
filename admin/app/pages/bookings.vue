@@ -33,13 +33,21 @@ const eventLabels: Record<AppointmentEvent['kind'], string> = {
   cancel: '取消',
   no_show: '爽约'
 }
-const entryColors: Record<Appointment['status'], string> = {
-  pending: 'border-warning bg-warning/10 text-default',
-  confirmed: 'border-info bg-info/10 text-default',
-  completed: 'border-success bg-success/10 text-default',
-  cancelled: 'border-default bg-elevated text-muted opacity-40 line-through',
-  no_show: 'border-error bg-error/10 text-default'
+// 预约块照首页时间轴：底色按项目类别（useItemTones），状态用描边和文字区分，不只靠颜色。
+const statusStyles: Record<Appointment['status'], string> = {
+  pending: 'ring-pending',
+  confirmed: '',
+  completed: 'opacity-60',
+  cancelled: '!bg-white text-dimmed line-through shadow-line',
+  no_show: 'ring-alert'
 }
+const { load: loadTones, toneOf } = useItemTones()
+
+function entryClass(entry: Appointment) {
+  if (entry.kind === 'block') return 'hatch text-muted shadow-line'
+  return `${toneOf(entry.items[0]?.item_id ?? '')} ${statusStyles[entry.status]}`
+}
+
 const cancelReasonItems = [
   { label: '顾客取消', value: '顾客取消' },
   { label: '门店取消', value: '门店取消' },
@@ -205,6 +213,42 @@ watch(day, () => {
   entries.value = []
   void loadDay()
 })
+
+const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+const dayTitle = computed(() => {
+  if (!day.value) return ''
+  const [year, month, date] = day.value.split('-').map(Number)
+  const weekday = new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, date ?? 1)).getUTCDay()
+  const sameYear = businessDate.value.slice(0, 4) === day.value.slice(0, 4)
+  return `${sameYear ? '' : `${year}年`}${month}月${date}日 ${WEEKDAYS[weekday]}`
+})
+
+// 当前时间线和打开时的滚动位置：今天滚到现在，别的日子滚到第一条预约。
+const nowClock = ref(Date.now())
+const nowTop = computed(() => {
+  if (!day.value || day.value !== businessDate.value) return null
+  const minutes = clockMinutes(shanghai(new Date(nowClock.value).toISOString()).time)
+  if (minutes < openMinutes.value || minutes >= closeMinutes.value) return null
+  return ((minutes - openMinutes.value) / SLOT_MINUTES) * SLOT_HEIGHT
+})
+const grid = useTemplateRef<HTMLElement>('grid')
+let scrolledFor = ''
+watch(loading, async (busy) => {
+  if (busy || scrolledFor === day.value || !grid.value) return
+  scrolledFor = day.value
+  await nextTick()
+  const first = entries.value.filter(entry => entry.status !== 'cancelled').map(entry => clockMinutes(clockOf(entry.starts_at))).sort((a, b) => a - b)[0]
+  const target = nowTop.value ?? (first === undefined ? 0 : ((first - openMinutes.value) / SLOT_MINUTES) * SLOT_HEIGHT)
+  grid.value.scrollTop = Math.max(0, target - SLOT_HEIGHT * 4)
+})
+let clockTimer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  void loadTones()
+  clockTimer = setInterval(() => {
+    nowClock.value = Date.now()
+  }, 60_000)
+})
+onBeforeUnmount(() => clearInterval(clockTimer))
 
 onMounted(loadOptions)
 
@@ -577,24 +621,29 @@ function actorLabel(actor: Actor) {
 
 <template>
   <div class="space-y-4">
-    <div class="flex flex-wrap items-center gap-3">
-      <UButton icon="i-lucide-chevron-left" variant="ghost" aria-label="前一天" @click="moveDay(-1)" />
-      <UButton icon="i-lucide-chevron-right" variant="ghost" aria-label="后一天" @click="moveDay(1)" />
-      <UInput v-model="day" type="date" aria-label="营业日" />
-      <UButton variant="outline" @click="goToday">今天</UButton>
-      <USwitch v-model="showCancelled" label="显示已取消" />
+    <div class="flex flex-wrap items-center gap-2">
+      <div class="flex items-center">
+        <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" aria-label="前一天" @click="moveDay(-1)" />
+        <UButton icon="i-lucide-chevron-right" color="neutral" variant="ghost" aria-label="后一天" @click="moveDay(1)" />
+      </div>
+      <h2 class="text-lg font-semibold" data-testid="booking-day-title">{{ dayTitle }}</h2>
+      <span v-if="day && day === businessDate" class="tag bg-tag-blue">今天</span>
+      <UButton v-else color="neutral" variant="outline" size="sm" @click="goToday">今天</UButton>
+      <UInput v-model="day" type="date" size="sm" aria-label="营业日" class="ms-2 w-36" />
+      <USwitch v-model="showCancelled" size="sm" label="显示已取消" class="ms-auto" />
       <p v-if="loading" class="text-sm text-muted" aria-live="polite">加载中</p>
     </div>
 
-    <div v-if="businessDate" class="overflow-auto rounded border border-default" data-booking-grid>
+    <div v-if="businessDate" ref="grid" class="box h-[calc(100dvh-9rem)] min-h-96 overflow-auto p-0" data-booking-grid>
       <div class="flex min-w-max">
         <div class="w-14 shrink-0">
-          <div class="sticky top-0 z-20 h-8 border-b border-default bg-default" />
+          <div class="sticky top-0 z-20 h-8 border-b border-default bg-white" />
           <div class="relative" :style="{ height: `${gridHeight}px` }">
             <div
               v-for="slot in hourSlots"
               :key="slot.minutes"
-              class="absolute right-1 -translate-y-1/2 text-xs text-muted tabular-nums"
+              class="absolute right-2 text-2xs text-dimmed tabular-nums"
+              :class="slot.top === 0 ? 'translate-y-0.5' : '-translate-y-1/2'"
               :style="{ top: `${slot.top}px` }"
             >
               {{ slot.label }}
@@ -602,7 +651,7 @@ function actorLabel(actor: Actor) {
           </div>
         </div>
         <div v-for="person in staffColumns" :key="person.id" class="min-w-40 flex-1 border-l border-default" :data-staff-column="person.id">
-          <div class="sticky top-0 z-20 h-8 content-center border-b border-default bg-default px-2 text-sm font-medium">
+          <div class="sticky top-0 z-20 h-8 content-center truncate border-b border-default bg-white px-2 text-sm font-medium" :title="person.name">
             {{ person.name }}{{ person.active ? '' : '（已停用）' }}
           </div>
           <div class="relative" :style="{ height: `${gridHeight}px` }">
@@ -611,7 +660,8 @@ function actorLabel(actor: Actor) {
                 v-for="slot in slots"
                 :key="slot.minutes"
                 type="button"
-                class="absolute inset-x-0 border-t border-default/40 hover:bg-elevated"
+                class="absolute inset-x-0 border-t hover:bg-hover"
+                :class="slot.minutes % 60 === 0 ? 'border-default' : 'border-default/40'"
                 :style="{ top: `${slot.top}px`, height: `${SLOT_HEIGHT}px` }"
                 :data-slot-staff="person.id"
                 :data-slot-time="slot.label"
@@ -619,12 +669,13 @@ function actorLabel(actor: Actor) {
                 @click="chooseSlot(person.id, slot.label)"
               />
             </template>
+            <div v-if="nowTop !== null" class="pointer-events-none absolute inset-x-0 z-10 border-t-2 border-ink-red" :style="{ top: `${nowTop}px` }" aria-hidden="true" />
             <button
               v-for="entry in visibleEntries(person.id)"
               :key="entry.id"
               type="button"
-              class="absolute inset-x-1 z-10 overflow-hidden rounded border px-1 py-0.5 text-left text-xs"
-              :class="entryColors[entry.status]"
+              class="absolute inset-x-1 z-10 flex flex-col justify-start overflow-hidden rounded-tag px-1.5 py-0.5 text-left text-xs text-ink"
+              :class="entryClass(entry)"
               :style="entryStyle(entry)"
               :data-entry="entry.id"
               :data-entry-status="entry.status"
@@ -632,8 +683,8 @@ function actorLabel(actor: Actor) {
               @click.stop="openDetail(entry)"
             >
               <span class="block truncate font-medium">{{ entryTitle(entry) }}</span>
-              <span class="block truncate">{{ clockOf(entry.starts_at) }}–{{ clockOf(entry.ends_at) }} · {{ statusLabels[entry.status] }}</span>
-              <span v-if="entry.items.length" class="block truncate">{{ entryItems(entry) }}</span>
+              <span class="block truncate tabular-nums" :class="entry.status === 'no_show' ? 'text-ink-red' : 'text-muted'">{{ clockOf(entry.starts_at) }}–{{ clockOf(entry.ends_at) }} · {{ statusLabels[entry.status] }}</span>
+              <span v-if="entry.items.length" class="block truncate text-muted">{{ entryItems(entry) }}</span>
             </button>
           </div>
         </div>

@@ -121,6 +121,9 @@ body {
 @utility ring-alert {
   box-shadow: inset 0 0 0 1.5px var(--color-ink-red);
 }
+@utility ring-pending {
+  box-shadow: inset 0 0 0 1.5px var(--color-ink-yellow);
+}
 
 /* 店里常用平板和触屏电脑，主要操作区域至少 44px。 */
 @media (pointer: coarse) {
