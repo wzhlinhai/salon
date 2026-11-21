@@ -171,8 +171,10 @@ test('店长把停用员工负责的顾客交接后，按新负责人筛选可�
   await page.getByRole('button', { name: names[0]!, exact: true }).click()
   const log = page.getByRole('dialog', { name: '顾客详情', exact: true }).getByTestId('customer-log-entry').filter({ has: page.getByText('负责人交接', { exact: true }) })
   await expect(log).toHaveCount(1)
-  await expect(log.getByTestId('log-before')).toContainText(`负责人：${fromMe.name}`)
-  await expect(log.getByTestId('log-after')).toContainText(`负责人：${toMe.name}`)
+  await expect(log.getByTestId('log-change')).toHaveCount(1)
+  await expect(log.getByTestId('log-change')).toContainText('负责人')
+  await expect(log.getByTestId('log-before')).toHaveText(fromMe.name)
+  await expect(log.getByTestId('log-after')).toHaveText(toMe.name)
 })
 
 test('发型师没有合并重复顾客和负责人交接入口', async ({ page }) => {
@@ -510,6 +512,10 @@ test('顾客日志按游标加载更多，不重不漏', async ({ page }) => {
   await expect(rows).toHaveCount(52)
   await expect(more).toHaveCount(0)
   await expect(rows.filter({ hasText: '新建顾客' })).toHaveCount(1)
+  const latest = rows.first()
+  await expect(latest.getByTestId('log-change')).toHaveCount(1)
+  await expect(latest.getByTestId('log-before')).toHaveText('分页记录49')
+  await expect(latest.getByTestId('log-after')).toHaveText('分页记录50')
 })
 
 test('顾客日志加载更多断网后可重试', async ({ page }) => {
@@ -586,6 +592,7 @@ test('切换顾客后丢弃迟到的加载更多日志', async ({ page }) => {
   await page.waitForTimeout(500)
   await expect(detail.getByTestId('customer-log-entry')).toHaveCount(1)
   await expect(detail.getByTestId('customer-logs')).not.toContainText(a.name)
+  await expect(detail.getByTestId('customer-logs')).not.toContainText('旧顾客')
   await expect(detail.getByRole('button', { name: '加载更多', exact: true })).toHaveCount(0)
 })
 
