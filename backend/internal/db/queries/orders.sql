@@ -11,6 +11,24 @@ SELECT * FROM orders WHERE store_id=$1 AND id=$2;
 -- name: ListOpenOrders :many
 SELECT * FROM orders WHERE store_id=$1 AND status='open' ORDER BY opened_at,id;
 
+-- name: ListOrdersByDate :many
+SELECT * FROM orders
+WHERE store_id = sqlc.arg(store_id)
+ AND business_date = sqlc.arg(business_date)
+ AND status IN ('paid','voided')
+ AND (sqlc.narg(status)::text IS NULL OR status = sqlc.narg(status))
+ AND (sqlc.narg(customer_id)::uuid IS NULL OR customer_id = sqlc.narg(customer_id))
+ORDER BY opened_at DESC, id DESC
+LIMIT sqlc.arg(row_limit) OFFSET sqlc.arg(row_offset);
+
+-- name: CountOrdersByDate :one
+SELECT count(*) FROM orders
+WHERE store_id = sqlc.arg(store_id)
+ AND business_date = sqlc.arg(business_date)
+ AND status IN ('paid','voided')
+ AND (sqlc.narg(status)::text IS NULL OR status = sqlc.narg(status))
+ AND (sqlc.narg(customer_id)::uuid IS NULL OR customer_id = sqlc.narg(customer_id));
+
 -- name: CreateOrderItem :one
 INSERT INTO order_items (tenant_id,store_id,order_id,item_id,item_name,price,price_source,level_id,added_by,item_kind,labor_fee_amount,labor_fee_percent,category_id,category_ratio)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *;

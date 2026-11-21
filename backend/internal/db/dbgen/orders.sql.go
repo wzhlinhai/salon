@@ -68,6 +68,34 @@ func (q *Queries) CheckoutOrderItem(ctx context.Context, arg CheckoutOrderItemPa
 	return err
 }
 
+const countOrdersByDate = `-- name: CountOrdersByDate :one
+SELECT count(*) FROM orders
+WHERE store_id = $1
+ AND business_date = $2
+ AND status IN ('paid','voided')
+ AND ($3::text IS NULL OR status = $3)
+ AND ($4::uuid IS NULL OR customer_id = $4)
+`
+
+type CountOrdersByDateParams struct {
+	StoreID      uuid.UUID
+	BusinessDate pgtype.Date
+	Status       *string
+	CustomerID   *uuid.UUID
+}
+
+func (q *Queries) CountOrdersByDate(ctx context.Context, arg CountOrdersByDateParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countOrdersByDate,
+		arg.StoreID,
+		arg.BusinessDate,
+		arg.Status,
+		arg.CustomerID,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createCheckout = `-- name: CreateCheckout :one
 INSERT INTO checkouts (tenant_id,store_id,business_date,checked_out_by)
 VALUES ($1,$2,$3,$4) RETURNING tenant_id, store_id, id, business_date, checked_out_by, at
@@ -782,6 +810,68 @@ func (q *Queries) ListOrderVoids(ctx context.Context, arg ListOrderVoidsParams) 
 			&i.BusinessDate,
 			&i.VoidedBy,
 			&i.At,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOrdersByDate = `-- name: ListOrdersByDate :many
+SELECT tenant_id, store_id, id, customer_id, gender, designated, status, settings_snapshot_id, business_date, opened_by, opened_at, merged_into, checkout_id, backfill FROM orders
+WHERE store_id = $1
+ AND business_date = $2
+ AND status IN ('paid','voided')
+ AND ($3::text IS NULL OR status = $3)
+ AND ($4::uuid IS NULL OR customer_id = $4)
+ORDER BY opened_at DESC, id DESC
+LIMIT $6 OFFSET $5
+`
+
+type ListOrdersByDateParams struct {
+	StoreID      uuid.UUID
+	BusinessDate pgtype.Date
+	Status       *string
+	CustomerID   *uuid.UUID
+	RowOffset    int32
+	RowLimit     int32
+}
+
+func (q *Queries) ListOrdersByDate(ctx context.Context, arg ListOrdersByDateParams) ([]Order, error) {
+	rows, err := q.db.Query(ctx, listOrdersByDate,
+		arg.StoreID,
+		arg.BusinessDate,
+		arg.Status,
+		arg.CustomerID,
+		arg.RowOffset,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Order
+	for rows.Next() {
+		var i Order
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ID,
+			&i.CustomerID,
+			&i.Gender,
+			&i.Designated,
+			&i.Status,
+			&i.SettingsSnapshotID,
+			&i.BusinessDate,
+			&i.OpenedBy,
+			&i.OpenedAt,
+			&i.MergedInto,
+			&i.CheckoutID,
+			&i.Backfill,
 		); err != nil {
 			return nil, err
 		}
