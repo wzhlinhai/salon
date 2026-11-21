@@ -132,25 +132,53 @@ async function saveRule() {
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="flex justify-between">
-      <UButton @click="edit(null)">新建卡类型</UButton>
-    </div>
-    <p v-if="loading">加载中</p>
-    <UCard v-for="item in items" :key="item.id" :data-card-type="item.name">
-      <div class="flex justify-between items-center">
-        <div>{{ item.name }} · {{ kindItems.find(k => k.value === item.kind)?.label }} · 有效期：{{ validityText(item) }} · {{ item.active ? '启用' : '停用' }}<span v-if="item.discount_percent"> · {{ Number(item.discount_percent) / 10 }} 折</span></div>
-        <UButton variant="outline" @click="edit(item)">编辑</UButton>
-      </div>
-    </UCard>
-    <section class="space-y-3" aria-label="升级规则">
-      <div class="flex justify-between"><h2 class="text-lg font-semibold">升级规则</h2><UButton @click="editRule(null)">新建升级规则</UButton></div>
-      <UCard v-for="rule in upgradeRules" :key="rule.id" data-testid="upgrade-rule">
-        <div class="flex justify-between items-center">
-          <p>{{ rule.from_type_name }} → {{ rule.to_type_name }} · {{ ruleConditions.find(c => c.value === rule.condition_kind)?.label }} {{ rule.threshold }} · {{ rule.active ? '启用' : '停用' }}</p>
-          <UButton variant="outline" @click="editRule(rule)">编辑升级规则</UButton>
+  <div class="space-y-6">
+    <PageActions>
+      <UButton size="sm" icon="i-lucide-plus" @click="edit(null)">新建卡类型</UButton>
+    </PageActions>
+    <section aria-label="卡类型">
+      <div class="sec">卡类型<span class="ms-2 font-normal text-dimmed">{{ items.length }}</span></div>
+      <div class="box overflow-hidden p-0">
+        <div v-if="loading && !items.length" class="px-3 py-2.5 text-sm text-muted">加载中…</div>
+        <EmptyState v-else-if="!items.length" title="还没有卡类型" hint="点右上角新建储值卡、次卡或套餐" />
+        <div
+          v-for="item in items"
+          :key="item.id"
+          :data-card-type="item.name"
+          class="group/row flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0 hover:bg-hover"
+          :class="item.active ? '' : 'text-dimmed'"
+        >
+          <div class="flex min-w-40 flex-1 items-center gap-1.5">
+            <span class="font-medium">{{ item.name }}</span>
+            <span class="tag bg-tag-gray">{{ kindItems.find(k => k.value === item.kind)?.label }}</span>
+            <span v-if="!item.active" class="tag bg-tag-gray">停用</span>
+          </div>
+          <span class="w-24 text-muted">{{ item.discount_percent ? `${Number(item.discount_percent) / 10} 折` : '不打折' }}</span>
+          <span class="w-44 text-muted">有效期：{{ validityText(item) }}</span>
+          <UButton size="sm" color="neutral" variant="ghost" class="opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100" @click="edit(item)">编辑</UButton>
         </div>
-      </UCard>
+      </div>
+    </section>
+    <section aria-label="升级规则">
+      <div class="sec">
+        升级规则<span class="ms-2 font-normal text-dimmed">{{ upgradeRules.length }}</span>
+        <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto" @click="editRule(null)">新建升级规则</UButton>
+      </div>
+      <div class="box overflow-hidden p-0">
+        <p v-if="!loading && !upgradeRules.length" class="px-3 py-2.5 text-sm text-muted">还没有升级规则。储值卡累计充值或消费到门槛后，可以自动升到更高的卡。</p>
+        <div
+          v-for="rule in upgradeRules"
+          :key="rule.id"
+          data-testid="upgrade-rule"
+          class="group/row flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0 hover:bg-hover"
+          :class="rule.active ? '' : 'text-dimmed'"
+        >
+          <span class="flex-1 font-medium">{{ rule.from_type_name }} → {{ rule.to_type_name }}</span>
+          <span class="text-muted tabular-nums">{{ ruleConditions.find(c => c.value === rule.condition_kind)?.label }} {{ rule.threshold }}</span>
+          <span v-if="!rule.active" class="tag bg-tag-gray">停用</span>
+          <UButton size="sm" color="neutral" variant="ghost" class="opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100" @click="editRule(rule)">编辑升级规则</UButton>
+        </div>
+      </div>
     </section>
     <UModal v-model:open="ruleOpen" :title="ruleEditing ? '编辑升级规则' : '新建升级规则'">
       <template #body>

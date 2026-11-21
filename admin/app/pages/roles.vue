@@ -122,30 +122,27 @@ function summary(g: components['schemas']['GrantSpec']) {
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <UButton icon="i-lucide-plus" @click="openEditor(null)">新建角色</UButton>
-    </div>
+  <div class="space-y-3">
+    <PageActions>
+      <UButton size="sm" icon="i-lucide-plus" @click="openEditor(null)">新建角色</UButton>
+    </PageActions>
 
-    <UCard v-for="role in roles" :key="role.id">
-      <template #header>
-        <div class="flex items-center justify-between">
-          <div class="font-medium">
-            {{ role.name }}
-            <UBadge v-if="role.is_owner" class="ml-2" variant="subtle">内置 · 全部权限</UBadge>
-          </div>
-          <div v-if="!role.is_owner" class="flex gap-1">
-            <UButton size="xs" variant="ghost" @click="openEditor(role)">编辑</UButton>
-            <UButton size="xs" variant="ghost" color="error" :loading="removing[role.id]" @click="remove(role)">删除</UButton>
-          </div>
+    <section v-for="role in roles" :key="role.id" :data-role="role.name" class="box group/row">
+      <div class="flex items-center gap-2">
+        <span class="font-medium">{{ role.name }}</span>
+        <span v-if="role.is_owner" class="tag bg-tag-blue">内置 · 全部权限</span>
+        <span v-else class="text-xs text-dimmed">{{ role.permissions.length }} 项权限</span>
+        <div v-if="!role.is_owner" class="ms-auto flex gap-0.5 opacity-0 group-hover/row:opacity-100 focus-within:opacity-100 any-pointer-coarse:opacity-100">
+          <UButton size="sm" color="neutral" variant="ghost" @click="openEditor(role)">编辑</UButton>
+          <UButton size="sm" variant="ghost" color="error" :loading="removing[role.id]" @click="remove(role)">删除</UButton>
         </div>
-      </template>
-      <div v-if="role.is_owner" class="text-sm text-muted">老板拥有全部权限，包括以后新增的；不能修改。</div>
-      <div v-else class="flex flex-wrap gap-1">
-        <UBadge v-for="g in role.permissions" :key="g.permission" color="neutral" variant="outline">{{ summary(g) }}</UBadge>
+      </div>
+      <p v-if="role.is_owner" class="mt-1.5 text-sm text-muted">老板拥有全部权限，包括以后新增的；不能修改。</p>
+      <div v-else class="mt-2 flex flex-wrap gap-1">
+        <span v-for="g in role.permissions" :key="g.permission" class="tag bg-tag-gray">{{ summary(g) }}</span>
         <span v-if="!role.permissions.length" class="text-sm text-muted">没有权限</span>
       </div>
-    </UCard>
+    </section>
 
     <UModal v-model:open="open" :title="editing ? '编辑角色' : '新建角色'" class="max-w-2xl">
       <template #body>

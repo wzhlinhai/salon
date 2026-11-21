@@ -24,12 +24,18 @@ async function choose(page: Page, scope: Page | Locator, field: string, value: s
   await page.getByRole('option', { name: value, exact: true }).click()
 }
 
+// 设置底薪、添加加减项收在顶栏的 ··· 菜单里。
+async function payrollAction(page: Page, name: string) {
+  await page.getByRole('button', { name: '更多操作', exact: true }).click()
+  await page.getByRole('menuitem', { name, exact: true }).click()
+}
+
 function row(page: Page, name: string) {
   return page.locator('[data-testid="main-panel"] tbody tr').filter({ has: page.getByRole('cell', { name, exact: true, includeHidden: true }) })
 }
 
 async function adjustment(page: Page, staff: string, name: string, amount: string) {
-  await page.getByRole('button', { name: '添加加减项', exact: true }).click()
+  await payrollAction(page, '添加加减项')
   const dialog = page.getByRole('dialog', { name: '添加加减项', exact: true })
   await choose(page, dialog, '员工', staff)
   await dialog.getByLabel('名称', { exact: true }).fill(name)
@@ -55,7 +61,7 @@ test('老板设置底薪和加减项', async ({ page }) => {
   const { staff, month } = await prepare()
   await login(page, owner.account, owner.password)
   await page.goto('/payroll')
-  await page.getByRole('button', { name: '设置底薪', exact: true }).click()
+  await payrollAction(page, '设置底薪')
   const dialog = page.getByRole('dialog', { name: '设置底薪', exact: true })
   await choose(page, dialog, '员工', staff.name)
   await expect(dialog).toContainText('当前：未设置')
@@ -90,7 +96,7 @@ test('工资表保存断网和拒绝后可以重试', async ({ page }) => {
   const { staff } = await prepare()
   await login(page, owner.account, owner.password)
   await page.goto('/payroll')
-  await page.getByRole('button', { name: '添加加减项', exact: true }).click()
+  await payrollAction(page, '添加加减项')
   const dialog = page.getByRole('dialog', { name: '添加加减项', exact: true })
   await choose(page, dialog, '员工', staff.name)
   await dialog.getByLabel('名称', { exact: true }).fill('重试')
@@ -228,8 +234,9 @@ test.describe('工资表全店数据 @payroll-store', () => {
     expect(await page.getByText('已锁定', { exact: true }).count()).toBe(0)
     await salary.getByRole('button', { name: 'Close', exact: true }).click()
     await choose(page, page, '结算月', `${label(previous)}（已锁定）`)
-    await expect(page.getByText(/已锁定 · 王老板 ·/)).toBeVisible()
-    for (const name of ['设置底薪', '添加加减项', '锁定本月']) await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0)
+    await expect(page.getByText('已锁定', { exact: true })).toBeVisible()
+    await expect(page.getByText(/^王老板 · /)).toBeVisible()
+    for (const name of ['更多操作', '锁定本月']) await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0)
     await row(page, staff.name).click()
     await expect(page.getByTestId('payroll-adjustment')).toContainText('上月更正')
     await expect(page.getByTestId('payroll-detail').getByRole('button', { name: '删除', exact: true })).toHaveCount(0)
@@ -275,7 +282,7 @@ test('工资表月份切走再切回丢弃旧工资表', async ({ page }) => {
 })
 
 async function salaryEditor(page: Page, staffName: string, amount = '77.77') {
-  await page.getByRole('button', { name: '设置底薪', exact: true }).click()
+  await payrollAction(page, '设置底薪')
   const dialog = page.getByRole('dialog', { name: '设置底薪', exact: true })
   await choose(page, dialog, '员工', staffName)
   await dialog.getByLabel('金额', { exact: true }).fill(amount)
@@ -477,7 +484,7 @@ test('加减项迟到保存刷新匹配的当前明细', async ({ page }) => {
   await api(token, 'add_payroll_adjustment', { month, staff_id: staff.id, name: '原有', amount: '1' })
   await login(page, owner.account, owner.password)
   await page.goto('/payroll')
-  await page.getByRole('button', { name: '添加加减项', exact: true }).click()
+  await payrollAction(page, '添加加减项')
   const dialog = page.getByRole('dialog', { name: '添加加减项', exact: true })
   await choose(page, dialog, '员工', staff.name)
   await dialog.getByLabel('名称', { exact: true }).fill('迟到加项')

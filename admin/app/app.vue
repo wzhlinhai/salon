@@ -180,7 +180,7 @@ const searchGroups = computed(() => {
               data-testid="sidebar-collapse"
               :aria-label="collapsed ? '展开侧栏' : '收起侧栏'"
               size="xs"
-              :class="collapsed ? '' : 'ms-auto opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100'"
+              :class="collapsed ? '' : 'ms-auto opacity-0 group-hover:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100'"
             />
           </div>
         </template>

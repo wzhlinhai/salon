@@ -275,28 +275,33 @@ onMounted(async () => {
 
 <template>
   <div class="space-y-4">
-    <UTabs v-model="tab" :items="tabs" :content="false" />
+    <UTabs v-model="tab" :items="tabs" :content="false" variant="link" size="sm" class="w-fit" />
 
     <section v-if="tab === 'monthly'" class="space-y-4">
       <div class="flex flex-wrap items-center gap-3">
         <UInput v-model="month" type="month" :max="currentMonth" aria-label="月份" />
-        <UButton class="ml-auto" icon="i-lucide-plus" @click="openAddPunch()">补卡</UButton>
+        <span class="text-sm text-muted">点一行看这个人每天的打卡</span>
       </div>
-      <UTable
-        :data="summary"
-        :columns="summaryColumns"
-        :loading="summaryLoading"
-        :aria-busy="summaryLoading"
-        data-testid="attendance-table"
-        @select="selectSummary"
-      >
-        <template #staff-cell="{ row }">{{ row.original.staff.name }}{{ row.original.active ? '' : '（离职）' }}</template>
-        <template #late_count-cell="{ row }">{{ row.original.late_count }} 次 / {{ row.original.late_minutes }} 分钟</template>
-        <template #early_count-cell="{ row }">{{ row.original.early_count }} 次 / {{ row.original.early_minutes }} 分钟</template>
-        <template #missing_count-cell="{ row }">{{ row.original.missing_count }} 次</template>
-        <template #approved_count-cell="{ row }">{{ row.original.approved_count }} 次</template>
-        <template #empty>本月还没有考勤记录</template>
-      </UTable>
+      <PageActions>
+        <UButton size="sm" icon="i-lucide-plus" @click="openAddPunch()">补卡</UButton>
+      </PageActions>
+      <div class="box overflow-hidden p-0">
+        <UTable
+          :data="summary"
+          :columns="summaryColumns"
+          :loading="summaryLoading"
+          :aria-busy="summaryLoading"
+          data-testid="attendance-table"
+          @select="selectSummary"
+        >
+          <template #staff-cell="{ row }"><span class="font-medium">{{ row.original.staff.name }}</span><span v-if="!row.original.active" class="text-dimmed">（离职）</span></template>
+          <template #late_count-cell="{ row }"><span :class="row.original.late_count ? 'text-ink-red' : 'text-dimmed'">{{ row.original.late_count }} 次 / {{ row.original.late_minutes }} 分钟</span></template>
+          <template #early_count-cell="{ row }"><span :class="row.original.early_count ? 'text-ink-orange' : 'text-dimmed'">{{ row.original.early_count }} 次 / {{ row.original.early_minutes }} 分钟</span></template>
+          <template #missing_count-cell="{ row }"><span :class="row.original.missing_count ? 'text-ink-red' : 'text-dimmed'">{{ row.original.missing_count }} 次</span></template>
+          <template #approved_count-cell="{ row }"><span :class="row.original.approved_count ? '' : 'text-dimmed'">{{ row.original.approved_count }} 次</span></template>
+          <template #empty><EmptyState v-if="!summaryLoading" title="本月还没有考勤记录" hint="员工在小程序上打卡后，这里按人汇总" /></template>
+        </UTable>
+      </div>
       <USlideover v-model:open="detailOpen" :modal="false" :title="`${selected?.staff.name ?? ''} · ${monthLabel(month)}`">
         <template #body>
           <AttendanceDetail
@@ -314,34 +319,38 @@ onMounted(async () => {
 
     <section v-else class="space-y-8">
       <div class="space-y-3">
-        <div class="flex items-center justify-between">
-          <h2 class="font-semibold">班次</h2>
-          <UButton icon="i-lucide-plus" @click="openCreateShift">新建班次</UButton>
+        <div class="sec">
+          班次
+          <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto" @click="openCreateShift">新建班次</UButton>
         </div>
-        <UTable :data="shifts" :columns="shiftColumns" :loading="shiftsLoading" :aria-busy="shiftsLoading" data-testid="shifts-table">
-          <template #active-cell="{ row }">{{ row.original.active ? '在用' : '已停用' }}</template>
-          <template #actions-cell="{ row }">
-            <UButton v-if="row.original.active" size="xs" color="error" variant="ghost" @click="askDeactivate(row.original)">停用</UButton>
-          </template>
-          <template #empty>还没有班次</template>
-        </UTable>
+        <div class="box overflow-hidden p-0">
+          <UTable :data="shifts" :columns="shiftColumns" :loading="shiftsLoading" :aria-busy="shiftsLoading" data-testid="shifts-table">
+            <template #active-cell="{ row }"><span v-if="row.original.active" class="text-dimmed">在用</span><span v-else class="tag bg-tag-gray">已停用</span></template>
+            <template #actions-cell="{ row }">
+              <UButton v-if="row.original.active" size="sm" color="error" variant="ghost" @click="askDeactivate(row.original)">停用</UButton>
+            </template>
+            <template #empty>还没有班次</template>
+          </UTable>
+        </div>
       </div>
 
       <div class="space-y-3">
-        <h2 class="font-semibold">员工班次</h2>
-        <UTable :data="staffShifts" :columns="staffShiftColumns" :loading="staffShiftsLoading" :aria-busy="staffShiftsLoading" data-testid="staff-shifts-table">
-          <template #staff-cell="{ row }">{{ row.original.staff.name }}{{ row.original.active ? '' : '（离职）' }}</template>
-          <template #current-cell="{ row }">{{ row.original.current ? shiftText(row.original.current.shift) : '未指定' }}</template>
-          <template #upcoming-cell="{ row }">
-            <div v-for="upcoming in row.original.upcoming" :key="`${upcoming.effective_from}:${upcoming.shift?.id ?? 'none'}`" class="text-sm">
-              {{ shortDate(upcoming.effective_from) }}起 {{ shiftText(upcoming.shift) }}
-            </div>
-          </template>
-          <template #actions-cell="{ row }">
-            <UButton v-if="row.original.active" size="xs" variant="ghost" @click="askAssign(row.original)">指定班次</UButton>
-          </template>
-          <template #empty>还没有员工</template>
-        </UTable>
+        <div class="sec">员工班次</div>
+        <div class="box overflow-hidden p-0">
+          <UTable :data="staffShifts" :columns="staffShiftColumns" :loading="staffShiftsLoading" :aria-busy="staffShiftsLoading" data-testid="staff-shifts-table">
+            <template #staff-cell="{ row }">{{ row.original.staff.name }}{{ row.original.active ? '' : '（离职）' }}</template>
+            <template #current-cell="{ row }">{{ row.original.current ? shiftText(row.original.current.shift) : '未指定' }}</template>
+            <template #upcoming-cell="{ row }">
+              <div v-for="upcoming in row.original.upcoming" :key="`${upcoming.effective_from}:${upcoming.shift?.id ?? 'none'}`" class="text-sm">
+                {{ shortDate(upcoming.effective_from) }}起 {{ shiftText(upcoming.shift) }}
+              </div>
+            </template>
+            <template #actions-cell="{ row }">
+              <UButton v-if="row.original.active" size="sm" color="neutral" variant="ghost" @click="askAssign(row.original)">指定班次</UButton>
+            </template>
+            <template #empty>还没有员工</template>
+          </UTable>
+        </div>
       </div>
     </section>
 

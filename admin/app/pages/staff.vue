@@ -15,9 +15,11 @@ const positions = ref<components['schemas']['Position'][]>([])
 const NONE = 'none'
 
 const loadGuard = useRequestGuard()
+const loading = ref(false)
 
 async function load() {
   const request = loadGuard.next()
+  loading.value = true
   const [s, r, l, p] = await Promise.all([
     api.POST('/api/ops/list_staff', { body: {} }),
     api.POST('/api/ops/list_role_options', { body: {} }),
@@ -25,6 +27,7 @@ async function load() {
     api.POST('/api/ops/list_positions', { body: {} })
   ])
   if (!request()) return
+  loading.value = false
   if (!s.data || !r.data || !l.data || !p.data) {
     toast.add({ title: errorText(s.error ?? r.error ?? l.error ?? p.error), color: 'error' })
     return
@@ -162,39 +165,42 @@ async function setActive(s: Staff, active: boolean) {
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <UButton icon="i-lucide-plus" @click="openProfile(null)">新建员工</UButton>
-    </div>
+  <div class="space-y-3">
+    <PageActions>
+      <UButton size="sm" icon="i-lucide-plus" @click="openProfile(null)">新建员工</UButton>
+    </PageActions>
 
-    <UTable :data="staff" :columns="columns">
-      <template #level-cell="{ row }">{{ row.original.level?.name }}</template>
-      <template #position-cell="{ row }">{{ row.original.position?.name }}</template>
-      <template #roles-cell="{ row }">
-        <div class="flex flex-wrap gap-1">
-          <UBadge v-for="r in row.original.roles" :key="r.id" variant="subtle">{{ r.name }}</UBadge>
-        </div>
-      </template>
-      <template #self_bookable-cell="{ row }">
-        <UBadge :color="row.original.self_bookable ? 'success' : 'neutral'" variant="subtle">
-          {{ row.original.self_bookable ? '可预约' : '不可预约' }}
-        </UBadge>
-      </template>
-      <template #status-cell="{ row }">
-        <UBadge :color="row.original.active ? 'success' : 'neutral'" variant="subtle">
-          {{ row.original.active ? '在职' : '已停用' }}
-        </UBadge>
-      </template>
-      <template #actions-cell="{ row }">
-        <div class="flex gap-1 justify-end">
-          <UButton size="xs" variant="ghost" @click="openProfile(row.original)">档案</UButton>
-          <UButton size="xs" variant="ghost" @click="openRoles(row.original)">角色</UButton>
-          <UButton size="xs" variant="ghost" @click="openLogin(row.original)">账号</UButton>
-          <UButton v-if="row.original.active" size="xs" variant="ghost" color="error" :loading="activeSaving[row.original.id]" @click="setActive(row.original, false)">停用</UButton>
-          <UButton v-else size="xs" variant="ghost" :loading="activeSaving[row.original.id]" @click="setActive(row.original, true)">恢复</UButton>
-        </div>
-      </template>
-    </UTable>
+    <div class="box overflow-hidden p-0">
+      <UTable :data="staff" :columns="columns" :loading="loading" :aria-busy="loading" :ui="{ tr: 'group/row' }">
+        <template #name-cell="{ row }"><span class="font-medium">{{ row.original.name }}</span></template>
+        <template #level-cell="{ row }">{{ row.original.level?.name || '—' }}</template>
+        <template #position-cell="{ row }">{{ row.original.position?.name || '—' }}</template>
+        <template #roles-cell="{ row }">
+          <div class="flex flex-wrap gap-1">
+            <span v-for="r in row.original.roles" :key="r.id" class="tag bg-tag-gray">{{ r.name }}</span>
+          </div>
+        </template>
+        <template #self_bookable-cell="{ row }">
+          <span :class="row.original.self_bookable ? '' : 'text-dimmed'">{{ row.original.self_bookable ? '可预约' : '不可预约' }}</span>
+        </template>
+        <template #status-cell="{ row }">
+          <span v-if="row.original.active" class="text-dimmed">在职</span>
+          <span v-else class="tag bg-tag-gray">已停用</span>
+        </template>
+        <template #actions-cell="{ row }">
+          <div class="flex justify-end gap-0.5 opacity-0 group-hover/row:opacity-100 focus-within:opacity-100 any-pointer-coarse:opacity-100">
+            <UButton size="sm" color="neutral" variant="ghost" @click="openProfile(row.original)">档案</UButton>
+            <UButton size="sm" color="neutral" variant="ghost" @click="openRoles(row.original)">角色</UButton>
+            <UButton size="sm" color="neutral" variant="ghost" @click="openLogin(row.original)">账号</UButton>
+            <UButton v-if="row.original.active" size="sm" variant="ghost" color="error" :loading="activeSaving[row.original.id]" @click="setActive(row.original, false)">停用</UButton>
+            <UButton v-else size="sm" color="neutral" variant="ghost" :loading="activeSaving[row.original.id]" @click="setActive(row.original, true)">恢复</UButton>
+          </div>
+        </template>
+        <template #empty>
+          <EmptyState v-if="!loading" title="还没有员工" hint="点右上角新建员工，再开登录账号和角色" />
+        </template>
+      </UTable>
+    </div>
 
     <UModal v-model:open="profileOpen" :title="editing ? '修改档案' : '新建员工'">
       <template #body>

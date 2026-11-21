@@ -32,7 +32,7 @@ const amountColumns = [
 ] as const
 const columns: TableColumn<Line>[] = [
   { accessorKey: 'staff', header: '员工' }, { accessorKey: 'mode', header: '计薪方式' },
-  ...amountColumns.map(([accessorKey, header]) => ({ accessorKey, header, meta: { class: { th: 'text-right', td: 'text-right tabular-nums' } } }))
+  ...amountColumns.map(([accessorKey, header]) => ({ accessorKey, header, meta: { class: { th: 'text-right', td: (cell: { getValue: () => unknown }) => `text-right tabular-nums${Number(cell.getValue()) === 0 ? ' text-dimmed' : ''}` } } }))
 ]
 const rows = computed<Line[]>(() => payroll.value?.lines.length ? [...payroll.value.lines, { ...payroll.value.totals, staff: { id: '__total__', name: '合计' }, active: true, mode: 'base' }] : [])
 
@@ -87,6 +87,11 @@ function edit(target: 'salary' | 'adjustment') {
     Object.assign(form, { staff_id: first?.staff.id ?? '', mode: first?.base_salary?.mode ?? 'base', amount: target === 'salary' ? first?.base_salary?.amount ?? '' : '', name: '', note: '' })
   })
 }
+
+const moreItems = [[
+  { label: '设置底薪', icon: 'i-lucide-wallet', onSelect: () => edit('salary') },
+  { label: '添加加减项', icon: 'i-lucide-plus', onSelect: () => edit('adjustment') }
+]]
 
 watch(() => form.staff_id, () => {
   if (kind.value === 'salary') {
@@ -163,24 +168,32 @@ onMounted(reloadMonths)
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="flex flex-wrap items-center gap-3">
-      <USelect v-model="month" aria-label="结算月" :items="monthItems" />
-      <span v-if="payroll?.locked">已锁定 · {{ payroll.locked_by?.name }} · {{ payroll.locked_at ? new Date(payroll.locked_at).toLocaleString('zh-CN') : '' }}</span>
-      <span v-else>未锁定</span>
-      <div v-if="payroll && !payroll.locked" class="ml-auto flex flex-wrap items-center gap-2">
-        <UButton @click="edit('salary')">设置底薪</UButton>
-        <UButton @click="edit('adjustment')">添加加减项</UButton>
-        <UButton :disabled="!status?.lockable" @click="askLock">锁定本月</UButton>
-        <span v-if="!status?.lockable" class="text-sm text-muted">月份结束且之前的月份都已锁定后才能锁定</span>
-      </div>
+  <div class="space-y-3">
+    <PageActions v-if="payroll && !payroll.locked">
+      <UDropdownMenu :items="moreItems" :content="{ align: 'end' }">
+        <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-ellipsis" aria-label="更多操作" />
+      </UDropdownMenu>
+      <UButton size="sm" icon="i-lucide-lock" :disabled="!status?.lockable" @click="askLock">锁定本月</UButton>
+    </PageActions>
+    <div class="flex flex-wrap items-center gap-2">
+      <USelect v-model="month" aria-label="结算月" :items="monthItems" class="min-w-36" />
+      <span v-if="payroll?.locked" class="tag bg-tag-green">已锁定</span>
+      <span v-else class="tag bg-tag-gray">未锁定</span>
+      <span v-if="payroll?.locked" class="text-meta text-muted">{{ payroll.locked_by?.name }} · {{ payroll.locked_at ? new Date(payroll.locked_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '' }}</span>
+      <span v-else-if="payroll && !status?.lockable" class="text-meta text-muted">月份结束且之前的月份都已锁定后才能锁定</span>
     </div>
-    <UTable :data="rows" :columns="columns" :loading="loading" :aria-busy="loading" data-testid="payroll-table" @select="selectRow">
-      <template #staff-cell="{ row }">{{ row.original.staff.name }}{{ !row.original.active ? '（离职）' : '' }}</template>
-      <template #mode-cell="{ row }">{{ row.original.staff.id === '__total__' ? '' : row.original.mode === 'base' ? '底薪 + 提成' : '保底' }}</template>
-      <template #applied_amount-cell="{ row }">{{ row.original.staff.id === '__total__' ? '' : row.original.applied_amount }}</template>
-      <template #empty>本月还没有员工工资</template>
-    </UTable>
+    <div class="box overflow-hidden p-0">
+      <UTable :data="rows" :columns="columns" :loading="loading" :aria-busy="loading" data-testid="payroll-table" :ui="{ tr: 'has-[[data-total]]:bg-lane has-[[data-total]]:font-semibold' }" @select="selectRow">
+        <template #staff-cell="{ row }">
+          <span :data-total="row.original.staff.id === '__total__' ? '' : undefined" class="font-medium">{{ row.original.staff.name }}</span><span v-if="!row.original.active" class="text-dimmed">（离职）</span>
+        </template>
+        <template #mode-cell="{ row }"><span class="text-muted">{{ row.original.staff.id === '__total__' ? '' : row.original.mode === 'base' ? '底薪 + 提成' : '保底' }}</span></template>
+        <template #applied_amount-cell="{ row }">{{ row.original.staff.id === '__total__' ? '' : row.original.applied_amount }}</template>
+        <template #empty>
+          <EmptyState v-if="!loading" title="本月还没有员工工资" hint="点右上角 ··· 设置底薪或保底，开单后的提成会自动算进来" />
+        </template>
+      </UTable>
+    </div>
     <USlideover v-model:open="detailOpen" :modal="false" :title="`${selected?.name ?? ''} · ${monthLabel(month)}`">
       <template #body>
         <PayrollDetail v-if="selected && payroll" :key="`${month}:${selected.id}`" ref="detail" :month="month" :staff-id="selected.id" :locked="payroll.locked" @changed="reload" />

@@ -77,24 +77,31 @@ async function save() {
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <UButton @click="openEditor(null)">新建团购商品</UButton>
-    </div>
+  <div class="space-y-3">
+    <PageActions>
+      <UButton size="sm" icon="i-lucide-plus" @click="openEditor(null)">新建团购商品</UButton>
+    </PageActions>
     <p class="text-sm text-muted">平台购买价用于和平台月结账对账；门店标价取所对应项目的标准价。平台创建后不能修改。</p>
-    <p v-if="loading">加载中</p>
-    <UCard v-for="deal in deals" :key="deal.id" :data-deal="deal.name">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div>
+    <div class="box overflow-hidden p-0">
+      <div v-if="loading && !deals.length" class="px-3 py-2.5 text-sm text-muted">加载中…</div>
+      <EmptyState v-else-if="!deals.length" title="还没有团购商品" hint="把美团、抖音上卖的团购商品录进来，核销和月底对账才对得上" />
+      <div
+        v-for="deal in deals"
+        :key="deal.id"
+        :data-deal="deal.name"
+        class="group/row flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0 hover:bg-hover"
+        :class="deal.active ? '' : 'text-dimmed'"
+      >
+        <div class="flex min-w-48 flex-1 items-center gap-1.5">
           <span class="font-medium">{{ deal.name }}</span>
-          <UBadge class="ml-2" color="neutral">{{ platformItems.find(p => p.value === deal.platform)?.label ?? deal.platform }}</UBadge>
-          <UBadge class="ml-2" :color="deal.active ? 'success' : 'neutral'" variant="subtle">{{ deal.active ? '启用' : '停用' }}</UBadge>
-          <p>平台购买价 {{ deal.purchase_price }} 元 · 对应项目 {{ deal.item_name }}</p>
+          <span class="tag bg-tag-gray">{{ platformItems.find(p => p.value === deal.platform)?.label ?? deal.platform }}</span>
+          <span v-if="!deal.active" class="tag bg-tag-gray">停用</span>
         </div>
-        <UButton variant="ghost" @click="openEditor(deal)">编辑</UButton>
+        <span class="w-48 text-muted">对应项目 {{ deal.item_name }}</span>
+        <span class="w-24 text-right font-medium tabular-nums">{{ yuanFixed(deal.purchase_price) }}</span>
+        <UButton size="sm" color="neutral" variant="ghost" class="opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100" @click="openEditor(deal)">编辑</UButton>
       </div>
-    </UCard>
-    <p v-if="!loading && !deals.length" class="text-sm text-muted">还没有团购商品</p>
+    </div>
 
     <UModal v-model:open="open" :title="editing ? '编辑团购商品' : '新建团购商品'">
       <template #body>

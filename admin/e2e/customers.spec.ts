@@ -660,7 +660,7 @@ for (const duringDebounce of [false, true]) {
     await login(page, owner.account, owner.password)
     await page.goto('/customers')
     await search(page, '没有这位顾客')
-    await expect(page.locator('tbody tr').filter({ has: page.getByRole('button') })).toHaveCount(0)
+    await expect(page.locator('tbody tr').filter({ hasNot: page.getByTestId('empty-state') }).filter({ has: page.getByRole('button') })).toHaveCount(0)
     let release!: () => void
     const blocked = new Promise<void>((resolve) => {
       release = resolve

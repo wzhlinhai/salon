@@ -35,7 +35,7 @@ test('新建和编辑团购商品，平台创建后不可修改', async ({ page 
   await expect(createDialog).not.toBeVisible()
   const card = page.locator(`[data-deal="${name}"]`)
   await expect(card).toContainText('抖音')
-  await expect(card).toContainText('99.00')
+  await expect(card).toContainText('¥99.00')
   await expect(card).toContainText(item.name)
 
   await card.getByRole('button', { name: '编辑' }).click()
@@ -49,7 +49,7 @@ test('新建和编辑团购商品，平台创建后不可修改', async ({ page 
   await editDialog.getByRole('button', { name: '保存', exact: true }).click()
   await expect(editDialog).not.toBeVisible()
   const updated = page.locator(`[data-deal="${renamed}"]`)
-  await expect(updated).toContainText('120.00')
+  await expect(updated).toContainText('¥120.00')
   await expect(updated).toContainText('停用')
   const deals = await api<{ items: { name: string, platform: string, purchase_price: string, active: boolean }[] }>(token, 'list_groupbuy_deals', {})
   const saved = deals.items.find(d => d.name === renamed)!

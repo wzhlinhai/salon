@@ -42,7 +42,12 @@ async function load() {
   }
 }
 
-onMounted(load)
+// 分组标题的色块和首页、预约表同一套类别色。
+const { load: loadTones, toneOf } = useItemTones()
+onMounted(() => {
+  load()
+  loadTones()
+})
 
 const editor = useModalForm()
 const { open, saving } = editor
@@ -117,9 +122,22 @@ async function save() {
       open.value = false
       toast.add({ title: '已保存', color: 'success' })
       await load()
+      void loadTones()
     } else toast.add({ title: errorText(result.error), color: 'error' })
   })
 }
+
+// 照参考图 fresha 服务菜单：按类别分组，类别按设置里的顺序，未归类放最后。
+const groups = computed(() => {
+  const order = new Map(categories.value.map((c, index) => [c.id, index]))
+  const map = new Map<string, { key: string, name: string, rank: number, items: Item[] }>()
+  for (const item of items.value) {
+    const key = item.category?.id ?? 'none'
+    if (!map.has(key)) map.set(key, { key, name: item.category?.name ?? '未归类', rank: order.get(key) ?? Number.MAX_SAFE_INTEGER, items: [] })
+    map.get(key)!.items.push(item)
+  }
+  return [...map.values()].sort((a, b) => a.rank - b.rank)
+})
 
 function laborFee(item: Item) {
   if (item.labor_fee_amount != null) return `固定 ${item.labor_fee_amount} 元`
@@ -129,25 +147,35 @@ function laborFee(item: Item) {
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <UButton @click="openEditor(null)">新建项目</UButton>
-    </div>
-    <p v-if="loading">加载中</p>
-    <UCard v-for="item in items" :key="item.id" :data-item="item.name">
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <span class="font-medium">{{ item.name }}</span>
-          <UBadge v-if="!item.discountable" class="ml-2">不打折项目</UBadge>
-          <UBadge class="ml-2" color="neutral">{{ item.active ? '启用' : '停用' }}</UBadge>
-          <p>种类 {{ item.kind === 'goods' ? '卖品' : '服务' }}</p>
-          <p>标准价 {{ item.price }} 元 · 手工费 {{ laborFee(item) }}</p>
-          <p>类别 {{ item.category?.name ?? '未归类' }}</p>
-          <p>服务时长 {{ item.duration_minutes || '未设置' }}{{ item.duration_minutes ? ' 分钟' : '' }} · {{ item.bookable ? '可预约' : '不可预约' }}</p>
+  <div class="space-y-6">
+    <PageActions>
+      <UButton size="sm" icon="i-lucide-plus" @click="openEditor(null)">新建项目</UButton>
+    </PageActions>
+    <div v-if="loading && !items.length" class="box text-sm text-muted">加载中…</div>
+    <EmptyState v-else-if="!items.length" class="box" title="还没有项目" hint="点右上角新建项目，填上价格和服务时长，开单和预约就能选它" />
+    <section v-for="group in groups" :key="group.key" :data-category="group.name">
+      <div class="sec"><span class="size-2.5 rounded-sm" :class="group.items[0] ? toneOf(group.items[0].id) : 'bg-tag-gray'" aria-hidden="true" />{{ group.name }}<span class="ms-2 font-normal text-dimmed">{{ group.items.length }}</span></div>
+      <div class="box overflow-hidden p-0">
+        <div
+          v-for="item in group.items"
+          :key="item.id"
+          :data-item="item.name"
+          class="group/row flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0 hover:bg-hover"
+          :class="item.active ? '' : 'text-dimmed'"
+        >
+          <div class="flex min-w-40 flex-1 items-center gap-1.5">
+            <span class="font-medium">{{ item.name }}</span>
+            <span v-if="item.kind === 'goods'" class="tag bg-tag-gray">卖品</span>
+            <span v-if="!item.discountable" class="tag bg-tag-orange">不打折项目</span>
+            <span v-if="!item.active" class="tag bg-tag-gray">停用</span>
+          </div>
+          <span class="w-36 text-muted">{{ item.duration_minutes ? `${item.duration_minutes} 分钟` : '时长未设置' }} · {{ item.bookable ? '可预约' : '不可预约' }}</span>
+          <span class="w-36 text-muted">手工费 {{ laborFee(item) }}</span>
+          <span class="w-24 text-right font-medium tabular-nums">{{ yuanFixed(item.price) }}</span>
+          <UButton size="sm" color="neutral" variant="ghost" class="opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100" @click="openEditor(item)">编辑</UButton>
         </div>
-        <UButton variant="ghost" @click="openEditor(item)">编辑</UButton>
       </div>
-    </UCard>
+    </section>
     <UModal v-model:open="open" :title="editing ? '编辑项目' : '新建项目'">
       <template #body>
         <div class="space-y-4">

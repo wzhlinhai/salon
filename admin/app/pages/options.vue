@@ -138,48 +138,48 @@ async function save(k: typeof kinds[number], o: LevelOrPosition) {
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="grid md:grid-cols-2 gap-4">
-      <UCard v-for="k in kinds" :key="k.key">
-        <template #header>
-          <div class="font-medium">{{ k.title }}</div>
-          <div class="text-sm text-muted">{{ k.hint }}</div>
-        </template>
-        <div class="space-y-2">
-          <div v-for="o in items[k.key]" :key="o.id" class="flex items-center gap-2">
-            <UInput v-model="o.name" :disabled="saving[o.id]" class="flex-1" @change="save(k, o)" />
-            <USwitch v-model="o.active" :loading="saving[o.id]" :label="o.active ? '启用' : '停用'" @update:model-value="save(k, o)" />
+  <div class="space-y-6">
+    <div class="grid gap-6 md:grid-cols-2">
+      <section v-for="k in kinds" :key="k.key">
+        <div class="sec">{{ k.title }}<span class="ms-2 font-normal text-dimmed">{{ items[k.key]?.length ?? 0 }}</span></div>
+        <p class="mb-2 text-xs text-muted">{{ k.hint }}</p>
+        <div class="box overflow-hidden p-0">
+          <div v-for="o in items[k.key]" :key="o.id" class="flex items-center gap-2 border-b border-default px-2 py-1.5 hover:bg-hover">
+            <UInput v-model="o.name" variant="ghost" :disabled="saving[o.id]" class="flex-1" :class="o.active ? '' : 'opacity-60'" @change="save(k, o)" />
+            <USwitch v-model="o.active" size="sm" :loading="saving[o.id]" :label="o.active ? '启用' : '停用'" @update:model-value="save(k, o)" />
           </div>
-          <form class="flex gap-2 pt-2" @submit.prevent="add(k)">
-            <UInput v-model="draft[k.key]" :placeholder="`新${k.title}`" class="flex-1" />
-            <UButton :loading="saving[k.key]" type="submit" icon="i-lucide-plus">添加</UButton>
+          <form class="flex gap-2 px-2 py-1.5" @submit.prevent="add(k)">
+            <UInput v-model="draft[k.key]" variant="ghost" :placeholder="`新${k.title}`" class="flex-1" />
+            <UButton :loading="saving[k.key]" type="submit" size="sm" color="neutral" variant="ghost" icon="i-lucide-plus">添加</UButton>
           </form>
         </div>
-      </UCard>
+      </section>
     </div>
-    <UCard data-category="item_categories">
-      <template #header>
-        <div class="font-medium">项目类别</div>
-        <div class="text-sm text-muted">门店自己维护的类别，例如剪发、烫染、护理；每个类别有一个 0–100 的业绩比例</div>
-      </template>
-      <div class="space-y-2">
-        <div v-if="categoryLoading" class="text-sm text-muted">加载中</div>
-        <div v-for="category in categories" :key="category.id" data-category-row :data-category-name="category.name" class="flex flex-wrap items-center gap-2">
-          <UInput v-model="category.name" :disabled="categorySaving[category.id] || !canManageSettings" :aria-label="`类别 ${category.name}`" class="flex-1" @change="saveCategory(category)" />
-          <UFormField label="业绩比例">
-            <UInput v-model.number="category.performance_ratio" type="number" min="0" max="100" :disabled="categorySaving[category.id] || !canManageSettings" :aria-label="`${category.name}业绩比例`" @change="saveCategory(category)" />
-          </UFormField>
-          <USwitch v-if="canManageSettings" v-model="category.active" :loading="categorySaving[category.id]" :label="category.active ? '启用' : '停用'" @update:model-value="saveCategory(category)" />
-          <UBadge v-else :color="category.active ? 'success' : 'neutral'" variant="subtle">{{ category.active ? '启用' : '停用' }}</UBadge>
+    <section data-category="item_categories">
+      <div class="sec">项目类别<span class="ms-2 font-normal text-dimmed">{{ categories.length }}</span></div>
+      <p class="mb-2 text-xs text-muted">门店自己维护的类别，例如剪发、烫染、护理；每个类别有一个 0–100 的业绩比例</p>
+      <div class="box overflow-hidden p-0">
+        <div v-if="categoryLoading" class="px-3 py-2.5 text-sm text-muted">加载中…</div>
+        <div v-for="category in categories" :key="category.id" data-category-row :data-category-name="category.name" class="flex flex-wrap items-center gap-2 border-b border-default px-2 py-1.5 hover:bg-hover">
+          <UInput v-model="category.name" variant="ghost" :disabled="categorySaving[category.id] || !canManageSettings" :aria-label="`类别 ${category.name}`" class="flex-1" :class="category.active ? '' : 'opacity-60'" @change="saveCategory(category)" />
+          <label class="flex items-center gap-1.5 text-xs text-muted">
+            业绩比例
+            <UInput v-model.number="category.performance_ratio" type="number" min="0" max="100" class="w-20" :disabled="categorySaving[category.id] || !canManageSettings" :aria-label="`${category.name}业绩比例`" @change="saveCategory(category)" />
+            %
+          </label>
+          <USwitch v-if="canManageSettings" v-model="category.active" size="sm" :loading="categorySaving[category.id]" :label="category.active ? '启用' : '停用'" @update:model-value="saveCategory(category)" />
+          <span v-else-if="!category.active" class="tag bg-tag-gray">停用</span>
         </div>
-        <form v-if="canManageSettings" class="flex flex-wrap items-center gap-2 pt-2" @submit.prevent="addCategory">
-          <UInput v-model="categoryDraft.name" placeholder="新类别" aria-label="新类别" class="flex-1" />
-          <UFormField label="业绩比例">
-            <UInput v-model.number="categoryDraft.performance_ratio" type="number" min="0" max="100" aria-label="新类别业绩比例" />
-          </UFormField>
-          <UButton :loading="categoryAddSaving" type="submit" icon="i-lucide-plus">添加</UButton>
+        <form v-if="canManageSettings" class="flex flex-wrap items-center gap-2 px-2 py-1.5" @submit.prevent="addCategory">
+          <UInput v-model="categoryDraft.name" variant="ghost" placeholder="新类别" aria-label="新类别" class="flex-1" />
+          <label class="flex items-center gap-1.5 text-xs text-muted">
+            业绩比例
+            <UInput v-model.number="categoryDraft.performance_ratio" type="number" min="0" max="100" class="w-20" aria-label="新类别业绩比例" />
+            %
+          </label>
+          <UButton :loading="categoryAddSaving" type="submit" size="sm" color="neutral" variant="ghost" icon="i-lucide-plus">添加</UButton>
         </form>
       </div>
-    </UCard>
+    </section>
   </div>
 </template>

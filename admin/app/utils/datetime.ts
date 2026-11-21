@@ -7,3 +7,8 @@ export function formatStamp(value: string, now = new Date()) {
   if (date.toDateString() === now.toDateString()) return time
   return `${date.getMonth() + 1} 月 ${date.getDate()} 日 ${WEEKDAYS[date.getDay()]} ${time}`
 }
+
+// 表格里的日期：门店时区的 2026-11-20（DESIGN.md 组件约定）。
+export function formatDate(value: string) {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value))
+}
