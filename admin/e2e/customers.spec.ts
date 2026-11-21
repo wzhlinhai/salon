@@ -5,7 +5,7 @@ let phoneSequence = Date.now() % 100000000
 const phone = () => `138${String(++phoneSequence).padStart(8, '0')}`
 
 async function search(page: Page, query: string) {
-  const response = page.waitForResponse(r => r.url().endsWith('/api/ops/search_customers') && r.request().postDataJSON().query === query)
+  const response = page.waitForResponse(r => r.url().endsWith('/api/ops/list_customer_overview') && r.request().postDataJSON().query === query)
   await page.getByLabel('搜索顾客', { exact: true }).fill(query)
   await page.getByLabel('搜索顾客', { exact: true }).press('Enter')
   return (await response).json()
@@ -50,15 +50,15 @@ test('前台看到完整手机号，发型师看到打码号码', async ({ page 
   await login(page, receptionist.account, receptionist.password)
   await page.goto('/customers')
   await search(page, name)
-  await expect(page.locator('tbody tr').filter({ hasText: name })).toContainText(number)
+  await expect(page.getByTestId('customer-row').filter({ hasText: name })).toContainText(number)
   await page.goto(`/customers?id=${customer.id}`)
   await expect(page.getByRole('dialog', { name: '顾客详情', exact: true })).toContainText(number)
   await login(page, stylist.account, stylist.password)
   await page.goto('/customers')
   await search(page, name)
   const masked = `138****${number.slice(-4)}`
-  await expect(page.locator('tbody tr').filter({ hasText: name })).toContainText(masked)
-  await expect(page.locator('tbody tr').filter({ hasText: name })).not.toContainText(number)
+  await expect(page.getByTestId('customer-row').filter({ hasText: name })).toContainText(masked)
+  await expect(page.getByTestId('customer-row').filter({ hasText: name })).not.toContainText(number)
   await page.goto(`/customers?id=${customer.id}`)
   await expect(page.getByRole('dialog', { name: '顾客详情', exact: true })).toContainText(masked)
   await expect(page.getByRole('dialog', { name: '顾客详情', exact: true })).not.toContainText(number)
@@ -159,15 +159,17 @@ test('店长把停用员工负责的顾客交接后，按新负责人筛选可�
   await api(token, 'deactivate_staff', { staff_id: fromMe.id })
   await login(page, manager.account, manager.password)
   await page.goto('/customers')
-  await page.getByRole('button', { name: '负责人交接', exact: true }).click()
+  await page.getByRole('button', { name: '更多操作', exact: true }).click()
+  await page.getByRole('menuitem', { name: '负责人交接', exact: true }).click()
   await select(page, '交出的员工', `${fromMe.name}（已停用）`)
   await select(page, '接手的员工', toMe.name)
   await page.getByRole('button', { name: '确认交接', exact: true }).click()
   await expect(page.getByText('已移交 2 位顾客', { exact: true })).toBeVisible()
   await select(page, '负责人筛选', toMe.name)
-  await expect(page.locator('tbody tr')).toHaveCount(2)
-  await expect(page.locator('tbody')).toContainText(names[0]!)
-  await expect(page.locator('tbody')).toContainText(names[1]!)
+  await expect(page.getByTestId('customer-row')).toHaveCount(2)
+  await expect(page.getByTestId('segment-all').getByTestId('segment-count')).toHaveText('2')
+  await expect(page.getByTestId('customer-list')).toContainText(names[0]!)
+  await expect(page.getByTestId('customer-list')).toContainText(names[1]!)
   await page.getByRole('button', { name: names[0]!, exact: true }).click()
   const log = page.getByRole('dialog', { name: '顾客详情', exact: true }).getByTestId('customer-log-entry').filter({ has: page.getByText('负责人交接', { exact: true }) })
   await expect(log).toHaveCount(1)
@@ -177,6 +179,52 @@ test('店长把停用员工负责的顾客交接后，按新负责人筛选可�
   await expect(log.getByTestId('log-after')).toHaveText(toMe.name)
 })
 
+test('点分组只列这一组的顾客，没来过的新建顾客只在全部里', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const name = `分组顾客${Date.now()}`
+  await api(token, 'create_customer', { name, phone: phone() })
+  await login(page, owner.account, owner.password)
+  await page.goto('/customers')
+  await search(page, name)
+  const row = page.getByTestId('customer-row').filter({ hasText: name })
+  await expect(row).toContainText('还没来过')
+  await expect(page.getByTestId('segment-all')).toHaveAttribute('aria-pressed', 'true')
+  const response = page.waitForResponse(r => r.url().endsWith('/api/ops/list_customer_overview') && r.request().postDataJSON().segment === 'sleeping')
+  await page.getByTestId('segment-sleeping').click()
+  expect((await (await response).json()).items).toEqual([])
+  await expect(page.getByTestId('segment-sleeping')).toHaveAttribute('aria-pressed', 'true')
+  await expect(row).toHaveCount(0)
+  await expect(page.getByText('没有找到顾客', { exact: true })).toBeVisible()
+  await page.getByTestId('segment-all').click()
+  await expect(row).toHaveCount(1)
+})
+
+test('翻到第二页后切分组、改排序都从第一页开始', async ({ page }) => {
+  const offsets: number[] = []
+  await page.route('**/api/ops/list_customer_overview', async (route) => {
+    offsets.push(route.request().postDataJSON().offset ?? 0)
+    const response = await route.fetch()
+    const body = await response.json()
+    // 只把总数放大到三页，翻页和切分组走真实接口
+    await route.fulfill({ response, json: { ...body, total: 120 } })
+  })
+  await login(page, owner.account, owner.password)
+  await page.goto('/customers')
+  await expect(page.getByText('第 1 页，共 3 页', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '下一页', exact: true }).click()
+  await expect(page.getByText('第 2 页，共 3 页', { exact: true })).toBeVisible()
+  expect(offsets.at(-1)).toBe(50)
+  await page.getByTestId('segment-due').click()
+  await expect(page.getByTestId('segment-due')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByText('第 1 页，共 3 页', { exact: true })).toBeVisible()
+  expect(offsets.at(-1)).toBe(0)
+  await page.getByRole('button', { name: '下一页', exact: true }).click()
+  await expect(page.getByText('第 2 页，共 3 页', { exact: true })).toBeVisible()
+  await select(page, '排序', '按累计消费')
+  await expect(page.getByText('第 1 页，共 3 页', { exact: true })).toBeVisible()
+  expect(offsets.at(-1)).toBe(0)
+})
+
 test('发型师没有合并重复顾客和负责人交接入口', async ({ page }) => {
   const stylist = await hire('发型师')
   const token = await apiLogin(stylist.account, stylist.password)
@@ -184,7 +232,10 @@ test('发型师没有合并重复顾客和负责人交接入口', async ({ page 
   await login(page, stylist.account, stylist.password)
   await page.goto('/customers')
   await expect(page.getByRole('heading', { name: '顾客', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: '负责人交接', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '更多操作', exact: true })).toHaveCount(0)
+  await search(page, customer.name)
+  await expect(page.getByTestId('customer-row').filter({ hasText: customer.name })).toHaveCount(1)
+  await expect(page.getByTestId('customer-list').getByRole('checkbox')).toHaveCount(0)
   await page.goto(`/customers?id=${customer.id}`)
   await expect(page.getByRole('button', { name: '修改资料', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '合并重复顾客', exact: true })).toHaveCount(0)
@@ -248,7 +299,7 @@ test('店长多选分配负责人，可清空负责人', async ({ page }) => {
   await page.getByRole('button', { name: '分配负责人', exact: true }).click()
   await select(page, '负责人', staff.name)
   await page.getByRole('button', { name: '确认分配', exact: true }).click()
-  await expect(page.locator('tbody tr').filter({ hasText: staff.name })).toHaveCount(2)
+  await expect(page.getByTestId('customer-row').filter({ hasText: staff.name })).toHaveCount(2)
   await page.getByRole('checkbox', { name: `选择顾客 ${prefix}甲`, exact: true }).check()
   await page.getByRole('checkbox', { name: `选择顾客 ${prefix}乙`, exact: true }).check()
   await page.getByRole('button', { name: '分配负责人', exact: true }).click()
@@ -624,9 +675,9 @@ test('顾客列表断网后结束加载并可重新搜索', async ({ page }) => 
   await page.goto('/customers')
   await search(page, name)
   await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
-  await expect(page.locator('thead')).not.toHaveClass(/animate/)
+  await expect(page.getByTestId('customer-list')).toHaveAttribute('aria-busy', 'false')
   let abortSearch = true
-  await page.route('**/api/ops/search_customers', async (route) => {
+  await page.route('**/api/ops/list_customer_overview', async (route) => {
     if (abortSearch) {
       abortSearch = false
       await route.abort()
@@ -637,7 +688,7 @@ test('顾客列表断网后结束加载并可重新搜索', async ({ page }) => 
   await page.getByLabel('搜索顾客', { exact: true }).press('Enter')
   await expect(page.getByText('网络连接失败，请重试', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0)
-  await expect(page.locator('thead')).not.toHaveClass(/animate/)
+  await expect(page.getByTestId('customer-list')).toHaveAttribute('aria-busy', 'false')
   await expect(page.getByLabel('搜索顾客', { exact: true })).toBeEnabled()
   await search(page, name)
   await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
@@ -685,7 +736,7 @@ for (const duringDebounce of [false, true]) {
     await login(page, owner.account, owner.password)
     await page.goto('/customers')
     await search(page, '没有这位顾客')
-    await expect(page.locator('tbody tr').filter({ hasNot: page.getByTestId('empty-state') }).filter({ has: page.getByRole('button') })).toHaveCount(0)
+    await expect(page.getByTestId('customer-row')).toHaveCount(0)
     let release!: () => void
     const blocked = new Promise<void>((resolve) => {
       release = resolve
@@ -694,7 +745,7 @@ for (const duringDebounce of [false, true]) {
     const pending = new Promise<void>((resolve) => {
       started = resolve
     })
-    await page.route('**/api/ops/search_customers', async (route) => {
+    await page.route('**/api/ops/list_customer_overview', async (route) => {
       if (route.request().postDataJSON().query === a.name) {
         const response = await route.fetch()
         started()
@@ -711,7 +762,7 @@ for (const duringDebounce of [false, true]) {
     if (duringDebounce) await page.clock.pauseAt(new Date())
     await input.fill(b.name)
     if (!duringDebounce) await expect(page.getByRole('button', { name: b.name, exact: true })).toBeVisible()
-    const response = page.waitForResponse(r => r.url().endsWith('/api/ops/search_customers') && r.request().postDataJSON().query === a.name)
+    const response = page.waitForResponse(r => r.url().endsWith('/api/ops/list_customer_overview') && r.request().postDataJSON().query === a.name)
     release()
     await (await response).finished()
     // eslint-disable-next-line no-restricted-syntax -- 丢弃旧搜索没有状态变化，等待页面处理旧响应；防抖期间冻结浏览器时钟以确保第二次请求尚未开始。
@@ -728,7 +779,14 @@ for (const fails of [false, true]) {
     const a = (await api(token, 'create_customer', { name: `保存回切甲${Date.now()}`, phone: phone() })).customer
     const b = (await api(token, 'create_customer', { name: `保存回切乙${Date.now()}`, phone: phone() })).customer
     await login(page, owner.account, owner.password)
-    await page.goto(`/customers?id=${a.id}`)
+    await page.goto('/customers')
+    // 没到过店的顾客按上次到店排在最后，整套测试建的顾客多了会翻到第二页；先搜出来，列表刷新才看得到。
+    await page.getByRole('textbox', { name: '搜索顾客' }).fill('保存回切')
+    await expect(page.getByTestId('customer-list').getByText(a.name, { exact: true })).toHaveCount(1)
+    await page.evaluate((id) => {
+      window.history.pushState({}, '', `/customers?id=${id}`)
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    }, a.id)
     const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
     await expect(detail.getByRole('heading', { name: a.name, exact: true })).toBeVisible()
     let release!: () => void
@@ -763,7 +821,7 @@ for (const fails of [false, true]) {
     release()
     await (await response).finished()
     if (fails) await expect(page.getByText('旧保存冲突', { exact: true })).toBeVisible()
-    else await expect(page.locator('[data-testid="main-panel"] tbody').getByText(`${a.name}改`, { exact: true })).toHaveCount(1)
+    else await expect(page.getByTestId('customer-list').getByText(`${a.name}改`, { exact: true })).toHaveCount(1)
     await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeEnabled()
     await expect(dialog).toBeVisible()
     await expect(dialog.getByLabel('姓名', { exact: true })).toHaveValue(a.name)

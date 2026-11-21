@@ -1,28 +1,35 @@
 <script setup lang="ts">
-import type { components } from '~/utils/api'
-import type { TableRow } from '@nuxt/ui'
+import type { components, paths } from '~/utils/api'
 
 definePageMeta({ permission: 'customer.view', title: '顾客' })
 
-type Customer = components['schemas']['Customer']
+type Overview = paths['/api/ops/list_customer_overview']['post']['responses']['200']['content']['application/json']['items'][number]
+type Segments = paths['/api/ops/get_customer_segments']['post']['responses']['200']['content']['application/json']
+type SegmentKey = 'all' | 'today' | 'due' | 'balance' | 'new' | 'sleeping'
+type SortKey = 'last_visit' | 'overdue' | 'spend' | 'created'
 const api = useApi()
 const toast = useToast()
 const { can } = useMe()
 const route = useRoute()
 const router = useRouter()
 const NONE = 'none'
+const PAGE = 50
 
-// 列表、搜索和筛选
-const items = ref<Customer[]>([])
+// 列表、分组、搜索和筛选
+const items = ref<Overview[]>([])
+const total = ref(0)
+const segments = ref<Segments | null>(null)
 const staff = ref<components['schemas']['StaffOption'][]>([])
 const sources = ref<components['schemas']['CustomerSource'][]>([])
 const query = ref('')
-const includeUnidentified = ref(false)
+const segment = ref<SegmentKey>('all')
+const sort = ref<SortKey>('last_visit')
 const responsible = ref(NONE)
 const offset = ref(0)
 const selected = ref<string[]>([])
 const loading = ref(false)
 const searchGuard = useRequestGuard()
+const segmentGuard = useRequestGuard()
 let timer: ReturnType<typeof setTimeout> | undefined
 const staffItems = computed(() => staff.value.map(s => ({
   label: s.name + (s.active ? '' : '（已停用）'),
@@ -32,46 +39,82 @@ const activeStaffItems = computed(() => staff.value
   .filter(s => s.active)
   .map(s => ({ label: s.name, value: s.id }))
 )
+const sortItems = [
+  { label: '按上次到店', value: 'last_visit' },
+  { label: '按晚了几天', value: 'overdue' },
+  { label: '按累计消费', value: 'spend' },
+  { label: '按建档时间', value: 'created' }
+]
 const labelNames: Record<string, string> = {
   allergy: '过敏',
   scalp_sensitive: '头皮敏感',
   recent_chemical: '近期烫染'
 }
-const columns = computed(() => [
-  ...(can('customer.assign') ? [{ id: 'select', header: '' }] : []),
-  { id: 'name', header: '姓名' },
-  { id: 'phone', header: '手机号' },
-  { id: 'gender', header: '性别' },
-  { id: 'source', header: '来源' },
-  { id: 'responsible', header: '负责人' },
-  { id: 'safety', header: '安全标签' },
-  { id: 'created', header: '建档时间' }
-])
+const responsibleID = computed(() => responsible.value === NONE ? undefined : responsible.value)
+
+// 六个分组：数字和下面一句说明都来自 get_customer_segments，口径见 backend/README.md。
+const tiles = computed(() => {
+  const s = segments.value
+  return [
+    { key: 'all' as const, label: '全部', count: s?.all.count, hint: s ? `本月到店 ${s.all.visited_this_month} 位` : '' },
+    { key: 'today' as const, label: '今天要来', count: s?.today.count, hint: s?.today.count ? `${s.today.arrived} 位已到店` : '' },
+    { key: 'due' as const, label: '该回来了', count: s?.due.count, hint: s?.due.count ? `${s.due.with_balance} 位卡里有余额` : '' },
+    { key: 'balance' as const, label: '卡里有余额', count: s?.balance.count, hint: s?.balance.count ? `合计 ${yuanFixed(s.balance.stored_total)}` : '' },
+    { key: 'new' as const, label: '30 天新客', count: s?.new.count, hint: s?.new.count ? `${s.new.single_visit} 位还没来第二次` : '' },
+    { key: 'sleeping' as const, label: '沉睡', count: s?.sleeping.count, hint: '超过 90 天没来' }
+  ]
+})
+const emptyTexts: Record<SegmentKey, { title: string, hint: string }> = {
+  all: { title: '还没有顾客', hint: '顾客第一次到店开单时会自动建档，也可以点右上角新建' },
+  today: { title: '今天没有预约的顾客', hint: '' },
+  due: { title: '没有该回来的顾客', hint: '按每位顾客自己的到店间隔算，过了间隔还没约的会出现在这里' },
+  balance: { title: '没有卡里有余额的顾客', hint: '' },
+  new: { title: '最近 30 天没有新客', hint: '' },
+  sleeping: { title: '没有沉睡顾客', hint: '超过 90 天没来的顾客会出现在这里' }
+}
 
 async function load() {
   const current = searchGuard.next()
   loading.value = true
   try {
-    const res = await api.POST('/api/ops/search_customers', {
+    const res = await api.POST('/api/ops/list_customer_overview', {
       body: {
         query: query.value,
-        include_unidentified: includeUnidentified.value,
-        responsible_staff_id: responsible.value === NONE ? undefined : responsible.value,
-        limit: 50,
+        segment: segment.value,
+        sort: sort.value,
+        responsible_staff_id: responsibleID.value,
+        limit: PAGE,
         offset: offset.value
       }
     })
     if (!current()) return
     if (res.data) {
+      // 合并、交接后人数变少，当前页可能已经超过最后一页：退回最后一页重新取
+      const last = Math.floor(Math.max(res.data.total - 1, 0) / PAGE) * PAGE
+      if (!res.data.items.length && offset.value > last) {
+        offset.value = last
+        void load()
+        return
+      }
       items.value = res.data.items
+      total.value = res.data.total
       selected.value = []
     } else {
       items.value = []
+      total.value = 0
       toast.add({ title: errorText(res.error), color: 'error' })
     }
   } finally {
     if (current()) loading.value = false
   }
+}
+
+async function loadSegments() {
+  const current = segmentGuard.next()
+  const res = await api.POST('/api/ops/get_customer_segments', { body: { responsible_staff_id: responsibleID.value } })
+  if (!current()) return
+  if (res.data) segments.value = res.data
+  else toast.add({ title: errorText(res.error), color: 'error' })
 }
 
 async function loadOptions() {
@@ -97,13 +140,18 @@ function search() {
   load()
 }
 
+function reload() {
+  load()
+  loadSegments()
+}
+
 function clearFilters() {
   query.value = ''
   responsible.value = NONE
 }
 
 function changePage(change: number) {
-  offset.value += change * 50
+  offset.value += change * PAGE
   load()
 }
 
@@ -114,7 +162,7 @@ function toggle(id: string, value: boolean | 'indeterminate') {
 function done(error: unknown, ok: unknown, message: string) {
   toast.add({ title: ok ? message : errorText(error), color: ok ? 'success' : 'error' })
   if (ok) {
-    load()
+    reload()
   }
   return !!ok
 }
@@ -125,15 +173,69 @@ watch(query, () => {
   timer = setTimeout(search, 300)
 })
 
-watch([includeUnidentified, responsible], search)
+watch([segment, sort], search)
+watch(responsible, () => {
+  search()
+  loadSegments()
+})
 
 onBeforeUnmount(() => {
   clearTimeout(timer)
 })
 
 onMounted(async () => {
-  await Promise.all([load(), loadOptions()])
+  await Promise.all([load(), loadSegments(), loadOptions()])
 })
+
+// 行内显示
+const TONES = ['bg-tag-blue', 'bg-tag-orange', 'bg-tag-pink', 'bg-tag-green', 'bg-tag-purple', 'bg-tag-yellow', 'bg-tag-brown']
+
+function toneOf(id: string) {
+  let h = 0
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0
+  return TONES[h % TONES.length]!
+}
+
+function displayName(c: Overview['customer']) {
+  return c.name || '未填写姓名'
+}
+
+function sinceText(days: number) {
+  if (days === 0) return '今天'
+  if (days === 1) return '昨天'
+  return `${days} 天前`
+}
+
+function shortDate(value: string) {
+  const [, m, d] = value.split('-')
+  return `${Number(m)}月${Number(d)}日`
+}
+
+function lastVisitMeta(row: Overview) {
+  const parts = [
+    row.days_since_last_visit && row.days_since_last_visit > 1 && row.last_visit_date ? shortDate(row.last_visit_date) : '',
+    row.last_visit_items.join('、'),
+    row.last_visit_staff.map(s => s.name).join('、')
+  ]
+  return parts.filter(Boolean).join(' · ')
+}
+
+const DAY = 24 * 60 * 60 * 1000
+const zoned = (value: Date) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(value)
+
+function nextText(startsAt: string) {
+  const at = new Date(startsAt)
+  const time = at.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false })
+  const day = zoned(at)
+  const now = new Date()
+  if (day === zoned(now)) return `今天 ${time}`
+  if (day === zoned(new Date(now.getTime() + DAY))) return `明天 ${time}`
+  return `${shortDate(day)} ${time}`
+}
+
+function average(row: Overview) {
+  return row.visit_count ? Number(row.total_spend) / row.visit_count : 0
+}
 
 // 新建顾客
 const createOpen = ref(false)
@@ -189,7 +291,7 @@ async function create() {
     })
     createOpen.value = false
     openDetail(res.data.customer.id)
-    load()
+    reload()
   } finally {
     creating.value = false
   }
@@ -204,10 +306,6 @@ function openDetail(id: string) {
 
 function closeDetail() {
   router.replace({ query: { ...route.query, id: undefined } })
-}
-
-function selectRow(_event: Event, row: TableRow<Customer>) {
-  openDetail(row.original.id)
 }
 
 // 分配负责人
@@ -261,55 +359,128 @@ async function handover() {
 </script>
 
 <template>
-  <div class="space-y-3">
+  <div class="space-y-4">
     <PageActions>
-      <UButton v-if="can('customer.assign')" size="sm" color="neutral" variant="outline" @click="handoverOpen = true">负责人交接</UButton>
+      <UDropdownMenu v-if="can('customer.assign')" :items="[[{ label: '负责人交接', icon: 'i-lucide-arrow-left-right', onSelect: () => { handoverOpen = true } }]]" :content="{ align: 'end' }">
+        <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-ellipsis" aria-label="更多操作" />
+      </UDropdownMenu>
       <UButton v-if="can('customer.edit')" size="sm" icon="i-lucide-plus" @click="openCreate">新建顾客</UButton>
     </PageActions>
+
+    <div class="grid grid-cols-3 gap-2 xl:grid-cols-6" role="group" aria-label="顾客分组">
+      <button
+        v-for="tile in tiles"
+        :key="tile.key"
+        type="button"
+        :aria-pressed="segment === tile.key"
+        :data-testid="`segment-${tile.key}`"
+        class="box flex flex-col items-start gap-0.5 px-3 py-2.5 text-start transition-colors hover:bg-hover"
+        :class="segment === tile.key ? 'outline-2 -outline-offset-2 outline-primary' : ''"
+        @click="segment = tile.key"
+      >
+        <span class="text-meta" :class="segment === tile.key ? 'text-primary' : 'text-muted'">{{ tile.label }}</span>
+        <span data-testid="segment-count" class="min-h-7 text-xl font-semibold tabular-nums" :class="segment === tile.key ? 'text-primary' : ''">{{ tile.count ?? '' }}</span>
+        <span class="min-h-4 max-w-full truncate text-meta text-dimmed" :title="tile.hint">{{ tile.hint }}</span>
+      </button>
+    </div>
+
     <div class="flex flex-wrap items-center gap-2">
-      <UInput v-model="query" icon="i-lucide-search" aria-label="搜索顾客" placeholder="手机号、后四位或姓名，回车搜索" class="w-72" @keydown.enter="search" />
-      <USelect v-model="responsible" aria-label="负责人筛选" :items="[{ label: '全部负责人', value: NONE }, ...staffItems]" class="min-w-40" />
-      <USwitch v-model="includeUnidentified" label="显示未识别顾客" />
-      <div v-if="can('customer.assign') && selected.length" class="ms-auto flex items-center gap-2">
+      <UInput v-model="query" icon="i-lucide-search" aria-label="搜索顾客" placeholder="手机号、后四位或姓名" class="w-72" @keydown.enter="search" />
+      <USelect v-model="responsible" aria-label="负责人筛选" :items="[{ label: '全部负责人', value: NONE }, ...staffItems]" class="min-w-36" />
+      <USelect v-model="sort" aria-label="排序" :items="sortItems" class="min-w-36" />
+      <div v-if="can('customer.assign') && selected.length" class="flex items-center gap-2">
         <span class="text-meta text-muted">已选 {{ selected.length }} 位</span>
-        <UButton color="neutral" variant="outline" @click="openAssign">分配负责人</UButton>
+        <UButton size="sm" color="neutral" variant="outline" @click="openAssign">分配负责人</UButton>
       </div>
+      <span class="ms-auto text-meta text-muted tabular-nums" data-testid="customer-total">共 {{ total }} 位</span>
     </div>
-    <div class="box overflow-hidden p-0">
-      <UTable :data="items" :columns="columns" :loading="loading" @select="selectRow">
-        <template #select-cell="{ row }">
-          <span @click.stop>
-            <UCheckbox :aria-label="`选择顾客 ${row.original.name || '未识别顾客'}`" :model-value="selected.includes(row.original.id)" @update:model-value="v => toggle(row.original.id, v)" />
+
+    <div class="box overflow-hidden p-0" data-testid="customer-list" :aria-busy="loading">
+      <div class="grid gap-4 grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_8rem_8rem] xl:grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_6rem_8rem_8rem_8rem] border-b border-default px-4 py-2 text-meta text-dimmed">
+        <span>顾客</span><span>上次到店</span><span class="max-xl:hidden">来过</span><span class="text-right max-xl:hidden">累计消费</span><span class="text-right">卡余额</span><span class="ps-4">下次</span>
+      </div>
+      <div
+        v-for="row in items"
+        :key="row.customer.id"
+        data-testid="customer-row"
+        class="group/row grid gap-4 grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_8rem_8rem] xl:grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_6rem_8rem_8rem_8rem] cursor-pointer items-start border-t border-default px-4 py-3 text-sm first-of-type:border-t-0 hover:bg-hover"
+        @click="openDetail(row.customer.id)"
+      >
+        <div class="flex min-w-0 gap-3">
+          <span v-if="can('customer.assign')" class="relative size-9 shrink-0" @click.stop>
+            <span class="absolute inset-0 grid place-items-center rounded-full font-semibold transition-opacity" :class="[toneOf(row.customer.id), selected.includes(row.customer.id) ? 'opacity-0' : 'group-hover/row:opacity-0 group-focus-within/row:opacity-0 any-pointer-coarse:opacity-0']" aria-hidden="true">{{ displayName(row.customer).slice(0, 1) }}</span>
+            <UCheckbox
+              class="absolute inset-0 grid place-items-center transition-opacity"
+              :class="selected.includes(row.customer.id) ? '' : 'opacity-0 group-hover/row:opacity-100 focus-within:opacity-100 any-pointer-coarse:opacity-100'"
+              :aria-label="`选择顾客 ${displayName(row.customer)}`"
+              :model-value="selected.includes(row.customer.id)"
+              @update:model-value="v => toggle(row.customer.id, v)"
+            />
           </span>
-        </template>
-        <template #name-cell="{ row }">
-          <button type="button" class="font-medium hover:underline" @click.stop="openDetail(row.original.id)">{{ row.original.unidentified ? '未识别顾客' : row.original.name || '未填写姓名' }}</button>
-        </template>
-        <template #phone-cell="{ row }"><span class="tabular-nums">{{ row.original.phone || '—' }}</span></template>
-        <template #gender-cell="{ row }">{{ row.original.gender === 'male' ? '男' : row.original.gender === 'female' ? '女' : '—' }}</template>
-        <template #source-cell="{ row }">{{ row.original.source?.name || '—' }}</template>
-        <template #responsible-cell="{ row }">{{ row.original.responsible?.name || '—' }}</template>
-        <template #safety-cell="{ row }">
-          <div class="flex flex-wrap gap-1">
-            <span v-for="label in row.original.active_safety_labels" :key="label.id" class="tag bg-tag-red">{{ labelNames[label.kind] }}</span>
+          <span v-else class="grid size-9 shrink-0 place-items-center rounded-full font-semibold" :class="toneOf(row.customer.id)" aria-hidden="true">{{ displayName(row.customer).slice(0, 1) }}</span>
+          <div class="min-w-0">
+            <p class="flex flex-wrap items-center gap-1.5">
+              <button type="button" class="font-semibold hover:underline" @click.stop="openDetail(row.customer.id)">{{ displayName(row.customer) }}</button>
+              <span v-for="label in row.customer.active_safety_labels" :key="label.id" class="tag bg-tag-red">{{ labelNames[label.kind] || '安全标签' }}</span>
+            </p>
+            <p class="truncate text-meta text-muted" :title="row.customer.responsible ? `负责人 ${row.customer.responsible.name}` : undefined">
+              <span class="tabular-nums" data-testid="customer-phone">{{ row.customer.phone }}</span>
+              <template v-if="row.customer.responsible"> · 负责人 {{ row.customer.responsible.name }}</template>
+            </p>
           </div>
-        </template>
-        <template #created-cell="{ row }"><span class="text-muted tabular-nums">{{ formatDate(row.original.created_at) }}</span></template>
-        <template #empty>
-          <template v-if="loading" />
-          <EmptyState v-else-if="query || responsible !== NONE" title="没有找到顾客" hint="换个手机号或姓名试试">
-            <UButton color="neutral" variant="outline" @click="clearFilters">清除筛选</UButton>
-          </EmptyState>
-          <EmptyState v-else title="还没有顾客" :hint="can('customer.edit') ? '顾客第一次到店开单时会自动建档，也可以点右上角新建' : '顾客第一次到店开单时会自动建档'" />
-        </template>
-      </UTable>
+        </div>
+        <div class="min-w-0">
+          <template v-if="row.days_since_last_visit !== null && row.days_since_last_visit !== undefined">
+            <p class="flex flex-wrap items-center gap-1.5">
+              <span class="tabular-nums">{{ sinceText(row.days_since_last_visit) }}</span>
+              <span v-if="row.overdue_days" class="tag bg-tag-orange">晚了 {{ row.overdue_days }} 天</span>
+            </p>
+            <p class="truncate text-meta text-muted" :title="lastVisitMeta(row)">{{ lastVisitMeta(row) }}</p>
+          </template>
+          <p v-else class="text-muted">还没来过</p>
+        </div>
+        <div class="max-xl:hidden">
+          <template v-if="row.visit_count">
+            <p class="tabular-nums">{{ row.visit_count }} 次</p>
+            <p class="text-meta text-muted">{{ row.cycle_days ? `约 ${row.cycle_days} 天一次` : '只来过一天' }}</p>
+          </template>
+        </div>
+        <div class="text-right max-xl:hidden">
+          <template v-if="row.visit_count">
+            <p class="tabular-nums">{{ yuanFixed(row.total_spend) }}</p>
+            <p class="text-meta text-muted tabular-nums">平均每次 {{ yuanFixed(average(row)) }}</p>
+          </template>
+        </div>
+        <div class="text-right">
+          <template v-if="Number(row.stored_balance) > 0">
+            <p class="tabular-nums">{{ yuanFixed(row.stored_balance) }}</p>
+            <p class="text-meta text-muted">{{ row.count_remaining ? `另有 ${row.count_remaining} 次` : '储值' }}</p>
+          </template>
+          <template v-else-if="row.count_remaining">
+            <p class="tabular-nums">{{ row.count_remaining }} 次</p>
+            <p class="text-meta text-muted">次卡</p>
+          </template>
+          <p v-else class="text-dimmed">没有</p>
+        </div>
+        <div class="min-w-0 ps-4">
+          <span v-if="row.next_appointment" class="tag bg-tag-blue tabular-nums">{{ nextText(row.next_appointment.starts_at) }}</span>
+          <p v-if="row.next_appointment" class="mt-0.5 truncate text-meta text-muted" :title="row.next_appointment.staff.name">{{ row.next_appointment.staff.name }}</p>
+        </div>
+      </div>
+      <template v-if="!items.length && !loading">
+        <EmptyState v-if="query || responsible !== NONE" title="没有找到顾客" hint="换个手机号或姓名试试">
+          <UButton color="neutral" variant="outline" @click="clearFilters">清除筛选</UButton>
+        </EmptyState>
+        <EmptyState v-else v-bind="emptyTexts[segment]" />
+      </template>
+      <div v-if="!items.length && loading" class="px-4 py-12 text-center text-meta text-dimmed">加载中…</div>
     </div>
-    <div v-if="offset > 0 || items.length >= 50" class="flex items-center justify-end gap-2 text-meta text-muted">
+    <div v-if="total > PAGE" class="flex items-center justify-end gap-2 text-meta text-muted">
       <UButton color="neutral" variant="ghost" icon="i-lucide-chevron-left" :disabled="offset === 0 || loading" @click="changePage(-1)">上一页</UButton>
-      <span class="tabular-nums">第 {{ offset / 50 + 1 }} 页</span>
-      <UButton color="neutral" variant="ghost" trailing-icon="i-lucide-chevron-right" :disabled="items.length < 50 || loading" @click="changePage(1)">下一页</UButton>
+      <span class="tabular-nums">第 {{ offset / PAGE + 1 }} 页，共 {{ Math.ceil(total / PAGE) }} 页</span>
+      <UButton color="neutral" variant="ghost" trailing-icon="i-lucide-chevron-right" :disabled="offset + PAGE >= total || loading" @click="changePage(1)">下一页</UButton>
     </div>
-    <CustomerDetail v-if="detailID" :id="detailID" :sources="sources" @close="closeDetail" @open="openDetail" @changed="load" />
+    <CustomerDetail v-if="detailID" :id="detailID" :sources="sources" @close="closeDetail" @open="openDetail" @changed="reload" />
     <UModal v-model:open="createOpen" title="新建顾客">
       <template #body>
         <div class="space-y-3">

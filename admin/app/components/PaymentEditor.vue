@@ -55,7 +55,7 @@ function remove(index: number) {
   <div class="space-y-2" data-testid="sale-payments">
     <div class="flex items-center justify-between text-meta text-muted">
       <p>收款方式</p>
-      <p class="tabular-nums">应收合计 {{ expected }}</p>
+      <p class="tabular-nums">应收合计 {{ yuanFixed(expected) }}</p>
     </div>
     <div v-for="(payment, index) in payments" :key="index" class="flex items-end gap-2">
       <UFormField label="方式" class="w-28" :ui="{ label: 'text-meta text-muted font-normal' }">
@@ -67,6 +67,6 @@ function remove(index: number) {
       <UButton color="neutral" variant="ghost" icon="i-lucide-x" aria-label="删除" @click="remove(index)" />
     </div>
     <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-plus" @click="add">添加收款方式</UButton>
-    <p v-if="total !== cents(expected)" class="text-meta text-ink-orange">已录入 {{ money(total) }}，{{ total < cents(expected) ? '还应录入' : '多录入' }} {{ money(Math.abs(cents(expected) - total)) }}</p>
+    <p v-if="total !== cents(expected)" class="text-meta text-ink-orange">已录入 {{ yuanFixed(money(total)) }}，{{ total < cents(expected) ? '还应录入' : '多录入' }} {{ yuanFixed(money(Math.abs(cents(expected) - total))) }}</p>
   </div>
 </template>
