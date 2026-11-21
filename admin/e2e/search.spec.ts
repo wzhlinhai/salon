@@ -12,17 +12,17 @@ test('Ctrl K 搜索页面和顾客并导航', async ({ page }) => {
   await login(page, owner.account, owner.password)
 
   await page.keyboard.press('Control+k')
-  const dialog = page.getByRole('dialog', { name: '搜索' })
+  const dialog = page.getByRole('dialog', { name: '搜索或吩咐 AI' })
   await expect(dialog).toBeVisible()
-  const input = dialog.getByPlaceholder('搜索页面或顾客')
+  const input = dialog.getByPlaceholder('搜索页面、顾客，或吩咐 AI')
   await input.fill('团购对账')
-  await dialog.getByRole('option', { name: /团购对账/ }).click()
+  await dialog.getByRole('option', { name: '团购对账', exact: true }).click()
   await expect(page).toHaveURL('/groupbuy-month')
 
   await page.keyboard.press('Control+k')
   await expect(dialog).toBeVisible()
   await input.fill(created.customer.name)
-  await dialog.getByRole('option', { name: new RegExp(created.customer.name) }).click()
+  await dialog.getByRole('option', { name: `${created.customer.name} · ${phoneNumber}`, exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/customers\\?id=${created.customer.id}`))
   await expect(page.getByRole('dialog', { name: '顾客详情', exact: true }).getByRole('heading', { name: created.customer.name, exact: true })).toBeVisible()
 })
@@ -47,9 +47,9 @@ test('没有查看顾客权限时 Ctrl K 不查顾客', async ({ page }) => {
   await login(page, account, password)
 
   await page.keyboard.press('Control+k')
-  const dialog = page.getByRole('dialog', { name: '搜索' })
+  const dialog = page.getByRole('dialog', { name: '搜索或吩咐 AI' })
   await expect(dialog).toBeVisible()
-  const input = dialog.getByPlaceholder('搜索页面或顾客')
+  const input = dialog.getByPlaceholder('搜索页面、顾客，或吩咐 AI')
   await input.fill('首页')
   await expect(dialog.getByText('页面', { exact: true })).toBeVisible()
   await page.clock.runFor(1000)
@@ -57,4 +57,28 @@ test('没有查看顾客权限时 Ctrl K 不查顾客', async ({ page }) => {
   await expect(input).toHaveValue('首页')
   expect(searched).toEqual([])
   await expect(dialog.getByText('顾客', { exact: true })).toHaveCount(0)
+})
+
+test('Ctrl K 换了词立即清掉上一词的顾客结果', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const suffix = uniqueSuffix()
+  const phoneNumber = `139${String(Date.now()).slice(-8)}`
+  const created = await api<{ customer: { name: string } }>(token, 'create_customer', { name: `换词顾客${suffix}`, phone: phoneNumber })
+  // 第二个词的顾客查询故意拖慢，旧结果若没清掉就会留在列表里。
+  let slow = false
+  await page.route('**/api/ops/search_customers', async (route) => {
+    if (slow) await new Promise(resolve => setTimeout(resolve, 3000))
+    await route.continue()
+  })
+  await login(page, owner.account, owner.password)
+  await page.keyboard.press('Control+k')
+  const dialog = page.getByRole('dialog', { name: '搜索或吩咐 AI' })
+  const input = dialog.getByPlaceholder('搜索页面、顾客，或吩咐 AI')
+  await input.fill(created.customer.name)
+  const option = dialog.getByRole('option', { name: `${created.customer.name} · ${phoneNumber}`, exact: true })
+  await expect(option).toBeVisible()
+  slow = true
+  await input.fill('明天下午谁有空')
+  await expect(dialog.getByRole('option', { name: '吩咐 AI：明天下午谁有空' })).toBeVisible()
+  await expect(option).toHaveCount(0, { timeout: 1000 })
 })

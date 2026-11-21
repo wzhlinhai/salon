@@ -14,8 +14,8 @@ test('侧栏图标随客户端打包，不请求 Iconify，折叠后仍可用', 
   await expect.poll(() => navLinks.evaluateAll(links => links.every(link => !!link.querySelector('svg')))).toBe(true)
 
   const search = page.getByRole('button', { name: /搜索/ })
-  await expect(search).toContainText('搜索')
-  const label = search.getByText('搜索', { exact: true })
+  await expect(search).toContainText('搜索或吩咐 AI')
+  const label = search.getByText('搜索或吩咐 AI', { exact: true })
   expect(await label.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
 
   await page.getByTestId('sidebar-collapse').click()

@@ -101,3 +101,16 @@ test('老板有多个首页，选择前台首页后刷新仍保留', async ({ pa
   await expect(page.getByTestId('home-front-actions')).toBeVisible()
   await expect(page.getByTestId('home-switcher')).toContainText('前台首页')
 })
+
+test('前台首页的推荐说法点一下就交给 AI', async ({ page }) => {
+  let sent = ''
+  await page.route('**/api/ai/chat', async (route) => {
+    sent = route.request().postDataJSON().messages.at(-1).content
+    await route.fulfill({ json: { reply: '查好了。', sources: [], drafts: [] } })
+  })
+  const front = await hire('前台')
+  await login(page, front.account, front.password)
+  await page.getByTestId('ai-suggestions').getByRole('button', { name: '今天还有谁没到店' }).click()
+  await expect(page.getByRole('dialog', { name: '吩咐 AI' }).getByText('查好了。')).toBeVisible()
+  expect(sent).toBe('今天还有谁没到店')
+})
