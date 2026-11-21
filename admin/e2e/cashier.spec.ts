@@ -628,6 +628,10 @@ test('同一顾客的两张同日挂单合并成一张', async ({ page }) => {
   const opening = { customer_id: customer.id, gender: 'female', designated: false, items: [{ item_id: item.id, staff: [{ slot: 1, staff_id: staff.id }] }] }
   const first = await api<{ id: string }>(token, 'open_order', opening)
   const second = await api<{ id: string }>(token, 'open_order', opening)
+  const other = await api<{ customer: { id: string } }>(token, 'create_customer', { name: `合并别人${Date.now().toString(36)}`, phone: phone() })
+  const otherOrder = await api<{ id: string }>(token, 'open_order', { ...opening, customer_id: other.customer.id })
+  const settings = await businessDate(token)
+  const backfill = await api<{ id: string }>(token, 'open_order', { ...opening, paper_date: addDays(settings.business_date, -1) })
   await login(page, owner.account, owner.password)
   await page.goto('/cashier')
   await page.locator(`[data-order-id="${first.id}"]`).click()
@@ -638,6 +642,8 @@ test('同一顾客的两张同日挂单合并成一张', async ({ page }) => {
   await expect(hint).toHaveCount(0)
   await expect(page.locator(`[data-order-id="${first.id}"]`)).toContainText('¥176.00')
   await expect(page.locator(`[data-order-item="${item.name}"]`)).toHaveCount(2)
+  await expect(page.locator(`[data-order-id="${otherOrder.id}"]`)).toHaveCount(1)
+  await expect(page.locator(`[data-order-id="${backfill.id}"]`)).toHaveCount(1)
 })
 
 test('未识别顾客没有挂账；挂账结账后在顾客详情收还款', async ({ page }) => {

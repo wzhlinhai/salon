@@ -115,7 +115,7 @@ const selectedOrder = ref<Order | null>(null)
 const orderLoading = ref(false)
 const orderGuard = useRequestGuard()
 const customerNames = ref<Record<string, string>>({})
-// 有手机号的顾客才能挂账，和结账规则一致。
+// 已识别顾客才能挂账，和结账规则一致；要靠 get_customer 得知，所以没有 customer.view 时不显示挂账。
 const identifiedCustomers = ref<Record<string, boolean>>({})
 const actionSaving = ref(false)
 const actionGuard = useRequestGuard()
@@ -144,7 +144,7 @@ async function resolveNames(orders: Order[]) {
     const customer = result.data
     if (!customer) continue
     customerNames.value[customer.id] = customer.name || '未识别'
-    identifiedCustomers.value[customer.id] = !!customer.phone
+    identifiedCustomers.value[customer.id] = !customer.unidentified
   }
 }
 
@@ -436,11 +436,11 @@ async function removeItem(orderItemID: string) {
   }
 }
 
-// 同一顾客、同一营业日的其他挂单可以并进当前单（merge_orders 的条件）。
+// 同一顾客、同一营业日、同为补录或同为普通单，且每张都能改的其他挂单可以并进当前单（merge_orders 的条件）。
 const mergeableOrders = computed(() => {
   const order = selectedOrder.value
   if (!order) return []
-  return openOrders.value.filter(o => o.id !== order.id && o.customer_id === order.customer_id && o.business_date === order.business_date)
+  return openOrders.value.filter(o => o.id !== order.id && o.customer_id === order.customer_id && o.business_date === order.business_date && o.backfill === order.backfill && mayChange('order.edit', o))
 })
 
 async function mergeOrders() {
@@ -457,6 +457,10 @@ async function mergeOrders() {
       return
     }
     toast.add({ title: `已合并 ${merged.length} 张挂单`, color: 'success' })
+    if (selectedOrderID.value !== order.id) {
+      await loadOrders()
+      return
+    }
     invalidatePreview()
     await refreshSelected()
     await loadOrders()
@@ -1155,7 +1159,7 @@ onMounted(init)
         <EmptyState v-else-if="!selectedOrder" class="box" icon="i-lucide-receipt" title="还没选单" hint="从左侧选一张挂单，或扫码开单" />
         <div v-else class="grid items-start gap-4" :class="canCollect ? 'xl:grid-cols-[minmax(0,1fr)_20rem]' : ''">
           <div class="space-y-4">
-            <div v-if="canOrderEdit && mergeableOrders.length" class="box flex items-center gap-2 py-2 text-sm" data-testid="merge-hint">
+            <div v-if="canOrderEdit && mergeableOrders.length" class="box flex items-center gap-2 py-2 text-sm" role="status" data-testid="merge-hint">
               <span>这位顾客还有 {{ mergeableOrders.length }} 张同日挂单（{{ yuanFixed(money(mergeableOrders.reduce((sum, o) => sum + cents(o.receivable), 0))) }}），可以并成一张结账</span>
               <UButton size="sm" color="neutral" variant="outline" class="ms-auto" :loading="actionSaving" :disabled="checkoutSaving" @click="mergeOrders">合并到这张</UButton>
             </div>

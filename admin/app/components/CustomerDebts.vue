@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-const props = defineProps<{ id: string, merged: boolean }>()
+const props = defineProps<{ id: string }>()
 const api = useApi()
 const toast = useToast()
 const { can } = useMe()
@@ -74,12 +74,12 @@ onMounted(load)
           <span class="tag bg-tag-gray">{{ debt.kind === 'order' ? '挂账' : '历史欠款' }}</span>
           <span class="font-medium tabular-nums">{{ yuanFixed(debt.amount) }}</span>
           <span v-if="debt.status === 'outstanding'" class="tabular-nums text-ink-orange">未还 {{ yuanFixed(debt.outstanding) }}</span>
-          <span v-else class="tag bg-tag-gray">{{ statusNames[debt.status] }}</span>
+          <span v-else class="tag" :class="debt.status === 'repaid' ? 'bg-tag-green' : 'bg-tag-gray'">{{ statusNames[debt.status] }}</span>
           <span class="ms-auto text-meta text-muted">{{ debt.business_date }}</span>
         </p>
         <p v-if="debt.note" class="text-meta text-muted">{{ debt.note }}</p>
         <p v-for="r in debt.repayments" :key="r.id" class="text-meta text-muted tabular-nums">{{ r.business_date }} 还 {{ yuanFixed(r.amount) }} · {{ methodNames[r.method] }}</p>
-        <UButton v-if="can('payment.collect') && !merged && debt.status === 'outstanding'" size="sm" color="neutral" variant="outline" @click="editRepay(debt)">收还款</UButton>
+        <UButton v-if="can('payment.collect') && debt.status === 'outstanding'" size="sm" color="neutral" variant="ghost" class="-mx-1.5" :aria-label="`收还款 ${debt.business_date} 未还 ${yuanFixed(debt.outstanding)}`" @click="editRepay(debt)">收还款</UButton>
       </div>
     </div>
   </section>
