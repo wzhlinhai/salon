@@ -430,6 +430,7 @@ onBeforeUnmount(() => {
         </section>
         <CustomerCards v-if="can('customer.view')" :id="id" :merged="!!customer.merged_into" />
         <CustomerRedPackets v-if="can('customer.view')" :id="customer.id" :merged="!!customer.merged_into" />
+        <CustomerDebts v-if="can('customer.view') && !customer.merged_into" :id="customer.id" />
         <section v-if="can('audit_log.view')">
           <div class="sec">修改记录</div>
           <div class="box overflow-hidden p-0" data-testid="customer-logs">

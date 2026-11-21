@@ -95,6 +95,7 @@ test('扫码开单、现金结账并按设置打印小票', async ({ page }) => 
   await expect(page.getByTestId('receipt-customer')).toContainText('*')
   await expect.poll(() => page.evaluate(() => (window as unknown as { __receiptPrinted?: number }).__receiptPrinted ?? 0)).toBe(1)
   await page.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(page.getByTestId('settled-orders').locator('[data-settled-order]', { hasText: customer.name })).toContainText('¥88.00')
   await expect(page.getByTestId('last-receipt')).toBeVisible()
   await page.getByRole('button', { name: '补打小票' }).click()
   await expect(page.getByTestId('receipt-header')).toHaveText(header)
@@ -562,6 +563,11 @@ test('发型师能开单加项，看不到结账和团购券，也没有 403 或
     designated: false,
     items: [{ item_id: item.id, staff: [{ slot: 1, staff_id: staff.id }] }]
   })
+  const paid = await api<{ id: string }>(token, 'open_order', {
+    customer_id: customer.id, gender: 'female', designated: false,
+    items: [{ item_id: item.id, staff: [{ slot: 1, staff_id: staff.id }] }]
+  })
+  await api(token, 'checkout_orders', { orders: [{ order_id: paid.id, payments: [{ method: 'cash', amount: '88.00' }] }] })
   const forbidden: string[] = []
   page.on('response', (response) => {
     if (response.url().includes('/api/ops/') && response.status() === 403) forbidden.push(response.url())
@@ -574,6 +580,10 @@ test('发型师能开单加项，看不到结账和团购券，也没有 403 或
   await expect(page.getByText('结账', { exact: true })).toHaveCount(0)
   await expect(page.getByTestId('unlinked-coupons')).toHaveCount(0)
   await expect(page.getByTestId('coupon-panel')).toHaveCount(0)
+  const paidRow = page.locator(`[data-settled-order="${paid.id}"]`)
+  await expect(paidRow).toBeVisible()
+  await paidRow.hover()
+  await expect(paidRow.getByRole('button', { name: /^撤单/ })).toHaveCount(0)
 
   await page.getByRole('button', { name: '加项目' }).click()
   const dialog = page.getByRole('dialog', { name: '加项目' })
@@ -621,4 +631,117 @@ test('发型师打开别人的单，看不到去掉和换员工', async ({ page 
   await expect(itemRow.getByRole('button', { name: '去掉' })).toBeVisible()
   await expect(itemRow.getByRole('combobox')).toHaveCount(1)
   expect(forbidden).toEqual([])
+})
+
+test('同一顾客的两张同日挂单合并成一张', async ({ page }) => {
+  const { token, staff, item, customer } = await seed()
+  const opening = { customer_id: customer.id, gender: 'female', designated: false, items: [{ item_id: item.id, staff: [{ slot: 1, staff_id: staff.id }] }] }
+  const first = await api<{ id: string }>(token, 'open_order', opening)
+  const second = await api<{ id: string }>(token, 'open_order', opening)
+  const other = await api<{ customer: { id: string } }>(token, 'create_customer', { name: `合并别人${Date.now().toString(36)}`, phone: phone() })
+  const otherOrder = await api<{ id: string }>(token, 'open_order', { ...opening, customer_id: other.customer.id })
+  const settings = await businessDate(token)
+  const backfill = await api<{ id: string }>(token, 'open_order', { ...opening, paper_date: addDays(settings.business_date, -1) })
+  await login(page, owner.account, owner.password)
+  await page.goto('/cashier')
+  await page.locator(`[data-order-id="${first.id}"]`).click()
+  const hint = page.getByTestId('merge-hint')
+  await expect(hint).toContainText('还有 1 张同日挂单（¥88.00）')
+  await hint.getByRole('button', { name: '合并到这张' }).click()
+  await expect(page.locator(`[data-order-id="${second.id}"]`)).toHaveCount(0)
+  await expect(hint).toHaveCount(0)
+  await expect(page.locator(`[data-order-id="${first.id}"]`)).toContainText('¥176.00')
+  await expect(page.locator(`[data-order-item="${item.name}"]`)).toHaveCount(2)
+  await expect(page.locator(`[data-order-id="${otherOrder.id}"]`)).toHaveCount(1)
+  await expect(page.locator(`[data-order-id="${backfill.id}"]`)).toHaveCount(1)
+})
+
+test('未识别顾客没有挂账；挂账结账后在顾客详情收还款', async ({ page }) => {
+  const { token, staff, item, customer } = await seed()
+  const items = [{ item_id: item.id, staff: [{ slot: 1, staff_id: staff.id }] }]
+  const walkin = await api<{ id: string }>(token, 'open_order', { gender: 'male', designated: false, items })
+  const order = await api<{ id: string }>(token, 'open_order', { customer_id: customer.id, gender: 'female', designated: false, items })
+  await page.addInitScript(() => {
+    window.print = () => {}
+  })
+  await login(page, owner.account, owner.password)
+  await page.goto('/cashier')
+  const method = page.getByTestId('sale-payments').getByRole('combobox', { name: '方式' })
+
+  await page.locator(`[data-order-id="${walkin.id}"]`).click()
+  await expect(page.getByTestId('cash-expected')).toHaveText('88.00')
+  await method.click()
+  await expect(page.getByRole('option', { name: '现金', exact: true })).toBeVisible()
+  await expect(page.getByRole('option', { name: '挂账', exact: true })).toHaveCount(0)
+  await page.keyboard.press('Escape')
+
+  await page.locator(`[data-order-id="${order.id}"]`).click()
+  await expect(page.getByTestId('cash-expected')).toHaveText('88.00')
+  await method.click()
+  await page.getByRole('option', { name: '挂账', exact: true }).click()
+  await page.getByRole('button', { name: '结账', exact: true }).click()
+  await expect(page.locator(`[data-order-id="${order.id}"]`)).toHaveCount(0)
+
+  await page.goto(`/customers?id=${customer.id}`)
+  const debts = page.getByTestId('debts')
+  await expect(debts).toContainText('未还 ¥88.00')
+  await debts.getByRole('button', { name: '收还款' }).click()
+  const dialog = page.getByRole('dialog', { name: '收还款' })
+  await dialog.getByLabel('还款金额').fill('50.00')
+  await dialog.getByRole('button', { name: '确认收款' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(debts).toContainText('未还 ¥38.00')
+  await expect(debts).toContainText('还 ¥50.00 · 现金')
+})
+
+test('今日已结里撤单；开了授权窗口要先输登录密码', async ({ page }) => {
+  const { token, staff, item, customer } = await seed()
+  const opening = { customer_id: customer.id, gender: 'female', designated: false, items: [{ item_id: item.id, staff: [{ slot: 1, staff_id: staff.id }] }] }
+  const paid: string[] = []
+  for (let i = 0; i < 2; i++) {
+    const order = await api<{ id: string }>(token, 'open_order', opening)
+    await api(token, 'checkout_orders', { orders: [{ order_id: order.id, payments: [{ method: 'cash', amount: '88.00' }] }] })
+    paid.push(order.id)
+  }
+  const [first, second] = paid as [string, string]
+  const settings = await businessDate(token)
+  await login(page, owner.account, owner.password)
+  await page.goto('/cashier')
+  const settled = page.getByTestId('settled-orders')
+  const dialog = page.getByRole('dialog', { name: '撤单' })
+
+  const firstRow = settled.locator(`[data-settled-order="${first}"]`)
+  await firstRow.hover()
+  await firstRow.getByRole('button', { name: /^撤单/ }).click()
+  await expect(dialog.getByRole('button', { name: '确认撤单' })).toBeDisabled()
+  await dialog.getByLabel('撤单原因').fill('顾客投诉退单')
+  await dialog.getByRole('button', { name: '确认撤单' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(firstRow).toContainText('已撤')
+  await expect(firstRow).toContainText('撤单原因：顾客投诉退单')
+  await expect(firstRow.getByRole('button', { name: /^撤单/ })).toHaveCount(0)
+
+  await api(token, 'change_setting', { key: 'void_window_minutes', value: 5, effective_from: settings.business_date })
+  try {
+    const secondRow = settled.locator(`[data-settled-order="${second}"]`)
+    await secondRow.hover()
+    await secondRow.getByRole('button', { name: /^撤单/ }).click()
+    await dialog.getByLabel('撤单原因').fill('录错项目')
+    await dialog.getByRole('button', { name: '确认撤单' }).click()
+    const password = dialog.getByLabel('登录密码')
+    await expect(password).toBeVisible()
+    await expect(secondRow).not.toContainText('已撤')
+    await expect(dialog.getByRole('button', { name: '确认撤单' })).toBeDisabled()
+    await password.fill('wrong-password')
+    await dialog.getByRole('button', { name: '确认撤单' }).click()
+    await expect(page.getByText('密码不正确', { exact: true })).toBeVisible()
+    await expect(dialog).toBeVisible()
+    await expect(secondRow).not.toContainText('已撤')
+    await password.fill(owner.password)
+    await dialog.getByRole('button', { name: '确认撤单' }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect(secondRow).toContainText('已撤')
+  } finally {
+    await api(token, 'change_setting', { key: 'void_window_minutes', value: 0, effective_from: settings.business_date })
+  }
 })

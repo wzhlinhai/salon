@@ -115,6 +115,8 @@ const selectedOrder = ref<Order | null>(null)
 const orderLoading = ref(false)
 const orderGuard = useRequestGuard()
 const customerNames = ref<Record<string, string>>({})
+// 已识别顾客才能挂账，和结账规则一致；要靠 get_customer 得知，所以没有 customer.view 时不显示挂账。
+const identifiedCustomers = ref<Record<string, boolean>>({})
 const actionSaving = ref(false)
 const actionGuard = useRequestGuard()
 
@@ -140,7 +142,9 @@ async function resolveNames(orders: Order[]) {
   const results = await Promise.all(ids.map(id => api.POST('/api/ops/get_customer', { body: { id } })))
   for (const result of results) {
     const customer = result.data
-    if (customer) customerNames.value[customer.id] = customer.name || '未识别'
+    if (!customer) continue
+    customerNames.value[customer.id] = customer.name || '未识别'
+    identifiedCustomers.value[customer.id] = !customer.unidentified
   }
 }
 
@@ -432,6 +436,40 @@ async function removeItem(orderItemID: string) {
   }
 }
 
+// 同一顾客、同一营业日、同为补录或同为普通单，且每张都能改的其他挂单可以并进当前单（merge_orders 的条件）。
+const mergeableOrders = computed(() => {
+  const order = selectedOrder.value
+  if (!order) return []
+  return openOrders.value.filter(o => o.id !== order.id && o.customer_id === order.customer_id && o.business_date === order.business_date && o.backfill === order.backfill && mayChange('order.edit', o))
+})
+
+async function mergeOrders() {
+  const order = selectedOrder.value
+  const merged = mergeableOrders.value.map(o => o.id)
+  if (!order || !canOrderEdit.value || !merged.length) return
+  const current = actionGuard.next()
+  actionSaving.value = true
+  try {
+    const { data, error } = await api.POST('/api/ops/merge_orders', { body: { order_id: order.id, merged_order_ids: merged } })
+    if (!current()) return
+    if (!data) {
+      toast.add({ title: errorText(error), color: 'error' })
+      return
+    }
+    toast.add({ title: `已合并 ${merged.length} 张挂单`, color: 'success' })
+    if (selectedOrderID.value !== order.id) {
+      await loadOrders()
+      return
+    }
+    invalidatePreview()
+    await refreshSelected()
+    await loadOrders()
+    focusScan()
+  } finally {
+    if (current()) actionSaving.value = false
+  }
+}
+
 async function changeStaff(item: components['schemas']['OrderItem'], slot: number, staffID: string) {
   const order = selectedOrder.value
   if (!order || !canOrderEdit.value) return
@@ -534,7 +572,8 @@ const paymentMethods = computed(() => [
   { label: '银联', value: 'unionpay' },
   { label: '微信', value: 'wechat' },
   { label: '支付宝', value: 'alipay' },
-  ...(can('customer.view') && cardItems.value.length ? [{ label: '卡余额', value: 'card' }] : [])
+  ...(can('customer.view') && cardItems.value.length ? [{ label: '卡余额', value: 'card' }] : []),
+  ...(selectedOrder.value && identifiedCustomers.value[selectedOrder.value.customer_id] ? [{ label: '挂账', value: 'debt' }] : [])
 ])
 const groupbuyTotal = computed(() => (preview.value?.payments ?? []).filter(p => p.method === 'groupbuy').reduce((sum, p) => sum + cents(p.amount), 0))
 const countTotal = computed(() => countPayments.value.reduce((sum, p) => sum + cents(p.amount), 0))
@@ -698,6 +737,7 @@ async function checkout() {
     const paidOrder = data.items[0]
     const checkoutID = paidOrder?.checkout_id
     clearSelectedOrder()
+    settledKey.value++
     await loadOrders()
     await loadUnlinked()
     toast.add({ title: '结账成功', color: 'success' })
@@ -706,6 +746,17 @@ async function checkout() {
   } finally {
     checkoutSaving.value = false
   }
+}
+
+const settledKey = ref(0)
+
+// 撤单退回了卡余额、次数和红包：撤掉的是最近一次结账就不再能补打小票；同一顾客的当前单重新读卡并试算。
+async function onVoided(order: Order) {
+  if (lastReceipt.value?.checkout_id === order.checkout_id) lastReceipt.value = null
+  if (selectedOrder.value?.customer_id !== order.customer_id) return
+  invalidatePreview()
+  await loadCards()
+  await refreshSelected()
 }
 
 // —— 小票 ——
@@ -1072,38 +1123,42 @@ onMounted(init)
     </section>
 
     <div class="grid items-start gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
-      <section>
-        <h2 class="sec">挂单<span class="ms-1 font-normal text-dimmed">{{ openOrders.length }}</span></h2>
-        <div class="box overflow-hidden p-0" data-testid="open-orders">
-          <p v-if="ordersLoading && !openOrders.length" class="px-3 py-2.5 text-sm text-muted">加载中…</p>
-          <EmptyState v-else-if="!openOrders.length" title="暂无挂单" hint="顾客到店开单后会挂在这里，做完再结账" />
-          <button
-            v-for="order in openOrders"
-            :key="order.id"
-            type="button"
-            class="block w-full border-t border-default px-3 py-2.5 text-left first:border-t-0"
-            :class="order.id === selectedOrderID ? 'bg-selected shadow-[inset_2px_0_0_var(--ui-primary)]' : 'hover:bg-hover'"
-            :aria-current="order.id === selectedOrderID ? 'true' : undefined"
-            :data-order-id="order.id"
-            data-testid="open-order"
-            :disabled="checkoutSaving"
-            @click="selectOrder(order)"
-          >
-            <div class="flex items-center justify-between gap-2 text-sm">
-              <span class="truncate font-medium" :title="customerName(order.customer_id)">{{ customerName(order.customer_id) }}</span>
-              <span class="font-medium tabular-nums">{{ yuanFixed(order.receivable) }}</span>
-            </div>
-            <div class="mt-0.5 flex items-center gap-1.5 text-meta text-muted">
-              <span v-if="order.backfill" data-testid="backfill-badge" class="tag bg-tag-yellow">补录 {{ order.business_date }}</span>
-              <span class="truncate" :title="order.items.filter(i => !i.removed_at).map(i => i.item_name).join('、')">{{ order.items.filter(i => !i.removed_at).map(i => i.item_name).join('、') || '无项目' }}</span>
-            </div>
-          </button>
-        </div>
-        <div v-if="canCollect && lastReceipt" class="mt-2 flex items-center gap-2 px-1 text-meta text-muted" data-testid="last-receipt">
-          <span>最近一次结账 {{ yuanFixed(lastReceipt.total) }}</span>
-          <UButton size="xs" color="neutral" variant="ghost" class="ms-auto" @click="receipt = lastReceipt">补打小票</UButton>
-        </div>
-      </section>
+      <div class="space-y-4">
+        <section>
+          <h2 class="sec">挂单<span class="ms-1 font-normal text-dimmed">{{ openOrders.length }}</span></h2>
+          <div class="box overflow-hidden p-0" data-testid="open-orders">
+            <p v-if="ordersLoading && !openOrders.length" class="px-3 py-2.5 text-sm text-muted">加载中…</p>
+            <EmptyState v-else-if="!openOrders.length" title="暂无挂单" hint="顾客到店开单后会挂在这里，做完再结账" />
+            <button
+              v-for="order in openOrders"
+              :key="order.id"
+              type="button"
+              class="block w-full border-t border-default px-3 py-2.5 text-left first:border-t-0"
+              :class="order.id === selectedOrderID ? 'bg-selected shadow-[inset_2px_0_0_var(--ui-primary)]' : 'hover:bg-hover'"
+              :aria-current="order.id === selectedOrderID ? 'true' : undefined"
+              :data-order-id="order.id"
+              data-testid="open-order"
+              :disabled="checkoutSaving"
+              @click="selectOrder(order)"
+            >
+              <div class="flex items-center justify-between gap-2 text-sm">
+                <span class="truncate font-medium" :title="customerName(order.customer_id)">{{ customerName(order.customer_id) }}</span>
+                <span class="font-medium tabular-nums">{{ yuanFixed(order.receivable) }}</span>
+              </div>
+              <div class="mt-0.5 flex items-center gap-1.5 text-meta text-muted">
+                <span v-if="order.backfill" data-testid="backfill-badge" class="tag bg-tag-yellow">补录 {{ order.business_date }}</span>
+                <span class="truncate" :title="order.items.filter(i => !i.removed_at).map(i => i.item_name).join('、')">{{ order.items.filter(i => !i.removed_at).map(i => i.item_name).join('、') || '无项目' }}</span>
+              </div>
+            </button>
+          </div>
+          <div v-if="canCollect && lastReceipt" class="mt-2 flex items-center gap-2 px-1 text-meta text-muted" data-testid="last-receipt">
+            <span>最近一次结账 {{ yuanFixed(lastReceipt.total) }}</span>
+            <UButton size="xs" color="neutral" variant="ghost" class="ms-auto" @click="receipt = lastReceipt">补打小票</UButton>
+          </div>
+        </section>
+
+        <CashierSettled :refresh-key="settledKey" :customer-name="customerName" :resolve-names="resolveNames" :can-void="o => mayChange('order.void', o)" @voided="onVoided" />
+      </div>
 
       <section data-testid="selected-order">
         <h2 class="sec">
@@ -1120,6 +1175,10 @@ onMounted(init)
         <EmptyState v-else-if="!selectedOrder" class="box" icon="i-lucide-receipt" title="还没选单" hint="从左侧选一张挂单，或扫码开单" />
         <div v-else class="grid items-start gap-4" :class="canCollect ? 'xl:grid-cols-[minmax(0,1fr)_20rem]' : ''">
           <div class="space-y-4">
+            <div v-if="canOrderEdit && mergeableOrders.length" class="box flex items-center gap-2 py-2 text-sm" role="status" data-testid="merge-hint">
+              <span>这位顾客还有 {{ mergeableOrders.length }} 张同日挂单（{{ yuanFixed(money(mergeableOrders.reduce((sum, o) => sum + cents(o.receivable), 0))) }}），可以并成一张结账</span>
+              <UButton size="sm" color="neutral" variant="outline" class="ms-auto" :loading="actionSaving" :disabled="checkoutSaving" @click="mergeOrders">合并到这张</UButton>
+            </div>
             <div class="box overflow-hidden p-0">
               <div
                 v-for="item in selectedOrder.items.filter(i => !i.removed_at)"
