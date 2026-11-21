@@ -165,11 +165,19 @@ go test ./internal/dataio/...
 ### 报告口径
 
 - 本系统业绩用 `get_staff_report` 当天的 `item_performance` / `cash_performance` /
-  `card_performance`；美管加业绩用 `ep_super_operation_report_search__t3`
-  （`is_latest_copy=1`，消费时间按月份，流水单号限制为已回放单）。
+  `card_performance`；美管加月度业绩用 `business_employee_commission_monthly.item_total`
+  （整月、不去重），再扣除未回放单据的逐行总业绩。
+- 逐行流水 `ep_super_operation_report_search__t3`（`is_latest_copy=1`，消费时间按月份）
+  按流水单号分成两部分：已回放单用于现金类 / 卡扣参考；未回放单用于从月度总业绩中扣除。
+  抓取时会合并同一单、同项目、同一员工、同金额的重复行，所以总业绩偏低，未回放扣减也可能略低。
+- 如果月度表缺 `item_total` 列，或当月没有任何可解析的 `item_total`，月度对照列留空，报告说明
+  “美管加月度汇总不可用，业绩只按逐行流水对照”，提成/业绩比例回退到逐行流水总业绩。
+- 未回放单中出现、但月度员工里没有的姓名不参与扣减；报告会单独统计姓名数和金额，并在说明中提示。
 - 本系统提成用 `list_commissions` 当天 `item`/`consume`/`labor` 合计；美管加用
   `business_employee_commission_monthly.item_commission`。卡销售没有回放，
   `card_sales_performance` / `card_sales_commission` 只作参照。
+- 美管加提成/业绩比例用整月 `item_commission / item_total`；`item_total` 不可用时回退到
+  逐行流水总业绩。
 - 报告和 JSON 不含顾客姓名、手机号；单号和员工姓名可以出现。
 
 ### 已知限制
@@ -178,5 +186,8 @@ go test ./internal/dataio/...
   （`,`、`;`、`￥` 等）。出现这类数据时该单会按 `invalid_item_line` / `staff_item_mismatch`
   等失败，不会静默改价。
 - 美管加 `item_commission` 是整月合计，包含失败或 `--limit` 未回放的单；提成差额包含这些单。
+- 未回放单据的业绩扣减来自逐行流水；逐行流水抓取时会合并同单同项目同员工同金额的重复行，
+  所以扣减可能略低。
+- “员工姓名为空”的计数包含未回放单的逐行流水行。
 - `card_discount_mismatch` 是规则差异：美管加按行实收，本系统结账会对非手工改价的可打折行
   套用卡折扣；不是工具 bug。
