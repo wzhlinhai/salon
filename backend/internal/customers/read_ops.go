@@ -104,4 +104,5 @@ func Register(r *ops.Registry) {
 	registerSafety(r)
 	registerAssignments(r)
 	registerSources(r)
+	registerOverview(r)
 }

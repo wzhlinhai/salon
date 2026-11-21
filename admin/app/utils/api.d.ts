@@ -1024,6 +1024,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/get_customer_segments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 统计顾客概览六个分组的人数和提示数字 */
+        post: operations["get_customer_segments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/get_customer_source_report": {
         parameters: {
             query?: never;
@@ -1681,6 +1698,23 @@ export interface paths {
         put?: never;
         /** 查看顾客逐笔欠款和还款 */
         post: operations["list_customer_debts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_customer_overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按分组查看顾客的到店、消费、卡余额和下一次预约 */
+        post: operations["list_customer_overview"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4500,6 +4534,82 @@ export interface components {
              */
             store_id: string;
         };
+        CustomerNextAppointment: {
+            id: string;
+            staff: components["schemas"]["Ref"];
+            /** Format: date-time */
+            starts_at: string;
+        };
+        CustomerOverview: {
+            /**
+             * Format: int64
+             * @description 上述卡剩余购买次数加赠送次数
+             */
+            count_remaining: number;
+            customer: components["schemas"]["Customer"];
+            /**
+             * Format: int32
+             * @description 到店间隔：首末到店营业日之间平均多少天，至少两个不同营业日才有
+             */
+            cycle_days: number | null;
+            /**
+             * Format: int32
+             * @description 距最后一次到店的营业日数
+             */
+            days_since_last_visit: number | null;
+            /**
+             * Format: date
+             * @description 第一次结账的营业日
+             */
+            first_visit_date: string | null;
+            /**
+             * Format: date
+             * @description 最后一次结账的营业日
+             */
+            last_visit_date: string | null;
+            /** @description 最后一次到店的项目名，按项目行添加顺序 */
+            last_visit_items: string[];
+            /** @description 最后一次到店的员工，按岗位顺序 */
+            last_visit_staff: components["schemas"]["Ref"][];
+            next_appointment: components["schemas"]["CustomerNextAppointment"] | null;
+            /**
+             * Format: int32
+             * @description 超过到店间隔的天数，没有超过为空
+             */
+            overdue_days: number | null;
+            /** @description 本店发行、未退未过期的卡当前本金加赠送金 */
+            stored_balance: string;
+            /** @description 累计实收，不扣售后退款 */
+            total_spend: string;
+            /**
+             * Format: int32
+             * @description 客次
+             */
+            visit_count: number;
+        };
+        CustomerOverviewInput: {
+            /** Format: int32 */
+            limit?: number;
+            /** Format: int32 */
+            offset?: number;
+            query?: string;
+            responsible_staff_id?: string;
+            /**
+             * @description 分组：all 全部，today 今天要来，due 该回来了，balance 卡里有余额，new 30 天新客，sleeping 沉睡
+             * @enum {string}
+             */
+            segment?: "all" | "today" | "due" | "balance" | "new" | "sleeping";
+            /**
+             * @description 排序：last_visit 最近到店，overdue 超期天数，spend 累计消费，created 建档时间
+             * @enum {string}
+             */
+            sort?: "last_visit" | "overdue" | "spend" | "created";
+        };
+        CustomerOverviewList: {
+            items: components["schemas"]["CustomerOverview"][];
+            /** Format: int64 */
+            total: number;
+        };
         CustomerPhoneInput: {
             id: string;
             phone: string;
@@ -4507,6 +4617,50 @@ export interface components {
         CustomerRef: {
             id: string;
             name: string;
+        };
+        CustomerSegmentAll: {
+            /** Format: int64 */
+            count: number;
+            /** Format: int64 */
+            visited_this_month: number;
+        };
+        CustomerSegmentBalance: {
+            /** Format: int64 */
+            count: number;
+            stored_total: string;
+        };
+        CustomerSegmentDue: {
+            /** Format: int64 */
+            count: number;
+            /** Format: int64 */
+            with_balance: number;
+        };
+        CustomerSegmentNew: {
+            /** Format: int64 */
+            count: number;
+            /** Format: int64 */
+            single_visit: number;
+        };
+        CustomerSegmentSleeping: {
+            /** Format: int64 */
+            count: number;
+        };
+        CustomerSegmentToday: {
+            /** Format: int64 */
+            arrived: number;
+            /** Format: int64 */
+            count: number;
+        };
+        CustomerSegments: {
+            all: components["schemas"]["CustomerSegmentAll"];
+            balance: components["schemas"]["CustomerSegmentBalance"];
+            due: components["schemas"]["CustomerSegmentDue"];
+            new: components["schemas"]["CustomerSegmentNew"];
+            sleeping: components["schemas"]["CustomerSegmentSleeping"];
+            today: components["schemas"]["CustomerSegmentToday"];
+        };
+        CustomerSegmentsInput: {
+            responsible_staff_id?: string;
         };
         CustomerSource: {
             active: boolean;
@@ -8759,6 +8913,39 @@ export interface operations {
             };
         };
     };
+    get_customer_segments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerSegmentsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerSegments"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     get_customer_source_report: {
         parameters: {
             query?: never;
@@ -10033,6 +10220,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CustomerDebtList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_customer_overview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerOverviewInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerOverviewList"];
                 };
             };
             /** @description Error */
