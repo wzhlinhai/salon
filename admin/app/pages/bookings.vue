@@ -300,6 +300,27 @@ function openBooking(staffID: string, time: string) {
   })
 }
 
+// 顶栏「新建预约」：默认第一位在职发型师、下一个整刻钟，弹窗里都能改。
+// 今天已经打烊，或已过午夜（营业日还没切换）时，默认约到下一天开门。
+function newBooking() {
+  const first = activeStaffItems.value[0]
+  if (!first) {
+    toast.add({ title: '还没有在职的发型师', description: '先到「员工」页添加员工，再来约', color: 'warning' })
+    return
+  }
+  let minutes = openMinutes.value
+  if (day.value === businessDate.value) {
+    const now = shanghai(new Date(nowClock.value).toISOString())
+    const next = Math.max(minutes, Math.ceil(clockMinutes(now.time) / SLOT_MINUTES) * SLOT_MINUTES)
+    if (now.date !== day.value || next > closeMinutes.value - SLOT_MINUTES) day.value = addDays(day.value, 1)
+    else minutes = next
+  }
+  openBooking(first.value, clockText(minutes))
+}
+
+// 这天一个有效预约都没有时，网格上浮一句提示，告诉人从哪儿开始。
+const dayEmpty = computed(() => !loading.value && !entries.value.some(entry => entry.status !== 'cancelled'))
+
 function chooseBooking() {
   chooserOpen.value = false
   openBooking(chooser.staff_id, chooser.time)
@@ -621,6 +642,9 @@ function actorLabel(actor: Actor) {
 
 <template>
   <div class="space-y-4">
+    <PageActions>
+      <UButton size="sm" icon="i-lucide-plus" @click="newBooking">新建预约</UButton>
+    </PageActions>
     <div class="flex flex-wrap items-center gap-2">
       <div class="flex items-center">
         <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" aria-label="前一天" @click="moveDay(-1)" />
@@ -629,12 +653,15 @@ function actorLabel(actor: Actor) {
       <h2 class="text-lg font-semibold" data-testid="booking-day-title">{{ dayTitle }}</h2>
       <span v-if="day && day === businessDate" class="tag bg-tag-blue">今天</span>
       <UButton v-else color="neutral" variant="outline" size="sm" @click="goToday">今天</UButton>
-      <UInput v-model="day" type="date" size="sm" aria-label="营业日" class="ms-2 w-36" />
+      <DateInput v-model="day" size="sm" aria-label="营业日" class="ms-2 w-36" />
       <USwitch v-model="showCancelled" size="sm" label="显示已取消" class="ms-auto" />
       <p v-if="loading" class="text-sm text-muted" aria-live="polite">加载中</p>
     </div>
 
     <div v-if="businessDate" ref="grid" class="box h-[calc(100dvh-9rem)] min-h-96 overflow-auto p-0" data-booking-grid>
+      <div v-if="dayEmpty" class="pointer-events-none sticky top-16 left-0 z-30 flex h-0 justify-center">
+        <p class="h-fit rounded-md bg-white px-3 py-1.5 text-meta text-muted shadow-card" data-testid="booking-day-empty">这天还没有预约。点空白时段，或右上角「新建预约」</p>
+      </div>
       <div class="flex min-w-max">
         <div class="w-14 shrink-0">
           <div class="sticky top-0 z-20 h-8 border-b border-default bg-white" />
@@ -817,7 +844,7 @@ function actorLabel(actor: Actor) {
     <UModal v-model:open="rescheduleOpen" title="改约预约">
       <template #body>
         <div class="space-y-3">
-          <UFormField label="开始日期"><UInput v-model="reschedule.date" type="date" aria-label="改约日期" class="w-full" /></UFormField>
+          <UFormField label="开始日期"><DateInput v-model="reschedule.date" aria-label="改约日期" class="w-full" /></UFormField>
           <UFormField label="开始时间"><UInput v-model="reschedule.start_time" type="time" aria-label="开始时间" class="w-full" /></UFormField>
           <UFormField label="结束时间" help="不填保持原时长"><UInput v-model="reschedule.end_time" type="time" aria-label="结束时间" class="w-full" /></UFormField>
           <UFormField label="发型师" help="不填保持原发型师"><USelect v-model="reschedule.staff_id" :items="activeStaffItems" placeholder="保持原发型师" aria-label="发型师" class="w-full" /></UFormField>

@@ -80,7 +80,7 @@ async function saveSettlement() {
     </PageActions>
     <form class="flex flex-wrap items-center gap-2" @submit.prevent="load">
       <USelect v-model="platform" :items="platformItems" class="w-28" aria-label="平台" />
-      <UInput v-model="month" type="month" aria-label="结算月" />
+      <DateInput v-model="month" month aria-label="结算月" />
       <UButton type="submit" color="neutral" variant="outline" :loading="loading">查询</UButton>
     </form>
 

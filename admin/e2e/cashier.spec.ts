@@ -94,7 +94,7 @@ test('扫码开单、现金结账并按设置打印小票', async ({ page }) => 
   await expect(page.getByTestId('receipt-staff')).toHaveCount(0)
   await expect(page.getByTestId('receipt-customer')).toContainText('*')
   await expect.poll(() => page.evaluate(() => (window as unknown as { __receiptPrinted?: number }).__receiptPrinted ?? 0)).toBe(1)
-  await page.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.getByTestId('receipt-paper').getByRole('button', { name: '关闭', exact: true }).click()
   await expect(page.getByTestId('settled-orders').locator('[data-settled-order]', { hasText: customer.name })).toContainText('¥88.00')
   await expect(page.getByTestId('last-receipt')).toBeVisible()
   await page.getByRole('button', { name: '补打小票' }).click()
@@ -134,7 +134,7 @@ test('补录单有标记且超出补录天数被拒绝', async ({ page }) => {
   await page.getByRole('button', { name: '结账', exact: true }).click()
   await expect(page.getByTestId('receipt-backfill')).toHaveText('补录')
 
-  await page.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.getByTestId('receipt-paper').getByRole('button', { name: '关闭', exact: true }).click()
   await page.getByRole('button', { name: '开单', exact: true }).click()
   await dialog.getByRole('switch', { name: '补录' }).click()
   await dialog.getByLabel('纸单营业日').fill(tooOld)
@@ -187,7 +187,7 @@ test('团购验券、核销、立即开单、暂不开单后关联与撤销', as
   await expect(page.getByTestId('receipt-payments')).toContainText('团购')
   await expect(page.getByTestId('receipt-payments')).toContainText('门店标价 88.00')
   await expect(page.getByTestId('receipt-total')).toHaveText('88.00')
-  await page.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.getByTestId('receipt-paper').getByRole('button', { name: '关闭', exact: true }).click()
 
   await scan.fill(code2)
   await scan.press('Enter')

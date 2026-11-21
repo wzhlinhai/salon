@@ -326,7 +326,7 @@ function changeSource(o: OverrideForm) {
         <p v-if="loading">加载中</p>
         <p v-if="categoryLoading">加载类别中</p>
         <div v-if="ready" class="space-y-5">
-          <UFormField label="生效日期" help="不能早于今天，也不能早于最新版本；同一天保存多次，取最后保存的。"><UInput v-model="effectiveFrom" type="date" :min="minDate" /></UFormField>
+          <UFormField label="生效日期" help="不能早于今天，也不能早于最新版本；同一天保存多次，取最后保存的。"><DateInput v-model="effectiveFrom" :min="minDate" /></UFormField>
           <section v-for="rule in rules" :key="rule.source" :data-rule="rule.source" class="space-y-3 rounded border border-default p-4">
             <USwitch v-model="rule.enabled" :label="`按${sources.find(s => s.value === rule.source)?.label}计提成`" @update:model-value="toggleRule(rule)" />
             <template v-if="rule.enabled">

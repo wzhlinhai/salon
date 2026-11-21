@@ -471,7 +471,7 @@ onMounted(cardLoad)
           <UFormField :label="`${row.name}赠送次数`"><UInput v-model="row.gift" type="number" :min="0" /></UFormField>
         </div>
         <UCheckbox v-model="adjustUnlimited" label="不限" />
-        <UFormField v-if="!adjustUnlimited" label="有效期"><UInput v-model="adjustExpires" type="date" class="w-full" /></UFormField>
+        <UFormField v-if="!adjustUnlimited" label="有效期"><DateInput v-model="adjustExpires" class="w-full" /></UFormField>
         <UFormField label="卡类型"><USelect v-model="adjustType" :items="adjustTypes.map(t => ({ label: t.name, value: t.id }))" class="w-full" /></UFormField>
         <UFormField label="原因" required><UTextarea v-model="adjustReason" :maxlength="200" class="w-full" /></UFormField>
       </div>

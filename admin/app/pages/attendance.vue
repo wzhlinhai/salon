@@ -279,7 +279,7 @@ onMounted(async () => {
 
     <section v-if="tab === 'monthly'" class="space-y-4">
       <div class="flex flex-wrap items-center gap-3">
-        <UInput v-model="month" type="month" :max="currentMonth" aria-label="月份" />
+        <DateInput v-model="month" month :max="currentMonth" aria-label="月份" />
         <span class="text-sm text-muted">点一行看这个人每天的打卡</span>
       </div>
       <PageActions>
@@ -358,7 +358,7 @@ onMounted(async () => {
       <template #body>
         <div class="space-y-3">
           <UFormField label="员工"><USelect v-model="punchForm.staff_id" :items="addPunchStaffItems" :disabled="!!addPunchTarget" aria-label="员工" class="w-full" /></UFormField>
-          <UFormField label="日期" help="按门店时间填写，不能晚于现在"><UInput v-model="punchForm.date" type="date" :max="calendarToday" class="w-full" /></UFormField>
+          <UFormField label="日期" help="按门店时间填写，不能晚于现在"><DateInput v-model="punchForm.date" :max="calendarToday" class="w-full" /></UFormField>
           <UFormField label="时间"><UInput v-model="punchForm.time" type="time" class="w-full" /></UFormField>
           <UFormField label="原因"><UInput v-model="punchForm.reason" :maxlength="100" class="w-full" /></UFormField>
           <p class="text-sm text-muted">在营业日结束时间前补卡，会算到前一个营业日。</p>
@@ -394,7 +394,7 @@ onMounted(async () => {
         <div class="space-y-3">
           <p>当前班次：{{ currentShiftText }}</p>
           <UFormField label="班次"><USelect v-model="assign.shift_id" :items="activeShiftItems" placeholder="选择班次" aria-label="班次" class="w-full" /></UFormField>
-          <UFormField label="生效日期" :help="`不能早于今天（${today}）`"><UInput v-model="assign.effective_from" type="date" :min="today" class="w-full" /></UFormField>
+          <UFormField label="生效日期" :help="`不能早于今天（${today}）`"><DateInput v-model="assign.effective_from" :min="today" class="w-full" /></UFormField>
           <p class="text-sm text-muted">从这一天起执行，之前的日子仍按原来的班次计算</p>
         </div>
       </template>

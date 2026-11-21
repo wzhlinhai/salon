@@ -15,7 +15,7 @@ test('老板安排明天起的营业日结束时间，并在修改记录里看�
   const card = page.locator('[data-setting=business_day_end]')
   await card.getByRole('button', { name: '修改' }).click()
 
-  const tomorrow = await page.locator('input[type=date]').getAttribute('min')
+  const tomorrow = await page.getByLabel('生效日期').getAttribute('min')
     .then(d => new Date(Date.parse(d! + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10))
   await page.getByLabel('时间', { exact: true }).fill('02:00')
   await page.getByLabel('生效日期').fill(tomorrow)
@@ -62,7 +62,7 @@ test('设置页迟到的旧 get_settings 不覆盖新结果', async ({ page }) =
     }
   })
   await card.getByRole('button', { name: '修改', exact: true }).click()
-  const tomorrow = await page.locator('input[type=date]').getAttribute('min')
+  const tomorrow = await page.getByLabel('生效日期').getAttribute('min')
     .then(d => new Date(Date.parse(d! + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10))
   await page.getByLabel('时间', { exact: true }).fill('01:15')
   await page.getByLabel('生效日期').fill(tomorrow)
@@ -135,7 +135,7 @@ test('设置旧保存只刷新列表，不关闭另一个设置窗口', async ({
   await page.goto('/settings')
   const card = page.locator('[data-setting=business_day_end]')
   await card.getByRole('button', { name: '修改', exact: true }).click()
-  const tomorrow = await page.locator('input[type=date]').getAttribute('min')
+  const tomorrow = await page.getByLabel('生效日期').getAttribute('min')
     .then(d => new Date(Date.parse(d! + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10))
   let release!: () => void
   const blocked = new Promise<void>((resolve) => {
@@ -155,7 +155,7 @@ test('设置旧保存只刷新列表，不关闭另一个设置窗口', async ({
   await page.getByLabel('生效日期', { exact: true }).fill(tomorrow)
   await page.getByRole('button', { name: '保存', exact: true }).click()
   await pending
-  await page.getByRole('dialog', { name: '修改营业日结束时间', exact: true }).getByRole('button', { name: 'Close', exact: true }).click()
+  await page.getByRole('dialog', { name: '修改营业日结束时间', exact: true }).getByRole('button', { name: '关闭', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '修改营业日结束时间', exact: true })).toHaveCount(0)
   await page.locator('[data-setting=business_hours]').getByRole('button', { name: '修改', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '修改营业时段', exact: true })
@@ -175,7 +175,7 @@ test('修改会员价取价和充值积分', async ({ page }) => {
   await choice.getByRole('button', { name: '修改', exact: true }).click()
   await page.getByRole('combobox', { name: '做法', exact: true }).click()
   await page.getByRole('option', { name: '取较低价', exact: true }).click()
-  const tomorrow = await page.locator('input[type=date]').getAttribute('min')
+  const tomorrow = await page.getByLabel('生效日期').getAttribute('min')
     .then(d => new Date(Date.parse(d! + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10))
   await page.getByLabel('生效日期', { exact: true }).fill(tomorrow)
   await page.getByRole('button', { name: '保存', exact: true }).click()
@@ -235,7 +235,7 @@ test('小票抬头用文字编辑并显示', async ({ page }) => {
   const input = dialog.getByLabel('小票抬头', { exact: true })
   await expect(input).toHaveAttribute('maxlength', '60')
   await input.fill('本店小票')
-  const tomorrow = await page.locator('input[type=date]').getAttribute('min')
+  const tomorrow = await page.getByLabel('生效日期').getAttribute('min')
     .then(d => new Date(Date.parse(d! + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10))
   await page.getByLabel('生效日期', { exact: true }).fill(tomorrow)
   await page.getByRole('button', { name: '保存', exact: true }).click()
