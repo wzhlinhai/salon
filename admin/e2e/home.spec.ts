@@ -81,12 +81,13 @@ test('店长默认是店长首页，显示今日经营指标', async ({ page }) 
   const metrics = page.getByTestId('home-manager-metrics')
   await expect(metrics).toBeVisible()
   await expect(metrics).toContainText('实收')
-  await expect(metrics).toContainText('单数')
+  await expect(metrics).toContainText('办卡充值')
   await expect(metrics).toContainText('客数')
   const guests = page.locator('[data-metric="客数"]')
   await expect(guests.getByTestId('metric-value')).toHaveText(/^\d+$/)
   await expect(guests.getByTestId('metric-value')).not.toHaveText(/\.\d/)
-  await expect(guests.getByTestId('metric-compare')).toHaveText(/比上周同日|上周同日无数据/)
+  // 有上周同日数据时写涨跌和"较上周同日"，没有时只写口径；两种都要带上单数。
+  await expect(guests.getByTestId('metric-compare')).toHaveText(/^\s*([↑↓] \d+%\s+较上周同日 · )?共 \d+ 单\s*$/)
 })
 
 test('老板有多个首页，选择前台首页后刷新仍保留', async ({ page }) => {
@@ -94,12 +95,11 @@ test('老板有多个首页，选择前台首页后刷新仍保留', async ({ pa
   await expect(page.getByTestId('home-manager-metrics')).toBeVisible()
   const switcher = page.getByTestId('home-switcher')
   await expect(switcher).toBeVisible()
-  await switcher.click()
-  await page.getByRole('option', { name: '前台首页' }).click()
+  await switcher.getByRole('radio', { name: '前台首页' }).click()
   await expect(page.getByTestId('home-front-actions')).toBeVisible()
   await page.reload()
   await expect(page.getByTestId('home-front-actions')).toBeVisible()
-  await expect(page.getByTestId('home-switcher')).toContainText('前台首页')
+  await expect(page.getByTestId('home-switcher').getByRole('radio', { name: '前台首页' })).toHaveAttribute('aria-checked', 'true')
 })
 
 test('前台首页的推荐说法点一下就交给 AI', async ({ page }) => {

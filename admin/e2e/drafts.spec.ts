@@ -34,7 +34,7 @@ test('待确认：卡片写清发起人、原话和 AI 理解的结果，确认�
   await login(page, owner.account, owner.password)
   const before = await pendingCount(token)
   const badge = page.getByTestId('drafts-nav')
-  await expect(badge).toHaveText(new RegExp(`^\\s*待确认\\s*${before}\\s*$`))
+  await expect(badge).toHaveText(new RegExp(`^\\s*◉?\\s*待确认\\s*${before}\\s*$`))
 
   await badge.getByText('待确认').click()
   const row = card(page, draft.id)
@@ -45,7 +45,7 @@ test('待确认：卡片写清发起人、原话和 AI 理解的结果，确认�
   await row.getByTestId('draft-confirm').click()
   await expect(page.getByText('已确认').first()).toBeVisible()
   await expect(row).toHaveCount(0)
-  await expect(badge).toHaveText(new RegExp(`^\\s*待确认\\s*${before - 1 || ''}\\s*$`))
+  await expect(badge).toHaveText(new RegExp(`^\\s*◉?\\s*待确认\\s*${before - 1 || ''}\\s*$`))
 
   const { items: categories } = await api<{ items: { name: string }[] }>(token, 'list_item_categories', {})
   expect(categories.map(c => c.name)).toContain(name)
@@ -91,7 +91,8 @@ test('首页指令框把话交给 AI，回复里的草稿可在面板里直接�
   await page.getByTestId('ai-command').press('Enter')
   const panel = aiPanel(page)
   await expect(panel.getByText('好的，已起草，请确认。')).toBeVisible()
-  const row = card(page, draft.id)
+  // 首页"待你确认"里也有同一张卡，这里只点面板里的。
+  const row = panel.locator(`[data-testid="draft-card"][data-draft-id="${draft.id}"]`)
   await row.getByTestId('draft-confirm').click()
   await expect(row.getByText('已确认')).toBeVisible()
   await expect(row.getByTestId('draft-confirm')).toHaveCount(0)
@@ -143,7 +144,7 @@ test('修改：在面板里说怎么改，发给 AI 的话带上草稿编号；�
 test('Ctrl K：输入页面名回车仍打开页面，说一句话回车交给 AI', async ({ page }) => {
   await page.route('**/api/ai/chat', route => route.fulfill({ json: { reply: '收到。', sources: [], drafts: [] } }))
   await login(page, owner.account, owner.password)
-  const input = page.getByPlaceholder('搜索页面、顾客，或吩咐 AI')
+  const input = page.getByPlaceholder('说一句要做的事，或搜索顾客、页面…')
 
   await page.keyboard.press('Control+k')
   await input.fill('收银')
@@ -157,8 +158,10 @@ test('Ctrl K：输入页面名回车仍打开页面，说一句话回车交给 A
   await page.keyboard.press('Control+k')
   await input.fill('明天下午谁有空')
   await expect(page.locator('[role=option][data-highlighted]')).toHaveText('吩咐 AI：明天下午谁有空')
-  await input.press('Enter')
-  await expect(aiPanel(page).getByText('收到。')).toBeVisible()
+  await expect(async () => {
+    if (await input.isVisible()) await input.press('Enter')
+    await expect(aiPanel(page).getByText('收到。')).toBeVisible({ timeout: 1000 })
+  }).toPass()
 })
 
 test('换人登录后看不到上一个人的 AI 对话', async ({ page }) => {
