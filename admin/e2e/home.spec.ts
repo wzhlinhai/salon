@@ -4,9 +4,9 @@ import { api, apiLogin, hire, login, owner, uniqueSuffix } from './helpers'
 async function seedCheckout() {
   const token = await apiLogin(owner.account, owner.password)
   const suffix = uniqueSuffix()
-  const position = await api <{ id: string }> (token, 'create_position', { name: `首页岗位${suffix}` })
+  const position = await api<{ id: string }>(token, 'create_position', { name: `首页岗位${suffix}` })
   const stylist = await hire('发型师')
-  const item = await api <{ id: string }> (token, 'create_item', {
+  const item = await api<{ id: string }>(token, 'create_item', {
     name: `首页项目${suffix}`,
     price: '88.00',
     discountable: true,
@@ -15,11 +15,11 @@ async function seedCheckout() {
     positions: [{ position_id: position.id, required: true }],
     level_prices: []
   })
-  const created = await api <{ customer: { id: string } }> (token, 'create_customer', {
+  const created = await api<{ customer: { id: string } }>(token, 'create_customer', {
     name: `首页顾客${suffix}`,
     phone: `136${String(Date.now()).slice(-8)}`
   })
-  const order = await api <{ id: string, net: string }> (token, 'open_order', {
+  const order = await api<{ id: string, net: string }>(token, 'open_order', {
     customer_id: created.customer.id,
     gender: 'female',
     designated: false,

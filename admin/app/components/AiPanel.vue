@@ -2,8 +2,7 @@
 import { MAX_MESSAGE } from '~/composables/useAiChat'
 
 // 右侧滑出的 AI 对话面板（side peek）。写操作只生成草稿，在这里或"待确认"里由人确认。
-const { open, entries, sending, editing, send, reset } = useAiChat()
-const text = ref('')
+const { open, entries, sending, editing, input: text, send, reset } = useAiChat()
 const scroller = ref<HTMLElement | null>(null)
 const input = useTemplateRef<{ textareaRef?: HTMLTextAreaElement }>('input')
 
@@ -16,7 +15,8 @@ async function submit() {
 
 function onKeydown(event: KeyboardEvent) {
   // 回车发送，Shift+回车换行；输入法选字时的回车不发送。
-  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return
+  // Safari 选字上屏的回车在 compositionend 之后才到，isComposing 已是 false，要再看 keyCode 229。
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.keyCode === 229) return
   event.preventDefault()
   void submit()
 }

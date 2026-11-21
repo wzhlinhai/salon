@@ -2,7 +2,8 @@
 import type { Draft, DraftView } from '~/composables/useDrafts'
 
 // 一张 AI 草稿：谁在什么时候说了什么、AI 理解成什么，以及确认、修改、拒绝。
-// 对话面板里的草稿是回复那一刻的快照，状态和版本以收件箱里的最新一份为准。
+// 卡片显示的内容和确认时带的版本都取自传进来的这一份（人看到的就是要确认的）；
+// 状态取收件箱里的最新一份。草稿在别处被改过时不让在这张旧卡片上确认，免得确认了没见过的内容。
 const props = defineProps<{ draft: Draft | DraftView }>()
 const emit = defineEmits<{ open: [id: string] }>()
 
@@ -13,6 +14,7 @@ const { editDraft } = useAiChat()
 
 const current = computed<Draft>(() => drafts.value.find(row => row.id === props.draft.id) ?? props.draft)
 const isPending = computed(() => current.value.status === 'pending')
+const stale = computed(() => isPending.value && current.value.version !== props.draft.version)
 
 interface PreviewLine { item_name: string, price: string, staff: { staff_name: string }[] }
 
@@ -28,29 +30,21 @@ const statusBadge = computed(() => {
     case 'confirmed_modified': return { label: '改后确认', color: 'success' as const }
     case 'rejected': return { label: '已拒绝', color: 'neutral' as const }
     case 'expired': return { label: '已过期', color: 'neutral' as const }
-    default: return null
+    default: return { label: '待确认', color: 'warning' as const }
   }
 })
 
-function when(value: string) {
-  const date = new Date(value)
-  const time = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
-  const today = new Date()
-  if (date.toDateString() === today.toDateString()) return time
-  return `${date.getMonth() + 1} 月 ${date.getDate()} 日 ${time}`
-}
-
 function yuan(value: string) {
-  return `¥${Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`
+  return `¥${Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 const confirming = ref(false)
 
 async function confirm() {
-  if (confirming.value) return
+  if (confirming.value || stale.value) return
   confirming.value = true
   try {
-    const { data, error } = await api.POST('/api/ops/confirm_draft', { body: { id: current.value.id, version: current.value.version } })
+    const { data, error } = await api.POST('/api/ops/confirm_draft', { body: { id: props.draft.id, version: props.draft.version } })
     if (!data) {
       toast.add({ title: errorText(error), color: 'error' })
       return
@@ -81,6 +75,8 @@ async function saveReject() {
     if (!still()) return
     if (!data) {
       toast.add({ title: errorText(error), color: 'error' })
+      // 草稿可能已被别人处理，刷新后卡片显示真实状态。
+      void load()
       return
     }
     rejectOpen.value = false
@@ -91,28 +87,28 @@ async function saveReject() {
 </script>
 
 <template>
-  <article data-testid="draft-card" :data-draft-id="current.id" class="space-y-2 rounded-lg border border-default p-4">
+  <article data-testid="draft-card" :data-draft-id="current.id" class="space-y-2 rounded-xl border border-default p-4">
     <header class="flex items-center gap-1.5 text-xs text-muted">
       <UIcon name="i-lucide-sparkles" class="size-3.5 shrink-0 text-ai" />
       <span class="font-medium text-ai">AI 起草</span>
       <span>·</span>
       <span data-testid="draft-initiator" class="truncate">{{ staffName(current.initiator) }}</span>
       <span>·</span>
-      <span class="tabular-nums">{{ when(current.created_at) }}</span>
+      <span class="tabular-nums">{{ formatStamp(props.draft.created_at) }}</span>
       <UBadge v-if="statusBadge" :color="statusBadge.color" variant="subtle" size="sm" class="ms-auto">
         {{ statusBadge.label }}
       </UBadge>
     </header>
 
-    <p v-if="current.utterance" data-testid="draft-utterance" class="text-sm text-muted text-pretty">“{{ current.utterance }}”</p>
+    <p v-if="props.draft.utterance" data-testid="draft-utterance" class="text-sm text-muted text-pretty">“{{ props.draft.utterance }}”</p>
 
     <button
       type="button"
       data-testid="draft-summary"
       class="block w-full text-left text-sm font-medium text-pretty hover:underline"
-      @click="emit('open', current.id)"
+      @click="emit('open', props.draft.id)"
     >
-      {{ current.summary }}
+      {{ props.draft.summary }}
     </button>
 
     <ul v-if="previewLines.length" class="space-y-0.5 text-sm">
@@ -127,13 +123,16 @@ async function saveReject() {
       拒绝原因：{{ current.reject_reason }}
     </p>
 
-    <footer v-if="isPending" class="flex items-center gap-2 pt-1">
+    <p v-if="stale" class="text-sm text-warning" data-testid="draft-stale">
+      这张草稿已经改过，<ULink to="/drafts" class="underline">到待确认里看最新内容</ULink>再确认。
+    </p>
+    <footer v-else-if="isPending" class="flex items-center gap-2 pt-1">
       <UButton color="neutral" size="sm" :loading="confirming" data-testid="draft-confirm" @click="confirm">确认</UButton>
-      <UButton color="neutral" variant="outline" size="sm" data-testid="draft-modify" @click="editDraft(current)">修改</UButton>
+      <UButton color="neutral" variant="outline" size="sm" data-testid="draft-modify" @click="editDraft(props.draft)">修改</UButton>
       <UButton color="neutral" variant="ghost" size="sm" data-testid="draft-reject" @click="beginReject">拒绝</UButton>
     </footer>
 
-    <UModal v-model:open="rejectOpen" title="拒绝草稿" :description="current.summary">
+    <UModal v-model:open="rejectOpen" title="拒绝草稿" :description="props.draft.summary">
       <template #body>
         <UFormField label="原因" required>
           <UTextarea v-model="rejectReason" :rows="2" autofocus class="w-full" placeholder="例如：顾客改约了" data-testid="reject-reason" />

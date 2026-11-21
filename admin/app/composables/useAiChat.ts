@@ -29,13 +29,17 @@ export function useAiChat() {
   const entries = useState<ChatEntry[]>('ai-entries', () => [])
   const sending = useState<boolean>('ai-sending', () => false)
   const editing = useState<DraftEditing | null>('ai-editing', () => null)
+  // 面板输入框里的字。AI 还在回上一句时，从别处说的话先放在这里，不丢。
+  const input = useState<string>('ai-input', () => '')
   // 发出时记下号码；换人登录或清空对话会换号，旧回复到达时丢弃。
   const generation = useState<number>('ai-generation', () => 0)
 
   function history(): { role: 'user' | 'assistant', content: string }[] {
     const sent = entries.value
       .filter(entry => !entry.failed)
-      .map(entry => ({ role: entry.role, content: entry.sent ?? entry.content }))
+      // 后端要求每条非空且不超过 4000 字；AI 偶尔回空话或长清单，不能让它卡住后面的对话。
+      .map(entry => ({ role: entry.role, content: (entry.sent ?? entry.content).trim().slice(0, MAX_MESSAGE) }))
+      .filter(entry => entry.content)
       .slice(-MAX_HISTORY)
     // 截断后从用户的话开始，免得第一条是没有上文的 AI 回复。
     while (sent.length && sent[0]!.role !== 'user') sent.shift()
@@ -63,6 +67,8 @@ export function useAiChat() {
         // 失败的那句话也不进历史，重说一遍即可。
         const asked = entries.value.at(-2)
         if (asked) asked.failed = true
+        // 修改草稿那句没发成，重说时仍然是在改这张草稿。
+        if (target && !editing.value) editing.value = target
         return
       }
       entries.value.push({ role: 'assistant', content: data.reply, drafts: data.drafts })
@@ -72,10 +78,15 @@ export function useAiChat() {
     }
   }
 
-  // 打开面板并说一句话；没有话时只打开面板。
+  // 打开面板并说一句话；没有话时只打开面板。AI 还在回上一句时，这句话放进输入框等人再发。
   function ask(text = '') {
     open.value = true
-    if (text.trim()) void send(text)
+    if (!text.trim()) return
+    if (sending.value) {
+      input.value = text
+      return
+    }
+    void send(text)
   }
 
   // 草稿卡片上的"修改"：打开面板，下一句话用来修改这张草稿。
@@ -88,9 +99,10 @@ export function useAiChat() {
     generation.value++
     entries.value = []
     editing.value = null
+    input.value = ''
     sending.value = false
     open.value = false
   }
 
-  return { open, entries, sending, editing, send, ask, editDraft, reset }
+  return { open, entries, sending, editing, input, send, ask, editDraft, reset }
 }

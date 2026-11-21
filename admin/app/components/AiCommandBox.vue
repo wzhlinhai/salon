@@ -9,7 +9,8 @@ const { ask } = useAiChat()
 const text = ref('')
 
 function submit(event: KeyboardEvent) {
-  if (event.isComposing || !text.value.trim()) return
+  // Safari 选字上屏的回车 isComposing 为 false，要再看 keyCode 229。
+  if (event.isComposing || event.keyCode === 229 || !text.value.trim()) return
   ask(text.value)
   text.value = ''
 }

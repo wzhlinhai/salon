@@ -39,9 +39,13 @@ const detail = ref<DraftDetail | null>(null)
 const detailGuard = useRequestGuard()
 
 async function openDetail(id: string) {
-  const current = detailGuard.next()
   detail.value = null
   detailOpen.value = true
+  await loadDetail(id)
+}
+
+async function loadDetail(id: string) {
+  const current = detailGuard.next()
   const { data, error } = await api.POST('/api/ops/get_draft', { body: { id } })
   if (!current()) return
   if (!data) {
@@ -56,6 +60,14 @@ watch(detailOpen, (value) => {
   if (!value) detailGuard.invalidate()
 })
 
+// 列表刷新后，打开着的草稿若被改过或已处理，重取详情：预览和记录跟上，也不会按旧版本确认。
+watch(drafts, (rows) => {
+  const shownDetail = detail.value
+  if (!detailOpen.value || !shownDetail) return
+  const latest = rows.find(row => row.id === shownDetail.id)
+  if (latest && (latest.version !== shownDetail.version || latest.status !== shownDetail.status)) void loadDetail(shownDetail.id)
+})
+
 const eventLabels: Record<string, string> = {
   created: '起草',
   modified: '修改',
@@ -64,16 +76,11 @@ const eventLabels: Record<string, string> = {
   expired: '过期'
 }
 
-function stamp(value: string) {
-  const date = new Date(value)
-  return `${date.getMonth() + 1} 月 ${date.getDate()} 日 ${date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}`
-}
-
-onMounted(load)
+onMounted(() => load())
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-3xl space-y-4">
+  <div class="w-full space-y-4">
     <UTabs v-model="tab" :items="tabs" :content="false" variant="link" color="neutral" data-testid="drafts-tabs" />
 
     <p v-if="!shown.length" class="py-8 text-center text-sm text-muted" data-testid="drafts-empty">{{ emptyText }}</p>
@@ -91,7 +98,7 @@ onMounted(load)
               <li v-for="event in detail.events" :key="event.id" class="flex gap-3 py-2">
                 <span class="w-10 shrink-0">{{ eventLabels[event.kind] ?? event.kind }}</span>
                 <span class="truncate text-muted">{{ staffName(event.actor_id) }}</span>
-                <span class="ms-auto shrink-0 text-muted tabular-nums">{{ stamp(event.at) }}</span>
+                <span class="ms-auto shrink-0 text-muted tabular-nums">{{ formatStamp(event.at) }}</span>
               </li>
             </ul>
           </section>

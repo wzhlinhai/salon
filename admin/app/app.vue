@@ -73,7 +73,7 @@ watch(() => me.value?.staff.id, (staffId) => {
 let draftTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   draftTimer = setInterval(() => {
-    if (me.value && document.visibilityState === 'visible') void loadDrafts()
+    if (me.value && document.visibilityState === 'visible') void loadDrafts({ quiet: true })
   }, 60_000)
 })
 onBeforeUnmount(() => clearInterval(draftTimer))

@@ -25,7 +25,8 @@ export function useDrafts() {
   })
   const pending = computed(() => drafts.value.filter(draft => draft.status === 'pending'))
 
-  async function load() {
+  // quiet：后台定时刷新失败时不弹提示，免得断网时每分钟弹一次。
+  async function load(options: { quiet?: boolean } = {}) {
     const staffId = me.value?.staff.id
     if (!staffId) return
     const current = ++generation.value
@@ -36,7 +37,7 @@ export function useDrafts() {
     if (current !== generation.value || me.value?.staff.id !== staffId) return
     if (staff.data) names.value = Object.fromEntries(staff.data.staff.map(row => [row.id, row.name]))
     if (!list.data) {
-      toast.add({ title: errorText(list.error), color: 'error' })
+      if (!options.quiet) toast.add({ title: errorText(list.error), color: 'error' })
       return
     }
     state.value = { staffId, drafts: list.data.drafts }
