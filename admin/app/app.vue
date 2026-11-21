@@ -9,6 +9,9 @@ const { active: homeSwitcherActive, options: homeSwitcherOptions, selected: home
 const isLogin = computed(() => route.path === '/login')
 const pageTitle = computed(() => String(route.meta.title || '首页'))
 
+const { pending: pendingDrafts, load: loadDrafts, reset: resetDrafts } = useDrafts()
+const { ask: askAi, reset: resetAi } = useAiChat()
+
 const visibleNav = computed(() => navItems.filter(item => !item.permission || can(item.permission)))
 
 const menuItems = computed(() => {
@@ -45,35 +48,55 @@ async function searchCustomers(query: string) {
 watch(searchTerm, (value) => {
   clearTimeout(searchTimer)
   const query = value.trim()
-  if (!can('customer.view') || !query) {
-    customerGuard.invalidate()
-    customerResults.value = []
-    return
-  }
+  // 换了词就清掉上一词的顾客结果，免得快速回车选中旧结果。
+  customerGuard.invalidate()
+  customerResults.value = []
+  if (!can('customer.view') || !query) return
   searchTimer = setTimeout(() => searchCustomers(query), 300)
 })
 
 onBeforeUnmount(() => clearTimeout(searchTimer))
 
-// 换人登录时清掉上一个人的搜索词和顾客结果。
-watch(() => me.value?.staff.id, () => {
+// 换人登录时清掉上一个人的搜索词、顾客结果、AI 对话和草稿，再取新登录者的草稿。
+watch(() => me.value?.staff.id, (staffId) => {
   clearTimeout(searchTimer)
   customerGuard.invalidate()
   searchTerm.value = ''
   customerResults.value = []
   searchOpen.value = false
+  resetAi()
+  resetDrafts()
+  if (staffId) void loadDrafts()
+}, { immediate: true })
+
+// 别人起草的也要让我看到：页面开着时每分钟刷新一次待确认计数。
+let draftTimer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  draftTimer = setInterval(() => {
+    if (me.value && document.visibilityState === 'visible') void loadDrafts()
+  }, 60_000)
 })
+onBeforeUnmount(() => clearInterval(draftTimer))
+
+const draftsNav = computed(() => [{
+  label: '待确认',
+  icon: 'i-lucide-inbox',
+  to: '/drafts',
+  badge: pendingDrafts.value.length
+    ? { label: String(pendingDrafts.value.length), color: 'warning' as const, variant: 'subtle' as const }
+    : undefined
+}])
 
 const searchGroups = computed(() => {
   const groups: {
     id: string
     label: string
     ignoreFilter?: boolean
-    items: { label: string, icon: string, onSelect: () => void }[]
+    items: { label: string, icon: string, ui?: { itemLeadingIcon: string }, onSelect: () => void }[]
   }[] = [{
     id: 'pages',
     label: '页面',
-    items: visibleNav.value.map(item => ({
+    items: [{ label: '待确认', icon: 'i-lucide-inbox', to: '/drafts' }, ...visibleNav.value].map(item => ({
       label: item.label,
       icon: item.icon,
       onSelect: () => navigateTo(item.to)
@@ -92,6 +115,25 @@ const searchGroups = computed(() => {
       }))
     })
   }
+  const said = searchTerm.value.trim()
+  if (said) {
+    // 放在最后：输入页面名或顾客名时回车仍然打开搜索结果，说一整句话时只剩这一项。
+    groups.push({
+      id: 'ai',
+      label: 'AI',
+      ignoreFilter: true,
+      items: [{
+        label: `吩咐 AI：${said}`,
+        icon: 'i-lucide-sparkles',
+        ui: { itemLeadingIcon: 'text-ai!' },
+        onSelect: () => {
+          searchOpen.value = false
+          searchTerm.value = ''
+          askAi(said)
+        }
+      }]
+    })
+  }
   return groups
 })
 </script>
@@ -99,8 +141,9 @@ const searchGroups = computed(() => {
 <template>
   <UApp :toaster="{ position: 'bottom-right' }">
     <NuxtPage v-if="isLogin" />
-    <UDashboardGroup v-else>
-      <UDashboardSidebar collapsible :collapsed-size="9" class="bg-muted">
+    <!-- 侧栏按 rem 固定宽度，窄屏不被按比例挤窄；换存储键，丢掉旧的百分比宽度。 -->
+    <UDashboardGroup v-else unit="rem" storage-key="salon-dashboard">
+      <UDashboardSidebar collapsible :default-size="15" :min-size="13" :max-size="20" :collapsed-size="6" class="bg-muted">
         <template #header="{ collapsed }">
           <div class="flex w-full min-w-0 items-center" :class="collapsed ? 'justify-center gap-1' : 'gap-2'">
             <UIcon name="i-lucide-store" class="size-5 shrink-0" />
@@ -116,9 +159,16 @@ const searchGroups = computed(() => {
         <template #default="{ collapsed }">
           <UDashboardSearchButton
             :collapsed="collapsed"
-            label="搜索"
-            :ui="{ trailing: 'lg:hidden xl:flex' }"
+            label="搜索或吩咐 AI"
+            :ui="{ trailing: 'lg:hidden 2xl:flex' }"
             class="w-full"
+          />
+          <UNavigationMenu
+            :items="draftsNav"
+            orientation="vertical"
+            :collapsed="collapsed"
+            tooltip
+            data-testid="drafts-nav"
           />
           <UNavigationMenu
             :items="menuItems"
@@ -170,10 +220,12 @@ const searchGroups = computed(() => {
         v-model:search-term="searchTerm"
         :groups="searchGroups"
         :color-mode="false"
-        title="搜索"
-        placeholder="搜索页面或顾客"
+        title="搜索或吩咐 AI"
+        placeholder="搜索页面、顾客，或吩咐 AI"
         :ui="{ label: 'font-medium text-muted' }"
       />
+
+      <AiPanel />
     </UDashboardGroup>
   </UApp>
 </template>

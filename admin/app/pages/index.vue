@@ -213,9 +213,11 @@ onMounted(async () => {
         <UButton v-if="!todayClockIn" data-testid="home-punch" :loading="punching" @click="punch">打卡</UButton>
         <p v-else data-testid="home-punch-time" class="text-sm text-muted">已打卡 {{ clockTime(todayClockIn) }}</p>
       </div>
+      <AiCommandBox placeholder="吩咐 AI，例如“给王女士开单剪发”“帮我占 5 点到 6 点”" />
     </template>
 
     <template v-else-if="selectedHome === 'front'">
+      <AiCommandBox />
       <div data-testid="home-front-actions" class="flex flex-wrap items-center gap-2">
         <UButton v-if="can('order.create')" to="/cashier?open=walkin">散客开单</UButton>
         <UButton v-if="can('booking.manage')" to="/bookings" color="neutral" variant="outline">新预约</UButton>
@@ -225,6 +227,7 @@ onMounted(async () => {
     </template>
 
     <template v-else-if="selectedHome === 'manager'">
+      <AiCommandBox placeholder="吩咐 AI，例如“今天实收比上周同日少了多少”" />
       <div data-testid="home-manager-metrics" class="grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <div v-for="metric in metrics" :key="metric.label" :data-metric="metric.label" class="rounded-xl border border-default p-4">
           <p class="text-sm text-muted">{{ metric.label }}</p>
