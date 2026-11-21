@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'settings.manage', title: '卡类型' })
+definePageMeta({ permission: 'settings.manage', title: '卡类型', description: '储值卡、次卡的面额、赠送和折扣。' })
 type CardType = components['schemas']['CardType']
 const api = useApi()
 const toast = useToast()
@@ -132,14 +132,14 @@ async function saveRule() {
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
     <PageActions>
       <UButton size="sm" icon="i-lucide-plus" @click="edit(null)">新建卡类型</UButton>
     </PageActions>
     <section aria-label="卡类型">
       <div class="sec">卡类型<span class="ms-2 font-normal text-dimmed">{{ items.length }}</span></div>
-      <div class="box overflow-hidden p-0">
-        <div v-if="loading && !items.length" class="px-3 py-2.5 text-sm text-muted">加载中…</div>
+      <div class="overflow-x-auto">
+        <ListSkeleton v-if="loading && !items.length" :rows="3" />
         <EmptyState v-else-if="!items.length" title="还没有卡类型" hint="点右上角新建储值卡、次卡或套餐" />
         <div
           v-for="item in items"
@@ -164,7 +164,7 @@ async function saveRule() {
         升级规则<span class="ms-2 font-normal text-dimmed">{{ upgradeRules.length }}</span>
         <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto" @click="editRule(null)">新建升级规则</UButton>
       </div>
-      <div class="box overflow-hidden p-0">
+      <div class="overflow-x-auto">
         <p v-if="!loading && !upgradeRules.length" class="px-3 py-2.5 text-sm text-muted">还没有升级规则。储值卡累计充值或消费到门槛后，可以自动升到更高的卡。</p>
         <div
           v-for="rule in upgradeRules"

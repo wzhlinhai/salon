@@ -2,7 +2,7 @@
 import type { TableColumn, TableRow } from '@nuxt/ui'
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'payroll.manage', title: '工资表' })
+definePageMeta({ permission: 'payroll.manage', title: '工资表', description: '按月算出每人的底薪、提成和扣款，核对无误后锁定。' })
 type Schema = components['schemas']
 type Line = Schema['PayrollLine']
 const api = useApi()
@@ -168,7 +168,7 @@ onMounted(reloadMonths)
 </script>
 
 <template>
-  <div class="space-y-3">
+  <div class="space-y-4">
     <PageActions v-if="payroll && !payroll.locked">
       <UDropdownMenu :items="moreItems" :content="{ align: 'end' }">
         <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-ellipsis" aria-label="更多操作" />
@@ -182,7 +182,7 @@ onMounted(reloadMonths)
       <span v-if="payroll?.locked" class="text-meta text-muted">{{ payroll.locked_by?.name }} · {{ payroll.locked_at ? new Date(payroll.locked_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '' }}</span>
       <span v-else-if="payroll && !status?.lockable" class="text-meta text-muted">月份结束且之前的月份都已锁定后才能锁定</span>
     </div>
-    <div class="box overflow-hidden p-0">
+    <div class="overflow-x-auto">
       <UTable :data="rows" :columns="columns" :loading="loading" :aria-busy="loading" data-testid="payroll-table" :ui="{ tr: 'has-[[data-total]]:bg-lane has-[[data-total]]:font-semibold' }" @select="selectRow">
         <template #staff-cell="{ row }">
           <span :data-total="row.original.staff.id === '__total__' ? '' : undefined" class="font-medium">{{ row.original.staff.name }}</span><span v-if="!row.original.active" class="text-dimmed">（离职）</span>
@@ -191,6 +191,9 @@ onMounted(reloadMonths)
         <template #applied_amount-cell="{ row }">{{ row.original.staff.id === '__total__' ? '' : row.original.applied_amount }}</template>
         <template #empty>
           <EmptyState v-if="!loading" title="本月还没有员工工资" hint="点右上角 ··· 设置底薪或保底，开单后的提成会自动算进来" />
+        </template>
+        <template #loading>
+          <ListSkeleton />
         </template>
       </UTable>
     </div>

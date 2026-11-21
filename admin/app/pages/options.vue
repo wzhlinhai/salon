@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'staff.manage', title: '级别与岗位' })
+definePageMeta({ permission: 'staff.manage', title: '级别与岗位', description: '级别用来按人定价，岗位用来算提成。' })
 
 type LevelOrPosition = components['schemas']['Level'] | components['schemas']['Position']
 type ItemCategory = components['schemas']['ItemCategory']
@@ -138,12 +138,12 @@ async function save(k: typeof kinds[number], o: LevelOrPosition) {
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
     <div class="grid gap-6 md:grid-cols-2">
       <section v-for="k in kinds" :key="k.key">
         <div class="sec">{{ k.title }}<span class="ms-2 font-normal text-dimmed">{{ items[k.key]?.length ?? 0 }}</span></div>
         <p class="mb-2 text-xs text-muted">{{ k.hint }}</p>
-        <div class="box overflow-hidden p-0">
+        <div class="overflow-x-auto">
           <div v-for="o in items[k.key]" :key="o.id" class="flex items-center gap-2 border-b border-default px-2 py-1.5 hover:bg-hover">
             <UInput v-model="o.name" variant="ghost" :disabled="saving[o.id]" class="flex-1" :class="o.active ? '' : 'opacity-60'" @change="save(k, o)" />
             <USwitch v-model="o.active" size="sm" :loading="saving[o.id]" :label="o.active ? '启用' : '停用'" @update:model-value="save(k, o)" />
@@ -158,8 +158,8 @@ async function save(k: typeof kinds[number], o: LevelOrPosition) {
     <section data-category="item_categories">
       <div class="sec">项目类别<span class="ms-2 font-normal text-dimmed">{{ categories.length }}</span></div>
       <p class="mb-2 text-xs text-muted">门店自己维护的类别，例如剪发、烫染、护理；每个类别有一个 0–100 的业绩比例</p>
-      <div class="box overflow-hidden p-0">
-        <div v-if="categoryLoading" class="px-3 py-2.5 text-sm text-muted">加载中…</div>
+      <div class="overflow-x-auto">
+        <ListSkeleton v-if="categoryLoading" :rows="3" />
         <div v-for="category in categories" :key="category.id" data-category-row :data-category-name="category.name" class="flex flex-wrap items-center gap-2 border-b border-default px-2 py-1.5 hover:bg-hover">
           <UInput v-model="category.name" variant="ghost" :disabled="categorySaving[category.id] || !canManageSettings" :aria-label="`类别 ${category.name}`" class="flex-1" :class="category.active ? '' : 'opacity-60'" @change="saveCategory(category)" />
           <label class="flex items-center gap-1.5 text-xs text-muted">

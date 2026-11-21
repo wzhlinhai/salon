@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components, paths } from '~/utils/api'
 
-definePageMeta({ permission: 'customer.view', title: '顾客' })
+definePageMeta({ permission: 'customer.view', title: '顾客', description: '顾客档案、卡和到店记录。' })
 
 type Overview = paths['/api/ops/list_customer_overview']['post']['responses']['200']['content']['application/json']['items'][number]
 type Segments = paths['/api/ops/get_customer_segments']['post']['responses']['200']['content']['application/json']
@@ -374,12 +374,11 @@ async function handover() {
         type="button"
         :aria-pressed="segment === tile.key"
         :data-testid="`segment-${tile.key}`"
-        class="box flex flex-col items-start gap-0.5 px-3 py-2.5 text-start transition-colors hover:bg-hover"
-        :class="segment === tile.key ? 'outline-2 -outline-offset-2 outline-primary' : ''"
+        class="tile flex flex-col items-start gap-0.5 text-start"
         @click="segment = tile.key"
       >
         <span class="text-meta" :class="segment === tile.key ? 'text-primary' : 'text-muted'">{{ tile.label }}</span>
-        <span data-testid="segment-count" class="min-h-7 text-xl font-semibold tabular-nums" :class="segment === tile.key ? 'text-primary' : ''">{{ tile.count ?? '' }}</span>
+        <span data-testid="segment-count" class="min-h-7 text-xl font-semibold tabular-nums" :class="segment === tile.key ? 'text-primary' : zeroText(tile.count) && 'text-dimmed'">{{ tile.count ?? '' }}</span>
         <span class="min-h-4 max-w-full truncate text-meta text-dimmed" :title="tile.hint">{{ tile.hint }}</span>
       </button>
     </div>
@@ -395,15 +394,15 @@ async function handover() {
       <span class="ms-auto text-meta text-muted tabular-nums" data-testid="customer-total">共 {{ total }} 位</span>
     </div>
 
-    <div class="box overflow-hidden p-0" data-testid="customer-list" :aria-busy="loading">
-      <div class="grid gap-4 grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_8rem_8rem] xl:grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_6rem_8rem_8rem_8rem] border-b border-default px-4 py-2 text-meta text-dimmed">
+    <div class="border-b border-default" data-testid="customer-list" :aria-busy="loading">
+      <div class="grid gap-4 grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_8rem_8rem] xl:grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_6rem_8rem_8rem_8rem] border-b border-default px-3 py-2 text-xs text-dimmed">
         <span>顾客</span><span>上次到店</span><span class="max-xl:hidden">来过</span><span class="text-right max-xl:hidden">累计消费</span><span class="text-right">卡余额</span><span class="ps-4">下次</span>
       </div>
       <div
         v-for="row in items"
         :key="row.customer.id"
         data-testid="customer-row"
-        class="group/row grid gap-4 grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_8rem_8rem] xl:grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_6rem_8rem_8rem_8rem] cursor-pointer items-start border-t border-default px-4 py-3 text-sm first-of-type:border-t-0 hover:bg-hover"
+        class="group/row grid gap-4 grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_8rem_8rem] xl:grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_6rem_8rem_8rem_8rem] cursor-pointer items-start border-t border-default px-3 py-3 text-sm first-of-type:border-t-0 hover:bg-hover"
         @click="openDetail(row.customer.id)"
       >
         <div class="flex min-w-0 gap-3">
@@ -473,7 +472,7 @@ async function handover() {
         </EmptyState>
         <EmptyState v-else v-bind="emptyTexts[segment]" />
       </template>
-      <div v-if="!items.length && loading" class="px-4 py-12 text-center text-meta text-dimmed">加载中…</div>
+      <ListSkeleton v-if="!items.length && loading" />
     </div>
     <div v-if="total > PAGE" class="flex items-center justify-end gap-2 text-meta text-muted">
       <UButton color="neutral" variant="ghost" icon="i-lucide-chevron-left" :disabled="offset === 0 || loading" @click="changePage(-1)">上一页</UButton>

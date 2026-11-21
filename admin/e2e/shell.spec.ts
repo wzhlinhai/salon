@@ -50,3 +50,68 @@ test('个人菜单可以打卡、打开我的考勤并退出登录', async ({ pa
   await expect(page).toHaveURL(/\/login$/)
   expect(await page.evaluate(() => localStorage.getItem('salon_token'))).toBeNull()
 })
+
+test('页面骨架：正文顶上统一一个标题，设置类页面居中收窄，首页用问候不用标题', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 })
+  await login(page, owner.account, owner.password)
+  await expect(page.getByTestId('page-header')).toHaveCount(0)
+
+  await page.goto('/staff')
+  const header = page.getByTestId('page-header')
+  await expect(header.getByRole('heading', { level: 1, name: '员工', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
+  await expect(page.getByTestId('page-description')).toHaveText('员工的档案、岗位、角色和登录账号。')
+  const wide = await header.evaluate(element => element.parentElement!.getBoundingClientRect().width)
+
+  await page.goto('/settings')
+  await expect(header.getByRole('heading', { level: 1, name: '门店设置', exact: true })).toBeVisible()
+  const narrow = await header.evaluate(element => element.parentElement!.getBoundingClientRect().width)
+  expect(narrow).toBeLessThanOrEqual(800)
+  expect(wide).toBeGreaterThan(narrow)
+  // 随数据变的半句接在说明末尾，不另起一行。
+  await expect(page.getByTestId('page-description')).toHaveText(/^修改从选定的日期开始执行，之前的业务和已经下的单不受影响。今天是营业日 \d{4}-\d{2}-\d{2}。$/)
+})
+
+test('侧栏配置类分组默认收起，当前页所在组展开，点组名切换并记住', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 })
+  await login(page, owner.account, owner.password)
+  await page.evaluate(() => localStorage.removeItem('salon-nav-folded'))
+  await page.goto('/staff')
+  const nav = page.getByTestId('sidebar-nav')
+  const settingsGroup = nav.getByRole('button', { name: '设置', exact: true })
+  await expect(settingsGroup).toHaveAttribute('aria-expanded', 'false')
+  await expect(nav.getByRole('link', { name: '门店设置' })).toBeHidden()
+  await expect(nav.getByRole('button', { name: '员工', exact: true })).toHaveAttribute('aria-expanded', 'true')
+
+  await settingsGroup.click()
+  await expect(settingsGroup).toHaveAttribute('aria-expanded', 'true')
+  await expect(nav.getByRole('link', { name: '门店设置' })).toBeVisible()
+  await page.reload()
+  await expect(nav.getByRole('link', { name: '门店设置' })).toBeVisible()
+
+  // 收起「项目与卡」后打开组里的页面，这个组照样展开。
+  const itemsGroup = nav.getByRole('button', { name: '项目与卡', exact: true })
+  await expect(itemsGroup).toHaveAttribute('aria-expanded', 'false')
+  await page.goto('/items')
+  await expect(itemsGroup).toHaveAttribute('aria-expanded', 'true')
+  await expect(nav.getByRole('link', { name: '卡类型' })).toBeVisible()
+})
+
+test('收起侧栏的按钮在顶栏固定位置，收起和展开时不挪动', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 })
+  await login(page, owner.account, owner.password)
+  const toggle = page.getByTestId('sidebar-collapse')
+  await expect(toggle).toHaveAttribute('aria-label', '收起侧栏')
+  const before = (await toggle.boundingBox())!
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-label', '展开侧栏')
+  // 侧栏收窄后主区左移，按钮跟着顶栏走；它在顶栏里的位置（离主区左边和顶边的距离）不变。
+  const panel = page.getByTestId('main-panel')
+  const after = (await toggle.boundingBox())!
+  const panelBox = (await panel.boundingBox())!
+  expect(after.y).toBe(before.y)
+  expect(after.width).toBe(before.width)
+  expect(after.x - panelBox.x).toBeLessThan(24)
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-label', '收起侧栏')
+})

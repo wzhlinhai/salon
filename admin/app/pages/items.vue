@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'settings.manage', title: '项目与价格' })
+definePageMeta({ permission: 'settings.manage', title: '项目与价格', description: '店里做的项目，各级别的价格和服务时长。开单和预约都从这里选。' })
 type Item = components['schemas']['Item']
 type Level = components['schemas']['Level']
 type Position = components['schemas']['Position']
@@ -147,15 +147,15 @@ function laborFee(item: Item) {
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
     <PageActions>
       <UButton size="sm" icon="i-lucide-plus" @click="openEditor(null)">新建项目</UButton>
     </PageActions>
-    <div v-if="loading && !items.length" class="box text-sm text-muted">加载中…</div>
+    <ListSkeleton v-if="loading && !items.length" />
     <EmptyState v-else-if="!items.length" class="box" title="还没有项目" hint="点右上角新建项目，填上价格和服务时长，开单和预约就能选它" />
     <section v-for="group in groups" :key="group.key" :data-category="group.name">
       <div class="sec"><span class="size-2.5 rounded-sm" :class="group.items[0] ? toneOf(group.items[0].id) : 'bg-tag-gray'" aria-hidden="true" />{{ group.name }}<span class="ms-2 font-normal text-dimmed">{{ group.items.length }}</span></div>
-      <div class="box overflow-hidden p-0">
+      <div class="overflow-x-auto">
         <div
           v-for="item in group.items"
           :key="item.id"

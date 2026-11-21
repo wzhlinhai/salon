@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ title: '待确认' })
+definePageMeta({ title: '待确认', description: 'AI 起草的操作，确认后才会执行。' })
 
 type DraftDetail = components['schemas']['Detail']
 

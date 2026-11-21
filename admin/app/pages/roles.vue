@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'role.manage', title: '角色与权限' })
+definePageMeta({ permission: 'role.manage', title: '角色与权限', description: '每个角色能看什么、能做什么。一个员工可以有几个角色。' })
 
 type Role = components['schemas']['Role']
 type Def = components['schemas']['Def']
@@ -122,7 +122,7 @@ function summary(g: components['schemas']['GrantSpec']) {
 </script>
 
 <template>
-  <div class="space-y-3">
+  <div class="space-y-4">
     <PageActions>
       <UButton size="sm" icon="i-lucide-plus" @click="openEditor(null)">新建角色</UButton>
     </PageActions>

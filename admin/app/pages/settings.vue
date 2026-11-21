@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ title: '门店设置' })
+definePageMeta({ title: '门店设置', width: 'narrow', description: '修改从选定的日期开始执行，之前的业务和已经下的单不受影响。' })
 
 // 所有员工都能查看设置和系统默认做法；修改需要门店设置权限，以后端检查为准。
 type Setting = components['schemas']['Setting']
@@ -42,6 +42,24 @@ function show(setting: Setting | undefined, value: unknown): string {
 }
 
 const settingOf = (key: string) => settings.value.find(s => s.key === key)
+
+// 设置页分组（DESIGN.md 设置页）：按键名归到几组，组内保持后端目录的顺序；认不出的放最后"其他"。
+const SETTING_GROUPS: { label: string, icon: string, match: (key: string) => boolean }[] = [
+  { label: '营业', icon: 'i-lucide-store', match: k => ['business_hours', 'business_day_end', 'backfill_max_days', 'attendance_grace_minutes', 'draft_dual_confirm'].includes(k) },
+  { label: '预约', icon: 'i-lucide-calendar', match: k => k.startsWith('booking_') },
+  { label: '轮牌', icon: 'i-lucide-list-ordered', match: k => k.startsWith('rotation_') },
+  { label: '收银与卡', icon: 'i-lucide-receipt', match: k => k.startsWith('card_') || k.startsWith('collection_channel_') || ['member_price_rule', 'others_card_payment', 'points_per_recharge_yuan', 'void_window_minutes'].includes(k) },
+  { label: '售后', icon: 'i-lucide-undo-2', match: k => k.startsWith('aftersale_') },
+  { label: '业绩与提成', icon: 'i-lucide-trending-up', match: k => k.startsWith('performance_') || ['guest_count_split', 'commission_split'].includes(k) },
+  { label: '小票', icon: 'i-lucide-printer', match: k => k.startsWith('receipt_') }
+]
+
+const settingGroups = computed(() => {
+  const groups = [...SETTING_GROUPS, { label: '其他', icon: 'i-lucide-ellipsis', match: () => true }]
+    .map(g => ({ label: g.label, icon: g.icon, match: g.match, items: [] as Setting[] }))
+  for (const setting of settings.value) groups.find(g => g.match(setting.key))!.items.push(setting)
+  return groups.filter(g => g.items.length)
+})
 
 // 编辑中的设置。值按形式分开存，保存时再组装。
 const editorGuard = useRequestGuard()
@@ -126,36 +144,37 @@ onMounted(loadSources)
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl space-y-6">
-    <div>
-      <p class="text-sm text-muted">修改从选定的日期开始执行，之前的业务和已经下的单不受影响。今天是营业日 {{ today }}。</p>
-    </div>
+  <div class="space-y-4">
+    <PageDescriptionTail v-if="today">今天是营业日 {{ today }}。</PageDescriptionTail>
 
-    <div class="box overflow-hidden p-0">
-      <div
-        v-for="s in settings"
-        :key="s.key"
-        :data-setting="s.key"
-        class="grid gap-x-6 gap-y-2 border-t border-default px-4 py-3.5 first:border-t-0 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center"
-      >
-        <div>
-          <div class="text-sm font-medium">{{ s.label }}</div>
-          <div class="mt-0.5 text-xs text-muted">{{ s.hint }}</div>
-        </div>
-        <div class="text-sm">
-          <div class="flex flex-wrap items-center gap-2">
-            <span>{{ show(s, s.value) }}</span>
-            <span v-if="s.is_default" class="tag bg-tag-gray">系统默认</span>
-            <span v-else class="text-xs text-dimmed">{{ s.effective_from }} 起</span>
+    <section v-for="group in settingGroups" :key="group.label" :data-setting-group="group.label">
+      <div class="sec"><UIcon :name="group.icon" class="size-4" aria-hidden="true" />{{ group.label }}</div>
+      <div class="box overflow-hidden p-0">
+        <div
+          v-for="s in group.items"
+          :key="s.key"
+          :data-setting="s.key"
+          class="grid gap-x-6 gap-y-2 border-t border-default px-4 py-3.5 first:border-t-0 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center"
+        >
+          <div>
+            <div class="text-sm font-medium">{{ s.label }}</div>
+            <div class="mt-0.5 text-xs text-muted">{{ s.hint }}</div>
           </div>
-          <div v-for="u in s.upcoming" :key="u.effective_from" class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
-            <span class="tag bg-tag-yellow">已安排</span>
-            {{ u.effective_from }} 起改为 {{ show(s, u.value) }}{{ u.is_default ? '（系统默认）' : '' }}
+          <div class="text-sm">
+            <div class="flex flex-wrap items-center gap-2">
+              <span>{{ show(s, s.value) }}</span>
+              <span v-if="s.is_default" class="text-xs text-dimmed">系统默认</span>
+              <span v-else class="text-xs text-dimmed">{{ s.effective_from }} 起</span>
+            </div>
+            <div v-for="u in s.upcoming" :key="u.effective_from" class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+              <span class="tag bg-tag-yellow">已安排</span>
+              {{ u.effective_from }} 起改为 {{ show(s, u.value) }}{{ u.is_default ? '（系统默认）' : '' }}
+            </div>
           </div>
+          <UButton v-if="can('settings.manage')" size="sm" color="neutral" variant="ghost" class="justify-self-start md:justify-self-end" @click="openEditor(s)">修改</UButton>
         </div>
-        <UButton v-if="can('settings.manage')" size="sm" color="neutral" variant="ghost" class="justify-self-start md:justify-self-end" @click="openEditor(s)">修改</UButton>
       </div>
-    </div>
+    </section>
 
     <section data-setting="customer_sources">
       <div class="sec">顾客来源</div>

@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import type { DropdownMenuItem, TableRow } from '@nuxt/ui'
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'staff.manage', title: '员工' })
+definePageMeta({ permission: 'staff.manage', title: '员工', description: '员工的档案、岗位、角色和登录账号。' })
 
 type Staff = components['schemas']['Staff']
 const api = useApi()
@@ -20,14 +21,19 @@ const loading = ref(false)
 async function load() {
   const request = loadGuard.next()
   loading.value = true
-  const [s, r, l, p] = await Promise.all([
-    api.POST('/api/ops/list_staff', { body: {} }),
-    api.POST('/api/ops/list_role_options', { body: {} }),
-    api.POST('/api/ops/list_levels', { body: {} }),
-    api.POST('/api/ops/list_positions', { body: {} })
-  ])
+  let s, r, l, p
+  try {
+    [s, r, l, p] = await Promise.all([
+      api.POST('/api/ops/list_staff', { body: {} }),
+      api.POST('/api/ops/list_role_options', { body: {} }),
+      api.POST('/api/ops/list_levels', { body: {} }),
+      api.POST('/api/ops/list_positions', { body: {} })
+    ])
+  } finally {
+    // 网络断了也要停掉骨架屏；只有最新一次请求能改。
+    if (request()) loading.value = false
+  }
   if (!request()) return
-  loading.value = false
   if (!s.data || !r.data || !l.data || !p.data) {
     toast.add({ title: errorText(s.error ?? r.error ?? l.error ?? p.error), color: 'error' })
     return
@@ -46,17 +52,75 @@ const optionItems = (list: (components['schemas']['Level'] | components['schemas
   ...list.filter(o => o.active).map(o => ({ label: o.name, value: o.id }))
 ]
 
+// 列表照 DESIGN.md 列表页：第一列头像、姓名和编号；空值留白；状态只在不正常时出现（已停用标签）。
 const columns = [
-  { accessorKey: 'number', header: '编号' },
-  { accessorKey: 'name', header: '姓名' },
-  { id: 'level', header: '级别' },
+  { id: 'who', header: '员工' },
   { id: 'position', header: '岗位' },
+  { id: 'level', header: '级别' },
   { id: 'roles', header: '角色' },
-  { accessorKey: 'login_account', header: '登录账号' },
+  { id: 'login', header: '登录账号' },
   { id: 'self_bookable', header: '小程序预约' },
-  { id: 'status', header: '状态' },
   { id: 'actions', header: '' }
 ]
+
+// 筛选块：在职（默认）、人数最多的两个岗位、未开通账号、已停用。
+interface Filter { key: string, label: string, empty: string, test: (s: Staff) => boolean }
+const filterKey = ref('active')
+const search = ref('')
+
+const filters = computed<Filter[]>(() => {
+  const counts = new Map<string, { id: string, name: string, count: number }>()
+  for (const s of staff.value) {
+    if (!s.active || !s.position) continue
+    const entry = counts.get(s.position.id) ?? { id: s.position.id, name: s.position.name, count: 0 }
+    entry.count++
+    counts.set(s.position.id, entry)
+  }
+  const top = [...counts.values()].sort((a, b) => b.count - a.count).slice(0, 2)
+  return [
+    { key: 'active', label: '在职', empty: '没有在职员工', test: s => s.active },
+    ...top.map(p => ({ key: `position:${p.id}`, label: p.name, empty: `没有在职的${p.name}`, test: (s: Staff) => s.active && s.position?.id === p.id })),
+    { key: 'no-login', label: '未开通账号', empty: '在职员工都开通了登录账号', test: s => s.active && !s.login_account },
+    { key: 'inactive', label: '已停用', empty: '没有停用的员工', test: s => !s.active }
+  ]
+})
+
+const filter = computed(() => filters.value.find(f => f.key === filterKey.value) ?? filters.value[0]!)
+// 岗位筛选的岗位没人了（例如刚停用最后一个人），回到在职。
+watch(filters, (list) => {
+  if (!list.some(f => f.key === filterKey.value)) filterKey.value = 'active'
+})
+
+const shown = computed(() => {
+  const term = search.value.trim()
+  return staff.value.filter(s => filter.value.test(s) && (!term || s.name.includes(term) || s.number.includes(term)))
+})
+
+// 头像底色按员工 id 固定取一种标签色，同一个人每次一样。
+const AVATAR_TONES = ['bg-tag-orange', 'bg-tag-blue', 'bg-tag-pink', 'bg-tag-green', 'bg-tag-purple', 'bg-tag-brown', 'bg-tag-yellow']
+
+function avatarTone(id: string) {
+  let sum = 0
+  for (const ch of id) sum += ch.charCodeAt(0)
+  return AVATAR_TONES[sum % AVATAR_TONES.length]
+}
+
+function rowActions(s: Staff): DropdownMenuItem[][] {
+  return [
+    [
+      { label: '修改档案', icon: 'i-lucide-pencil', onSelect: () => openProfile(s) },
+      { label: '设置角色', icon: 'i-lucide-shield', onSelect: () => openRoles(s) },
+      { label: '登录账号', icon: 'i-lucide-key-round', onSelect: () => openLogin(s) }
+    ],
+    [s.active
+      ? { label: '停用', icon: 'i-lucide-user-x', color: 'error', onSelect: () => setActive(s, false) }
+      : { label: '恢复', icon: 'i-lucide-user-check', onSelect: () => setActive(s, true) }]
+  ]
+}
+
+function selectRow(_event: Event, row: TableRow<Staff>) {
+  openProfile(row.original)
+}
 
 function done(error: unknown, ok: unknown, message: string, current: () => boolean = () => true) {
   if (ok) {
@@ -165,39 +229,86 @@ async function setActive(s: Staff, active: boolean) {
 </script>
 
 <template>
-  <div class="space-y-3">
+  <div class="space-y-4">
     <PageActions>
       <UButton size="sm" icon="i-lucide-plus" @click="openProfile(null)">新建员工</UButton>
     </PageActions>
 
-    <div class="box overflow-hidden p-0">
-      <UTable :data="staff" :columns="columns" :loading="loading" :aria-busy="loading" :ui="{ tr: 'group/row' }">
-        <template #name-cell="{ row }"><span class="font-medium">{{ row.original.name }}</span></template>
-        <template #level-cell="{ row }">{{ row.original.level?.name || '—' }}</template>
-        <template #position-cell="{ row }">{{ row.original.position?.name || '—' }}</template>
+    <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5" role="group" aria-label="筛选员工">
+      <button
+        v-for="f in filters"
+        :key="f.key"
+        type="button"
+        class="tile"
+        :aria-pressed="filterKey === f.key"
+        :data-filter="f.key"
+        @click="filterKey = f.key"
+      >
+        <span class="block text-meta" :class="filterKey === f.key ? 'text-primary' : 'text-muted'">{{ f.label }}</span>
+        <span
+          class="text-xl font-semibold tabular-nums"
+          :class="filterKey === f.key ? 'text-primary' : (f.key === 'inactive' || !staff.filter(f.test).length) ? 'text-dimmed' : ''"
+        >{{ loading && !staff.length ? '' : staff.filter(f.test).length }}</span>
+      </button>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2">
+      <UInput v-model="search" icon="i-lucide-search" placeholder="搜索姓名或编号" aria-label="搜索姓名或编号" class="w-full sm:w-72" />
+      <span class="ms-auto text-meta text-dimmed tabular-nums" data-testid="staff-count">共 {{ shown.length }} 人</span>
+    </div>
+
+    <div class="overflow-x-auto">
+      <UTable :data="shown" :columns="columns" :loading="loading" :aria-busy="loading" :ui="{ tr: 'group/row' }" @select="selectRow">
+        <template #who-cell="{ row }">
+          <div class="flex items-center gap-2.5" :class="row.original.active ? '' : 'opacity-60'">
+            <span class="grid size-[30px] shrink-0 place-items-center rounded-full text-meta" :class="avatarTone(row.original.id)" aria-hidden="true">{{ row.original.name.slice(0, 1) }}</span>
+            <div class="min-w-0">
+              <div class="flex items-center gap-1.5">
+                <span class="font-medium" data-staff-name>{{ row.original.name }}</span>
+                <span v-if="!row.original.active" class="tag bg-tag-gray">已停用</span>
+              </div>
+              <div v-if="row.original.number" class="text-xs leading-tight text-dimmed tabular-nums">{{ row.original.number }}</div>
+            </div>
+          </div>
+        </template>
+        <template #position-cell="{ row }">{{ row.original.position?.name }}</template>
+        <template #level-cell="{ row }">{{ row.original.level?.name }}</template>
         <template #roles-cell="{ row }">
           <div class="flex flex-wrap gap-1">
             <span v-for="r in row.original.roles" :key="r.id" class="tag bg-tag-gray">{{ r.name }}</span>
           </div>
         </template>
-        <template #self_bookable-cell="{ row }">
-          <span :class="row.original.self_bookable ? '' : 'text-dimmed'">{{ row.original.self_bookable ? '可预约' : '不可预约' }}</span>
+        <template #login-cell="{ row }">
+          <span v-if="row.original.login_account" class="text-muted">{{ row.original.login_account }}</span>
+          <span v-else class="text-dimmed">未开通</span>
         </template>
-        <template #status-cell="{ row }">
-          <span v-if="row.original.active" class="text-dimmed">在职</span>
-          <span v-else class="tag bg-tag-gray">已停用</span>
+        <template #self_bookable-cell="{ row }">
+          <span v-if="row.original.self_bookable" class="inline-flex items-center gap-1">
+            <UIcon name="i-lucide-check" class="size-3.5 text-success" aria-hidden="true" />可约
+          </span>
         </template>
         <template #actions-cell="{ row }">
-          <div class="flex justify-end gap-0.5 opacity-0 group-hover/row:opacity-100 focus-within:opacity-100 any-pointer-coarse:opacity-100">
-            <UButton size="sm" color="neutral" variant="ghost" @click="openProfile(row.original)">档案</UButton>
-            <UButton size="sm" color="neutral" variant="ghost" @click="openRoles(row.original)">角色</UButton>
-            <UButton size="sm" color="neutral" variant="ghost" @click="openLogin(row.original)">账号</UButton>
-            <UButton v-if="row.original.active" size="sm" variant="ghost" color="error" :loading="activeSaving[row.original.id]" @click="setActive(row.original, false)">停用</UButton>
-            <UButton v-else size="sm" color="neutral" variant="ghost" :loading="activeSaving[row.original.id]" @click="setActive(row.original, true)">恢复</UButton>
+          <div class="flex justify-end" @click.stop>
+            <UDropdownMenu :items="rowActions(row.original)" :content="{ align: 'end' }">
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-ellipsis"
+                :aria-label="`${row.original.name} 的操作`"
+                :loading="activeSaving[row.original.id]"
+                :class="activeSaving[row.original.id] ? '' : 'opacity-0'"
+                class="group-hover/row:opacity-100 group-focus-visible/row:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 any-pointer-coarse:opacity-100"
+              />
+            </UDropdownMenu>
           </div>
         </template>
+        <template #loading>
+          <ListSkeleton />
+        </template>
         <template #empty>
-          <EmptyState v-if="!loading" title="还没有员工" hint="点右上角新建员工，再开登录账号和角色" />
+          <EmptyState v-if="!staff.length" title="还没有员工" hint="点右上角新建员工，再开登录账号和角色" />
+          <EmptyState v-else :title="search.trim() ? '没有找到这位员工' : filter.empty" :hint="search.trim() ? '换个姓名或编号试试' : undefined" />
         </template>
       </UTable>
     </div>

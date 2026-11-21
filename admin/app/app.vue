@@ -8,6 +8,7 @@ const route = useRoute()
 const { me, can } = useMe()
 const { active: homeSwitcherActive, options: homeSwitcherOptions, selected: homeSwitcherSelected } = useHomeSwitcher()
 const isLogin = computed(() => route.path === '/login')
+const sidebarCollapsed = ref(false)
 const pageTitle = computed(() => String(route.meta.title || '首页'))
 
 const { pending: pendingDrafts, load: loadDrafts, reset: resetDrafts } = useDrafts()
@@ -26,6 +27,32 @@ const navGroups = computed(() => {
   return groups
 })
 
+// 配置类分组默认收起（DESIGN.md 侧栏）：当前页所在的组总是展开；用户点开、收起的选择记在本机。
+const FOLD_KEY = 'salon-nav-folded'
+const folded = ref<string[]>(['项目与卡', '设置'])
+onMounted(() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(FOLD_KEY) ?? 'null')
+    if (Array.isArray(saved)) folded.value = saved.filter(v => typeof v === 'string')
+  } catch { /* 本机记录坏了就用默认 */ }
+})
+
+// 当前页所在的分组总是展开，收不起来。
+function holdsActive(group: { label: string, items: typeof navItems }) {
+  return group.items.some(item => isActive(item.to))
+}
+
+function groupOpen(group: { label: string, items: typeof navItems }) {
+  return !folded.value.includes(group.label) || holdsActive(group)
+}
+
+function toggleGroup(group: { label: string, items: typeof navItems }) {
+  if (holdsActive(group)) return
+  const rest = folded.value.filter(label => label !== group.label)
+  folded.value = groupOpen(group) ? [...rest, group.label] : rest
+  localStorage.setItem(FOLD_KEY, JSON.stringify(folded.value))
+}
+
 // 首页切换是单选组：方向键在选项间移动并选中，整组只占一个 Tab 位。
 function moveHome(event: KeyboardEvent, step: number) {
   const options = homeSwitcherOptions.value
@@ -40,6 +67,11 @@ function moveHome(event: KeyboardEvent, step: number) {
 function isActive(to: string) {
   return to === '/' ? route.path === '/' : route.path.startsWith(to)
 }
+
+// 页面骨架（DESIGN.md）：首页有自己的问候，其余页面正文顶上统一一个大标题；宽度按页面元数据分两档。
+const showPageHeader = computed(() => route.path !== '/')
+const pageWidth = computed(() => route.meta.width === 'narrow' ? 'mx-auto w-full max-w-[800px]' : 'w-full')
+const pageDescription = computed(() => String(route.meta.description || ''))
 
 const pageIcon = computed(() => {
   if (route.path === '/drafts') return DRAFTS_ICON
@@ -164,6 +196,7 @@ const searchGroups = computed(() => {
     <!-- 外壳照原型 J：暖灰侧栏（门店名、搜索或吩咐 AI、待确认、分组导航、本人），一行顶栏（面包屑、首页切换）。 -->
     <UDashboardGroup v-else unit="rem" storage-key="salon-dashboard">
       <UDashboardSidebar
+        v-model:collapsed="sidebarCollapsed"
         collapsible
         :default-size="15"
         :min-size="13"
@@ -173,15 +206,9 @@ const searchGroups = computed(() => {
         :ui="{ header: 'h-auto px-2 pt-2 pb-1.5', body: 'gap-px px-2 py-0 text-muted', footer: 'px-2 pb-3 pt-2' }"
       >
         <template #header="{ collapsed }">
-          <div class="group flex min-h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 font-semibold" :class="collapsed ? 'flex-col px-0' : ''">
+          <div class="flex min-h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 font-semibold" :class="collapsed ? 'justify-center px-0' : ''">
             <span class="grid size-[22px] shrink-0 place-items-center rounded-sm bg-inverted text-xs text-white" aria-hidden="true">{{ storeName.slice(0, 1) || '店' }}</span>
             <span v-if="!collapsed" data-testid="store-name" class="truncate">{{ storeName }}</span>
-            <UDashboardSidebarCollapse
-              data-testid="sidebar-collapse"
-              :aria-label="collapsed ? '展开侧栏' : '收起侧栏'"
-              size="xs"
-              :class="collapsed ? '' : 'ms-auto opacity-0 group-hover:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100'"
-            />
           </div>
         </template>
 
@@ -216,10 +243,29 @@ const searchGroups = computed(() => {
 
           <nav data-testid="sidebar-nav" aria-label="主导航" class="flex flex-col gap-px">
             <template v-for="group in navGroups" :key="group.label">
-              <p v-if="!collapsed" class="px-2 pt-3.5 pb-1 text-xs font-medium text-dimmed">{{ group.label }}</p>
+              <button
+                v-if="!collapsed"
+                type="button"
+                class="group/fold flex items-center gap-1 rounded-md px-2 pt-3.5 pb-1 text-start text-xs font-medium text-dimmed hover:text-muted"
+                :class="holdsActive(group) ? 'cursor-default' : ''"
+                :aria-expanded="groupOpen(group)"
+                :aria-disabled="holdsActive(group) || undefined"
+                data-testid="nav-group"
+                @click="toggleGroup(group)"
+              >
+                {{ group.label }}
+                <UIcon
+                  v-if="!holdsActive(group)"
+                  name="i-lucide-chevron-right"
+                  class="size-3.5 transition-transform"
+                  :class="groupOpen(group) ? 'rotate-90 opacity-0 group-hover/fold:opacity-100 group-focus-visible/fold:opacity-100 any-pointer-coarse:opacity-100' : ''"
+                  aria-hidden="true"
+                />
+              </button>
               <div v-else class="mx-2 mt-2 mb-1 border-t border-default" />
               <NuxtLink
                 v-for="item in group.items"
+                v-show="collapsed || groupOpen(group)"
                 :key="item.to"
                 :to="item.to"
                 class="side-item"
@@ -239,14 +285,22 @@ const searchGroups = computed(() => {
         </template>
       </UDashboardSidebar>
 
-      <UDashboardPanel data-testid="main-panel" class="bg-page" :ui="{ body: 'p-6' }">
+      <UDashboardPanel data-testid="main-panel" class="bg-page" :ui="{ body: 'px-4 pt-5 pb-16 sm:px-10 sm:pt-5 sm:pb-16' }">
         <template #header>
           <UDashboardNavbar :ui="{ root: 'h-[45px] border-b-0 px-3 sm:px-3' }">
             <template #left>
-              <h1 class="flex min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-sm font-normal">
-                <UIcon v-if="pageIcon" :name="pageIcon" class="size-4 shrink-0 text-muted" aria-hidden="true" />
+              <!-- 收起、展开侧栏的按钮固定在顶栏最左边：两种状态下位置和图标都不变（DESIGN.md 外壳）。 -->
+              <UDashboardSidebarCollapse
+                data-testid="sidebar-collapse"
+                icon="i-lucide-panel-left"
+                :aria-label="sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
+                size="sm"
+                class="me-0.5 text-muted"
+              />
+              <p class="flex min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-sm text-muted">
+                <UIcon v-if="pageIcon" :name="pageIcon" class="size-4 shrink-0" aria-hidden="true" />
                 <span class="truncate">{{ pageTitle }}</span>
-              </h1>
+              </p>
             </template>
             <template #right>
               <div id="navbar-actions" class="flex items-center gap-1 text-muted">
@@ -281,7 +335,16 @@ const searchGroups = computed(() => {
           </UDashboardNavbar>
         </template>
         <template #body>
-          <NuxtPage />
+          <div :class="pageWidth">
+            <header v-if="showPageHeader" class="mt-2 mb-[18px]" data-testid="page-header">
+              <div class="flex items-center gap-2.5">
+                <UIcon v-if="pageIcon" :name="pageIcon" class="size-[26px] shrink-0 text-muted" aria-hidden="true" />
+                <h1 class="text-title font-bold tracking-tight text-balance">{{ pageTitle }}</h1>
+              </div>
+              <p id="page-description" class="mt-1 text-muted text-pretty empty:hidden" data-testid="page-description"><span v-if="pageDescription">{{ pageDescription }}</span></p>
+            </header>
+            <NuxtPage />
+          </div>
         </template>
       </UDashboardPanel>
 
