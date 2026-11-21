@@ -1,10 +1,22 @@
 import { expect, test } from '@playwright/test'
+import type { Page } from '@playwright/test'
 import { api, apiLogin, login, owner } from './helpers'
+
+// 员工列表的一行：第一列是头像、姓名和编号，按姓名精确找。
+function staffRow(page: Page, name: string) {
+  return page.getByRole('row').filter({ has: page.getByText(name, { exact: true }) })
+}
+
+// 行尾 ··· 菜单里的操作。
+async function rowAction(page: Page, name: string, action: string) {
+  await staffRow(page, name).getByRole('button', { name: `${name} 的操作`, exact: true }).click()
+  await page.getByRole('menuitem', { name: action, exact: true }).click()
+}
 
 test('员工页迟到的旧列表不覆盖第二次保存', async ({ page }) => {
   await login(page, owner.account, owner.password)
   await page.goto('/staff')
-  await expect(page.getByRole('button', { name: '档案', exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: /的操作$/ }).first()).toBeAttached()
   let releaseOld!: () => void
   const blocked = new Promise<void>((resolve) => {
     releaseOld = resolve
@@ -39,13 +51,13 @@ test('员工页迟到的旧列表不覆盖第二次保存', async ({ page }) => 
   await save(first)
   await started
   await save(second)
-  await expect(page.getByRole('cell', { name: second, exact: true })).toBeVisible()
+  await expect(page.getByText(second, { exact: true })).toBeVisible()
   const lateResponse = page.waitForResponse(r => r.url().endsWith('/api/ops/list_staff'))
   releaseOld()
   await (await lateResponse).finished()
   // eslint-disable-next-line no-restricted-syntax -- 旧列表被丢弃后没有可观察的状态变化，响应接收完成也不能确认页面回调已执行。
   await page.waitForTimeout(500)
-  await expect(page.getByRole('cell', { name: second, exact: true })).toBeVisible()
+  await expect(page.getByText(second, { exact: true })).toBeVisible()
 })
 
 for (const kind of ['档案', '角色', '账号']) {
@@ -74,8 +86,8 @@ for (const kind of ['档案', '角色', '账号']) {
       await blocked
       await route.fulfill({ response })
     })
-    const rowA = page.getByRole('row').filter({ has: page.getByRole('cell', { name: a.name, exact: true }) })
-    await rowA.getByRole('button', { name: kind, exact: true }).click()
+    const action = kind === '档案' ? '修改档案' : kind === '角色' ? '设置角色' : '登录账号'
+    await rowAction(page, a.name, action)
     const title = (name: string) => kind === '档案' ? '修改档案' : `${kind === '角色' ? '设置角色' : '登录账号'}：${name}`
     let dialog = page.getByRole('dialog', { name: title(a.name), exact: true })
     if (kind === '档案') await dialog.getByLabel('姓名', { exact: true }).fill(`${a.name}改`)
@@ -87,7 +99,7 @@ for (const kind of ['档案', '角色', '账号']) {
     await pending
     await dialog.getByRole('button', { name: '关闭', exact: true }).click()
     await expect(dialog).toHaveCount(0)
-    await page.getByRole('row').filter({ has: page.getByRole('cell', { name: b.name, exact: true }) }).getByRole('button', { name: kind, exact: true }).click()
+    await rowAction(page, b.name, action)
     dialog = page.getByRole('dialog', { name: title(b.name), exact: true })
     if (kind === '档案') await expect(dialog.getByLabel('姓名', { exact: true })).toHaveValue(b.name)
     else await expect(dialog).toContainText(b.name)
@@ -121,7 +133,7 @@ test('新建员工断网后恢复并可重试', async ({ page }) => {
   await expect(button).toBeEnabled()
   await button.click()
   await expect(dialog).toHaveCount(0)
-  await expect(page.getByRole('cell', { name, exact: true })).toBeVisible()
+  await expect(page.getByText(name, { exact: true })).toBeVisible()
 })
 
 test('员工档案可以设置顾客在小程序预约', async ({ page }) => {
@@ -134,21 +146,52 @@ test('员工档案可以设置顾客在小程序预约', async ({ page }) => {
   })
   await login(page, owner.account, owner.password)
   await page.goto('/staff')
-  const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: created.name, exact: true }) })
-  await expect(row.getByRole('cell', { name: '不可预约', exact: true })).toBeVisible()
-  await row.getByRole('button', { name: '档案', exact: true }).click()
+  const row = staffRow(page, created.name)
+  // 不可约时这一格留白，不写"不可预约"（DESIGN.md 列表页：空值留白）。
+  await expect(row).toBeVisible()
+  await expect(row.getByText('可约', { exact: true })).toHaveCount(0)
+  await rowAction(page, created.name, '修改档案')
   const dialog = page.getByRole('dialog', { name: '修改档案', exact: true })
   const checkbox = dialog.getByRole('checkbox', { name: '顾客可在小程序预约', exact: true })
   await expect(checkbox).not.toBeChecked()
   await checkbox.check()
   await dialog.getByRole('button', { name: '保存', exact: true }).click()
   await expect(dialog).toHaveCount(0)
-  await expect(row.getByRole('cell', { name: '可预约', exact: true })).toBeVisible()
+  await expect(row.getByText('可约', { exact: true })).toBeVisible()
 
-  await row.getByRole('button', { name: '档案', exact: true }).click()
+  // 点一行也打开档案。
+  await row.getByText(created.name, { exact: true }).click()
   await expect(checkbox).toBeChecked()
   await checkbox.uncheck()
   await dialog.getByRole('button', { name: '保存', exact: true }).click()
   await expect(dialog).toHaveCount(0)
-  await expect(row.getByRole('cell', { name: '不可预约', exact: true })).toBeVisible()
+  await expect(row.getByText('可约', { exact: true })).toHaveCount(0)
+})
+
+test('员工列表默认只列在职，停用的在「已停用」里，可以搜索和恢复', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const suffix = Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+  const kept = await api<{ id: string, name: string }>(token, 'create_staff', { name: `在职员工${suffix}`, number: `在${suffix}`, role_ids: [] })
+  const gone = await api<{ id: string, name: string }>(token, 'create_staff', { name: `停用员工${suffix}`, number: `停${suffix}`, role_ids: [] })
+  await api(token, 'deactivate_staff', { staff_id: gone.id })
+  await login(page, owner.account, owner.password)
+  await page.goto('/staff')
+
+  await expect(page.locator('[data-filter=active]')).toHaveAttribute('aria-pressed', 'true')
+  await expect(staffRow(page, kept.name)).toBeVisible()
+  await expect(staffRow(page, kept.name).getByText('未开通', { exact: true })).toBeVisible()
+  await expect(staffRow(page, gone.name)).toHaveCount(0)
+
+  await page.getByLabel('搜索姓名或编号').fill(`停${suffix}`)
+  await expect(page.getByText('没有找到这位员工', { exact: true })).toBeVisible()
+  await page.locator('[data-filter=inactive]').click()
+  await expect(page.locator('[data-filter=inactive]')).toHaveAttribute('aria-pressed', 'true')
+  await expect(staffRow(page, gone.name).getByText('已停用', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('staff-count')).toHaveText('共 1 人')
+
+  await rowAction(page, gone.name, '恢复')
+  await expect(page.getByText('已恢复', { exact: true })).toBeVisible()
+  await expect(staffRow(page, gone.name)).toHaveCount(0)
+  await page.locator('[data-filter=active]').click()
+  await expect(staffRow(page, gone.name)).toBeVisible()
 })

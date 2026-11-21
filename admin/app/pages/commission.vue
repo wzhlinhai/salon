@@ -3,7 +3,7 @@ import type { components } from '~/utils/api'
 import type { CommissionValue } from '~/components/CommissionValueEditor.vue'
 import { LOG_PAGE_SIZE } from '~/utils/paging'
 
-definePageMeta({ permission: 'settings.manage', title: '提成规则' })
+definePageMeta({ permission: 'settings.manage', title: '提成规则', description: '保存后从生效日期起执行，之前写入的业绩仍按当时的方案版本算；阶梯提成随当月累计变化，月底锁定后才固定。' })
 type Schema = components['schemas']
 type Source = Schema['Rule']['source']
 type Cell = Schema['Cell']
@@ -252,15 +252,15 @@ function changeSource(o: OverrideForm) {
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
     <PageActions>
       <UButton size="sm" icon="i-lucide-pencil" :disabled="!today" @click="edit">修改方案</UButton>
     </PageActions>
-    <p class="text-sm text-muted">保存后从生效日期起执行，之前写入的业绩仍按当时的方案版本算；阶梯提成随当月累计变化，月底锁定后才固定。今天是营业日 {{ today }}。</p>
+    <PageDescriptionTail v-if="today">今天是营业日 {{ today }}。</PageDescriptionTail>
     <EmptyState v-if="!versions.loading.value && !versions.items.value.length" class="box" title="还没有提成方案，没有方案时不计提成。" hint="点右上角修改方案，按项目、耗卡、手工费或销售设置提成" />
     <section v-else>
       <div class="sec">方案版本</div>
-      <div class="box overflow-x-auto p-0">
+      <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="text-left text-xs text-dimmed">
             <tr><th class="px-3 py-2 font-normal">版本</th><th class="px-3 font-normal">生效日期</th><th class="px-3 font-normal">修改人</th><th class="px-3 font-normal">保存时间</th><th class="px-3 font-normal">状态</th></tr>
@@ -288,7 +288,7 @@ function changeSource(o: OverrideForm) {
     <p v-if="detailLoading" class="text-sm text-muted">加载中</p>
     <section v-if="detail" data-testid="scheme-detail">
       <div class="sec">版本 {{ detail.version }} · {{ detail.effective_from }} 起执行</div>
-      <div class="box overflow-hidden p-0">
+      <div class="overflow-x-auto">
         <div v-for="source in sources" :key="source.value" class="grid gap-x-6 gap-y-2 border-t border-default px-4 py-3.5 first:border-t-0 md:grid-cols-[10rem_minmax(0,1fr)]" :data-source="source.value">
           <div class="text-sm font-medium">{{ source.label }}</div>
           <div class="text-sm">

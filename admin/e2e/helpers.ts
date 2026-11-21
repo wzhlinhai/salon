@@ -52,8 +52,9 @@ export async function login(page: Page, account: string, password: string) {
   await page.getByTestId('home-greeting').waitFor()
 }
 
+// 看得到的导航项，包括侧栏里收起的组（收起只是不展开，权限上仍可进）。
 export async function navLabels(page: Page): Promise<string[]> {
-  return (await page.locator('[data-testid="sidebar-nav"] a [data-nav-label]').allInnerTexts()).map(s => s.trim())
+  return (await page.locator('[data-testid="sidebar-nav"] a [data-nav-label]').allTextContents()).map(s => s.trim())
 }
 
 export function cash(amount: string) {

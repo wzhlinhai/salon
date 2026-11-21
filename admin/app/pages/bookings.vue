@@ -658,7 +658,7 @@ function actorLabel(actor: Actor) {
       <p v-if="loading" class="text-sm text-muted" aria-live="polite">加载中</p>
     </div>
 
-    <div v-if="businessDate" ref="grid" class="box h-[calc(100dvh-9rem)] min-h-96 overflow-auto p-0" data-booking-grid>
+    <div v-if="businessDate" ref="grid" class="box h-[calc(100dvh-12.5rem)] min-h-96 overflow-auto p-0" data-booking-grid>
       <div v-if="dayEmpty" class="pointer-events-none sticky top-16 left-0 z-30 flex h-0 justify-center">
         <p class="h-fit rounded-md bg-white px-3 py-1.5 text-meta text-muted shadow-card" data-testid="booking-day-empty">这天还没有预约。点空白时段，或右上角「新建预约」</p>
       </div>

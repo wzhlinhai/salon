@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'report.view', title: '团购对账' })
+definePageMeta({ permission: 'report.view', title: '团购对账', description: '平台每月打款后，把结算额录进来，和核销的券对一对。' })
 
 type GroupbuyMonth = components['schemas']['GroupbuyMonth']
 type Platform = components['schemas']['GroupbuyMonthInput']['platform']
@@ -74,7 +74,7 @@ async function saveSettlement() {
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
     <PageActions v-if="can('closing.daily')">
       <UButton size="sm" icon="i-lucide-plus" @click="openSettlement">录入结算</UButton>
     </PageActions>

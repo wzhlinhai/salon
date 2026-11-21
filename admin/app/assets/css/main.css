@@ -35,6 +35,8 @@
   --text-meta: 13px;
   --text-lead: 15px;
   --text-greet: 26px;
+  --text-title: 30px;
+  --text-title--line-height: 1.25;
   --text-hero: 40px;
 
   /* 圆角：标签 3、按钮输入框 6（--ui-radius）、看板列 10、卡片 12、浮起的大输入框 14。 */
@@ -84,6 +86,24 @@ body {
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
   padding: 14px 16px;
+}
+
+/* 列表页顶上的筛选块（照 Stripe）：白底细线，选中的描蓝边。 */
+@utility tile {
+  display: block;
+  text-align: start;
+  cursor: pointer;
+  background: #fff;
+  border-radius: var(--radius-lane);
+  box-shadow: var(--shadow-line);
+  padding: 10px 14px;
+  &:hover {
+    background: var(--color-card-hover);
+  }
+  &[aria-pressed="true"] {
+    outline: 1.5px solid var(--ui-primary);
+    outline-offset: -1.5px;
+  }
 }
 
 /* 区块标题：小号灰字，右边一句说明。 */

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'settings.manage', title: '团购商品' })
+definePageMeta({ permission: 'settings.manage', title: '团购商品', description: '美团、抖音上卖的团购，以及核销后对应店里哪个项目。' })
 
 type Deal = components['schemas']['Deal']
 type Item = components['schemas']['Item']
@@ -77,13 +77,13 @@ async function save() {
 </script>
 
 <template>
-  <div class="space-y-3">
+  <div class="space-y-4">
     <PageActions>
       <UButton size="sm" icon="i-lucide-plus" @click="openEditor(null)">新建团购商品</UButton>
     </PageActions>
     <p class="text-sm text-muted">平台购买价用于和平台月结账对账；门店标价取所对应项目的标准价。平台创建后不能修改。</p>
-    <div class="box overflow-hidden p-0">
-      <div v-if="loading && !deals.length" class="px-3 py-2.5 text-sm text-muted">加载中…</div>
+    <div class="overflow-x-auto">
+      <ListSkeleton v-if="loading && !deals.length" :rows="3" />
       <EmptyState v-else-if="!deals.length" title="还没有团购商品" hint="把美团、抖音上卖的团购商品录进来，核销和月底对账才对得上" />
       <div
         v-for="deal in deals"

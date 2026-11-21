@@ -1127,7 +1127,7 @@ onMounted(init)
         <section>
           <h2 class="sec">挂单<span class="ms-1 font-normal text-dimmed">{{ openOrders.length }}</span></h2>
           <div class="box overflow-hidden p-0" data-testid="open-orders">
-            <p v-if="ordersLoading && !openOrders.length" class="px-3 py-2.5 text-sm text-muted">加载中…</p>
+            <ListSkeleton v-if="ordersLoading && !openOrders.length" :rows="3" />
             <EmptyState v-else-if="!openOrders.length" title="暂无挂单" hint="顾客到店开单后会挂在这里，做完再结账" />
             <button
               v-for="order in openOrders"

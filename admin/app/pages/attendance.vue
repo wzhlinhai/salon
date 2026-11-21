@@ -3,7 +3,7 @@ import type { TableColumn, TableRow } from '@nuxt/ui'
 import type { components } from '~/utils/api'
 import { attendanceCalendarDate, attendancePunchAt } from '~/utils/attendance'
 
-definePageMeta({ permission: 'attendance.manage', title: '考勤' })
+definePageMeta({ permission: 'attendance.manage', title: '考勤', description: '每天的上下班打卡，补卡和排班也在这里。' })
 type Schema = components['schemas']
 
 const api = useApi()
@@ -285,7 +285,7 @@ onMounted(async () => {
       <PageActions>
         <UButton size="sm" icon="i-lucide-plus" @click="openAddPunch()">补卡</UButton>
       </PageActions>
-      <div class="box overflow-hidden p-0">
+      <div class="overflow-x-auto">
         <UTable
           :data="summary"
           :columns="summaryColumns"
@@ -300,6 +300,9 @@ onMounted(async () => {
           <template #missing_count-cell="{ row }"><span :class="row.original.missing_count ? 'text-ink-red' : 'text-dimmed'">{{ row.original.missing_count }} 次</span></template>
           <template #approved_count-cell="{ row }"><span :class="row.original.approved_count ? '' : 'text-dimmed'">{{ row.original.approved_count }} 次</span></template>
           <template #empty><EmptyState v-if="!summaryLoading" title="本月还没有考勤记录" hint="员工在小程序上打卡后，这里按人汇总" /></template>
+          <template #loading>
+            <ListSkeleton />
+          </template>
         </UTable>
       </div>
       <USlideover v-model:open="detailOpen" :modal="false" :title="`${selected?.staff.name ?? ''} · ${monthLabel(month)}`">
@@ -323,20 +326,23 @@ onMounted(async () => {
           班次
           <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto" @click="openCreateShift">新建班次</UButton>
         </div>
-        <div class="box overflow-hidden p-0">
-          <UTable :data="shifts" :columns="shiftColumns" :loading="shiftsLoading" :aria-busy="shiftsLoading" data-testid="shifts-table">
+        <div class="overflow-x-auto">
+          <UTable :data="shifts" :columns="shiftColumns" :loading="shiftsLoading" :aria-busy="shiftsLoading" :ui="{ tr: 'group/row' }" data-testid="shifts-table">
             <template #active-cell="{ row }"><span v-if="row.original.active" class="text-dimmed">在用</span><span v-else class="tag bg-tag-gray">已停用</span></template>
             <template #actions-cell="{ row }">
-              <UButton v-if="row.original.active" size="sm" color="error" variant="ghost" @click="askDeactivate(row.original)">停用</UButton>
+              <UButton v-if="row.original.active" size="sm" color="error" variant="ghost" class="opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100" @click="askDeactivate(row.original)">停用</UButton>
             </template>
             <template #empty>还没有班次</template>
+            <template #loading>
+              <ListSkeleton />
+            </template>
           </UTable>
         </div>
       </div>
 
       <div class="space-y-3">
         <div class="sec">员工班次</div>
-        <div class="box overflow-hidden p-0">
+        <div class="overflow-x-auto">
           <UTable :data="staffShifts" :columns="staffShiftColumns" :loading="staffShiftsLoading" :aria-busy="staffShiftsLoading" data-testid="staff-shifts-table">
             <template #staff-cell="{ row }">{{ row.original.staff.name }}{{ row.original.active ? '' : '（离职）' }}</template>
             <template #current-cell="{ row }">{{ row.original.current ? shiftText(row.original.current.shift) : '未指定' }}</template>
@@ -349,6 +355,9 @@ onMounted(async () => {
               <UButton v-if="row.original.active" size="sm" color="neutral" variant="ghost" @click="askAssign(row.original)">指定班次</UButton>
             </template>
             <template #empty>还没有员工</template>
+            <template #loading>
+              <ListSkeleton />
+            </template>
           </UTable>
         </div>
       </div>
