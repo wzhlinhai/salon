@@ -979,58 +979,65 @@ onMounted(init)
 
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-end">
-      <div class="flex items-center gap-2">
-        <UBadge v-if="businessDate" color="neutral" variant="subtle">营业日 {{ businessDate }}</UBadge>
-        <UButton @click="openOrderBegin(pickedCustomer)">开单</UButton>
-      </div>
-    </div>
+    <PageActions>
+      <span v-if="businessDate" class="text-meta text-muted">营业日 {{ businessDate }}</span>
+      <UButton size="sm" icon="i-lucide-plus" @click="openOrderBegin(pickedCustomer)">开单</UButton>
+    </PageActions>
 
-    <UCard v-if="canCustomer || canGroupbuy">
-      <form class="flex flex-wrap items-end gap-2" @submit.prevent="submitScan">
-        <UFormField label="扫码枪或手输" class="min-w-64 flex-1">
-          <UInput v-model="scanValue" autofocus autocomplete="off" size="xl" :placeholder="canGroupbuy ? '手机号，或团购券码' : '手机号'" aria-label="扫码或输入手机号、券码" data-testid="scan-input" />
-        </UFormField>
-        <UFormField v-if="canGroupbuy" label="券码平台">
-          <USelect v-model="platform" :items="platformItems" class="w-28" aria-label="券码平台" :disabled="couponBusy !== '' || !!verifyResult || !!redemption || couponUnknown" />
-        </UFormField>
-        <UButton type="submit" size="xl">确认</UButton>
-        <span v-if="scanLoading" class="pb-2 text-sm text-muted">搜索中</span>
-        <UBadge v-if="scanKind" data-testid="scan-kind" color="primary" variant="subtle">识别为{{ scanKind }}</UBadge>
+    <section v-if="canCustomer || canGroupbuy" class="space-y-3">
+      <form class="flex flex-wrap items-center gap-2" @submit.prevent="submitScan">
+        <UInput
+          v-model="scanValue"
+          autofocus
+          autocomplete="off"
+          size="lg"
+          icon="i-lucide-scan-line"
+          :placeholder="canGroupbuy ? '扫码枪扫券，或输入手机号、券码' : '输入手机号'"
+          aria-label="扫码或输入手机号、券码"
+          data-testid="scan-input"
+          class="min-w-64 flex-1"
+        />
+        <USelect v-if="canGroupbuy" v-model="platform" :items="platformItems" size="lg" class="w-28" aria-label="券码平台" :disabled="couponBusy !== '' || !!verifyResult || !!redemption || couponUnknown" />
+        <UButton type="submit" size="lg" color="neutral" variant="outline">确认</UButton>
+        <span v-if="scanLoading" class="text-meta text-muted">搜索中…</span>
+        <span v-if="scanKind" data-testid="scan-kind" class="tag bg-tag-gray">识别为{{ scanKind }}</span>
       </form>
 
-      <div v-if="customerMatches.length" class="mt-3 space-y-2" data-testid="customer-matches">
-        <p class="text-sm text-muted">找到 {{ customerMatches.length }} 位顾客，选择一位：</p>
+      <div v-if="customerMatches.length" class="box space-y-2" data-testid="customer-matches">
+        <p class="text-meta text-muted">找到 {{ customerMatches.length }} 位顾客，选择一位：</p>
         <div class="flex flex-wrap gap-2">
-          <UButton v-for="customer in customerMatches" :key="customer.id" variant="outline" size="lg" @click="pickCustomer(customer)">
+          <UButton v-for="customer in customerMatches" :key="customer.id" color="neutral" variant="outline" @click="pickCustomer(customer)">
             {{ customer.name || '未识别' }} · {{ customer.phone || '无手机号' }}
           </UButton>
         </div>
       </div>
 
-      <div v-if="pickedCustomer" class="mt-3 flex flex-wrap items-center gap-2" data-testid="picked-customer">
-        <UBadge color="success" variant="subtle">已选顾客 {{ pickedCustomer.name || '未识别' }}</UBadge>
-        <UButton size="lg" @click="openOrderBegin(pickedCustomer)">为这位顾客开单</UButton>
-        <span v-if="pickedOpenOrders.length" class="text-sm text-muted">该顾客还有 {{ pickedOpenOrders.length }} 张挂单：</span>
-        <UButton v-for="order in pickedOpenOrders" :key="order.id" size="sm" variant="outline" @click="selectOrder(order)">选择挂单</UButton>
+      <div v-if="pickedCustomer" class="box flex flex-wrap items-center gap-2" data-testid="picked-customer">
+        <span class="text-meta text-muted">已选顾客</span>
+        <span class="font-medium">{{ pickedCustomer.name || '未识别' }}</span>
+        <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-plus" @click="openOrderBegin(pickedCustomer)">为这位顾客开单</UButton>
+        <template v-if="pickedOpenOrders.length">
+          <span class="text-meta text-muted">还有 {{ pickedOpenOrders.length }} 张挂单：</span>
+          <UButton v-for="order in pickedOpenOrders" :key="order.id" size="sm" color="neutral" variant="ghost" @click="selectOrder(order)">选择挂单</UButton>
+        </template>
       </div>
 
-      <div v-if="canGroupbuy && (verifyResult || redemption || couponUnknown)" class="mt-4 space-y-3 rounded-lg border border-default p-3" data-testid="coupon-panel">
+      <div v-if="canGroupbuy && (verifyResult || redemption || couponUnknown)" class="box space-y-3" data-testid="coupon-panel">
         <div class="flex flex-wrap items-center gap-2">
-          <UBadge color="primary" variant="subtle">{{ platformLabel(couponPlatform || platform) }}</UBadge>
-          <span class="font-medium">券码 {{ couponCode }}</span>
-          <UBadge v-if="redemption" data-testid="coupon-status" :color="redemption.status === 'redeemed' ? 'success' : 'warning'" variant="subtle">{{ redemption.status }}</UBadge>
-          <UBadge v-else-if="verifyResult" :color="verifyResult.status === 'unused' ? 'success' : 'warning'" variant="subtle">{{ verifyResult.status }}</UBadge>
+          <span class="tag bg-tag-gray">{{ platformLabel(couponPlatform || platform) }}</span>
+          <span class="font-medium tabular-nums">券码 {{ couponCode }}</span>
+          <span v-if="redemption" data-testid="coupon-status" class="tag" :class="redemption.status === 'redeemed' ? 'bg-tag-green' : 'bg-tag-yellow'">{{ redemption.status }}</span>
+          <span v-else-if="verifyResult" class="tag" :class="verifyResult.status === 'unused' ? 'bg-tag-green' : 'bg-tag-yellow'">{{ verifyResult.status }}</span>
         </div>
 
         <div v-if="verifyResult && !redemption && verifyResult.status === 'unused' && !couponUnknown" class="flex flex-wrap items-center gap-2">
           <span class="text-sm">券未使用，可以核销。</span>
-          <UButton size="lg" :loading="couponBusy === 'redeem'" @click="redeemCoupon">核销</UButton>
+          <UButton size="sm" color="neutral" :loading="couponBusy === 'redeem'" @click="redeemCoupon">核销</UButton>
         </div>
 
         <div v-if="couponUnknown || (redemption && redemption.status === 'unknown')" class="flex flex-wrap items-center gap-2">
-          <span class="text-sm text-warning">核销结果未知，请先查询状态，不要再次核销。</span>
-          <UButton size="lg" variant="outline" :loading="couponBusy === 'query'" @click="queryRedemption">查询状态</UButton>
+          <span class="text-sm text-ink-orange">核销结果未知，请先查询状态，不要再次核销。</span>
+          <UButton size="sm" color="neutral" variant="outline" :loading="couponBusy === 'query'" @click="queryRedemption">查询状态</UButton>
         </div>
 
         <template v-if="redemption && redemption.status === 'redeemed' && !redemption.order_id">
@@ -1042,181 +1049,180 @@ onMounted(init)
               <USelect v-model="linkOrderID" :items="[{ label: '选择挂单', value: NONE }, ...linkOrderItems]" class="w-full" aria-label="关联挂单" />
             </UFormField>
           </div>
-          <p v-if="!activeDeals.length" class="text-sm text-warning">这个平台还没有启用的团购商品，请先到“团购商品”登记。</p>
+          <p v-if="!activeDeals.length" class="text-sm text-ink-orange">这个平台还没有启用的团购商品，请先到“团购商品”登记。</p>
           <div class="flex flex-wrap gap-2">
-            <UButton size="lg" :disabled="!activeDeals.length" @click="openOrderFromCoupon">立即开单</UButton>
-            <UButton size="lg" variant="outline" :disabled="!activeDeals.length || linkOrderID === NONE" :loading="couponBusy === 'link'" @click="linkRedeemed">关联挂单</UButton>
-            <UButton size="lg" variant="ghost" @click="clearCoupon">暂不开单</UButton>
-            <UButton size="lg" color="error" variant="outline" :loading="actionSaving" @click="revokeCoupon(redemption)">撤销核销</UButton>
+            <UButton size="sm" color="neutral" :disabled="!activeDeals.length" @click="openOrderFromCoupon">立即开单</UButton>
+            <UButton size="sm" color="neutral" variant="outline" :disabled="!activeDeals.length || linkOrderID === NONE" :loading="couponBusy === 'link'" @click="linkRedeemed">关联挂单</UButton>
+            <UButton size="sm" color="neutral" variant="ghost" @click="clearCoupon">暂不开单</UButton>
+            <UButton size="sm" color="error" variant="ghost" class="ms-auto" :loading="actionSaving" @click="revokeCoupon(redemption)">撤销核销</UButton>
           </div>
         </template>
 
         <div v-if="redemption && redemption.order_id" class="flex flex-wrap items-center gap-2">
-          <UBadge color="success" variant="subtle">已关联挂单</UBadge>
-          <UButton size="lg" variant="outline" :loading="actionSaving" @click="unlinkCoupon(redemption.id)">解除关联</UButton>
-          <UButton size="lg" variant="ghost" @click="clearCoupon">完成</UButton>
+          <span class="tag bg-tag-green">已关联挂单</span>
+          <UButton size="sm" color="neutral" variant="outline" :loading="actionSaving" @click="unlinkCoupon(redemption.id)">解除关联</UButton>
+          <UButton size="sm" color="neutral" variant="ghost" @click="clearCoupon">完成</UButton>
         </div>
 
         <div v-if="redemption && redemption.status === 'revoked'" class="flex items-center gap-2">
-          <UBadge color="neutral" variant="subtle">已撤销</UBadge>
-          <UButton variant="ghost" @click="clearCoupon">关闭</UButton>
+          <span class="tag bg-tag-gray">已撤销</span>
+          <UButton size="sm" color="neutral" variant="ghost" @click="clearCoupon">关闭</UButton>
         </div>
       </div>
-    </UCard>
+    </section>
 
-    <div v-if="canCollect && lastReceipt" class="flex flex-wrap items-center gap-2 rounded-lg border border-default p-3" data-testid="last-receipt">
-      <span class="text-sm">最近一次结账：{{ lastReceipt.total }} 元</span>
-      <UButton size="sm" variant="outline" @click="receipt = lastReceipt">补打小票</UButton>
-    </div>
-
-    <div class="grid gap-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
-      <UCard>
-        <template #header>
-          <div class="flex items-center justify-between">
-            <span class="font-medium">挂单</span>
-            <UBadge color="neutral" variant="subtle">{{ openOrders.length }}</UBadge>
-          </div>
-        </template>
-        <p v-if="ordersLoading" class="text-sm text-muted">加载中</p>
-        <p v-else-if="!openOrders.length" class="text-sm text-muted">暂无挂单</p>
-        <div class="space-y-2" data-testid="open-orders">
+    <div class="grid items-start gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
+      <section>
+        <h2 class="sec">挂单<span class="ms-1 font-normal text-dimmed">{{ openOrders.length }}</span></h2>
+        <div class="box overflow-hidden p-0" data-testid="open-orders">
+          <p v-if="ordersLoading && !openOrders.length" class="px-3 py-2.5 text-sm text-muted">加载中…</p>
+          <EmptyState v-else-if="!openOrders.length" title="暂无挂单" hint="顾客到店开单后会挂在这里，做完再结账" />
           <button
             v-for="order in openOrders"
             :key="order.id"
             type="button"
-            class="w-full rounded-lg border p-3 text-left transition"
-            :class="order.id === selectedOrderID ? 'border-primary bg-elevated' : 'border-default hover:bg-elevated'"
+            class="block w-full border-t border-default px-3 py-2.5 text-left first:border-t-0"
+            :class="order.id === selectedOrderID ? 'bg-selected shadow-[inset_2px_0_0_var(--ui-primary)]' : 'hover:bg-hover'"
+            :aria-current="order.id === selectedOrderID ? 'true' : undefined"
             :data-order-id="order.id"
             data-testid="open-order"
             :disabled="checkoutSaving"
             @click="selectOrder(order)"
           >
-            <div class="flex items-center justify-between gap-2">
-              <span class="font-medium">{{ customerName(order.customer_id) }}</span>
-              <span class="font-semibold">{{ order.receivable }}</span>
+            <div class="flex items-center justify-between gap-2 text-sm">
+              <span class="truncate font-medium" :title="customerName(order.customer_id)">{{ customerName(order.customer_id) }}</span>
+              <span class="font-medium tabular-nums">{{ yuanFixed(order.receivable) }}</span>
             </div>
-            <div class="flex items-center gap-2 text-sm text-muted">
-              <UBadge v-if="order.backfill" data-testid="backfill-badge" color="warning" variant="subtle">补录 {{ order.business_date }}</UBadge>
-              <span>{{ order.items.filter(i => !i.removed_at).map(i => i.item_name).join('、') || '无项目' }}</span>
+            <div class="mt-0.5 flex items-center gap-1.5 text-meta text-muted">
+              <span v-if="order.backfill" data-testid="backfill-badge" class="tag bg-tag-yellow">补录 {{ order.business_date }}</span>
+              <span class="truncate" :title="order.items.filter(i => !i.removed_at).map(i => i.item_name).join('、')">{{ order.items.filter(i => !i.removed_at).map(i => i.item_name).join('、') || '无项目' }}</span>
             </div>
           </button>
         </div>
-      </UCard>
+        <div v-if="canCollect && lastReceipt" class="mt-2 flex items-center gap-2 px-1 text-meta text-muted" data-testid="last-receipt">
+          <span>最近一次结账 {{ yuanFixed(lastReceipt.total) }}</span>
+          <UButton size="xs" color="neutral" variant="ghost" class="ms-auto" @click="receipt = lastReceipt">补打小票</UButton>
+        </div>
+      </section>
 
-      <UCard data-testid="selected-order">
-        <template #header>
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div class="flex items-center gap-2">
-              <span class="font-medium">当前单</span>
-              <UBadge v-if="selectedOrder?.backfill" data-testid="selected-backfill" color="warning" variant="subtle">补录 {{ selectedOrder.business_date }}</UBadge>
-            </div>
-            <UButton v-if="selectedOrder" size="sm" variant="outline" @click="addItemBegin">加项目</UButton>
-          </div>
-        </template>
+      <section data-testid="selected-order">
+        <h2 class="sec">
+          当前单
+          <template v-if="selectedOrder">
+            <span class="font-normal">· {{ customerName(selectedOrder.customer_id) }} · {{ selectedOrder.gender === 'male' ? '男客' : '女客' }}</span>
+            <span v-if="selectedOrder.designated" class="tag bg-tag-gray">指定</span>
+            <span v-if="selectedOrder.backfill" data-testid="selected-backfill" class="tag bg-tag-yellow">补录 {{ selectedOrder.business_date }}</span>
+            <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto" @click="addItemBegin">加项目</UButton>
+          </template>
+        </h2>
 
-        <p v-if="orderLoading" class="text-sm text-muted">加载中</p>
-        <p v-else-if="!selectedOrder" class="text-sm text-muted">从左侧选一张挂单，或扫码开单。</p>
-        <div v-else class="space-y-4">
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="text-lg font-medium">{{ customerName(selectedOrder.customer_id) }}</span>
-            <UBadge color="neutral" variant="subtle">{{ selectedOrder.gender === 'male' ? '男客' : '女客' }}</UBadge>
-            <UBadge v-if="selectedOrder.designated" color="neutral" variant="subtle">指定</UBadge>
-            <span class="text-sm text-muted">应收 {{ selectedOrder.receivable }} · 实收 {{ selectedOrder.net }}</span>
-          </div>
-
-          <div class="space-y-2">
-            <div v-for="item in selectedOrder.items.filter(i => !i.removed_at)" :key="item.id" class="rounded-lg border border-default p-3" :data-order-item="item.item_name">
-              <div class="flex items-center justify-between gap-2">
-                <div>
+        <p v-if="orderLoading" class="box text-sm text-muted">加载中…</p>
+        <EmptyState v-else-if="!selectedOrder" class="box" icon="i-lucide-receipt" title="还没选单" hint="从左侧选一张挂单，或扫码开单" />
+        <div v-else class="grid items-start gap-4" :class="canCollect ? 'xl:grid-cols-[minmax(0,1fr)_20rem]' : ''">
+          <div class="space-y-4">
+            <div class="box overflow-hidden p-0">
+              <div
+                v-for="item in selectedOrder.items.filter(i => !i.removed_at)"
+                :key="item.id"
+                class="group/row space-y-2 border-t border-default px-3 py-2.5 text-sm first:border-t-0"
+                :data-order-item="item.item_name"
+              >
+                <div class="flex items-center gap-2">
                   <span class="font-medium">{{ item.item_name }}</span>
-                  <span class="ml-2">{{ item.price }}</span>
-                  <UBadge v-if="item.price_source === 'manual'" class="ml-2" color="warning" variant="subtle">改价</UBadge>
+                  <span v-if="item.price_source === 'manual'" class="text-meta text-ink-orange">改价</span>
+                  <span class="ms-auto font-medium tabular-nums">{{ yuanFixed(item.price) }}</span>
                 </div>
-                <div class="flex gap-1">
-                  <UButton v-if="canReprice" size="sm" variant="ghost" @click="repriceBegin(item)">改价</UButton>
-                  <UButton v-if="canOrderEdit" size="sm" variant="ghost" color="error" :loading="actionSaving" @click="removeItem(item.id)">去掉</UButton>
+                <div v-for="position in [...item.positions].sort((a, b) => a.slot - b.slot)" :key="position.slot" class="flex items-center gap-2">
+                  <span class="w-12 text-meta text-muted">岗位 {{ position.slot }}</span>
+                  <USelect
+                    v-if="canOrderEdit"
+                    :model-value="position.staff_id ?? undefined"
+                    :items="[{ label: '未填', value: NONE }, ...staffItems]"
+                    size="sm"
+                    class="w-48"
+                    :aria-label="`${item.item_name} 岗位${position.slot}员工`"
+                    @update:model-value="value => changeStaff(item, position.slot, String(value === NONE ? '' : value))"
+                  />
+                  <span v-else>{{ staffName(position.staff_id) }}</span>
+                  <span v-if="position.required" class="tag bg-tag-yellow">必填</span>
                 </div>
-              </div>
-              <div v-for="position in [...item.positions].sort((a, b) => a.slot - b.slot)" :key="position.slot" class="mt-2 flex items-center gap-2">
-                <span class="w-16 text-sm text-muted">岗位 {{ position.slot }}</span>
-                <USelect
-                  v-if="canOrderEdit"
-                  :model-value="position.staff_id ?? undefined"
-                  :items="[{ label: '未填', value: NONE }, ...staffItems]"
-                  class="w-56"
-                  :aria-label="`${item.item_name} 岗位${position.slot}员工`"
-                  @update:model-value="value => changeStaff(item, position.slot, String(value === NONE ? '' : value))"
-                />
-                <span v-else class="text-sm">{{ staffName(position.staff_id) }}</span>
-                <UBadge v-if="position.required" color="warning" variant="subtle">必填</UBadge>
-              </div>
-              <div v-if="canCollect" class="mt-2 flex items-center gap-2">
-                <template v-if="countPaymentFor(item.id)">
-                  <UBadge color="success" variant="subtle">已用次卡 {{ countPaymentFor(item.id)?.card_name }}</UBadge>
-                  <UButton size="sm" variant="ghost" @click="removeCountPayment(item.id)">取消用次卡</UButton>
-                </template>
-                <UButton v-else-if="countCardsFor(item.item_id).length" size="sm" variant="outline" :disabled="!preview || checkoutSaving" @click="countBegin(item)">用次卡</UButton>
+                <div class="flex flex-wrap items-center gap-1">
+                  <template v-if="canCollect">
+                    <template v-if="countPaymentFor(item.id)">
+                      <span class="tag bg-tag-green">已用次卡 {{ countPaymentFor(item.id)?.card_name }}</span>
+                      <UButton size="sm" color="neutral" variant="ghost" @click="removeCountPayment(item.id)">取消用次卡</UButton>
+                    </template>
+                    <UButton v-else-if="countCardsFor(item.item_id).length" size="sm" color="neutral" variant="outline" :disabled="!preview || checkoutSaving" @click="countBegin(item)">用次卡</UButton>
+                  </template>
+                  <div class="ms-auto flex gap-1 opacity-0 group-hover/row:opacity-100 focus-within:opacity-100 any-pointer-coarse:opacity-100">
+                    <UButton v-if="canReprice" size="sm" color="neutral" variant="ghost" @click="repriceBegin(item)">改价</UButton>
+                    <UButton v-if="canOrderEdit" size="sm" color="error" variant="ghost" :loading="actionSaving" @click="removeItem(item.id)">去掉</UButton>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div v-if="canGroupbuy && selectedOrder.groupbuy.length" class="space-y-2" data-testid="order-groupbuy">
-            <h2 class="font-medium">关联团购券</h2>
-            <div v-for="coupon in selectedOrder.groupbuy" :key="coupon.redemption_id" class="flex flex-wrap items-center gap-2 rounded-lg border border-default p-2 text-sm">
-              <span>{{ coupon.deal_name }} · {{ platformLabel(coupon.platform) }}</span>
-              <span>购买价 {{ coupon.purchase_price }}</span>
-              <span>门店标价 {{ coupon.store_price }}</span>
-              <UButton size="sm" variant="ghost" color="error" :loading="actionSaving" @click="unlinkCoupon(coupon.redemption_id)">解除关联</UButton>
+            <div v-if="canGroupbuy && selectedOrder.groupbuy.length" data-testid="order-groupbuy">
+              <h2 class="sec">关联团购券</h2>
+              <div class="box overflow-hidden p-0">
+                <div v-for="coupon in selectedOrder.groupbuy" :key="coupon.redemption_id" class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0">
+                  <span class="font-medium">{{ coupon.deal_name }}</span>
+                  <span class="tag bg-tag-gray">{{ platformLabel(coupon.platform) }}</span>
+                  <span class="text-muted tabular-nums">购买价 {{ coupon.purchase_price }} · 门店标价 {{ coupon.store_price }}</span>
+                  <UButton size="sm" color="error" variant="ghost" class="ms-auto" :loading="actionSaving" @click="unlinkCoupon(coupon.redemption_id)">解除关联</UButton>
+                </div>
+              </div>
             </div>
+            <p v-if="!canCollect" class="px-1 text-meta text-muted tabular-nums">应收 {{ yuanFixed(selectedOrder.receivable) }} · 实收 {{ yuanFixed(selectedOrder.net) }}</p>
           </div>
 
-          <div v-if="canCollect" class="space-y-3 border-t border-default pt-3">
-            <div class="flex flex-wrap items-center justify-between gap-2">
+          <div v-if="canCollect" class="box space-y-3">
+            <div class="flex items-center justify-between">
               <h2 class="font-medium">结账</h2>
-              <span v-if="previewLoading" class="text-sm text-muted">试算中</span>
+              <span v-if="previewLoading" class="text-meta text-muted">试算中…</span>
             </div>
-            <UFormField label="计价卡（可选）">
-              <USelect v-model="selectedCardID" :items="[{ label: '不使用卡', value: NONE }, ...cardItems]" class="w-full" aria-label="计价卡" @update:model-value="recalculationCard" />
-            </UFormField>
-            <div v-if="preview" class="space-y-2">
-              <p class="text-sm">实收 {{ preview.net }}；团购自动抵扣 {{ money(groupbuyTotal) }}；次卡抵扣 {{ money(countTotal) }}；现场补差 <span class="font-semibold" data-testid="cash-expected">{{ expectedCash }}</span></p>
-              <p class="text-xs text-muted">团购支付由系统按关联的团购券生成，不需要在这里填写。</p>
-              <div v-if="countPayments.length" class="space-y-1 rounded-lg border border-default p-2" data-testid="count-payments">
-                <div v-for="payment in countPayments" :key="payment.order_item_id" class="flex items-center justify-between gap-2 text-sm">
+            <USelect v-model="selectedCardID" :items="[{ label: '不使用卡', value: NONE }, ...cardItems]" class="w-full" aria-label="计价卡" @update:model-value="recalculationCard" />
+            <dl class="space-y-1.5 border-t border-default pt-3 text-sm tabular-nums">
+              <div class="flex justify-between"><dt class="text-muted">应收</dt><dd>{{ yuanFixed(selectedOrder.receivable) }}</dd></div>
+              <div class="flex justify-between"><dt class="text-muted">实收</dt><dd>{{ yuanFixed(preview?.net ?? selectedOrder.net) }}</dd></div>
+              <template v-if="preview">
+                <div v-if="groupbuyTotal" class="flex justify-between"><dt class="text-muted">团购抵扣</dt><dd>-{{ yuanFixed(groupbuyTotal / 100) }}</dd></div>
+                <div v-if="countTotal" class="flex justify-between"><dt class="text-muted">次卡抵扣</dt><dd>-{{ yuanFixed(countTotal / 100) }}</dd></div>
+                <div class="flex items-baseline justify-between border-t border-default pt-2 font-semibold">
+                  <dt>现场补差</dt>
+                  <dd class="text-xl">¥<span data-testid="cash-expected">{{ expectedCash }}</span></dd>
+                </div>
+              </template>
+            </dl>
+            <template v-if="preview">
+              <p v-if="groupbuyTotal" class="text-meta text-muted">团购支付由系统按关联的团购券生成，不需要在这里填写。</p>
+              <div v-if="countPayments.length" class="space-y-1" data-testid="count-payments">
+                <div v-for="payment in countPayments" :key="payment.order_item_id" class="flex items-center justify-between gap-2 text-meta">
                   <span>次卡 {{ payment.card_name }} · {{ payment.item_name }} · {{ payment.amount }}</span>
-                  <UButton size="sm" variant="ghost" @click="removeCountPayment(payment.order_item_id)">取消</UButton>
+                  <UButton size="xs" color="neutral" variant="ghost" @click="removeCountPayment(payment.order_item_id)">取消</UButton>
                 </div>
               </div>
               <PaymentEditor v-model="payments" v-model:touched="paymentsTouched" :expected="expectedCash" :methods="paymentMethods" :reset-key="paymentResetKey" />
-              <div class="flex items-center gap-2">
-                <UButton size="xl" :loading="checkoutSaving" :disabled="previewLoading || actionSaving || orderLoading || checkoutSaving" @click="checkout">结账</UButton>
-                <span v-if="paidTotal !== cents(expectedCash)" class="text-sm text-warning">已录入 {{ money(paidTotal) }}</span>
-              </div>
-            </div>
+              <UButton size="lg" block :loading="checkoutSaving" :disabled="previewLoading || actionSaving || orderLoading || checkoutSaving" @click="checkout">结账</UButton>
+            </template>
           </div>
         </div>
-      </UCard>
+      </section>
     </div>
 
-    <UCard v-if="canGroupbuy" data-testid="unlinked-coupons">
-      <template #header>
-        <div class="flex items-center justify-between">
-          <span class="font-medium">未关联团购券（近 90 天）</span>
-          <UBadge color="neutral" variant="subtle">{{ unlinked.length }}</UBadge>
-        </div>
-      </template>
-      <p v-if="!unlinked.length" class="text-sm text-muted">没有未关联的团购券</p>
-      <div class="space-y-2">
-        <div v-for="row in unlinked" :key="row.id" class="flex flex-wrap items-center gap-2 rounded-lg border border-default p-2 text-sm">
-          <UBadge color="primary" variant="subtle">{{ platformLabel(row.platform) }}</UBadge>
-          <span class="font-medium">{{ row.coupon_code }}</span>
-          <span class="text-muted">{{ row.redeemed_at ? new Date(row.redeemed_at).toLocaleString('zh-CN') : '' }}</span>
-          <UButton size="sm" variant="outline" @click="linkBegin(row)">关联挂单</UButton>
-          <UButton size="sm" variant="ghost" color="error" :loading="actionSaving" @click="revokeCoupon(row)">撤销核销</UButton>
+    <section v-if="canGroupbuy" data-testid="unlinked-coupons">
+      <h2 class="sec">未关联团购券<span class="ms-1 font-normal text-dimmed">{{ unlinked.length }}</span><span class="ms-auto text-meta font-normal text-dimmed">近 90 天</span></h2>
+      <div class="box overflow-hidden p-0">
+        <p v-if="!unlinked.length" class="px-3 py-2.5 text-sm text-muted">没有未关联的团购券</p>
+        <div v-for="row in unlinked" :key="row.id" class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0 hover:bg-hover">
+          <span class="tag bg-tag-gray">{{ platformLabel(row.platform) }}</span>
+          <span class="font-medium tabular-nums">{{ row.coupon_code }}</span>
+          <span class="text-meta text-muted">{{ row.redeemed_at ? new Date(row.redeemed_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '' }}</span>
+          <UButton size="sm" color="neutral" variant="outline" class="ms-auto" @click="linkBegin(row)">关联挂单</UButton>
+          <UButton size="sm" color="error" variant="ghost" :loading="actionSaving" @click="revokeCoupon(row)">撤销核销</UButton>
         </div>
       </div>
-    </UCard>
-
+    </section>
     <UModal v-model:open="openOrderOpen" :title="pendingDeal ? '团购立即开单' : '开单'">
       <template #body>
         <div class="space-y-4">

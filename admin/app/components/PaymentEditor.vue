@@ -53,22 +53,20 @@ function remove(index: number) {
 
 <template>
   <div class="space-y-2" data-testid="sale-payments">
-    <div class="flex items-center justify-between">
-      <p class="text-sm font-medium">收款方式</p>
-      <p class="text-sm text-muted">应收合计 {{ expected }}</p>
+    <div class="flex items-center justify-between text-meta text-muted">
+      <p>收款方式</p>
+      <p class="tabular-nums">应收合计 {{ expected }}</p>
     </div>
     <div v-for="(payment, index) in payments" :key="index" class="flex items-end gap-2">
-      <UFormField label="方式" class="w-32">
+      <UFormField label="方式" class="w-28" :ui="{ label: 'text-meta text-muted font-normal' }">
         <USelect v-model="payment.method" :items="methods" class="w-full" @update:model-value="change" />
       </UFormField>
-      <UFormField label="金额" class="flex-1">
-        <UInput v-model="payment.amount" inputmode="decimal" class="w-full" @update:model-value="change" />
+      <UFormField label="金额" class="flex-1" :ui="{ label: 'text-meta text-muted font-normal' }">
+        <UInput v-model="payment.amount" inputmode="decimal" class="w-full tabular-nums" @update:model-value="change" />
       </UFormField>
-      <UButton size="sm" variant="outline" color="error" @click="remove(index)">删除</UButton>
+      <UButton color="neutral" variant="ghost" icon="i-lucide-x" aria-label="删除" @click="remove(index)" />
     </div>
-    <div class="flex items-center gap-3">
-      <UButton size="sm" variant="outline" @click="add">添加收款方式</UButton>
-      <p v-if="total !== cents(expected)" class="text-sm text-error">已录入 {{ money(total) }}，还应录入 {{ money(cents(expected) - total) }}</p>
-    </div>
+    <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-plus" @click="add">添加收款方式</UButton>
+    <p v-if="total !== cents(expected)" class="text-meta text-ink-orange">已录入 {{ money(total) }}，{{ total < cents(expected) ? '还应录入' : '多录入' }} {{ money(Math.abs(cents(expected) - total)) }}</p>
   </div>
 </template>

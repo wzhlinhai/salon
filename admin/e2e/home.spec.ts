@@ -60,7 +60,7 @@ test('前台是前台首页，显示快捷按钮且没有首页切换', async ({
   // 参数用完即去掉，刷新不会再弹开单。
   await expect(page).toHaveURL(/\/cashier$/)
   await page.reload()
-  await expect(page.getByText('扫码枪或手输')).toBeVisible()
+  await expect(page.getByTestId('scan-input')).toBeVisible()
   await expect(dialog).toHaveCount(0)
 })
 
