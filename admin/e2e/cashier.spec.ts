@@ -683,3 +683,54 @@ test('未识别顾客没有挂账；挂账结账后在顾客详情收还款', as
   await expect(debts).toContainText('未还 ¥38.00')
   await expect(debts).toContainText('还 ¥50.00 · 现金')
 })
+
+test('今日已结里撤单；开了授权窗口要先输登录密码', async ({ page }) => {
+  const { token, staff, item, customer } = await seed()
+  const opening = { customer_id: customer.id, gender: 'female', designated: false, items: [{ item_id: item.id, staff: [{ slot: 1, staff_id: staff.id }] }] }
+  const paid: string[] = []
+  for (let i = 0; i < 2; i++) {
+    const order = await api<{ id: string }>(token, 'open_order', opening)
+    await api(token, 'checkout_orders', { orders: [{ order_id: order.id, payments: [{ method: 'cash', amount: '88.00' }] }] })
+    paid.push(order.id)
+  }
+  const [first, second] = paid as [string, string]
+  const settings = await businessDate(token)
+  await login(page, owner.account, owner.password)
+  await page.goto('/cashier')
+  const settled = page.getByTestId('settled-orders')
+  const dialog = page.getByRole('dialog', { name: '撤单' })
+
+  const firstRow = settled.locator(`[data-settled-order="${first}"]`)
+  await firstRow.hover()
+  await firstRow.getByRole('button', { name: /^撤单/ }).click()
+  await expect(dialog.getByRole('button', { name: '确认撤单' })).toBeDisabled()
+  await dialog.getByLabel('撤单原因').fill('顾客投诉退单')
+  await dialog.getByRole('button', { name: '确认撤单' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(firstRow).toContainText('已撤')
+  await expect(firstRow).toContainText('撤单原因：顾客投诉退单')
+  await expect(firstRow.getByRole('button', { name: /^撤单/ })).toHaveCount(0)
+
+  await api(token, 'change_setting', { key: 'void_window_minutes', value: 5, effective_from: settings.business_date })
+  try {
+    const secondRow = settled.locator(`[data-settled-order="${second}"]`)
+    await secondRow.hover()
+    await secondRow.getByRole('button', { name: /^撤单/ }).click()
+    await dialog.getByLabel('撤单原因').fill('录错项目')
+    await dialog.getByRole('button', { name: '确认撤单' }).click()
+    const password = dialog.getByLabel('登录密码')
+    await expect(password).toBeVisible()
+    await expect(secondRow).not.toContainText('已撤')
+    await expect(dialog.getByRole('button', { name: '确认撤单' })).toBeDisabled()
+    await password.fill('wrong-password')
+    await dialog.getByRole('button', { name: '确认撤单' }).click()
+    await expect(dialog).toBeVisible()
+    await expect(secondRow).not.toContainText('已撤')
+    await password.fill(owner.password)
+    await dialog.getByRole('button', { name: '确认撤单' }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect(secondRow).toContainText('已撤')
+  } finally {
+    await api(token, 'change_setting', { key: 'void_window_minutes', value: 0, effective_from: settings.business_date })
+  }
+})

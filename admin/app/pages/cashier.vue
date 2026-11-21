@@ -737,6 +737,7 @@ async function checkout() {
     const paidOrder = data.items[0]
     const checkoutID = paidOrder?.checkout_id
     clearSelectedOrder()
+    settledKey.value++
     await loadOrders()
     await loadUnlinked()
     toast.add({ title: '结账成功', color: 'success' })
@@ -746,6 +747,8 @@ async function checkout() {
     checkoutSaving.value = false
   }
 }
+
+const settledKey = ref(0)
 
 // —— 小票 ——
 const receipt = ref<components['schemas']['Receipt'] | null>(null)
@@ -1111,38 +1114,42 @@ onMounted(init)
     </section>
 
     <div class="grid items-start gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
-      <section>
-        <h2 class="sec">挂单<span class="ms-1 font-normal text-dimmed">{{ openOrders.length }}</span></h2>
-        <div class="box overflow-hidden p-0" data-testid="open-orders">
-          <p v-if="ordersLoading && !openOrders.length" class="px-3 py-2.5 text-sm text-muted">加载中…</p>
-          <EmptyState v-else-if="!openOrders.length" title="暂无挂单" hint="顾客到店开单后会挂在这里，做完再结账" />
-          <button
-            v-for="order in openOrders"
-            :key="order.id"
-            type="button"
-            class="block w-full border-t border-default px-3 py-2.5 text-left first:border-t-0"
-            :class="order.id === selectedOrderID ? 'bg-selected shadow-[inset_2px_0_0_var(--ui-primary)]' : 'hover:bg-hover'"
-            :aria-current="order.id === selectedOrderID ? 'true' : undefined"
-            :data-order-id="order.id"
-            data-testid="open-order"
-            :disabled="checkoutSaving"
-            @click="selectOrder(order)"
-          >
-            <div class="flex items-center justify-between gap-2 text-sm">
-              <span class="truncate font-medium" :title="customerName(order.customer_id)">{{ customerName(order.customer_id) }}</span>
-              <span class="font-medium tabular-nums">{{ yuanFixed(order.receivable) }}</span>
-            </div>
-            <div class="mt-0.5 flex items-center gap-1.5 text-meta text-muted">
-              <span v-if="order.backfill" data-testid="backfill-badge" class="tag bg-tag-yellow">补录 {{ order.business_date }}</span>
-              <span class="truncate" :title="order.items.filter(i => !i.removed_at).map(i => i.item_name).join('、')">{{ order.items.filter(i => !i.removed_at).map(i => i.item_name).join('、') || '无项目' }}</span>
-            </div>
-          </button>
-        </div>
-        <div v-if="canCollect && lastReceipt" class="mt-2 flex items-center gap-2 px-1 text-meta text-muted" data-testid="last-receipt">
-          <span>最近一次结账 {{ yuanFixed(lastReceipt.total) }}</span>
-          <UButton size="xs" color="neutral" variant="ghost" class="ms-auto" @click="receipt = lastReceipt">补打小票</UButton>
-        </div>
-      </section>
+      <div class="space-y-4">
+        <section>
+          <h2 class="sec">挂单<span class="ms-1 font-normal text-dimmed">{{ openOrders.length }}</span></h2>
+          <div class="box overflow-hidden p-0" data-testid="open-orders">
+            <p v-if="ordersLoading && !openOrders.length" class="px-3 py-2.5 text-sm text-muted">加载中…</p>
+            <EmptyState v-else-if="!openOrders.length" title="暂无挂单" hint="顾客到店开单后会挂在这里，做完再结账" />
+            <button
+              v-for="order in openOrders"
+              :key="order.id"
+              type="button"
+              class="block w-full border-t border-default px-3 py-2.5 text-left first:border-t-0"
+              :class="order.id === selectedOrderID ? 'bg-selected shadow-[inset_2px_0_0_var(--ui-primary)]' : 'hover:bg-hover'"
+              :aria-current="order.id === selectedOrderID ? 'true' : undefined"
+              :data-order-id="order.id"
+              data-testid="open-order"
+              :disabled="checkoutSaving"
+              @click="selectOrder(order)"
+            >
+              <div class="flex items-center justify-between gap-2 text-sm">
+                <span class="truncate font-medium" :title="customerName(order.customer_id)">{{ customerName(order.customer_id) }}</span>
+                <span class="font-medium tabular-nums">{{ yuanFixed(order.receivable) }}</span>
+              </div>
+              <div class="mt-0.5 flex items-center gap-1.5 text-meta text-muted">
+                <span v-if="order.backfill" data-testid="backfill-badge" class="tag bg-tag-yellow">补录 {{ order.business_date }}</span>
+                <span class="truncate" :title="order.items.filter(i => !i.removed_at).map(i => i.item_name).join('、')">{{ order.items.filter(i => !i.removed_at).map(i => i.item_name).join('、') || '无项目' }}</span>
+              </div>
+            </button>
+          </div>
+          <div v-if="canCollect && lastReceipt" class="mt-2 flex items-center gap-2 px-1 text-meta text-muted" data-testid="last-receipt">
+            <span>最近一次结账 {{ yuanFixed(lastReceipt.total) }}</span>
+            <UButton size="xs" color="neutral" variant="ghost" class="ms-auto" @click="receipt = lastReceipt">补打小票</UButton>
+          </div>
+        </section>
+
+        <CashierSettled :refresh-key="settledKey" :customer-name="customerName" :resolve-names="resolveNames" :can-void="o => mayChange('order.void', o)" />
+      </div>
 
       <section data-testid="selected-order">
         <h2 class="sec">
