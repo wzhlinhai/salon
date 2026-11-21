@@ -78,7 +78,7 @@ onMounted(load)
 
     <p v-if="!shown.length" class="py-8 text-center text-sm text-muted" data-testid="drafts-empty">{{ emptyText }}</p>
     <div v-else class="space-y-3">
-      <DraftCard v-for="draft in shown" :key="draft.id" :draft="draft" quiet @open="openDetail" />
+      <DraftCard v-for="draft in shown" :key="draft.id" :draft="draft" @open="openDetail" />
     </div>
 
     <USlideover v-model:open="detailOpen" side="right" title="草稿详情" :ui="{ content: 'max-w-md' }">

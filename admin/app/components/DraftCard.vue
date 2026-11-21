@@ -3,8 +3,7 @@ import type { Draft, DraftView } from '~/composables/useDrafts'
 
 // 一张 AI 草稿：谁在什么时候说了什么、AI 理解成什么，以及确认、修改、拒绝。
 // 对话面板里的草稿是回复那一刻的快照，状态和版本以收件箱里的最新一份为准。
-// quiet：列表里卡片多，确认按钮不用实心，一页只留一个实心主按钮。
-const props = defineProps<{ draft: Draft | DraftView, quiet?: boolean }>()
+const props = defineProps<{ draft: Draft | DraftView }>()
 const emit = defineEmits<{ open: [id: string] }>()
 
 const api = useApi()
@@ -129,8 +128,8 @@ async function saveReject() {
     </p>
 
     <footer v-if="isPending" class="flex items-center gap-2 pt-1">
-      <UButton color="neutral" :variant="quiet ? 'outline' : 'solid'" size="sm" :loading="confirming" data-testid="draft-confirm" @click="confirm">确认</UButton>
-      <UButton color="neutral" :variant="quiet ? 'ghost' : 'outline'" size="sm" data-testid="draft-modify" @click="editDraft(current)">修改</UButton>
+      <UButton color="neutral" size="sm" :loading="confirming" data-testid="draft-confirm" @click="confirm">确认</UButton>
+      <UButton color="neutral" variant="outline" size="sm" data-testid="draft-modify" @click="editDraft(current)">修改</UButton>
       <UButton color="neutral" variant="ghost" size="sm" data-testid="draft-reject" @click="beginReject">拒绝</UButton>
     </footer>
 

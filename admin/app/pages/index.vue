@@ -41,6 +41,9 @@ watch(selectedHome, (value) => {
   if (value === 'manager') void loadReport()
 })
 
+// 前台首页指令框下面的推荐说法，点一下直接交给 AI。
+const frontSuggestions = ['陈女士明天下午 3 点约剪发', '今天还有谁没到店', '张师傅下午几点有空']
+
 const businessDate = ref('')
 const settingsGuard = useRequestGuard()
 const attendanceGuard = useRequestGuard()
@@ -217,12 +220,14 @@ onMounted(async () => {
     </template>
 
     <template v-else-if="selectedHome === 'front'">
-      <AiCommandBox />
-      <div data-testid="home-front-actions" class="flex flex-wrap items-center gap-2">
-        <UButton v-if="can('order.create')" to="/cashier?open=walkin">散客开单</UButton>
-        <UButton v-if="can('booking.manage')" to="/bookings" color="neutral" variant="outline">新预约</UButton>
-        <UButton v-if="can('attendance.clock') && !todayClockIn" color="neutral" variant="outline" :loading="punching" @click="punch">打卡</UButton>
-        <p v-if="todayClockIn" class="text-sm text-muted">已打卡 {{ clockTime(todayClockIn) }}</p>
+      <div class="mx-auto w-full max-w-2xl space-y-4 py-6">
+        <AiCommandBox large :suggestions="frontSuggestions" />
+        <div data-testid="home-front-actions" class="flex flex-wrap items-center gap-2">
+          <UButton v-if="can('order.create')" to="/cashier?open=walkin">散客开单</UButton>
+          <UButton v-if="can('booking.manage')" to="/bookings" color="neutral" variant="outline">新预约</UButton>
+          <UButton v-if="can('attendance.clock') && !todayClockIn" color="neutral" variant="outline" :loading="punching" @click="punch">打卡</UButton>
+          <p v-if="todayClockIn" class="text-sm text-muted">已打卡 {{ clockTime(todayClockIn) }}</p>
+        </div>
       </div>
     </template>
 
