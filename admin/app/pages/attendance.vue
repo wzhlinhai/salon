@@ -3,7 +3,7 @@ import type { TableColumn, TableRow } from '@nuxt/ui'
 import type { components } from '~/utils/api'
 import { attendanceCalendarDate, attendancePunchAt } from '~/utils/attendance'
 
-definePageMeta({ permission: 'attendance.manage' })
+definePageMeta({ permission: 'attendance.manage', title: '考勤' })
 type Schema = components['schemas']
 
 const api = useApi()
@@ -275,7 +275,6 @@ onMounted(async () => {
 
 <template>
   <div class="space-y-4">
-    <h1 class="text-xl font-semibold">考勤</h1>
     <UTabs v-model="tab" :items="tabs" :content="false" />
 
     <section v-if="tab === 'monthly'" class="space-y-4">

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+definePageMeta({ title: '登录' })
+
 const form = reactive({ account: '', password: '' })
 const error = ref('')
 const loading = ref(false)

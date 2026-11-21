@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'staff.manage' })
+definePageMeta({ permission: 'staff.manage', title: '级别与岗位' })
 
 type LevelOrPosition = components['schemas']['Level'] | components['schemas']['Position']
 type ItemCategory = components['schemas']['ItemCategory']
@@ -139,7 +139,6 @@ async function save(k: typeof kinds[number], o: LevelOrPosition) {
 
 <template>
   <div class="space-y-4">
-    <h1 class="text-xl font-semibold">级别、岗位与项目类别</h1>
     <div class="grid md:grid-cols-2 gap-4">
       <UCard v-for="k in kinds" :key="k.key">
         <template #header>

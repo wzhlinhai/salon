@@ -48,7 +48,7 @@ function print() {
   <Teleport to="body">
     <div class="receipt-print-root fixed inset-0 z-50 overflow-auto bg-black/40 p-4" data-testid="receipt">
       <div class="receipt-paper mx-auto bg-white text-black shadow-lg" :style="{ width }" data-testid="receipt-paper">
-        <div class="no-print flex items-center justify-between gap-2 border-b border-gray-200 px-3 py-2" :style="{ width }">
+        <div class="no-print flex items-center justify-between gap-2 border-b border-default px-3 py-2" :style="{ width }">
           <span class="text-sm font-medium">小票预览</span>
           <div class="flex gap-2">
             <UButton size="sm" @click="print">打印</UButton>

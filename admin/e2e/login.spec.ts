@@ -36,6 +36,8 @@ test('旧请求的 401 不会清除新登录凭证', async ({ page }) => {
 test('修改密码后清除登录状态并重新登录', async ({ page }) => {
   const employee = await hire('前台')
   await login(page, employee.account, employee.password)
+  await page.getByTestId('personal-menu').click()
+  await page.getByRole('menuitem', { name: '改密码' }).click()
   await page.getByLabel('原密码', { exact: true }).fill(employee.password)
   await page.getByLabel('新密码（至少 8 位）', { exact: true }).fill('new-e2e-password')
   await page.getByRole('button', { name: '修改', exact: true }).click()
@@ -85,7 +87,7 @@ test('登录断网后按钮恢复并可重新登录', async ({ page }) => {
   await expect(page.getByText('网络连接失败，请重试', { exact: true })).toBeVisible()
   await expect(button).toBeEnabled()
   await button.click()
-  await expect(page.getByText(/你好/)).toBeVisible()
+  await expect(page.getByTestId('home-greeting')).toBeVisible()
   expect(pageErrors).toEqual([])
 })
 
@@ -129,17 +131,19 @@ test('换账号后迟到的 get_me 不覆盖当前身份', async ({ page }) => {
     const app = (window as unknown as { useNuxtApp: () => { runWithContext: <T>(fn: () => T) => T } }).useNuxtApp()
     await app.runWithContext(() => useMe().load())
   }, tokenB)
-  await expect(page.getByRole('heading', { name: `你好，${identityB.staff.name}`, exact: true })).toBeVisible()
+  await expect(page.getByTestId('home-greeting')).toContainText(identityB.staff.name)
   const response = page.waitForResponse(r => r.url().endsWith('/api/ops/get_me'))
   release()
   await (await response).finished()
   expect((await oldLoad).staff.id).toBe(identityB.staff.id)
-  await expect(page.getByRole('heading', { name: `你好，${identityB.staff.name}`, exact: true })).toBeVisible()
+  await expect(page.getByTestId('home-greeting')).toContainText(identityB.staff.name)
 })
 
 test('修改密码断网后恢复并可重试', async ({ page }) => {
   const employee = await hire('前台')
   await login(page, employee.account, employee.password)
+  await page.getByTestId('personal-menu').click()
+  await page.getByRole('menuitem', { name: '改密码' }).click()
   await page.getByLabel('原密码', { exact: true }).fill(employee.password)
   await page.getByLabel('新密码（至少 8 位）', { exact: true }).fill('retry-e2e-password')
   let abort = true

@@ -92,7 +92,7 @@ for (const kind of ['档案', '角色', '账号']) {
     if (kind === '档案') await expect(dialog.getByLabel('姓名', { exact: true })).toHaveValue(b.name)
     else await expect(dialog).toContainText(b.name)
     release()
-    await expect(page.locator('main tbody')).toContainText(`刷新${suffix}`)
+    await expect(page.locator('[data-testid="main-panel"] tbody')).toContainText(`刷新${suffix}`)
     await expect(dialog).toBeVisible()
     if (kind === '档案') await expect(dialog.getByLabel('姓名', { exact: true })).toHaveValue(b.name)
     else await expect(dialog).toContainText(b.name)

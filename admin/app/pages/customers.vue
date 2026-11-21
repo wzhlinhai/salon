@@ -2,7 +2,7 @@
 import type { components } from '~/utils/api'
 import type { TableRow } from '@nuxt/ui'
 
-definePageMeta({ permission: 'customer.view' })
+definePageMeta({ permission: 'customer.view', title: '顾客' })
 
 type Customer = components['schemas']['Customer']
 const api = useApi()
@@ -258,7 +258,6 @@ async function handover() {
 <template>
   <div class="space-y-4">
     <div class="flex flex-wrap items-center justify-between gap-2">
-      <h1 class="text-xl font-semibold">顾客</h1>
       <div class="flex gap-2">
         <UButton v-if="can('customer.assign')" variant="outline" @click="handoverOpen = true">负责人交接</UButton>
         <UButton v-if="can('customer.edit')" icon="i-lucide-plus" @click="openCreate">新建顾客</UButton>

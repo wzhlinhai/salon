@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'payment.collect' })
+definePageMeta({ permission: 'order.create', title: '收银' })
 
 type Order = components['schemas']['Order']
 type Customer = components['schemas']['Customer']
@@ -17,8 +17,29 @@ interface PaymentRow { method: string, amount: string }
 interface CountPayment { order_item_id: string, card_id: string, amount: string, item_name: string, card_name: string }
 
 const api = useApi()
+const route = useRoute()
+const router = useRouter()
 const toast = useToast()
-const { can } = useMe()
+const { me, can, grant } = useMe()
+const canCollect = computed(() => can('payment.collect'))
+const canGroupbuy = computed(() => can('groupbuy.redeem'))
+const canCustomer = computed(() => can('customer.view'))
+
+// 去掉项目、换员工、改价按权限的数据范围和时间窗口判断，和后端 checkEdit 一致：
+// 本人范围只能改自己开的或自己在岗位上的单；时间窗口按营业日算。
+function mayChange(permission: string, order: Order | null) {
+  const g = grant(permission)
+  if (!g || !order) return false
+  if (g.windowDays !== null && businessDate.value && order.business_date < addDays(businessDate.value, -g.windowDays)) return false
+  if (g.scope === 'self') {
+    const id = me.value?.staff.id
+    return order.opened_by === id || order.items.some(item => item.positions.some(p => p.staff_id === id))
+  }
+  return true
+}
+
+const canOrderEdit = computed(() => mayChange('order.edit', selectedOrder.value))
+const canReprice = computed(() => mayChange('order.reprice', selectedOrder.value))
 const NONE = '__none__'
 const platformItems = [{ label: '美团', value: 'meituan' }, { label: '抖音', value: 'douyin' }]
 
@@ -73,6 +94,12 @@ async function init() {
     await loadOrders()
     await loadUnlinked()
     await nextTick()
+    if (route.query.open === 'walkin') {
+      // 去掉参数，刷新或后退回来不会再弹一次开单。
+      await router.replace({ query: { ...route.query, open: undefined } })
+      openOrderBegin(null)
+      return
+    }
     focusScan()
   } finally {
     if (current()) initLoading.value = false
@@ -100,6 +127,10 @@ function clearSelectedOrder() {
 
 function customerName(id: string) {
   return customerNames.value[id] || '未识别'
+}
+
+function staffName(id: string | null | undefined) {
+  return staffOptions.value.find(s => s.id === id)?.name || '未填'
 }
 
 async function resolveNames(orders: Order[]) {
@@ -201,15 +232,18 @@ async function submitScan() {
   scanLoading.value = false
   scanKind.value = looksLikePhone(value) ? '手机号' : '券码'
   if (scanKind.value === '手机号') {
+    if (!canCustomer.value) return
     await searchCustomers(value.replace(/\s/g, ''))
     return
   }
   customerMatches.value = []
+  if (!canGroupbuy.value) return
   couponCode.value = value
   await verifyCoupon()
 }
 
 async function searchCustomers(query: string) {
+  if (!canCustomer.value) return
   const current = scanGuard.hold()
   scanLoading.value = true
   pickedCustomer.value = null
@@ -379,7 +413,7 @@ async function saveAddItem() {
 
 async function removeItem(orderItemID: string) {
   const order = selectedOrder.value
-  if (!order) return
+  if (!order || !canOrderEdit.value) return
   const current = actionGuard.next()
   actionSaving.value = true
   try {
@@ -400,7 +434,7 @@ async function removeItem(orderItemID: string) {
 
 async function changeStaff(item: components['schemas']['OrderItem'], slot: number, staffID: string) {
   const order = selectedOrder.value
-  if (!order) return
+  if (!order || !canOrderEdit.value) return
   const current = actionGuard.next()
   actionSaving.value = true
   try {
@@ -440,7 +474,7 @@ function repriceBegin(item: components['schemas']['OrderItem']) {
 async function saveReprice() {
   const order = selectedOrder.value
   const item = repriceItem.value
-  if (!order || !item) return
+  if (!order || !item || !canReprice.value) return
   await repriceForm.save(async (current) => {
     const { data, error } = await api.POST('/api/ops/reprice_order_item', {
       body: { order_id: order.id, order_item_id: item.id, price: repricePrice.value, reason: repriceReason.value.trim() }
@@ -459,6 +493,7 @@ async function saveReprice() {
 }
 
 async function unlinkCoupon(redemptionID: string) {
+  if (!canGroupbuy.value) return
   const current = actionGuard.next()
   actionSaving.value = true
   try {
@@ -599,7 +634,7 @@ function removeCountPayment(orderItemID: string) {
 
 async function previewCheckout() {
   const order = selectedOrder.value
-  if (!order) return
+  if (!order || !canCollect.value) return
   const current = previewGuard.next()
   previewLoading.value = true
   try {
@@ -632,7 +667,7 @@ function recalculationCard() {
 }
 
 async function checkout() {
-  if (checkoutSaving.value) return
+  if (checkoutSaving.value || !canCollect.value) return
   const order = selectedOrder.value
   if (!order || !preview.value) return
   if (paidTotal.value !== cents(expectedCash.value)) {
@@ -679,6 +714,7 @@ const lastReceipt = ref<components['schemas']['Receipt'] | null>(null)
 const receiptGuard = useRequestGuard()
 
 async function showReceipt(checkoutID: string) {
+  if (!canCollect.value) return
   const current = receiptGuard.next()
   const { data, error } = await api.POST('/api/ops/get_receipt', { body: { checkout_id: checkoutID } })
   if (!current()) return
@@ -755,7 +791,7 @@ async function verifyCoupon() {
 }
 
 async function redeemCoupon() {
-  if (!verifyResult.value || couponBusy.value) return
+  if (!canGroupbuy.value || !verifyResult.value || couponBusy.value) return
   const current = couponGuard.hold()
   couponBusy.value = 'redeem'
   try {
@@ -779,7 +815,7 @@ async function redeemCoupon() {
 }
 
 async function queryRedemption() {
-  if (!couponKey.value || couponBusy.value) return
+  if (!canGroupbuy.value || !couponKey.value || couponBusy.value) return
   const current = couponGuard.hold()
   couponBusy.value = 'query'
   try {
@@ -800,6 +836,7 @@ async function queryRedemption() {
 }
 
 async function loadDeals(couponPlatform: string) {
+  if (!canGroupbuy.value) return
   const current = dealsGuard.next()
   const { data, error } = await api.POST('/api/ops/list_groupbuy_deals', { body: {} })
   if (!current()) return
@@ -812,7 +849,7 @@ async function loadDeals(couponPlatform: string) {
 }
 
 async function linkRedeemed() {
-  if (!redemption.value || selectedDealID.value === NONE || linkOrderID.value === NONE) return
+  if (!canGroupbuy.value || !redemption.value || selectedDealID.value === NONE || linkOrderID.value === NONE) return
   const current = couponGuard.hold()
   couponBusy.value = 'link'
   try {
@@ -859,6 +896,7 @@ function clearCoupon() {
 }
 
 async function revokeCoupon(row: Redemption) {
+  if (!canGroupbuy.value) return
   const current = actionGuard.next()
   actionSaving.value = true
   try {
@@ -878,7 +916,7 @@ async function revokeCoupon(row: Redemption) {
 }
 
 async function loadUnlinked() {
-  if (!can('groupbuy.redeem') || !businessDate.value) return
+  if (!canGroupbuy.value || !businessDate.value) return
   const current = unlinkedGuard.next()
   const { data, error } = await api.POST('/api/ops/list_redemptions', {
     body: { from: addDays(businessDate.value, -90), to: businessDate.value, status: 'redeemed', unlinked_only: true }
@@ -898,6 +936,7 @@ const linkDealID = ref(NONE)
 const linkTargetOrderID = ref(NONE)
 
 async function linkBegin(row: Redemption) {
+  if (!canGroupbuy.value) return
   linkForm.begin(() => {
     linkTarget.value = row
     linkDealID.value = NONE
@@ -917,7 +956,7 @@ async function linkBegin(row: Redemption) {
 
 async function saveLink() {
   const row = linkTarget.value
-  if (!row || linkDealID.value === NONE || linkTargetOrderID.value === NONE) return
+  if (!canGroupbuy.value || !row || linkDealID.value === NONE || linkTargetOrderID.value === NONE) return
   await linkForm.save(async (current) => {
     const { data, error } = await api.POST('/api/ops/link_coupon_order', {
       body: { redemption_id: row.id, deal_id: linkDealID.value, order_id: linkTargetOrderID.value }
@@ -940,20 +979,19 @@ onMounted(init)
 
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <h1 class="text-xl font-semibold">收银</h1>
+    <div class="flex items-center justify-end">
       <div class="flex items-center gap-2">
         <UBadge v-if="businessDate" color="neutral" variant="subtle">营业日 {{ businessDate }}</UBadge>
         <UButton @click="openOrderBegin(pickedCustomer)">开单</UButton>
       </div>
     </div>
 
-    <UCard>
+    <UCard v-if="canCustomer || canGroupbuy">
       <form class="flex flex-wrap items-end gap-2" @submit.prevent="submitScan">
         <UFormField label="扫码枪或手输" class="min-w-64 flex-1">
-          <UInput v-model="scanValue" autofocus autocomplete="off" size="xl" placeholder="手机号，或团购券码" aria-label="扫码或输入手机号、券码" data-testid="scan-input" />
+          <UInput v-model="scanValue" autofocus autocomplete="off" size="xl" :placeholder="canGroupbuy ? '手机号，或团购券码' : '手机号'" aria-label="扫码或输入手机号、券码" data-testid="scan-input" />
         </UFormField>
-        <UFormField label="券码平台">
+        <UFormField v-if="canGroupbuy" label="券码平台">
           <USelect v-model="platform" :items="platformItems" class="w-28" aria-label="券码平台" :disabled="couponBusy !== '' || !!verifyResult || !!redemption || couponUnknown" />
         </UFormField>
         <UButton type="submit" size="xl">确认</UButton>
@@ -977,7 +1015,7 @@ onMounted(init)
         <UButton v-for="order in pickedOpenOrders" :key="order.id" size="sm" variant="outline" @click="selectOrder(order)">选择挂单</UButton>
       </div>
 
-      <div v-if="verifyResult || redemption || couponUnknown" class="mt-4 space-y-3 rounded-lg border border-default p-3" data-testid="coupon-panel">
+      <div v-if="canGroupbuy && (verifyResult || redemption || couponUnknown)" class="mt-4 space-y-3 rounded-lg border border-default p-3" data-testid="coupon-panel">
         <div class="flex flex-wrap items-center gap-2">
           <UBadge color="primary" variant="subtle">{{ platformLabel(couponPlatform || platform) }}</UBadge>
           <span class="font-medium">券码 {{ couponCode }}</span>
@@ -1026,7 +1064,7 @@ onMounted(init)
       </div>
     </UCard>
 
-    <div v-if="lastReceipt" class="flex flex-wrap items-center gap-2 rounded-lg border border-default p-3" data-testid="last-receipt">
+    <div v-if="canCollect && lastReceipt" class="flex flex-wrap items-center gap-2 rounded-lg border border-default p-3" data-testid="last-receipt">
       <span class="text-sm">最近一次结账：{{ lastReceipt.total }} 元</span>
       <UButton size="sm" variant="outline" @click="receipt = lastReceipt">补打小票</UButton>
     </div>
@@ -1095,22 +1133,24 @@ onMounted(init)
                   <UBadge v-if="item.price_source === 'manual'" class="ml-2" color="warning" variant="subtle">改价</UBadge>
                 </div>
                 <div class="flex gap-1">
-                  <UButton v-if="can('order.reprice')" size="sm" variant="ghost" @click="repriceBegin(item)">改价</UButton>
-                  <UButton size="sm" variant="ghost" color="error" :loading="actionSaving" @click="removeItem(item.id)">去掉</UButton>
+                  <UButton v-if="canReprice" size="sm" variant="ghost" @click="repriceBegin(item)">改价</UButton>
+                  <UButton v-if="canOrderEdit" size="sm" variant="ghost" color="error" :loading="actionSaving" @click="removeItem(item.id)">去掉</UButton>
                 </div>
               </div>
               <div v-for="position in [...item.positions].sort((a, b) => a.slot - b.slot)" :key="position.slot" class="mt-2 flex items-center gap-2">
                 <span class="w-16 text-sm text-muted">岗位 {{ position.slot }}</span>
                 <USelect
+                  v-if="canOrderEdit"
                   :model-value="position.staff_id ?? undefined"
                   :items="[{ label: '未填', value: NONE }, ...staffItems]"
                   class="w-56"
                   :aria-label="`${item.item_name} 岗位${position.slot}员工`"
                   @update:model-value="value => changeStaff(item, position.slot, String(value === NONE ? '' : value))"
                 />
+                <span v-else class="text-sm">{{ staffName(position.staff_id) }}</span>
                 <UBadge v-if="position.required" color="warning" variant="subtle">必填</UBadge>
               </div>
-              <div class="mt-2 flex items-center gap-2">
+              <div v-if="canCollect" class="mt-2 flex items-center gap-2">
                 <template v-if="countPaymentFor(item.id)">
                   <UBadge color="success" variant="subtle">已用次卡 {{ countPaymentFor(item.id)?.card_name }}</UBadge>
                   <UButton size="sm" variant="ghost" @click="removeCountPayment(item.id)">取消用次卡</UButton>
@@ -1120,7 +1160,7 @@ onMounted(init)
             </div>
           </div>
 
-          <div v-if="selectedOrder.groupbuy.length" class="space-y-2" data-testid="order-groupbuy">
+          <div v-if="canGroupbuy && selectedOrder.groupbuy.length" class="space-y-2" data-testid="order-groupbuy">
             <h2 class="font-medium">关联团购券</h2>
             <div v-for="coupon in selectedOrder.groupbuy" :key="coupon.redemption_id" class="flex flex-wrap items-center gap-2 rounded-lg border border-default p-2 text-sm">
               <span>{{ coupon.deal_name }} · {{ platformLabel(coupon.platform) }}</span>
@@ -1130,7 +1170,7 @@ onMounted(init)
             </div>
           </div>
 
-          <div class="space-y-3 border-t border-default pt-3">
+          <div v-if="canCollect" class="space-y-3 border-t border-default pt-3">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <h2 class="font-medium">结账</h2>
               <span v-if="previewLoading" class="text-sm text-muted">试算中</span>
@@ -1158,7 +1198,7 @@ onMounted(init)
       </UCard>
     </div>
 
-    <UCard v-if="can('groupbuy.redeem')" data-testid="unlinked-coupons">
+    <UCard v-if="canGroupbuy" data-testid="unlinked-coupons">
       <template #header>
         <div class="flex items-center justify-between">
           <span class="font-medium">未关联团购券（近 90 天）</span>

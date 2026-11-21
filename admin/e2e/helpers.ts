@@ -49,11 +49,11 @@ export async function login(page: Page, account: string, password: string) {
   await page.getByLabel('账号').fill(account)
   await page.getByLabel('密码').fill(password)
   await page.getByRole('button', { name: '登录' }).click()
-  await page.getByText(/你好/).waitFor()
+  await page.getByTestId('home-greeting').waitFor()
 }
 
 export async function navLabels(page: Page): Promise<string[]> {
-  return (await page.locator('aside nav a').allInnerTexts()).map(s => s.trim())
+  return (await page.locator('[data-testid="sidebar-nav"] a').allInnerTexts()).map(s => s.trim())
 }
 
 export function cash(amount: string) {

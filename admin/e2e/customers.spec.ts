@@ -738,7 +738,7 @@ for (const fails of [false, true]) {
     release()
     await (await response).finished()
     if (fails) await expect(page.getByText('旧保存冲突', { exact: true })).toBeVisible()
-    else await expect(page.locator('main tbody').getByText(`${a.name}改`, { exact: true })).toHaveCount(1)
+    else await expect(page.locator('[data-testid="main-panel"] tbody').getByText(`${a.name}改`, { exact: true })).toHaveCount(1)
     await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeEnabled()
     await expect(dialog).toBeVisible()
     await expect(dialog.getByLabel('姓名', { exact: true })).toHaveValue(a.name)

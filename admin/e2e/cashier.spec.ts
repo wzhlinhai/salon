@@ -553,3 +553,72 @@ test('券码扫描丢弃未完成的手机号搜索', async ({ page }) => {
   await expect(page.getByTestId('customer-matches')).toHaveCount(0)
   expect(searchCalls).toBe(1)
 })
+
+test('发型师能开单加项，看不到结账和团购券，也没有 403 或错误提示', async ({ page }) => {
+  const { token, staff, item, customer } = await seed()
+  const order = await api<{ id: string }>(token, 'open_order', {
+    customer_id: customer.id,
+    gender: 'female',
+    designated: false,
+    items: [{ item_id: item.id, staff: [{ slot: 1, staff_id: staff.id }] }]
+  })
+  const forbidden: string[] = []
+  page.on('response', (response) => {
+    if (response.url().includes('/api/ops/') && response.status() === 403) forbidden.push(response.url())
+  })
+  await login(page, staff.account, staff.password)
+  await page.goto('/cashier')
+  await page.locator(`[data-order-id="${order.id}"]`).click()
+  const itemRows = page.locator(`[data-order-item="${item.name}"]`)
+  await expect(itemRows).toHaveCount(1)
+  await expect(page.getByText('结账', { exact: true })).toHaveCount(0)
+  await expect(page.getByTestId('unlinked-coupons')).toHaveCount(0)
+  await expect(page.getByTestId('coupon-panel')).toHaveCount(0)
+
+  await page.getByRole('button', { name: '加项目' }).click()
+  const dialog = page.getByRole('dialog', { name: '加项目' })
+  await dialog.getByRole('combobox', { name: '加项目' }).click()
+  await page.getByRole('option', { name: new RegExp(item.name) }).click()
+  await dialog.getByRole('combobox', { name: '加项目岗位1员工' }).click()
+  await page.getByRole('option', { name: staff.name, exact: true }).click()
+  await dialog.getByRole('button', { name: '添加', exact: true }).click()
+  await expect(dialog).not.toBeVisible()
+  await expect(itemRows).toHaveCount(2)
+
+  expect(forbidden).toEqual([])
+  await expect(page.locator('[data-slot="title"]')).toHaveCount(0)
+})
+
+test('发型师打开别人的单，看不到去掉和换员工', async ({ page }) => {
+  const { token, staff, item, customer } = await seed()
+  const other = await hire('发型师')
+  const mine = await api<{ id: string }>(token, 'open_order', {
+    customer_id: customer.id,
+    gender: 'female',
+    designated: false,
+    items: [{ item_id: item.id, staff: [{ slot: 1, staff_id: staff.id }] }]
+  })
+  const theirs = await api<{ id: string }>(token, 'open_order', {
+    gender: 'male',
+    designated: false,
+    items: [{ item_id: item.id, staff: [{ slot: 1, staff_id: other.id }] }]
+  })
+  const forbidden: string[] = []
+  page.on('response', (response) => {
+    if (response.url().includes('/api/ops/') && response.status() === 403) forbidden.push(response.url())
+  })
+  await login(page, staff.account, staff.password)
+  await page.goto('/cashier')
+  const itemRow = page.locator(`[data-order-item="${item.name}"]`)
+
+  await page.locator(`[data-order-id="${theirs.id}"]`).click()
+  await expect(itemRow).toHaveCount(1)
+  await expect(itemRow.getByRole('button', { name: '去掉' })).toHaveCount(0)
+  await expect(itemRow.getByRole('combobox')).toHaveCount(0)
+  await expect(itemRow).toContainText(other.name)
+
+  await page.locator(`[data-order-id="${mine.id}"]`).click()
+  await expect(itemRow.getByRole('button', { name: '去掉' })).toBeVisible()
+  await expect(itemRow.getByRole('combobox')).toHaveCount(1)
+  expect(forbidden).toEqual([])
+})

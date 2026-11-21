@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
+definePageMeta({ title: '门店设置' })
+
 // 所有员工都能查看设置和系统默认做法；修改需要门店设置权限，以后端检查为准。
 type Setting = components['schemas']['Setting']
 interface TimeRange { open: string, close: string }
@@ -126,7 +128,6 @@ onMounted(loadSources)
 <template>
   <div class="space-y-4">
     <div>
-      <h1 class="text-xl font-semibold">门店设置</h1>
       <p class="text-sm text-muted">修改从选定的日期开始执行，之前的业务和已经下的单不受影响。今天是营业日 {{ today }}。</p>
     </div>
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'settings.manage' })
+definePageMeta({ permission: 'settings.manage', title: '项目与价格' })
 type Item = components['schemas']['Item']
 type Level = components['schemas']['Level']
 type Position = components['schemas']['Position']
@@ -131,7 +131,6 @@ function laborFee(item: Item) {
 <template>
   <div class="space-y-4">
     <div class="flex items-center justify-between">
-      <h1 class="text-xl font-semibold">项目与价格</h1>
       <UButton @click="openEditor(null)">新建项目</UButton>
     </div>
     <p v-if="loading">加载中</p>

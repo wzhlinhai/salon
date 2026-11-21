@@ -2,7 +2,7 @@
 import type { TableColumn, TableRow } from '@nuxt/ui'
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'payroll.manage' })
+definePageMeta({ permission: 'payroll.manage', title: '工资表' })
 type Schema = components['schemas']
 type Line = Schema['PayrollLine']
 const api = useApi()
@@ -164,7 +164,6 @@ onMounted(reloadMonths)
 
 <template>
   <div class="space-y-4">
-    <h1 class="text-xl font-semibold">工资表</h1>
     <div class="flex flex-wrap items-center gap-3">
       <USelect v-model="month" aria-label="结算月" :items="monthItems" />
       <span v-if="payroll?.locked">已锁定 · {{ payroll.locked_by?.name }} · {{ payroll.locked_at ? new Date(payroll.locked_at).toLocaleString('zh-CN') : '' }}</span>

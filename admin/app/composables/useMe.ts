@@ -19,5 +19,16 @@ export function useMe() {
     return me.value.is_owner || me.value.permissions.some(p => p.permission === permission)
   }
 
-  return { me, load, can }
+  // 某项权限的数据范围和时间窗口；老板不受限。没有该权限时返回 null。
+  function grant(permission: string): { scope: 'self' | 'store', windowDays: number | null } | null {
+    if (!me.value) return null
+    if (me.value.is_owner) return { scope: 'store', windowDays: null }
+    const specs = me.value.permissions.filter(p => p.permission === permission)
+    if (!specs.length) return null
+    // 后端已按"限制取最宽"合并，这里只取第一条。
+    const spec = specs[0]!
+    return { scope: spec.scope === 'self' ? 'self' : 'store', windowDays: spec.window_days ?? null }
+  }
+
+  return { me, load, can, grant }
 }
