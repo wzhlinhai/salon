@@ -11,3 +11,8 @@ export function yuan(value: string | number | null | undefined) {
 export function yuanFixed(value: string | number | null | undefined) {
   return `¥${Number(value || '0').toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
+
+// 指标是零时数字用浅灰（DESIGN.md 首页）：一早还没开张时，一排黑色的 ¥0 像出了问题。
+export function zeroText(value: string | number | null | undefined) {
+  return /^[¥-]?0(\.0+)?$/.test(String(value ?? '').trim())
+}

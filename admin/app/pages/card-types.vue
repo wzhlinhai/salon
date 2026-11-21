@@ -211,7 +211,7 @@ async function saveRule() {
             <p>编辑项目只影响以后开卡，已开卡保留原次数和单次金额。</p>
           </div>
           <UFormField label="有效期"><USelect v-model="validity" :items="validityItems" class="w-full" /></UFormField>
-          <UFormField v-if="validity === 'fixed_date'" label="固定日期"><UInput v-model="date" type="date" /></UFormField>
+          <UFormField v-if="validity === 'fixed_date'" label="固定日期"><DateInput v-model="date" /></UFormField>
           <UFormField v-if="validity === 'days_after_open'" label="天数"><UInput v-model="days" type="number" :min="1" /></UFormField>
           <USwitch v-if="editing" v-model="active" label="启用卡类型" />
         </div>

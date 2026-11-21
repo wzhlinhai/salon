@@ -56,7 +56,7 @@ const orders = computed(() => {
     <div class="box grid grid-cols-3 tabular-nums">
       <div>
         <p class="text-xs text-dimmed">业绩</p>
-        <p class="text-2xl leading-[1.3] font-semibold">{{ yuan(itemAmount) }}</p>
+        <p class="text-2xl leading-[1.3] font-semibold" :class="zeroText(yuan(itemAmount)) && 'text-dimmed'">{{ yuan(itemAmount) }}</p>
         <p class="text-xs text-muted">
           <template v-if="change === null">我做的项目</template>
           <template v-else><span :class="change >= 0 ? 'text-ink-green' : 'text-ink-red'">{{ change >= 0 ? '↑' : '↓' }} {{ Math.abs(change) }}%</span> 较上周同日</template>
@@ -64,12 +64,12 @@ const orders = computed(() => {
       </div>
       <div class="border-l border-default pl-4">
         <p class="text-xs text-dimmed">售卡</p>
-        <p class="text-2xl leading-[1.3] font-semibold">{{ yuan(total(today, 'sale')) }}</p>
+        <p class="text-2xl leading-[1.3] font-semibold" :class="zeroText(yuan(total(today, 'sale'))) && 'text-dimmed'">{{ yuan(total(today, 'sale')) }}</p>
         <p class="text-xs text-muted">办卡、充值和升级</p>
       </div>
       <div class="border-l border-default pl-4">
         <p class="text-xs text-dimmed">单数</p>
-        <p class="text-2xl leading-[1.3] font-semibold">{{ orders }}</p>
+        <p class="text-2xl leading-[1.3] font-semibold" :class="zeroText(orders) && 'text-dimmed'">{{ orders }}</p>
         <p class="text-xs text-muted">有我参与的单</p>
       </div>
     </div>

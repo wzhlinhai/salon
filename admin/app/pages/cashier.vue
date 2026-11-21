@@ -1293,7 +1293,7 @@ onMounted(init)
           <div class="flex flex-wrap items-center gap-2">
             <USwitch v-model="orderBackfill" label="补录" />
             <UFormField v-if="orderBackfill" label="纸单营业日" :help="`最多补录最近 ${backfillMaxDays} 个营业日`" class="w-56">
-              <UInput v-model="orderPaperDate" type="date" :max="businessDate" :aria-label="'纸单营业日'" />
+              <DateInput v-model="orderPaperDate" :max="businessDate" :aria-label="'纸单营业日'" />
             </UFormField>
           </div>
           <div class="space-y-3">

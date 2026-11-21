@@ -507,7 +507,7 @@ onBeforeUnmount(() => {
           <USelect v-model="label.source" :items="Object.entries(labelSources).map(([value, label]) => ({ value, label }))" class="w-full" />
         </UFormField>
         <UFormField label="观察日期">
-          <UInput v-model="label.observed_on" type="date" :max="today" />
+          <DateInput v-model="label.observed_on" :max="today" />
         </UFormField>
         <UFormField label="备注">
           <UTextarea v-model="label.note" class="w-full" />

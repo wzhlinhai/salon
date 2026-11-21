@@ -18,6 +18,13 @@ export default defineAppConfig({
         empty: 'text-center text-sm text-muted'
       }
     },
+    // 禁用的实心按钮变成灰底灰字，而不是半透明的蓝：半透明蓝看着像"能点但没反应"。
+    button: {
+      compoundVariants: [
+        { color: 'primary', variant: 'solid', class: 'disabled:bg-elevated disabled:text-dimmed aria-disabled:bg-elevated aria-disabled:text-dimmed disabled:opacity-100 aria-disabled:opacity-100' },
+        { color: 'ai', variant: 'solid', class: 'disabled:bg-elevated disabled:text-dimmed aria-disabled:bg-elevated aria-disabled:text-dimmed disabled:opacity-100 aria-disabled:opacity-100' }
+      ]
+    },
     card: {
       slots: {
         root: 'rounded-card'

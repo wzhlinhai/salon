@@ -130,7 +130,7 @@ onMounted(load)
       <div class="space-y-4">
         <UFormField label="卖或送"><USelect v-model="kind" :items="[{ label: '卖', value: 'sold' }, { label: '送', value: 'gift' }]" class="w-full" /></UFormField>
         <UFormField label="面额"><UInput v-model="faceValue" inputmode="decimal" class="w-full" /></UFormField>
-        <UFormField label="有效期"><UInput v-model="expiresOn" type="date" class="w-full" /></UFormField>
+        <UFormField label="有效期"><DateInput v-model="expiresOn" class="w-full" /></UFormField>
         <template v-if="kind === 'sold'">
           <UFormField label="售价"><UInput v-model="price" inputmode="decimal" class="w-full" /></UFormField>
           <UFormField label="业绩归属人"><USelect v-model="sales" multiple :items="staff.map(s => ({ label: s.name, value: s.id }))" class="w-full" /></UFormField>

@@ -211,7 +211,7 @@ onMounted(loadSources)
           <UFormField v-else-if="editing.kind === 'integer'" :label="editing.label"><UInput v-model="form.integer" type="number" :min="editing.min" :max="editing.max" :step="1" /></UFormField>
           <UFormField v-else-if="editing.kind === 'text'" :label="editing.label"><UInput v-model="form.text" :maxlength="editing.max" :aria-label="editing.label" /></UFormField>
           <UFormField v-else label="时间"><UInput v-model="form.time" type="time" /></UFormField>
-          <UFormField label="生效日期" help="不能早于今天"><UInput v-model="form.from" type="date" :min="today" /></UFormField>
+          <UFormField label="生效日期" help="不能早于今天"><DateInput v-model="form.from" :min="today" /></UFormField>
           <p class="text-xs text-muted">系统默认：{{ show(editing, editing.default) }}</p>
         </div>
       </template>

@@ -74,6 +74,7 @@ const today = computed(() => businessDate.value || localDate())
 
 const greeting = computed(() => {
   const hour = new Date().getHours()
+  if (hour < 5) return '夜深了'
   if (hour < 12) return '早上好'
   if (hour < 18) return '下午好'
   return '晚上好'
@@ -287,7 +288,7 @@ onMounted(async () => {
       <div data-testid="home-manager-metrics" class="box grid grid-cols-2 gap-3 tabular-nums md:grid-cols-4">
         <div v-for="metric in metrics" :key="metric.label" :data-metric="metric.label">
           <p class="text-xs text-dimmed">{{ metric.label }}</p>
-          <p data-testid="metric-value" class="text-2xl leading-[1.3] font-semibold">{{ metric.value }}</p>
+          <p data-testid="metric-value" class="text-2xl leading-[1.3] font-semibold" :class="zeroText(metric.value) && 'text-dimmed'">{{ metric.value }}</p>
           <p data-testid="metric-compare" class="text-xs text-muted">
             <template v-if="metric.change !== null">
               <span :class="metric.change >= 0 ? 'text-ink-green' : 'text-ink-red'">{{ metric.change >= 0 ? '↑' : '↓' }} {{ Math.abs(metric.change) }}%</span>
