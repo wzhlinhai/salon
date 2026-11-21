@@ -437,7 +437,7 @@ test('删除加减项拒绝和断网后可重试且空备注没有前导分隔�
   await page.goto('/payroll')
   await row(page, staff.name).click()
   const entry = page.getByTestId('payroll-adjustment').filter({ hasText: '无备注' })
-  await expect(entry.locator('p.text-sm')).toHaveText(/^王老板 · /)
+  await expect(entry.getByTestId('adjustment-meta')).toHaveText(/^王老板 · /)
   await entry.getByRole('button', { name: '删除', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '删除加减项「无备注」？', exact: true })
   const button = dialog.getByRole('button', { name: '确认删除', exact: true })

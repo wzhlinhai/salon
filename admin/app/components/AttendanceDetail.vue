@@ -131,37 +131,38 @@ async function saveRevoke() {
 
 <template>
   <div class="space-y-6" data-testid="attendance-detail" :aria-busy="loading">
-    <section v-if="attendance" class="space-y-3">
-      <div class="flex flex-wrap items-center justify-between gap-2">
-        <p data-testid="attendance-summary-line">{{ summaryText(attendance.summary) }}</p>
-        <UButton size="sm" @click="emit('add-punch', attendance.summary)">给该员工补卡</UButton>
+    <section v-if="attendance">
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <p data-testid="attendance-summary-line" class="text-sm">{{ summaryText(attendance.summary) }}</p>
+        <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-plus" @click="emit('add-punch', attendance.summary)">给该员工补卡</UButton>
       </div>
-      <p v-if="!days.length" class="text-sm text-muted">本月还没有考勤明细</p>
-      <div v-for="day in days" :key="day.business_date" data-testid="attendance-day" :data-date="day.business_date" class="space-y-2 rounded-lg border border-default p-3">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <p class="font-medium">{{ day.business_date }}</p>
-          <div class="flex flex-wrap items-center gap-1">
-            <UBadge v-if="day.late" color="warning" variant="subtle">迟到 {{ day.late_minutes }} 分钟</UBadge>
-            <UBadge v-if="day.early" color="warning" variant="subtle">早退 {{ day.early_minutes }} 分钟</UBadge>
-            <UBadge v-if="day.missing" color="error" variant="subtle">缺卡</UBadge>
-            <UButton v-if="(day.late || day.early || day.missing) && !day.approval" size="xs" @click="askApprove(day)">核准</UButton>
-            <UButton v-if="day.approval" size="xs" variant="outline" @click="askRevoke(day)">撤销核准</UButton>
+      <EmptyState v-if="!days.length && !loading" title="本月还没有考勤明细" />
+      <div v-else class="box overflow-hidden p-0">
+        <div v-for="day in days" :key="day.business_date" data-testid="attendance-day" :data-date="day.business_date" class="space-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span class="font-medium tabular-nums">{{ day.business_date }}</span>
+              <span v-if="day.late" class="tag bg-tag-orange">迟到 {{ day.late_minutes }} 分钟</span>
+              <span v-if="day.early" class="tag bg-tag-orange">早退 {{ day.early_minutes }} 分钟</span>
+              <span v-if="day.missing" class="tag bg-tag-red">缺卡</span>
+            </div>
+            <UButton v-if="(day.late || day.early || day.missing) && !day.approval" size="sm" color="neutral" variant="outline" @click="askApprove(day)">核准</UButton>
+            <UButton v-if="day.approval" size="sm" color="neutral" variant="ghost" @click="askRevoke(day)">撤销核准</UButton>
           </div>
-        </div>
-        <p class="text-sm">班次：{{ day.shift ? `${day.shift.name} ${day.shift.start_time}–${day.shift.end_time}` : '无班次' }}</p>
-        <p class="text-sm">上班：{{ formatAttendanceTime(day.clock_in) }} · 下班：{{ formatAttendanceTime(day.clock_out) }}</p>
-        <p v-if="day.approval" class="text-sm text-muted">
-          已核准 · {{ day.approval.reason }} · {{ day.approval.approved_by.name }} · {{ formatAttendanceDateTime(day.approval.approved_at) }}
-        </p>
-        <div class="space-y-1 border-t border-default pt-2">
-          <div v-for="punch in day.punches" :key="punch.id" data-testid="attendance-punch" class="flex items-start justify-between gap-2 text-sm">
-            <span :class="punch.voided ? 'text-muted line-through' : ''">
-              {{ formatAttendanceTime(punch.at) }} · {{ punchText(punch) }}
-              <template v-if="punch.voided">
-                · 已作废 · {{ punch.void_reason }} · {{ punch.voided_by?.name }}
-              </template>
-            </span>
-            <UButton v-if="punch.source === 'manual' && !punch.voided" size="xs" color="error" variant="ghost" @click="askVoid(punch)">作废</UButton>
+          <p class="text-muted">班次：{{ day.shift ? `${day.shift.name} ${day.shift.start_time}–${day.shift.end_time}` : '无班次' }} · 上班：{{ formatAttendanceTime(day.clock_in) }} · 下班：{{ formatAttendanceTime(day.clock_out) }}</p>
+          <p v-if="day.approval" class="text-meta text-muted">
+            已核准 · {{ day.approval.reason }} · {{ day.approval.approved_by.name }} · {{ formatAttendanceDateTime(day.approval.approved_at) }}
+          </p>
+          <div v-if="day.punches.length" class="space-y-0.5 border-s-2 border-default ps-3">
+            <div v-for="punch in day.punches" :key="punch.id" data-testid="attendance-punch" class="group/row flex min-h-8 items-center justify-between gap-2 text-meta">
+              <span :class="punch.voided ? 'text-muted line-through' : ''">
+                {{ formatAttendanceTime(punch.at) }} · {{ punchText(punch) }}
+                <template v-if="punch.voided">
+                  · 已作废 · {{ punch.void_reason }} · {{ punch.voided_by?.name }}
+                </template>
+              </span>
+              <UButton v-if="punch.source === 'manual' && !punch.voided" size="xs" color="error" variant="ghost" class="opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100" @click="askVoid(punch)">作废</UButton>
+            </div>
           </div>
         </div>
       </div>
