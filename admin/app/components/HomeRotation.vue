@@ -47,7 +47,7 @@ const myPlace = computed(() => {
 
 <template>
   <div v-if="rotation" data-testid="home-rotation">
-    <div class="sec"><span aria-hidden="true">🔁</span> 轮牌<span class="ms-auto font-normal text-dimmed">{{ rotation.queue.name }}</span></div>
+    <div class="sec"><UIcon name="i-lucide-repeat" class="size-4 shrink-0" aria-hidden="true" /> 轮牌<span class="ms-auto font-normal text-dimmed">{{ rotation.queue.name }}</span></div>
     <div class="box">
       <div class="flex items-center gap-3.5">
         <div v-if="myPlace" class="text-hero leading-none font-bold tabular-nums">
