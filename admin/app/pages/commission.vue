@@ -3,7 +3,7 @@ import type { components } from '~/utils/api'
 import type { CommissionValue } from '~/components/CommissionValueEditor.vue'
 import { LOG_PAGE_SIZE } from '~/utils/paging'
 
-definePageMeta({ permission: 'settings.manage' })
+definePageMeta({ permission: 'settings.manage', title: '提成规则' })
 type Schema = components['schemas']
 type Source = Schema['Rule']['source']
 type Cell = Schema['Cell']
@@ -253,7 +253,6 @@ function changeSource(o: OverrideForm) {
 
 <template>
   <div class="space-y-4">
-    <h1 class="text-xl font-semibold">提成规则</h1>
     <p class="text-sm text-muted">保存后从生效日期起执行，之前写入的业绩仍按当时的方案版本算；阶梯提成随当月累计变化，月底锁定后才固定。今天是营业日 {{ today }}。</p>
     <p v-if="!versions.loading.value && !versions.items.value.length">还没有提成方案，没有方案时不计提成。</p>
     <UCard>

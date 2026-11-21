@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'settings.manage' })
+definePageMeta({ permission: 'settings.manage', title: '卡类型' })
 type CardType = components['schemas']['CardType']
 const api = useApi()
 const toast = useToast()
@@ -134,7 +134,6 @@ async function saveRule() {
 <template>
   <div class="space-y-4">
     <div class="flex justify-between">
-      <h1 class="text-xl font-semibold">卡类型</h1>
       <UButton @click="edit(null)">新建卡类型</UButton>
     </div>
     <p v-if="loading">加载中</p>

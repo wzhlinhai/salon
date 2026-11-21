@@ -25,7 +25,7 @@ async function choose(page: Page, scope: Page | Locator, field: string, value: s
 }
 
 function row(page: Page, name: string) {
-  return page.locator('main tbody tr').filter({ has: page.getByRole('cell', { name, exact: true, includeHidden: true }) })
+  return page.locator('[data-testid="main-panel"] tbody tr').filter({ has: page.getByRole('cell', { name, exact: true, includeHidden: true }) })
 }
 
 async function adjustment(page: Page, staff: string, name: string, amount: string) {
@@ -40,7 +40,7 @@ async function adjustment(page: Page, staff: string, name: string, amount: strin
 }
 
 async function assertTotal(page: Page) {
-  const values = await page.locator('main tbody tr').evaluateAll(rows => rows.map(r => r.querySelector('td:last-child')?.textContent?.trim() ?? ''))
+  const values = await page.locator('[data-testid="main-panel"] tbody tr').evaluateAll(rows => rows.map(r => r.querySelector('td:last-child')?.textContent?.trim() ?? ''))
   const total = values.pop()
   const cents = (value: string) => {
     const negative = value.startsWith('-')
@@ -499,7 +499,7 @@ test('月份列表迟到错误不提示到其他页面', async ({ page }) => {
   const delayed = await deferOperation(page, 'list_payroll_months', { failure: '旧月份列表失败' })
   await page.goto('/payroll')
   await delayed.pending
-  await page.locator('aside nav a[href="/staff"]').click()
+  await page.locator('[data-testid="sidebar-nav"] a[href="/staff"]').click()
   await expect(page).toHaveURL('/staff')
   await expect(page.getByRole('button', { name: '新建员工', exact: true })).toBeVisible()
   await delayed.finish()

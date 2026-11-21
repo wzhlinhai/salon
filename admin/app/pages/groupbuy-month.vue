@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'report.view' })
+definePageMeta({ permission: 'report.view', title: '团购对账' })
 
 type GroupbuyMonth = components['schemas']['GroupbuyMonth']
 type Platform = components['schemas']['GroupbuyMonthInput']['platform']
@@ -75,7 +75,6 @@ async function saveSettlement() {
 
 <template>
   <div class="space-y-4">
-    <h1 class="text-xl font-semibold">团购对账</h1>
     <form class="flex flex-wrap items-end gap-2" @submit.prevent="load">
       <UFormField label="平台"><USelect v-model="platform" :items="platformItems" class="w-32" aria-label="平台" /></UFormField>
       <UFormField label="结算月"><UInput v-model="month" type="month" aria-label="结算月" /></UFormField>

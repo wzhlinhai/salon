@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'settings.manage' })
+definePageMeta({ permission: 'settings.manage', title: '团购商品' })
 
 type Deal = components['schemas']['Deal']
 type Item = components['schemas']['Item']
@@ -79,7 +79,6 @@ async function save() {
 <template>
   <div class="space-y-4">
     <div class="flex items-center justify-between">
-      <h1 class="text-xl font-semibold">团购商品</h1>
       <UButton @click="openEditor(null)">新建团购商品</UButton>
     </div>
     <p class="text-sm text-muted">平台购买价用于和平台月结账对账；门店标价取所对应项目的标准价。平台创建后不能修改。</p>

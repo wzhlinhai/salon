@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'staff.manage' })
+definePageMeta({ permission: 'staff.manage', title: '员工' })
 
 type Staff = components['schemas']['Staff']
 const api = useApi()
@@ -164,7 +164,6 @@ async function setActive(s: Staff, active: boolean) {
 <template>
   <div class="space-y-4">
     <div class="flex items-center justify-between">
-      <h1 class="text-xl font-semibold">员工</h1>
       <UButton icon="i-lucide-plus" @click="openProfile(null)">新建员工</UButton>
     </div>
 

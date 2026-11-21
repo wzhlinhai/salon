@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'booking.manage' })
+definePageMeta({ permission: 'booking.manage', title: '预约' })
 
 type Appointment = components['schemas']['Appointment']
 type AppointmentEvent = components['schemas']['AppointmentEvent']
@@ -34,11 +34,11 @@ const eventLabels: Record<AppointmentEvent['kind'], string> = {
   no_show: '爽约'
 }
 const entryColors: Record<Appointment['status'], string> = {
-  pending: 'border-amber-400 bg-amber-100 text-amber-950',
-  confirmed: 'border-sky-400 bg-sky-100 text-sky-950',
-  completed: 'border-emerald-400 bg-emerald-100 text-emerald-950',
+  pending: 'border-warning bg-warning/10 text-default',
+  confirmed: 'border-info bg-info/10 text-default',
+  completed: 'border-success bg-success/10 text-default',
   cancelled: 'border-default bg-elevated text-muted opacity-40 line-through',
-  no_show: 'border-red-400 bg-red-100 text-red-950'
+  no_show: 'border-error bg-error/10 text-default'
 }
 const cancelReasonItems = [
   { label: '顾客取消', value: '顾客取消' },
@@ -578,7 +578,6 @@ function actorLabel(actor: Actor) {
 <template>
   <div class="space-y-4">
     <div class="flex flex-wrap items-center gap-3">
-      <h1 class="text-xl font-semibold">预约</h1>
       <UButton icon="i-lucide-chevron-left" variant="ghost" aria-label="前一天" @click="moveDay(-1)" />
       <UButton icon="i-lucide-chevron-right" variant="ghost" aria-label="后一天" @click="moveDay(1)" />
       <UInput v-model="day" type="date" aria-label="营业日" />

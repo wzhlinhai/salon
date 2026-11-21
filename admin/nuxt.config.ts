@@ -10,6 +10,11 @@ export default defineNuxtConfig({
   ssr: false,
   devtools: { enabled: false },
   css: ['~/assets/css/main.css'],
+  ui: {
+    theme: {
+      colors: ['primary', 'secondary', 'success', 'info', 'warning', 'error', 'ai']
+    }
+  },
   runtimeConfig: {
     public: { apiBase: '' }
   },
@@ -20,6 +25,16 @@ export default defineNuxtConfig({
   eslint: {
     config: {
       stylistic: { indent: 2, quotes: 'single', semi: false, commaDangle: 'never' }
+    }
+  },
+  icon: {
+    provider: 'none',
+    mode: 'svg',
+    clientBundle: {
+      // nav.ts holds icon names in a .ts file, so include it in the client scan.
+      scan: {
+        globInclude: ['**/*.{vue,jsx,tsx,ts,md,mdc,mdx,yml,yaml}']
+      }
     }
   }
 })
