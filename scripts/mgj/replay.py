@@ -601,10 +601,14 @@ def parse_employee_label(value):
 
 def monthly_employees(conn, month):
     """读取当月员工标签、提成和卡销售业绩；标签只用于建员工和报告。"""
+    columns = extract._columns(conn, "business_employee_commission_monthly") or []
+    item_total_available = "item_total" in columns
     rows = _rows(
         conn,
         "SELECT employee_label, item_commission, card_sales_performance, "
-        "card_sales_commission, captured_at, source_record_id "
+        "card_sales_commission, "
+        + ("item_total" if item_total_available else "NULL")
+        + ", captured_at, source_record_id "
         "FROM business_employee_commission_monthly "
         "WHERE period_month LIKE ? AND employee_label IS NOT NULL "
         "ORDER BY employee_label, captured_at, source_record_id",
@@ -618,11 +622,15 @@ def monthly_employees(conn, month):
     commission = {}
     skipped = {}
     invalid_numbers = 0
+    item_total_values = {}
+    item_total_invalid_numbers = 0
+    item_total_parsable = False
     for (
         label,
         item_commission,
         card_sales_performance,
         card_sales_commission,
+        item_total,
         _captured_at,
         _source_record_id,
     ) in latest.values():
@@ -654,11 +662,27 @@ def monthly_employees(conn, month):
                 invalid_numbers += 1
                 amount = Decimal("0.00")
             entry[key] += amount
+        if item_total_available:
+            amount = _source_number(item_total)
+            if amount is None:
+                item_total_invalid_numbers += 1
+                amount = Decimal("0.00")
+            else:
+                item_total_parsable = True
+            item_total_values[parsed["name"]] = (
+                item_total_values.get(parsed["name"], Decimal("0.00")) + amount
+            )
+    if item_total_available and item_total_parsable:
+        for name, amount in item_total_values.items():
+            commission[name]["item_total"] = amount
     return {
         "staff": sorted(staff.values(), key=lambda row: (row["number"], row["name"])),
         "commission": commission,
         "skipped": skipped,
         "invalid_numbers": invalid_numbers,
+        "item_total_invalid_numbers": (
+            item_total_invalid_numbers if item_total_parsable else 0
+        ),
     }
 
 
@@ -1301,31 +1325,38 @@ def _source_performance(conn, month, bill_numbers):
         (month + "%",),
     )
     out = {}
+    unreplayed = {}
     invalid_numbers = 0
     empty_staff = 0
     for staff, total, cash, card, bill_no, _consumed_at in rows:
-        if _id_text(bill_no) not in bill_numbers:
-            continue
         name = _text(staff).strip()
         if name == "":
             empty_staff += 1
             continue
-        entry = out.setdefault(
-            name,
-            {
-                "total": Decimal("0.00"),
-                "cash": Decimal("0.00"),
-                "card": Decimal("0.00"),
-            },
-        )
-        for key, value in (("total", total), ("cash", cash), ("card", card)):
-            amount = _source_number(value)
+        if _id_text(bill_no) in bill_numbers:
+            entry = out.setdefault(
+                name,
+                {
+                    "total": Decimal("0.00"),
+                    "cash": Decimal("0.00"),
+                    "card": Decimal("0.00"),
+                },
+            )
+            for key, value in (("total", total), ("cash", cash), ("card", card)):
+                amount = _source_number(value)
+                if amount is None:
+                    invalid_numbers += 1
+                    amount = Decimal("0.00")
+                entry[key] += amount
+        else:
+            amount = _source_number(total)
             if amount is None:
                 invalid_numbers += 1
                 amount = Decimal("0.00")
-            entry[key] += amount
+            unreplayed[name] = unreplayed.get(name, Decimal("0.00")) + amount
     return {
         "rows": out,
+        "unreplayed": unreplayed,
         "invalid_numbers": invalid_numbers,
         "empty_staff": empty_staff,
     }
@@ -1413,6 +1444,7 @@ def build_result(
     employee_skips,
     blockers,
     commission_invalid_numbers,
+    item_total_invalid_numbers=0,
 ):
     replayed = [record for record in records if record["status"] == "replayed"]
     failures = [record for record in records if record["status"] != "replayed"]
@@ -1484,6 +1516,19 @@ def build_result(
         "examples": split_examples,
     }
 
+    monthly_item_total_available = any(
+        entry.get("item_total") is not None for entry in monthly_commission.values()
+    )
+    month_comparison_available = (
+        monthly_item_total_available and source_performance is not None
+    )
+    unreplayed_performance = (source_performance or {}).get("unreplayed", {})
+    unmatched_unreplayed = {
+        name: amount
+        for name, amount in unreplayed_performance.items()
+        if name not in monthly_commission
+    }
+    unmatched_unreplayed_total = sum(unmatched_unreplayed.values(), Decimal("0.00"))
     performance_names = set(staff_names)
     if source_performance is not None:
         performance_names.update(source_performance["rows"])
@@ -1496,9 +1541,24 @@ def build_result(
         ours = ours_performance.get(
             name, {"total": Decimal("0.00"), "cash": Decimal("0.00"), "card": Decimal("0.00")}
         )
+        month_item_total = (monthly_commission.get(name) or {}).get("item_total")
+        if month_comparison_available and month_item_total is not None:
+            month_total = _diff(
+                month_item_total, unreplayed_performance.get(name, Decimal("0.00"))
+            )
+            diff_month_total = _diff(month_total, ours["total"])
+        else:
+            month_total = None
+            diff_month_total = None
         performance.append(
             {
                 "staff": name,
+                "mgj_month_total": (
+                    money.money(month_total) if month_total is not None else None
+                ),
+                "diff_month_total": (
+                    money.money(diff_month_total) if diff_month_total is not None else None
+                ),
                 "mgj_total": money.money(source["total"]),
                 "mgj_cash": money.money(source["cash"]),
                 "mgj_card": money.money(source["card"]),
@@ -1524,6 +1584,11 @@ def build_result(
             "diff_card",
         )
     }
+    for key in ("mgj_month_total", "diff_month_total"):
+        values = [Decimal(row[key]) for row in performance if row[key] is not None]
+        performance_totals[key] = (
+            money.money(sum(values, Decimal("0.00"))) if values else None
+        )
 
     commission_names = set(staff_names)
     commission_names.update(monthly_commission)
@@ -1544,6 +1609,9 @@ def build_result(
         )
         ours_total = ours["item"] + ours["consume"] + ours["labor"]
         perf = performance_by_name.get(name, {})
+        ratio_total = source.get("item_total")
+        if ratio_total is None:
+            ratio_total = Decimal(perf.get("mgj_total", "0"))
         commission.append(
             {
                 "staff": name,
@@ -1555,9 +1623,7 @@ def build_result(
                 "difference": money.money(_diff(source["item_commission"], ours_total)),
                 "mgj_card_sales_performance": money.money(source["card_sales_performance"]),
                 "mgj_card_sales_commission": money.money(source["card_sales_commission"]),
-                "mgj_ratio": _ratio(
-                    source["item_commission"], Decimal(perf.get("mgj_total", "0"))
-                ),
+                "mgj_ratio": _ratio(source["item_commission"], ratio_total),
                 "ours_ratio": _ratio(
                     ours_total, Decimal(perf.get("ours_total", "0"))
                 ),
@@ -1577,13 +1643,62 @@ def build_result(
         key: money.money(sum((Decimal(row[key]) for row in commission), Decimal("0.00")))
         for key in commission_numeric
     }
+    if monthly_item_total_available:
+        month_item_total_total = sum(
+            (
+                entry["item_total"]
+                for entry in monthly_commission.values()
+                if entry.get("item_total") is not None
+            ),
+            Decimal("0.00"),
+        )
+    else:
+        month_item_total_total = Decimal(performance_totals["mgj_total"])
     commission_totals["mgj_ratio"] = _ratio(
         Decimal(commission_totals["mgj_item_commission"]),
-        Decimal(performance_totals["mgj_total"]),
+        month_item_total_total,
     )
     commission_totals["ours_ratio"] = _ratio(
         Decimal(commission_totals["ours_total"]),
         Decimal(performance_totals["ours_total"]),
+    )
+
+    notes = [
+        "所有单据都建在本系统当前营业日 " + today + "，没有使用 paper_date 补录；"
+        "所以业绩和提成落在今天，而不是 " + month + "。",
+        "期初余额按整月卡金/赠金合计建卡，月末归零；单笔本金/赠送金拆分以本系统扣款顺序为准。",
+        "指定按单级 designated 回放；美管加按项目行/员工标记，混合指定的单只计数，不改变单级指定。",
+        "卡销售业绩（开卡、充值）没有回放；美管加的 card_sales_performance / card_sales_commission 只作参照。",
+        "员工角色统一使用默认非老板角色 " + DEFAULT_STAFF_ROLE + "（默认角色：老板、店长、发型师、助理、前台）。",
+        "业绩对比使用 get_staff_report 当天的 item_performance / cash_performance / card_performance；"
+        "提成对比使用 list_commissions 当天 item/consume/labor 合计。",
+        "美管加 item_commission 是整月合计，包含失败或未回放（--limit）的单；提成差额包含这些单。",
+    ]
+    if monthly_item_total_available:
+        notes.append(
+            "美管加月度业绩对照使用 business_employee_commission_monthly.item_total（整月，不去重），"
+            "并扣除未回放单据的逐行业绩。"
+        )
+    notes.extend(
+        [
+            "逐行流水来源 ep_super_operation_report_search__t3 抓取时会合并同一单、同项目、同一员工、"
+            "同金额的重复行，所以总业绩偏低，只用于现金类 / 卡扣拆分参考。",
+            "未回放扣减本身也取自逐行流水，遇到同样的重复行时可能略低。",
+        ]
+    )
+    if not monthly_item_total_available:
+        notes.append("美管加月度汇总不可用，业绩只按逐行流水对照")
+    if unmatched_unreplayed:
+        notes.append(
+            "未回放单中有 " + str(len(unmatched_unreplayed)) + " 个员工名对不上月度员工，"
+            "合计 ¥" + money.money(unmatched_unreplayed_total) + " 未扣除"
+        )
+    notes.extend(
+        [
+            "提成方案完全来自输入 scheme.json，工具不推导规则。",
+            "card_discount_mismatch 是本系统对非手工改价的可打折行套用卡折扣、美管加按行实收造成的规则差异，不是工具 bug。",
+            "退款单不回放：负的支付行仍按 invalid_payment_amount 失败。",
+        ]
     )
 
     return {
@@ -1645,32 +1760,24 @@ def build_result(
         "performance": performance,
         "performance_totals": performance_totals,
         "performance_source_available": source_performance is not None,
+        "performance_month_available": month_comparison_available,
         "performance_invalid_numbers": (
             source_performance.get("invalid_numbers", 0) if source_performance else 0
         ),
+        "performance_item_total_invalid_numbers": item_total_invalid_numbers,
         "performance_empty_staff": (
             source_performance.get("empty_staff", 0) if source_performance else 0
         ),
+        "performance_unmatched_unreplayed": {
+            "names": len(unmatched_unreplayed),
+            "total": money.money(unmatched_unreplayed_total),
+        },
         "commission": commission,
         "commission_totals": commission_totals,
         "commission_invalid_numbers": commission_invalid_numbers,
         "employee_label_skips": employee_skips,
         "blockers": blockers,
-        "notes": [
-            "所有单据都建在本系统当前营业日 " + today + "，没有使用 paper_date 补录；"
-            "所以业绩和提成落在今天，而不是 " + month + "。",
-            "期初余额按整月卡金/赠金合计建卡，月末归零；单笔本金/赠送金拆分以本系统扣款顺序为准。",
-            "指定按单级 designated 回放；美管加按项目行/员工标记，混合指定的单只计数，不改变单级指定。",
-            "卡销售业绩（开卡、充值）没有回放；美管加的 card_sales_performance / card_sales_commission 只作参照。",
-            "员工角色统一使用默认非老板角色 " + DEFAULT_STAFF_ROLE + "（默认角色：老板、店长、发型师、助理、前台）。",
-            "业绩对比使用 get_staff_report 当天的 item_performance / cash_performance / card_performance；"
-            "提成对比使用 list_commissions 当天 item/consume/labor 合计。",
-            "美管加 item_commission 是整月合计，包含失败或未回放（--limit）的单；提成差额包含这些单。",
-            "美管加业绩来源是 ep_super_operation_report_search__t3，只统计已回放流水单号。",
-            "提成方案完全来自输入 scheme.json，工具不推导规则。",
-            "card_discount_mismatch 是本系统对非手工改价的可打折行套用卡折扣、美管加按行实收造成的规则差异，不是工具 bug。",
-            "退款单不回放：负的支付行仍按 invalid_payment_amount 失败。",
-        ],
+        "notes": notes,
     }
 
 
@@ -1788,31 +1895,45 @@ def render_report(result):
             [
                 "美管加业绩数字为空或无法解析："
                 + str(result["performance_invalid_numbers"])
-                + " 个，按 0 计；员工姓名为空："
+                + " 个，按 0 计；员工姓名为空（含未回放单）："
                 + str(result["performance_empty_staff"])
                 + " 行。",
                 "",
             ]
         )
+    if result["performance_item_total_invalid_numbers"]:
+        lines.extend(
+            [
+                "美管加月度业绩数字为空或无法解析："
+                + str(result["performance_item_total_invalid_numbers"])
+                + " 个，按 0 计。",
+                "",
+            ]
+        )
     lines.extend(
         [
-            "| 员工 | 美管加总业绩 | 现金类 | 卡扣 | 本系统总业绩 | 现金类 | 卡扣 |"
-            " 差额总业绩 | 差额现金类 | 差额卡扣 |",
-            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+            "| 员工 | 美管加月度总业绩（扣未回放） | 本系统总业绩 |"
+            " 差额（美管加-本系统） | 逐行流水总业绩（参考） | 逐行现金类（参考） |"
+            " 逐行卡扣（参考） | 本系统现金类（参考） | 本系统卡扣（参考） |"
+            " 逐行差额总业绩（参考） | 逐行差额现金类（参考） | 逐行差额卡扣（参考） |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         ]
     )
     for row in result["performance"]:
         lines.append(
-            "| " + row["staff"] + " | " + row["mgj_total"] + " | " + row["mgj_cash"]
-            + " | " + row["mgj_card"] + " | " + row["ours_total"] + " | "
-            + row["ours_cash"] + " | " + row["ours_card"] + " | " + row["diff_total"]
-            + " | " + row["diff_cash"] + " | " + row["diff_card"] + " |"
+            "| " + row["staff"] + " | " + (row["mgj_month_total"] or "") + " | "
+            + row["ours_total"] + " | " + (row["diff_month_total"] or "") + " | "
+            + row["mgj_total"] + " | " + row["mgj_cash"] + " | " + row["mgj_card"]
+            + " | " + row["ours_cash"] + " | " + row["ours_card"] + " | "
+            + row["diff_total"] + " | " + row["diff_cash"] + " | " + row["diff_card"] + " |"
         )
     performance_total = result["performance_totals"]
     lines.append(
-        "| 合计 | " + performance_total["mgj_total"] + " | "
-        + performance_total["mgj_cash"] + " | " + performance_total["mgj_card"]
-        + " | " + performance_total["ours_total"] + " | "
+        "| 合计 | " + (performance_total["mgj_month_total"] or "") + " | "
+        + performance_total["ours_total"] + " | "
+        + (performance_total["diff_month_total"] or "") + " | "
+        + performance_total["mgj_total"] + " | " + performance_total["mgj_cash"]
+        + " | " + performance_total["mgj_card"] + " | "
         + performance_total["ours_cash"] + " | " + performance_total["ours_card"]
         + " | " + performance_total["diff_total"] + " | "
         + performance_total["diff_cash"] + " | " + performance_total["diff_card"] + " |"
@@ -2074,6 +2195,7 @@ def run(db_path, month, api, account, password, scheme_path, out_dir, limit=None
             employees["skipped"],
             [],
             employees["invalid_numbers"],
+            employees["item_total_invalid_numbers"],
         )
         if limit is not None:
             result["notes"].append(

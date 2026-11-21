@@ -216,9 +216,9 @@ DISCOUNTS = [
 REPLAY_MONTH = "2026-09"
 
 REPLAY_STAFF = [
-    ("8 号 首席 [张岩]", "100.00", "0.00", "0.00"),
-    ("21 号 助理 [李锦]", "50.00", "0.00", "0.00"),
-    ("9 号 总监 [浩宇]", "80.00", "300.00", "30.00"),
+    ("8 号 首席 [张岩]", "294.00", "100.00", "0.00", "0.00"),
+    ("21 号 助理 [李锦]", "292.00", "50.00", "0.00", "0.00"),
+    ("9 号 总监 [浩宇]", "288.00", "80.00", "300.00", "30.00"),
 ]
 
 REPLAY_BILLS = [
@@ -477,9 +477,13 @@ def build_fixture(path, force=False, orphan=False, independent=True, proposal=Tr
         )
         conn.executemany(
             'INSERT INTO business_employee_commission_monthly '
-            '(period_month, employee_label, item_commission, card_sales_performance, card_sales_commission) '
-            "VALUES (?,?,?,?,?)",
-            [(REPLAY_MONTH, label, item, card_perf, card_comm) for label, item, card_perf, card_comm in REPLAY_STAFF],
+            '(period_month, employee_label, item_total, item_commission, '
+            'card_sales_performance, card_sales_commission) '
+            "VALUES (?,?,?,?,?,?)",
+            [
+                (REPLAY_MONTH, label, item_total, item, card_perf, card_comm)
+                for label, item_total, item, card_perf, card_comm in REPLAY_STAFF
+            ],
         )
         conn.executemany(
             'INSERT INTO ep_super_operation_report_search__t3 '
