@@ -114,6 +114,15 @@ type AddOrderItemInput struct {
 // ListOpenOrdersInput 是查看本店挂单的参数。
 type ListOpenOrdersInput struct{}
 
+// ListOrdersInput 是按营业日查看本店已结和已撤的单的参数。
+type ListOrdersInput struct {
+	BusinessDate string     `json:"business_date,omitempty" format:"date" doc:"营业日 YYYY-MM-DD；不填为当前营业日"`
+	Status       string     `json:"status,omitempty" enum:"all,paid,voided" doc:"all 为已结和已撤；不填为 all"`
+	CustomerID   *uuid.UUID `json:"customer_id,omitempty"`
+	Limit        int32      `json:"limit,omitempty" minimum:"0" maximum:"100" doc:"不填为 50"`
+	Offset       int32      `json:"offset,omitempty" minimum:"0"`
+}
+
 // GetOrderInput 是查看一张单的参数。
 type GetOrderInput struct {
 	ID uuid.UUID `json:"id"`
@@ -122,6 +131,12 @@ type GetOrderInput struct {
 // OrderList 是单据列表，结账时按输入顺序返回。
 type OrderList struct {
 	Items []Order `json:"items"`
+}
+
+// OrderPage 是一页单据，以及符合筛选条件、不受分页限制的总数。
+type OrderPage struct {
+	Items []Order `json:"items"`
+	Total int64   `json:"total"`
 }
 
 // RemoveOrderItemInput 是去掉项目行的参数。

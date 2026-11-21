@@ -542,9 +542,7 @@ func TestCommissionSplitMigrationDown(t *testing.T) {
 		s.performanceSetting("commission_split", "equal")
 		line := s.splitLine("回滚提成", "100.00", "", []any{70, 30}, []uuid.UUID{s.Res.OwnerID, s.employee})
 		s.paid(s.customerOrder(line), payment("cash", "100"))
-		if err := migrateDown(t, s); err != nil {
-			t.Fatal(err)
-		}
+		dbtest.MigrateDownTo(t, s.Pool, 55)
 		err := migrateDown(t, s)
 		if err == nil || !strings.Contains(err.Error(), "无法回滚 00055：存在提成分摊与业绩不同的业绩记录") {
 			t.Fatal(err)
@@ -555,12 +553,7 @@ func TestCommissionSplitMigrationDown(t *testing.T) {
 		s := open(t)
 		line := s.splitLine("回滚同样", "100.00", "", []any{70, 30}, []uuid.UUID{s.Res.OwnerID, s.employee})
 		s.paid(s.customerOrder(line), payment("cash", "100"))
-		if err := migrateDown(t, s); err != nil {
-			t.Fatal(err)
-		}
-		if err := migrateDown(t, s); err != nil {
-			t.Fatal(err)
-		}
+		dbtest.MigrateDownTo(t, s.Pool, 54)
 		var columns int
 		if err := s.Pool.QueryRow(context.Background(), "SELECT count(*) FROM information_schema.columns WHERE table_name='performance_entries' AND column_name IN ('commission_paid_amount','commission_amount')").Scan(&columns); err != nil {
 			t.Fatal(err)

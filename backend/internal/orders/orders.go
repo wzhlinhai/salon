@@ -35,6 +35,7 @@ func Register(r *ops.Registry) {
 	ops.Register(r, ops.Operation[OpenOrderInput, Order]{Name: "open_order", Summary: "开单并保存规则快照", Kind: ops.Write, Permission: perm.OrderCreate, AI: ops.AIDraft, Handle: openOrder})
 	ops.Register(r, ops.Operation[AddOrderItemInput, Order]{Name: "add_order_item", Summary: "向单添加项目行", Kind: ops.Write, Permission: perm.OrderCreate, AI: ops.AIDraft, Handle: addOrderItem})
 	ops.Register(r, ops.Operation[ListOpenOrdersInput, OrderList]{Name: "list_open_orders", Summary: "列出本店挂单", Kind: ops.Read, Permission: perm.OrderCreate, AI: ops.AIDirect, Handle: listOpenOrders})
+	ops.Register(r, ops.Operation[ListOrdersInput, OrderPage]{Name: "list_orders", Summary: "按营业日列出本店已结和已撤的单", Kind: ops.Read, Permission: perm.OrderCreate, AI: ops.AIDirect, Handle: listOrders})
 	ops.Register(r, ops.Operation[GetOrderInput, Order]{Name: "get_order", Summary: "查看本店单据", Kind: ops.Read, Permission: perm.OrderCreate, AI: ops.AIDirect, Handle: getOrder})
 	r.SetDraftPreview("open_order", previewOpenOrder)
 	r.SetDraftPreview("add_order_item", previewAddOrderItem)
@@ -205,6 +206,44 @@ func listOpenOrders(ctx context.Context, env ops.Env, _ *ListOpenOrdersInput) (*
 	}
 	out, err := views(ctx, env, rows)
 	return &OrderList{Items: out}, err
+}
+
+func listOrders(ctx context.Context, env ops.Env, in *ListOrdersInput) (*OrderPage, error) {
+	day := in.BusinessDate
+	if day == "" {
+		businessDate, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, env.Now)
+		if err != nil {
+			return nil, err
+		}
+		day = businessDate.Format(settings.DateLayout)
+	}
+	date, err := time.Parse(settings.DateLayout, day)
+	if err != nil {
+		// rule-untested: business_date 的 schema format=date 在调用前校验
+		return nil, ops.Rule("营业日的格式是 YYYY-MM-DD")
+	}
+	limit := in.Limit
+	if limit == 0 {
+		limit = 50
+	}
+	var status *string
+	if in.Status != "" && in.Status != "all" {
+		status = &in.Status
+	}
+	params := dbgen.CountOrdersByDateParams{StoreID: env.Caller.StoreID, BusinessDate: pgtype.Date{Time: date, Valid: true}, Status: status, CustomerID: in.CustomerID}
+	total, err := env.Q.CountOrdersByDate(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := env.Q.ListOrdersByDate(ctx, dbgen.ListOrdersByDateParams{StoreID: env.Caller.StoreID, BusinessDate: params.BusinessDate, Status: status, CustomerID: in.CustomerID, RowLimit: limit, RowOffset: in.Offset})
+	if err != nil {
+		return nil, err
+	}
+	items, err := views(ctx, env, rows)
+	if err != nil {
+		return nil, err
+	}
+	return &OrderPage{Items: items, Total: total}, nil
 }
 
 func view(ctx context.Context, env ops.Env, row dbgen.Order) (*Order, error) {

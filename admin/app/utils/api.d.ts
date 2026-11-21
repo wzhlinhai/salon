@@ -1925,6 +1925,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按营业日列出本店已结和已撤的单 */
+        post: operations["list_orders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_payroll_adjustments": {
         parameters: {
             query?: never;
@@ -5399,6 +5416,26 @@ export interface components {
             month: string;
         };
         ListOpenOrdersInput: Record<string, never>;
+        ListOrdersInput: {
+            /**
+             * Format: date
+             * @description 营业日 YYYY-MM-DD；不填为当前营业日
+             */
+            business_date?: string;
+            customer_id?: string;
+            /**
+             * Format: int32
+             * @description 不填为 50
+             */
+            limit?: number;
+            /** Format: int32 */
+            offset?: number;
+            /**
+             * @description all 为已结和已撤；不填为 all
+             * @enum {string}
+             */
+            status?: "all" | "paid" | "voided";
+        };
         ListPayrollAdjustmentsInput: {
             before_id?: string;
             /** Format: int32 */
@@ -5766,6 +5803,11 @@ export interface components {
         };
         OrderList: {
             items: components["schemas"]["Order"][];
+        };
+        OrderPage: {
+            items: components["schemas"]["Order"][];
+            /** Format: int64 */
+            total: number;
         };
         OrderPayment: {
             amount: string;
@@ -10649,6 +10691,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_orders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListOrdersInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderPage"];
                 };
             };
             /** @description Error */
