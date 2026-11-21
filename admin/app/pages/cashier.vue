@@ -750,6 +750,15 @@ async function checkout() {
 
 const settledKey = ref(0)
 
+// 撤单退回了卡余额、次数和红包：撤掉的是最近一次结账就不再能补打小票；同一顾客的当前单重新读卡并试算。
+async function onVoided(order: Order) {
+  if (lastReceipt.value?.checkout_id === order.checkout_id) lastReceipt.value = null
+  if (selectedOrder.value?.customer_id !== order.customer_id) return
+  invalidatePreview()
+  await loadCards()
+  await refreshSelected()
+}
+
 // —— 小票 ——
 const receipt = ref<components['schemas']['Receipt'] | null>(null)
 const lastReceipt = ref<components['schemas']['Receipt'] | null>(null)
@@ -1148,7 +1157,7 @@ onMounted(init)
           </div>
         </section>
 
-        <CashierSettled :refresh-key="settledKey" :customer-name="customerName" :resolve-names="resolveNames" :can-void="o => mayChange('order.void', o)" />
+        <CashierSettled :refresh-key="settledKey" :customer-name="customerName" :resolve-names="resolveNames" :can-void="o => mayChange('order.void', o)" @voided="onVoided" />
       </div>
 
       <section data-testid="selected-order">

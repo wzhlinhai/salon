@@ -71,6 +71,9 @@ async function submitVoid() {
         toast.add({ title: errorText(opened.error), color: 'error' })
         return
       }
+      // 窗口已开：这次撤单若被别的规则拒绝，再提交不必重开窗口、再验一次密码。
+      needPassword.value = false
+      password.value = ''
     }
     const { data, error } = await api.POST('/api/ops/void_order', { body })
     if (!current()) return
@@ -93,10 +96,10 @@ async function submitVoid() {
 
 <template>
   <section data-testid="settled-orders">
-    <h2 class="sec">今日已结<span class="ms-1 font-normal text-dimmed">{{ total }}</span></h2>
+    <h2 class="sec">今日结账<span class="ms-1 font-normal text-dimmed">{{ total }}</span></h2>
     <div class="box overflow-hidden p-0">
       <p v-if="loading && !orders.length" class="px-3 py-2.5 text-sm text-muted">加载中…</p>
-      <p v-else-if="!orders.length" class="px-3 py-2.5 text-sm text-muted">今天还没有结账的单</p>
+      <EmptyState v-else-if="!orders.length" title="今天还没有结账的单" hint="结过账的单会列在这里，结错了可以撤单" />
       <div
         v-for="order in orders"
         :key="order.id"
@@ -110,14 +113,13 @@ async function submitVoid() {
         </div>
         <div class="mt-0.5 flex items-center gap-1.5 text-meta text-muted">
           <span v-if="order.status === 'voided'" class="tag bg-tag-gray">已撤</span>
-          <span v-if="order.backfill" class="tag bg-tag-yellow">补录 {{ order.business_date }}</span>
           <span class="truncate" :title="itemNames(order)">{{ itemNames(order) }}</span>
           <UButton
             v-if="order.status === 'paid' && canVoid(order)"
-            size="xs"
+            size="sm"
             color="error"
             variant="ghost"
-            class="ms-auto -my-1 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100"
+            class="ms-auto -my-1.5 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100"
             :aria-label="`撤单 ${customerName(order.customer_id)} ${yuanFixed(order.net)}`"
             @click="editVoid(order)"
           >
@@ -136,7 +138,7 @@ async function submitVoid() {
           {{ customerName(target.customer_id) }} · {{ itemNames(target) }} · 实收 {{ yuanFixed(target.net) }}。撤单后这张单的收款、业绩全部作废，卡余额、次数和红包退回。
         </p>
         <UFormField label="撤单原因" required><UTextarea v-model="reason" :maxlength="200" class="w-full" /></UFormField>
-        <UFormField v-if="needPassword" label="登录密码" required help="撤单要先用你的登录密码开启授权，授权期间再撤单不用重复输入">
+        <UFormField v-if="needPassword" label="登录密码" required help="撤单要先用你的登录密码开启授权，授权期间再撤单不用重复输入。输错次数和登录共用，错太多会暂时锁定登录">
           <UInput v-model="password" type="password" autocomplete="current-password" class="w-full" />
         </UFormField>
       </div>

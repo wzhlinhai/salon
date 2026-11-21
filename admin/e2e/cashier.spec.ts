@@ -95,6 +95,7 @@ test('扫码开单、现金结账并按设置打印小票', async ({ page }) => 
   await expect(page.getByTestId('receipt-customer')).toContainText('*')
   await expect.poll(() => page.evaluate(() => (window as unknown as { __receiptPrinted?: number }).__receiptPrinted ?? 0)).toBe(1)
   await page.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(page.getByTestId('settled-orders').locator('[data-settled-order]', { hasText: customer.name })).toContainText('¥88.00')
   await expect(page.getByTestId('last-receipt')).toBeVisible()
   await page.getByRole('button', { name: '补打小票' }).click()
   await expect(page.getByTestId('receipt-header')).toHaveText(header)
@@ -562,6 +563,11 @@ test('发型师能开单加项，看不到结账和团购券，也没有 403 或
     designated: false,
     items: [{ item_id: item.id, staff: [{ slot: 1, staff_id: staff.id }] }]
   })
+  const paid = await api<{ id: string }>(token, 'open_order', {
+    customer_id: customer.id, gender: 'female', designated: false,
+    items: [{ item_id: item.id, staff: [{ slot: 1, staff_id: staff.id }] }]
+  })
+  await api(token, 'checkout_orders', { orders: [{ order_id: paid.id, payments: [{ method: 'cash', amount: '88.00' }] }] })
   const forbidden: string[] = []
   page.on('response', (response) => {
     if (response.url().includes('/api/ops/') && response.status() === 403) forbidden.push(response.url())
@@ -574,6 +580,10 @@ test('发型师能开单加项，看不到结账和团购券，也没有 403 或
   await expect(page.getByText('结账', { exact: true })).toHaveCount(0)
   await expect(page.getByTestId('unlinked-coupons')).toHaveCount(0)
   await expect(page.getByTestId('coupon-panel')).toHaveCount(0)
+  const paidRow = page.locator(`[data-settled-order="${paid.id}"]`)
+  await expect(paidRow).toBeVisible()
+  await paidRow.hover()
+  await expect(paidRow.getByRole('button', { name: /^撤单/ })).toHaveCount(0)
 
   await page.getByRole('button', { name: '加项目' }).click()
   const dialog = page.getByRole('dialog', { name: '加项目' })
@@ -724,6 +734,7 @@ test('今日已结里撤单；开了授权窗口要先输登录密码', async ({
     await expect(dialog.getByRole('button', { name: '确认撤单' })).toBeDisabled()
     await password.fill('wrong-password')
     await dialog.getByRole('button', { name: '确认撤单' }).click()
+    await expect(page.getByText('密码不正确', { exact: true })).toBeVisible()
     await expect(dialog).toBeVisible()
     await expect(secondRow).not.toContainText('已撤')
     await password.fill(owner.password)

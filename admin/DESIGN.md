@@ -238,7 +238,7 @@ AI 只出现在下面四处，都用 `text-ai` 和 `✦`：
 | 搜索或吩咐 AI | `ai_chat`；各写操作的 AI 起草 | 已有 |
 | 首页 | 只读汇总：reports、performance、rotation、orders、booking、drafts | 已有 |
 | 轮牌 | rotation 全部；队列设置（`create_rotation_queue`、`set_queue_members`、`set_half_turn_items`、`update_rotation_queue`）放在本页 ··· 菜单里 | 待做 |
-| 收银（`order.create` 可进；结账等按各自权限显示） | orders（开单、加减项、换人、改价、结账、小票），groupbuy 的验券、核销、撤销、关联和 `open_groupbuy_order`，结账可选挂账；当前单上方提示并入同顾客同日挂单 `merge_orders`；撤单（`open_void_window`、`void_order`） | 已有；撤单待补 |
+| 收银（`order.create` 可进；结账等按各自权限显示） | orders（开单、加减项、换人、改价、结账、小票），groupbuy 的验券、核销、撤销、关联和 `open_groupbuy_order`，结账可选挂账；当前单上方提示并入同顾客同日挂单 `merge_orders`；左栏「今日结账」`list_orders` 里撤单（`open_void_window`、`void_order`，补录单和更早的单不在这里） | 已有 |
 | 预约 | booking 全部 | 已有 |
 | 顾客 | customers 全部；详情里放 cards、redpackets，欠款 `list_customer_debts` 和收还款 `repay_debt`，消费记录、`list_audit_log` | 已有 |
 | 日结 | closing 全部；collections（收款列表、退款、撤销） | 待做 |
