@@ -622,3 +622,58 @@ test('发型师打开别人的单，看不到去掉和换员工', async ({ page 
   await expect(itemRow.getByRole('combobox')).toHaveCount(1)
   expect(forbidden).toEqual([])
 })
+
+test('同一顾客的两张同日挂单合并成一张', async ({ page }) => {
+  const { token, staff, item, customer } = await seed()
+  const opening = { customer_id: customer.id, gender: 'female', designated: false, items: [{ item_id: item.id, staff: [{ slot: 1, staff_id: staff.id }] }] }
+  const first = await api<{ id: string }>(token, 'open_order', opening)
+  const second = await api<{ id: string }>(token, 'open_order', opening)
+  await login(page, owner.account, owner.password)
+  await page.goto('/cashier')
+  await page.locator(`[data-order-id="${first.id}"]`).click()
+  const hint = page.getByTestId('merge-hint')
+  await expect(hint).toContainText('还有 1 张同日挂单（¥88.00）')
+  await hint.getByRole('button', { name: '合并到这张' }).click()
+  await expect(page.locator(`[data-order-id="${second.id}"]`)).toHaveCount(0)
+  await expect(hint).toHaveCount(0)
+  await expect(page.locator(`[data-order-id="${first.id}"]`)).toContainText('¥176.00')
+  await expect(page.locator(`[data-order-item="${item.name}"]`)).toHaveCount(2)
+})
+
+test('未识别顾客没有挂账；挂账结账后在顾客详情收还款', async ({ page }) => {
+  const { token, staff, item, customer } = await seed()
+  const items = [{ item_id: item.id, staff: [{ slot: 1, staff_id: staff.id }] }]
+  const walkin = await api<{ id: string }>(token, 'open_order', { gender: 'male', designated: false, items })
+  const order = await api<{ id: string }>(token, 'open_order', { customer_id: customer.id, gender: 'female', designated: false, items })
+  await page.addInitScript(() => {
+    window.print = () => {}
+  })
+  await login(page, owner.account, owner.password)
+  await page.goto('/cashier')
+  const method = page.getByTestId('sale-payments').getByRole('combobox', { name: '方式' })
+
+  await page.locator(`[data-order-id="${walkin.id}"]`).click()
+  await expect(page.getByTestId('cash-expected')).toHaveText('88.00')
+  await method.click()
+  await expect(page.getByRole('option', { name: '现金', exact: true })).toBeVisible()
+  await expect(page.getByRole('option', { name: '挂账', exact: true })).toHaveCount(0)
+  await page.keyboard.press('Escape')
+
+  await page.locator(`[data-order-id="${order.id}"]`).click()
+  await expect(page.getByTestId('cash-expected')).toHaveText('88.00')
+  await method.click()
+  await page.getByRole('option', { name: '挂账', exact: true }).click()
+  await page.getByRole('button', { name: '结账', exact: true }).click()
+  await expect(page.locator(`[data-order-id="${order.id}"]`)).toHaveCount(0)
+
+  await page.goto(`/customers?id=${customer.id}`)
+  const debts = page.getByTestId('debts')
+  await expect(debts).toContainText('未还 ¥88.00')
+  await debts.getByRole('button', { name: '收还款' }).click()
+  const dialog = page.getByRole('dialog', { name: '收还款' })
+  await dialog.getByLabel('还款金额').fill('50.00')
+  await dialog.getByRole('button', { name: '确认收款' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(debts).toContainText('未还 ¥38.00')
+  await expect(debts).toContainText('还 ¥50.00 · 现金')
+})
