@@ -299,23 +299,46 @@ const actions: Record<string, string> = {
   hand_over_customers: '负责人交接'
 }
 
-function snapshot(value: unknown): string {
-  if (!value || typeof value !== 'object') return '无'
+// 一条修改记录只列出改动的字段；新建等没有改前的记录列出填了的字段。
+interface LogField { label: string, value: string, empty: boolean }
+interface LogChange { label: string, before: string | null, after: string }
+
+function logFields(value: unknown): LogField[] | null {
+  if (!value || typeof value !== 'object') return null
   const c = value as Customer
   const labels = c.active_safety_labels?.map(l =>
     `${labelNames[l.kind]}（${labelSources[l.source]}，${l.observed_on}，${l.note || '无备注'}）`
   ).join('、')
+  const field = (label: string, text: string | null | undefined, fallback: string) => ({ label, value: text || fallback, empty: !text })
   return [
-    c.unidentified ? '未识别顾客' : c.name || '未填写姓名',
-    c.phone || '未留手机号',
-    genderName(c.gender),
-    `来源：${c.source?.name || '未填写'}`,
-    `负责人：${c.responsible?.name || '不设'}`,
-    `备注：${c.note || '无'}`,
-    `安全标签：${labels || '无'}`,
-    ...(c.merged_into ? ['已合并到另一位顾客'] : [])
-  ].join('；')
+    field('姓名', c.unidentified ? '未识别顾客' : c.name, '未填写'),
+    field('手机号', c.phone, '未留'),
+    field('性别', c.gender ? genderName(c.gender) : '', '未填写'),
+    field('来源', c.source?.name, '未填写'),
+    field('负责人', c.responsible?.name, '不设'),
+    field('备注', c.note, '无'),
+    field('安全标签', labels, '无'),
+    field('状态', c.merged_into ? '已合并' : '', '正常')
+  ]
 }
+
+const phoneActions = new Set(['add_customer_phone', 'change_customer_phone'])
+
+function logChanges(entry: { action: string, before?: unknown, after?: unknown }): LogChange[] {
+  const before = logFields(entry.before)
+  const after = logFields(entry.after) ?? []
+  if (!before) return after.filter(f => !f.empty).map(f => ({ label: f.label, before: null, after: f.value }))
+  const changes: LogChange[] = after
+    .map((f, i) => ({ label: f.label, before: before[i]!.value, after: f.value }))
+    .filter(change => change.before !== change.after)
+  // 看不到完整号码时，只改中间四位的前后打码相同，仍要说明号码改过
+  if (phoneActions.has(entry.action) && !changes.some(c => c.label === '手机号')) {
+    changes.unshift({ label: '手机号', before: null, after: '已修改' })
+  }
+  return changes
+}
+
+const logEntries = computed(() => logs.items.value.map(entry => ({ entry, changes: logChanges(entry) })))
 
 // 读取档案及营业日，切换顾客时关闭编辑入口
 watch(() => props.id, () => {
@@ -411,14 +434,23 @@ onBeforeUnmount(() => {
           <div class="sec">修改记录</div>
           <div class="box overflow-hidden p-0" data-testid="customer-logs">
             <p v-if="!logs.items.value.length" class="px-3 py-2.5 text-sm text-muted">暂无修改记录</p>
-            <div v-for="entry in logs.items.value" :key="entry.id" data-testid="customer-log-entry" class="space-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0">
+            <div v-for="{ entry, changes } in logEntries" :key="entry.id" data-testid="customer-log-entry" class="space-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0">
               <p class="flex flex-wrap items-center gap-x-2 text-meta text-muted">
                 <span class="font-medium text-default">{{ actions[entry.action] || entry.action }}</span>
                 <span>{{ entry.actor.name }}</span>
                 <span class="ms-auto tabular-nums">{{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</span>
               </p>
-              <p v-if="snapshot(entry.before) !== '无'"><span class="me-1.5 text-meta text-muted">改前</span><span data-testid="log-before" class="text-muted line-through">{{ snapshot(entry.before) }}</span></p>
-              <p><span class="me-1.5 text-meta text-muted">改后</span><span data-testid="log-after">{{ snapshot(entry.after) }}</span></p>
+              <p v-for="change in changes" :key="change.label" data-testid="log-change">
+                <span class="me-1.5 text-meta text-muted">{{ change.label }}</span>
+                <template v-if="change.before !== null">
+                  <span class="sr-only">原为</span>
+                  <span data-testid="log-before" class="text-muted line-through">{{ change.before }}</span>
+                  <span class="mx-1 text-dimmed" aria-hidden="true">→</span>
+                  <span class="sr-only">改为</span>
+                </template>
+                <span data-testid="log-after">{{ change.after }}</span>
+              </p>
+              <p v-if="!changes.length" class="text-muted">资料没有变化</p>
             </div>
             <div v-if="logs.hasMore.value" class="border-t border-default px-3 py-1.5">
               <UButton :loading="logs.loading.value" size="xs" color="neutral" variant="ghost" @click="logs.loadMore">加载更多</UButton>
