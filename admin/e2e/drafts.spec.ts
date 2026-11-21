@@ -34,7 +34,7 @@ test('待确认：卡片写清发起人、原话和 AI 理解的结果，确认�
   await login(page, owner.account, owner.password)
   const before = await pendingCount(token)
   const badge = page.getByTestId('drafts-nav')
-  await expect(badge).toHaveText(new RegExp(`^\\s*◉?\\s*待确认\\s*${before}\\s*$`))
+  await expect(badge).toHaveText(new RegExp(`^\\s*待确认\\s*${before}\\s*$`))
 
   await badge.getByText('待确认').click()
   const row = card(page, draft.id)
@@ -45,7 +45,7 @@ test('待确认：卡片写清发起人、原话和 AI 理解的结果，确认�
   await row.getByTestId('draft-confirm').click()
   await expect(page.getByText('已确认').first()).toBeVisible()
   await expect(row).toHaveCount(0)
-  await expect(badge).toHaveText(new RegExp(`^\\s*◉?\\s*待确认\\s*${before - 1 || ''}\\s*$`))
+  await expect(badge).toHaveText(new RegExp(`^\\s*待确认\\s*${before - 1 || ''}\\s*$`))
 
   const { items: categories } = await api<{ items: { name: string }[] }>(token, 'list_item_categories', {})
   expect(categories.map(c => c.name)).toContain(name)

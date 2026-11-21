@@ -214,7 +214,7 @@ onMounted(async () => {
     <template v-if="selectedHome === 'personal'">
       <template v-if="can('attendance.clock')">
         <div v-if="!todayClockIn" class="flex items-center gap-4 rounded-xl bg-notice px-[18px] py-4">
-          <span class="text-greet" aria-hidden="true">⏱</span>
+          <UIcon name="i-lucide-clock" class="size-7 shrink-0 text-muted" aria-hidden="true" />
           <p class="text-lead font-semibold">今天还没打卡<small class="block text-meta font-normal text-muted">上班先打卡，迟到、早退按门店的班次算</small></p>
           <UButton data-testid="home-punch" size="xl" class="ms-auto min-h-12 px-7 text-base" :loading="punching" @click="punch">打卡</UButton>
         </div>
@@ -228,12 +228,12 @@ onMounted(async () => {
         <HomeMyDay v-if="can('performance.view') && me && businessDate" :date="today" :staff-id="me.staff.id" />
       </div>
       <template v-if="can('booking.manage') && me && businessDate">
-        <div class="sec"><span aria-hidden="true">📅</span> 我的今天<span class="ms-auto font-normal text-dimmed">时间按门店营业时间排</span></div>
+        <div class="sec"><UIcon name="i-lucide-calendar" class="size-4 shrink-0" aria-hidden="true" /> 我的今天<span class="ms-auto font-normal text-dimmed">时间按门店营业时间排</span></div>
         <div class="box"><HomeTimeline :date="today" :staff-id="me.staff.id" /></div>
         <HomeMyCustomers :date="today" :staff-id="me.staff.id" />
       </template>
       <template v-if="myDrafts.length">
-        <div class="sec"><span aria-hidden="true">◉</span> 我起草的<span class="ms-auto font-normal text-dimmed">等有权限的人确认</span></div>
+        <div class="sec"><UIcon :name="DRAFTS_ICON" class="size-4 shrink-0" aria-hidden="true" /> 我起草的<span class="ms-auto font-normal text-dimmed">等有权限的人确认</span></div>
         <div class="space-y-2">
           <NuxtLink v-for="draft in myDrafts" :key="draft.id" to="/drafts" class="box flex items-center gap-3">
             <span class="tag shrink-0 bg-ai-soft text-ai">✦ AI 起草</span>
@@ -255,7 +255,7 @@ onMounted(async () => {
         <p v-if="todayClockIn" class="quick text-muted tabular-nums">已打卡 {{ clockTime(todayClockIn) }}</p>
       </div>
       <template v-if="myDrafts.length">
-        <div class="sec"><span aria-hidden="true">◉</span> 我起草的<span class="ms-auto font-normal text-dimmed">等店长确认</span></div>
+        <div class="sec"><UIcon :name="DRAFTS_ICON" class="size-4 shrink-0" aria-hidden="true" /> 我起草的<span class="ms-auto font-normal text-dimmed">等店长确认</span></div>
         <div class="space-y-2">
           <NuxtLink v-for="draft in myDrafts" :key="draft.id" to="/drafts" class="box flex items-center gap-3">
             <span class="tag shrink-0 bg-ai-soft text-ai">✦ AI 起草</span>
@@ -272,7 +272,7 @@ onMounted(async () => {
     </template>
 
     <template v-else-if="selectedHome === 'manager'">
-      <div class="sec"><span aria-hidden="true">◉</span> 待你确认<span class="ms-auto font-normal text-dimmed">AI 起草，你确认后才生效 · 当天有效</span></div>
+      <div class="sec"><UIcon :name="DRAFTS_ICON" class="size-4 shrink-0" aria-hidden="true" /> 待你确认<span class="ms-auto font-normal text-dimmed">AI 起草，你确认后才生效 · 当天有效</span></div>
       <div v-if="pendingDrafts.length" data-testid="home-drafts" class="grid gap-3 md:grid-cols-3">
         <DraftCard v-for="draft in pendingDrafts.slice(0, 3)" :key="draft.id" :draft="draft" @open="navigateTo('/drafts')" />
       </div>
@@ -283,7 +283,7 @@ onMounted(async () => {
 
       <AiCommandBox :suggestions="managerSuggestions" />
 
-      <div class="sec"><span aria-hidden="true">📊</span> 今日经营<span class="ms-auto font-normal text-dimmed">实收口径</span></div>
+      <div class="sec"><UIcon name="i-lucide-chart-column" class="size-4 shrink-0" aria-hidden="true" /> 今日经营<span class="ms-auto font-normal text-dimmed">实收口径</span></div>
       <div data-testid="home-manager-metrics" class="box grid grid-cols-2 gap-3 tabular-nums md:grid-cols-4">
         <div v-for="metric in metrics" :key="metric.label" :data-metric="metric.label">
           <p class="text-xs text-dimmed">{{ metric.label }}</p>
@@ -299,7 +299,7 @@ onMounted(async () => {
       </div>
 
       <template v-if="can('booking.manage') && businessDate">
-        <div class="sec"><span aria-hidden="true">📅</span> 今日排班<span class="ms-auto font-normal text-dimmed"><NuxtLink to="/bookings" class="hover:underline">到预约页改约</NuxtLink></span></div>
+        <div class="sec"><UIcon name="i-lucide-calendar" class="size-4 shrink-0" aria-hidden="true" /> 今日排班<span class="ms-auto font-normal text-dimmed"><NuxtLink to="/bookings" class="hover:underline">到预约页改约</NuxtLink></span></div>
         <div class="box"><HomeTimeline :date="today" @summary="visits = $event" /></div>
       </template>
     </template>

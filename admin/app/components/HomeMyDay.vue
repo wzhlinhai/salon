@@ -52,7 +52,7 @@ const orders = computed(() => {
 
 <template>
   <div v-if="today" data-testid="home-my-day">
-    <div class="sec"><span aria-hidden="true">💰</span> 我今天<span class="ms-auto font-normal text-dimmed">本人数据</span></div>
+    <div class="sec"><UIcon name="i-lucide-wallet" class="size-4 shrink-0" aria-hidden="true" /> 我今天<span class="ms-auto font-normal text-dimmed">本人数据</span></div>
     <div class="box grid grid-cols-3 tabular-nums">
       <div>
         <p class="text-xs text-dimmed">业绩</p>

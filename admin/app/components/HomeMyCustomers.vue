@@ -53,7 +53,7 @@ function lateMinutes(entry: Appointment) {
 
 <template>
   <div v-if="upcoming.length" data-testid="home-my-customers">
-    <div class="sec"><span aria-hidden="true">👥</span> 我的顾客<span class="ms-auto font-normal text-dimmed">正在服务和接下来</span></div>
+    <div class="sec"><UIcon name="i-lucide-users" class="size-4 shrink-0" aria-hidden="true" /> 我的顾客<span class="ms-auto font-normal text-dimmed">正在服务和接下来</span></div>
     <div class="grid gap-3 md:grid-cols-3">
       <div
         v-for="entry in upcoming"

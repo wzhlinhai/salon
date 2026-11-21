@@ -40,9 +40,9 @@ function isActive(to: string) {
   return to === '/' ? route.path === '/' : route.path.startsWith(to)
 }
 
-const pageEmoji = computed(() => {
-  if (route.path === '/drafts') return '◉'
-  return navItems.find(item => isActive(item.to))?.emoji ?? ''
+const pageIcon = computed(() => {
+  if (route.path === '/drafts') return DRAFTS_ICON
+  return navItems.find(item => isActive(item.to))?.icon ?? ''
 })
 
 // 侧栏顶上的门店名，第一个字做标志。
@@ -110,15 +110,14 @@ const searchGroups = computed(() => {
     id: string
     label: string
     ignoreFilter?: boolean
-    items: { label: string, icon?: string, slot?: 'page', emoji?: string, ui?: { itemLeadingIcon: string }, onSelect: () => void }[]
+    items: { label: string, icon?: string, ui?: { itemLeadingIcon: string }, onSelect: () => void }[]
   }[] = [{
     id: 'pages',
     label: '页面',
-    items: [{ label: '待确认', emoji: '◉', to: '/drafts' }, ...visibleNav.value].map(item => ({
+    items: [{ label: '待确认', icon: DRAFTS_ICON, to: '/drafts' }, ...visibleNav.value].map(item => ({
       label: item.label,
-      // emoji 只作装饰，不进可访问名称（DESIGN.md 图标一节）。
-      slot: 'page' as const,
-      emoji: item.emoji,
+      icon: item.icon,
+      ui: { itemLeadingIcon: 'text-muted' },
       onSelect: () => navigateTo(item.to)
     }))
   }]
@@ -194,7 +193,7 @@ const searchGroups = computed(() => {
             data-testid="search-button"
             @click="searchOpen = true"
           >
-            <span class="side-icon text-ai" aria-hidden="true">✦</span>
+            <UIcon name="i-lucide-sparkles" class="side-icon" aria-hidden="true" />
             <template v-if="!collapsed">
               <span class="truncate">搜索或吩咐 AI</span>
               <kbd class="ms-auto font-mono text-2xs text-dimmed">Ctrl K</kbd>
@@ -207,7 +206,7 @@ const searchGroups = computed(() => {
             :class="[isActive('/drafts') ? 'side-on' : '', collapsed ? 'justify-center' : '']"
             :aria-label="collapsed ? '待确认' : undefined"
           >
-            <span class="side-icon" aria-hidden="true">◉</span>
+            <UIcon :name="DRAFTS_ICON" class="side-icon" aria-hidden="true" />
             <template v-if="!collapsed">
               <span>待确认</span>
               <span v-if="pendingDrafts.length" class="ms-auto text-xs text-dimmed tabular-nums">{{ pendingDrafts.length }}</span>
@@ -227,7 +226,7 @@ const searchGroups = computed(() => {
                 :aria-label="collapsed ? item.label : undefined"
                 :title="collapsed ? item.label : undefined"
               >
-                <span class="side-icon" aria-hidden="true">{{ item.emoji }}</span>
+                <UIcon :name="item.icon" class="side-icon" aria-hidden="true" />
                 <span v-if="!collapsed" data-nav-label>{{ item.label }}</span>
               </NuxtLink>
             </template>
@@ -244,7 +243,7 @@ const searchGroups = computed(() => {
           <UDashboardNavbar :ui="{ root: 'h-[45px] border-b-0 px-3 sm:px-3' }">
             <template #left>
               <h1 class="flex min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-sm font-normal">
-                <span v-if="pageEmoji" aria-hidden="true">{{ pageEmoji }}</span>
+                <UIcon v-if="pageIcon" :name="pageIcon" class="size-4 shrink-0 text-muted" aria-hidden="true" />
                 <span class="truncate">{{ pageTitle }}</span>
               </h1>
             </template>
@@ -293,11 +292,7 @@ const searchGroups = computed(() => {
         title="搜索或吩咐 AI"
         placeholder="说一句要做的事，或搜索顾客、页面…"
         :ui="{ label: 'font-medium text-muted' }"
-      >
-        <template #page-leading="{ item }">
-          <span class="w-5 shrink-0 text-center" aria-hidden="true">{{ item.emoji }}</span>
-        </template>
-      </UDashboardSearch>
+      />
 
       <AiPanel />
     </UDashboardGroup>
@@ -325,9 +320,13 @@ const searchGroups = computed(() => {
   font-weight: 500;
 }
 .side-icon {
-  width: 20px;
+  width: 18px;
+  height: 18px;
   flex: none;
-  text-align: center;
+  color: var(--ui-text-muted);
+}
+.side-on .side-icon {
+  color: var(--ui-text);
 }
 @media (pointer: coarse) {
   .side-item {

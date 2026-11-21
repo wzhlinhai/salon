@@ -10,9 +10,9 @@ test('侧栏每项都有图标、不请求 Iconify，折叠后仍可用', async 
   await login(page, owner.account, owner.password)
 
   const navLinks = page.locator('[data-testid="sidebar-nav"] a')
-  // 侧栏图标照原型用 emoji（DESIGN.md 图标一节），每项都要有。
+  // 侧栏每项一个 Lucide 线条图标（DESIGN.md 图标一节），图标随包发布，渲染出带路径的 svg。
   await expect(navLinks.first().locator('.side-icon')).toBeVisible()
-  await expect.poll(() => navLinks.evaluateAll(links => links.every(link => !!link.querySelector('.side-icon')?.textContent?.trim()))).toBe(true)
+  await expect.poll(() => navLinks.evaluateAll(links => links.every(link => !!link.querySelector('svg.side-icon :is(path, circle, rect, line, polyline)')))).toBe(true)
 
   const search = page.getByRole('button', { name: /搜索/ })
   await expect(search).toContainText('搜索或吩咐 AI')
