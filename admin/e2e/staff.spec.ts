@@ -85,7 +85,7 @@ for (const kind of ['档案', '角色', '账号']) {
     }
     await dialog.getByRole('button', { name: '保存', exact: true }).click()
     await pending
-    await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+    await dialog.getByRole('button', { name: '关闭', exact: true }).click()
     await expect(dialog).toHaveCount(0)
     await page.getByRole('row').filter({ has: page.getByRole('cell', { name: b.name, exact: true }) }).getByRole('button', { name: kind, exact: true }).click()
     dialog = page.getByRole('dialog', { name: title(b.name), exact: true })

@@ -195,7 +195,7 @@ for (const action of ['issue', 'revoke'] as const) {
         await dialog.getByRole('button', { name: '确认撤回', exact: true }).click()
       }
       await pending
-      await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+      await dialog.getByRole('button', { name: '关闭', exact: true }).click()
       if (action === 'issue') {
         await section.getByRole('button', { name: '发放红包', exact: true }).click()
         await dialog.getByLabel('面额', { exact: true }).fill('44')

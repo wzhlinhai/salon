@@ -232,7 +232,7 @@ test.describe('工资表全店数据 @payroll-store', () => {
     await expect(page.getByText('未锁定', { exact: true })).toBeVisible()
     await expect(row(page, staff.name).locator('td').last()).toHaveText('2.00')
     expect(await page.getByText('已锁定', { exact: true }).count()).toBe(0)
-    await salary.getByRole('button', { name: 'Close', exact: true }).click()
+    await salary.getByRole('button', { name: '关闭', exact: true }).click()
     await choose(page, page, '结算月', `${label(previous)}（已锁定）`)
     await expect(page.getByText('已锁定', { exact: true })).toBeVisible()
     await expect(page.getByText(/^王老板 · /)).toBeVisible()
@@ -333,7 +333,7 @@ test('上月底薪迟到保存刷新当前月', async ({ page }) => {
   const delayed = await deferOperation(page, 'set_base_salary', { beforeSend: true })
   await dialog.getByRole('button', { name: '保存', exact: true }).click()
   await delayed.pending
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click()
   await choose(page, page, '结算月', label(month))
   await expect(row(page, staff.name).locator('td').nth(2)).toHaveText('0.00')
   await delayed.finish()
@@ -352,7 +352,7 @@ for (const fails of [false, true]) {
     const delayed = await deferOperation(page, 'set_base_salary', { failure: fails ? '旧底薪保存失败' : undefined })
     await dialog.getByRole('button', { name: '保存', exact: true }).click()
     await delayed.pending
-    await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+    await dialog.getByRole('button', { name: '关闭', exact: true }).click()
     dialog = await salaryEditor(page, b.name, '88.88')
     const refreshed = fails ? undefined : page.waitForResponse(r => r.url().endsWith('/api/ops/get_payroll'))
     await delayed.finish()
@@ -492,7 +492,7 @@ test('加减项迟到保存刷新匹配的当前明细', async ({ page }) => {
   const delayed = await deferOperation(page, 'add_payroll_adjustment', { beforeSend: true })
   await dialog.getByRole('button', { name: '保存', exact: true }).click()
   await delayed.pending
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click()
   await row(page, staff.name).click()
   await expect(page.getByTestId('payroll-detail')).toContainText('原有')
   await expect(page.getByTestId('payroll-detail')).not.toContainText('迟到加项')

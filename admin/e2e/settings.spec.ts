@@ -155,7 +155,7 @@ test('设置旧保存只刷新列表，不关闭另一个设置窗口', async ({
   await page.getByLabel('生效日期', { exact: true }).fill(tomorrow)
   await page.getByRole('button', { name: '保存', exact: true }).click()
   await pending
-  await page.getByRole('dialog', { name: '修改营业日结束时间', exact: true }).getByRole('button', { name: 'Close', exact: true }).click()
+  await page.getByRole('dialog', { name: '修改营业日结束时间', exact: true }).getByRole('button', { name: '关闭', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '修改营业日结束时间', exact: true })).toHaveCount(0)
   await page.locator('[data-setting=business_hours]').getByRole('button', { name: '修改', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '修改营业时段', exact: true })

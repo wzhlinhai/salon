@@ -71,7 +71,7 @@ test('角色旧保存只刷新列表，不关闭另一个角色窗口', async ({
   await dialog.getByLabel('角色名称', { exact: true }).fill(name)
   await dialog.getByRole('button', { name: '保存', exact: true }).click()
   await pending
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click()
   await expect(dialog).toHaveCount(0)
   const card = page.locator('[data-role="前台"]')
   await card.getByRole('button', { name: '编辑', exact: true }).click()

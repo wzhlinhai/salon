@@ -850,7 +850,7 @@ for (const op of ['get_customer', 'list_audit_log', 'get_settings']) {
     await page.goto(`/customers?id=${customer.id}`)
     await pending
     const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
-    await detail.getByRole('button', { name: 'Close', exact: true }).click()
+    await detail.getByRole('button', { name: '关闭', exact: true }).click()
     await expect(detail).toHaveCount(0)
     const response = page.waitForResponse(r => r.url().endsWith(`/api/ops/${op}`))
     release()
@@ -885,9 +885,9 @@ test('关闭顾客详情后旧保存成功不再加载详情或提示', async ({
   await dialog.getByLabel('姓名', { exact: true }).fill(`${customer.name}改`)
   await dialog.getByRole('button', { name: '保存', exact: true }).click()
   await pending
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click()
   await expect(dialog).toHaveCount(0)
-  await detail.getByRole('button', { name: 'Close', exact: true }).click()
+  await detail.getByRole('button', { name: '关闭', exact: true }).click()
   await expect(detail).toHaveCount(0)
   let callbacks = 0
   await page.route('**/api/ops/get_customer', async (route) => {
