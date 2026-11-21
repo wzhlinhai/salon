@@ -2289,6 +2289,51 @@ class ReplayTests(unittest.TestCase):
             self.assertEqual(by_bill["B003"]["detail"], "测试 500")
             self.assertEqual(by_bill["B004"]["status"], "replayed")
 
+    def test_limit_excluded_bills_land_in_unreplayed(self):
+        state = ReplayStubState()
+        api = self.start_stub(state)
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            db = self.fixture(root, state)
+            execute(
+                db,
+                'INSERT INTO ep_super_operation_report_search__t3 '
+                '(is_latest_copy, "员工项目业绩流水·消费时间", "员工项目业绩流水·流水单号", '
+                '"员工项目业绩流水·总业绩", "员工项目业绩流水·现金类业绩", '
+                '"员工项目业绩流水·卡扣业绩", "员工项目业绩流水·员工姓名") '
+                "VALUES (1, '2026-09-10', 'B010', '1.00', '1.00', '0.00', '')",
+            )
+            result = replay.run(
+                db,
+                "2026-09",
+                api,
+                "boss",
+                "pw",
+                self.scheme_path(),
+                root / "out",
+                limit=5,
+            )
+            self.assertEqual(result["bills_total"], 10)
+            self.assertEqual(result["bills_selected"], 5)
+            replayed = {
+                row["bill_no"] for row in result["bills"] if row["status"] == "replayed"
+            }
+            self.assertEqual(replayed, {"B001", "B002", "B003", "B004", "B005"})
+            conn = replay._readonly_connect(db)
+            try:
+                source = replay._source_performance(conn, "2026-09", replayed)
+            finally:
+                conn.close()
+            self.assertEqual(source["unreplayed"]["张岩"], Decimal("124.00"))
+            self.assertEqual(source["unreplayed"]["李锦"], Decimal("164.00"))
+            self.assertEqual(source["unreplayed"]["浩宇"], Decimal("168.00"))
+            rows = {row["staff"]: row for row in result["performance"]}
+            self.assertEqual(rows["张岩"]["mgj_month_total"], "170.00")
+            self.assertEqual(rows["李锦"]["mgj_month_total"], "128.00")
+            self.assertEqual(rows["浩宇"]["mgj_month_total"], "120.00")
+            self.assertEqual(result["performance_empty_staff"], 1)
+            self.assertTrue(any("本次只回放前 5 张单" in note for note in result["notes"]))
+
     def test_report_totals_and_differences_with_decimal(self):
         record = {
             "bill_no": "B1",
@@ -2367,6 +2412,428 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(result["commission_invalid_numbers"], 1)
         self.assertIn("| 合计 |", replay.render_report(result))
 
+    def test_month_performance_uses_item_total_instead_of_per_row_total(self):
+        with TemporaryDirectory() as temp:
+            db = Path(temp) / "fixture.sqlite"
+            fixture.build_fixture(db)
+            execute(
+                db,
+                'INSERT INTO ep_super_operation_report_search__t3 '
+                '(is_latest_copy, "员工项目业绩流水·消费时间", "员工项目业绩流水·流水单号", '
+                '"员工项目业绩流水·总业绩", "员工项目业绩流水·现金类业绩", '
+                '"员工项目业绩流水·卡扣业绩", "员工项目业绩流水·员工姓名") '
+                "VALUES (1, '2026-08-01', 'B100', '50.00', '50.00', '0.00', '测试员')",
+            )
+            execute_many(
+                db,
+                "INSERT INTO business_employee_commission_monthly "
+                "(period_month, employee_label, item_total, item_commission, "
+                "card_sales_performance, card_sales_commission, captured_at, "
+                "source_record_id) VALUES (?,?,?,?,?,?,?,?)",
+                [
+                    (
+                        "2026-08",
+                        "77 号 首席 [测试员]",
+                        "999.00",
+                        "99.00",
+                        "0.00",
+                        "0.00",
+                        "2026-08-01",
+                        "r1",
+                    ),
+                    (
+                        "2026-08",
+                        "77 号 首席 [测试员]",
+                        "100.00",
+                        "10.00",
+                        "0.00",
+                        "0.00",
+                        "2026-08-31",
+                        "r2",
+                    ),
+                ],
+            )
+            conn = replay._readonly_connect(db)
+            try:
+                source = replay._source_performance(conn, "2026-08", {"B100"})
+                employees = replay.monthly_employees(conn, "2026-08")
+            finally:
+                conn.close()
+            self.assertEqual(source["rows"]["测试员"]["total"], Decimal("50.00"))
+            self.assertEqual(source["unreplayed"], {})
+            self.assertEqual(
+                employees["commission"]["测试员"]["item_total"], Decimal("100.00")
+            )
+            result = replay.build_result(
+                "2026-08",
+                "2026-11-15",
+                [],
+                [],
+                {"customers": {}, "cards": {}, "skipped": {}},
+                {
+                    "imported": False,
+                    "batch_id": None,
+                    "error_rows": 0,
+                    "rerun_suspected": False,
+                    "rerun_reason": "",
+                },
+                source,
+                {
+                    "测试员": {
+                        "total": Decimal("100.00"),
+                        "cash": Decimal("50.00"),
+                        "card": Decimal("50.00"),
+                    }
+                },
+                employees["commission"],
+                {},
+                ["测试员"],
+                {},
+                [],
+                0,
+            )
+            row = next(item for item in result["performance"] if item["staff"] == "测试员")
+            self.assertEqual(row["mgj_total"], "50.00")
+            self.assertEqual(row["mgj_month_total"], "100.00")
+            self.assertEqual(row["diff_month_total"], "0.00")
+            self.assertEqual(row["diff_total"], "-50.00")
+            self.assertTrue(result["performance_month_available"])
+            self.assertEqual(result["performance_totals"]["mgj_month_total"], "100.00")
+            self.assertEqual(result["performance_totals"]["diff_month_total"], "0.00")
+            report = replay.render_report(result)
+            self.assertIn("美管加月度总业绩（扣未回放）", report)
+            self.assertIn("逐行流水总业绩（参考）", report)
+            self.assertIn("business_employee_commission_monthly.item_total（整月，不去重）", report)
+            self.assertIn("逐行流水来源 ep_super_operation_report_search__t3", report)
+            self.assertNotIn("美管加业绩来源是 ep_super_operation_report_search__t3", report)
+
+    def test_month_performance_subtracts_unreplayed_bills(self):
+        with TemporaryDirectory() as temp:
+            db = Path(temp) / "fixture.sqlite"
+            fixture.build_fixture(db)
+            execute_many(
+                db,
+                'INSERT INTO ep_super_operation_report_search__t3 '
+                '(is_latest_copy, "员工项目业绩流水·消费时间", "员工项目业绩流水·流水单号", '
+                '"员工项目业绩流水·总业绩", "员工项目业绩流水·现金类业绩", '
+                '"员工项目业绩流水·卡扣业绩", "员工项目业绩流水·员工姓名") '
+                "VALUES (1,?,?,?,?,?,?)",
+                [
+                    ("2026-08-01", "B100", "50.00", "50.00", "0.00", "测试员"),
+                    ("2026-08-02", "B101", "30.00", "30.00", "0.00", "测试员"),
+                ],
+            )
+            execute(
+                db,
+                "INSERT INTO business_employee_commission_monthly "
+                "(period_month, employee_label, item_total, item_commission, "
+                "card_sales_performance, card_sales_commission) "
+                "VALUES ('2026-08', '77 号 首席 [测试员]', '100.00', '10.00', '0.00', '0.00')",
+            )
+            conn = replay._readonly_connect(db)
+            try:
+                source = replay._source_performance(conn, "2026-08", {"B100"})
+                employees = replay.monthly_employees(conn, "2026-08")
+            finally:
+                conn.close()
+            self.assertEqual(source["rows"]["测试员"]["total"], Decimal("50.00"))
+            self.assertEqual(source["unreplayed"]["测试员"], Decimal("30.00"))
+            result = replay.build_result(
+                "2026-08",
+                "2026-11-15",
+                [],
+                [],
+                {"customers": {}, "cards": {}, "skipped": {}},
+                {
+                    "imported": False,
+                    "batch_id": None,
+                    "error_rows": 0,
+                    "rerun_suspected": False,
+                    "rerun_reason": "",
+                },
+                source,
+                {
+                    "测试员": {
+                        "total": Decimal("50.00"),
+                        "cash": Decimal("50.00"),
+                        "card": Decimal("0.00"),
+                    }
+                },
+                employees["commission"],
+                {},
+                ["测试员"],
+                {},
+                [],
+                0,
+            )
+            row = next(item for item in result["performance"] if item["staff"] == "测试员")
+            self.assertEqual(row["mgj_month_total"], "70.00")
+            self.assertEqual(row["diff_month_total"], "20.00")
+            self.assertEqual(result["performance_totals"]["mgj_month_total"], "70.00")
+            self.assertEqual(result["performance_totals"]["diff_month_total"], "20.00")
+            self.assertEqual(result["commission"][0]["mgj_ratio"], "10.00%")
+            self.assertEqual(result["commission_totals"]["mgj_ratio"], "10.00%")
+
+    def test_missing_item_total_falls_back_to_per_row(self):
+        with TemporaryDirectory() as temp:
+            db = Path(temp) / "monthly.sqlite"
+            conn = sqlite3.connect(db)
+            try:
+                conn.execute(
+                    "CREATE TABLE business_employee_commission_monthly ("
+                    "period_month TEXT, employee_label TEXT, item_commission TEXT, "
+                    "card_sales_performance TEXT, card_sales_commission TEXT, "
+                    "captured_at TEXT, source_record_id TEXT)"
+                )
+                conn.execute(
+                    "INSERT INTO business_employee_commission_monthly VALUES "
+                    "('2026-08', '77 号 首席 [测试员]', '10.00', '0.00', '0.00', "
+                    "'2026-08-31', 'r1')"
+                )
+                conn.commit()
+                employees = replay.monthly_employees(conn, "2026-08")
+            finally:
+                conn.close()
+            self.assertNotIn("item_total", employees["commission"]["测试员"])
+            result = replay.build_result(
+                "2026-08",
+                "2026-11-15",
+                [],
+                [],
+                {"customers": {}, "cards": {}, "skipped": {}},
+                {
+                    "imported": False,
+                    "batch_id": None,
+                    "error_rows": 0,
+                    "rerun_suspected": False,
+                    "rerun_reason": "",
+                },
+                {
+                    "rows": {
+                        "测试员": {
+                            "total": Decimal("50.00"),
+                            "cash": Decimal("50.00"),
+                            "card": Decimal("0.00"),
+                        }
+                    },
+                    "unreplayed": {},
+                    "invalid_numbers": 0,
+                    "empty_staff": 0,
+                },
+                {
+                    "测试员": {
+                        "total": Decimal("100.00"),
+                        "cash": Decimal("50.00"),
+                        "card": Decimal("50.00"),
+                    }
+                },
+                employees["commission"],
+                {},
+                ["测试员"],
+                {},
+                [],
+                0,
+            )
+            row = next(item for item in result["performance"] if item["staff"] == "测试员")
+            self.assertIsNone(row["mgj_month_total"])
+            self.assertIsNone(row["diff_month_total"])
+            self.assertFalse(result["performance_month_available"])
+            self.assertIsNone(result["performance_totals"]["mgj_month_total"])
+            self.assertIsNone(result["performance_totals"]["diff_month_total"])
+            self.assertEqual(result["commission"][0]["mgj_ratio"], "20.00%")
+            self.assertEqual(result["commission_totals"]["mgj_ratio"], "20.00%")
+            report = replay.render_report(result)
+            self.assertIn("美管加月度汇总不可用，业绩只按逐行流水对照", report)
+            self.assertNotIn("美管加月度业绩对照使用", report)
+
+    def test_null_item_total_falls_back_to_per_row(self):
+        with TemporaryDirectory() as temp:
+            db = Path(temp) / "monthly.sqlite"
+            conn = sqlite3.connect(db)
+            try:
+                conn.execute(
+                    "CREATE TABLE business_employee_commission_monthly ("
+                    "period_month TEXT, employee_label TEXT, item_total TEXT, "
+                    "item_commission TEXT, card_sales_performance TEXT, "
+                    "card_sales_commission TEXT, captured_at TEXT, source_record_id TEXT)"
+                )
+                conn.execute(
+                    "INSERT INTO business_employee_commission_monthly VALUES "
+                    "('2026-08', '77 号 首席 [测试员]', NULL, '10.00', '0.00', '0.00', "
+                    "'2026-08-31', 'r1')"
+                )
+                conn.commit()
+                employees = replay.monthly_employees(conn, "2026-08")
+            finally:
+                conn.close()
+            self.assertNotIn("item_total", employees["commission"]["测试员"])
+            self.assertEqual(employees["invalid_numbers"], 0)
+            self.assertEqual(employees["item_total_invalid_numbers"], 0)
+            result = replay.build_result(
+                "2026-08",
+                "2026-11-15",
+                [],
+                [],
+                {"customers": {}, "cards": {}, "skipped": {}},
+                {
+                    "imported": False,
+                    "batch_id": None,
+                    "error_rows": 0,
+                    "rerun_suspected": False,
+                    "rerun_reason": "",
+                },
+                {
+                    "rows": {
+                        "测试员": {
+                            "total": Decimal("50.00"),
+                            "cash": Decimal("50.00"),
+                            "card": Decimal("0.00"),
+                        }
+                    },
+                    "unreplayed": {},
+                    "invalid_numbers": 0,
+                    "empty_staff": 0,
+                },
+                {
+                    "测试员": {
+                        "total": Decimal("100.00"),
+                        "cash": Decimal("50.00"),
+                        "card": Decimal("50.00"),
+                    }
+                },
+                employees["commission"],
+                {},
+                ["测试员"],
+                {},
+                [],
+                employees["invalid_numbers"],
+                employees["item_total_invalid_numbers"],
+            )
+            row = next(item for item in result["performance"] if item["staff"] == "测试员")
+            self.assertIsNone(row["mgj_month_total"])
+            self.assertIsNone(row["diff_month_total"])
+            self.assertFalse(result["performance_month_available"])
+            self.assertEqual(result["performance_item_total_invalid_numbers"], 0)
+            self.assertIsNone(result["performance_totals"]["mgj_month_total"])
+            self.assertIsNone(result["performance_totals"]["diff_month_total"])
+            self.assertEqual(result["commission"][0]["mgj_ratio"], "20.00%")
+            self.assertEqual(result["commission_totals"]["mgj_ratio"], "20.00%")
+            report = replay.render_report(result)
+            self.assertIn("美管加月度汇总不可用，业绩只按逐行流水对照", report)
+            self.assertNotIn("美管加月度业绩对照使用", report)
+
+    def test_unreplayed_name_without_monthly_staff_is_surfaced(self):
+        result = replay.build_result(
+            "2026-08",
+            "2026-11-15",
+            [],
+            [],
+            {"customers": {}, "cards": {}, "skipped": {}},
+            {
+                "imported": False,
+                "batch_id": None,
+                "error_rows": 0,
+                "rerun_suspected": False,
+                "rerun_reason": "",
+            },
+            {
+                "rows": {
+                    "测试员": {
+                        "total": Decimal("50.00"),
+                        "cash": Decimal("50.00"),
+                        "card": Decimal("0.00"),
+                    }
+                },
+                "unreplayed": {"外部员工": Decimal("30.00")},
+                "invalid_numbers": 0,
+                "empty_staff": 0,
+            },
+            {
+                "测试员": {
+                    "total": Decimal("50.00"),
+                    "cash": Decimal("50.00"),
+                    "card": Decimal("0.00"),
+                }
+            },
+            {
+                "测试员": {
+                    "item_total": Decimal("100.00"),
+                    "item_commission": Decimal("10.00"),
+                    "card_sales_performance": Decimal("0.00"),
+                    "card_sales_commission": Decimal("0.00"),
+                }
+            },
+            {},
+            ["测试员"],
+            {},
+            [],
+            0,
+        )
+        self.assertEqual(result["performance_unmatched_unreplayed"]["names"], 1)
+        self.assertEqual(result["performance_unmatched_unreplayed"]["total"], "30.00")
+        self.assertEqual(result["performance"][0]["mgj_month_total"], "100.00")
+        report = replay.render_report(result)
+        self.assertIn(
+            "未回放单中有 1 个员工名对不上月度员工，合计 ¥30.00 未扣除", report
+        )
+
+    def test_commission_ratio_uses_month_item_total(self):
+        result = replay.build_result(
+            "2026-08",
+            "2026-11-15",
+            [],
+            [],
+            {"customers": {}, "cards": {}, "skipped": {}},
+            {
+                "imported": False,
+                "batch_id": None,
+                "error_rows": 0,
+                "rerun_suspected": False,
+                "rerun_reason": "",
+            },
+            {
+                "rows": {
+                    "测试员": {
+                        "total": Decimal("50.00"),
+                        "cash": Decimal("50.00"),
+                        "card": Decimal("0.00"),
+                    }
+                },
+                "unreplayed": {},
+                "invalid_numbers": 0,
+                "empty_staff": 0,
+            },
+            {
+                "测试员": {
+                    "total": Decimal("100.00"),
+                    "cash": Decimal("50.00"),
+                    "card": Decimal("50.00"),
+                }
+            },
+            {
+                "测试员": {
+                    "item_total": Decimal("100.00"),
+                    "item_commission": Decimal("10.00"),
+                    "card_sales_performance": Decimal("0.00"),
+                    "card_sales_commission": Decimal("0.00"),
+                }
+            },
+            {
+                "测试员": {
+                    "item": Decimal("5.00"),
+                    "consume": Decimal("0.00"),
+                    "labor": Decimal("0.00"),
+                }
+            },
+            ["测试员"],
+            {},
+            [],
+            0,
+        )
+        self.assertEqual(result["commission"][0]["mgj_ratio"], "10.00%")
+        self.assertEqual(result["commission_totals"]["mgj_ratio"], "10.00%")
+        self.assertEqual(result["performance"][0]["mgj_month_total"], "100.00")
+
     def test_commission_pagination_over_200(self):
         state = ReplayStubState()
         state.commission_entries = [
@@ -2403,9 +2870,9 @@ class ReplayTests(unittest.TestCase):
             execute(
                 db,
                 "INSERT INTO business_employee_commission_monthly "
-                "(period_month, employee_label, item_commission, "
+                "(period_month, employee_label, item_total, item_commission, "
                 "card_sales_performance, card_sales_commission) "
-                "VALUES ('2026-09', '99 号 首席 [测试员]', '', '', 'bad')",
+                "VALUES ('2026-09', '99 号 首席 [测试员]', 'bad', '', '', 'bad')",
             )
             conn = replay._readonly_connect(db)
             try:
@@ -2413,8 +2880,41 @@ class ReplayTests(unittest.TestCase):
                 employees = replay.monthly_employees(conn, "2026-09")
             finally:
                 conn.close()
-            self.assertGreaterEqual(performance["invalid_numbers"], 2)
-            self.assertGreaterEqual(employees["invalid_numbers"], 2)
+            self.assertEqual(performance["invalid_numbers"], 2)
+            self.assertEqual(employees["invalid_numbers"], 3)
+            self.assertEqual(employees["item_total_invalid_numbers"], 1)
+            self.assertEqual(
+                employees["commission"]["测试员"]["item_total"], Decimal("0.00")
+            )
+            result = replay.build_result(
+                "2026-09",
+                "2026-11-15",
+                [],
+                [],
+                {"customers": {}, "cards": {}, "skipped": {}},
+                {
+                    "imported": False,
+                    "batch_id": None,
+                    "error_rows": 0,
+                    "rerun_suspected": False,
+                    "rerun_reason": "",
+                },
+                performance,
+                {},
+                employees["commission"],
+                {},
+                [row["name"] for row in employees["staff"]],
+                employees["skipped"],
+                [],
+                employees["invalid_numbers"],
+                employees["item_total_invalid_numbers"],
+            )
+            self.assertEqual(result["commission_invalid_numbers"], 3)
+            self.assertEqual(result["performance_item_total_invalid_numbers"], 1)
+            report = replay.render_report(result)
+            self.assertIn("美管加月度业绩数字为空或无法解析：1 个，按 0 计。", report)
+            self.assertIn("美管加提成/卡销售数字为空或无法解析：3 个，按 0 计。", report)
+            self.assertIn("员工姓名为空（含未回放单）", report)
 
     def test_report_difference_uses_decimal(self):
         self.assertEqual(replay._diff(Decimal("0.30"), Decimal("0.10")), Decimal("0.20"))
