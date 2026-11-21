@@ -47,6 +47,13 @@ function logout() {
   navigateTo('/login')
 }
 
+// 名字下面一行小字：岗位，没有岗位就用角色名，老板显示"老板"。
+const roleLine = computed(() => {
+  const staff = me.value?.staff
+  if (!staff) return ''
+  return staff.position?.name || staff.roles.map(role => role.name).join('、') || (me.value?.is_owner ? '老板' : '')
+})
+
 const menuItems = computed(() => {
   const items = []
   if (can('attendance.clock')) {
@@ -61,17 +68,20 @@ const menuItems = computed(() => {
 
 <template>
   <UDropdownMenu :items="menuItems" :content="{ align: 'start', side: 'top' }">
-    <UButton
+    <button
+      type="button"
       data-testid="personal-menu"
-      color="neutral"
-      variant="ghost"
-      :square="collapsed"
-      :class="collapsed ? '' : 'w-full justify-start'"
+      class="flex min-h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-start text-default hover:bg-hover"
+      :class="collapsed ? 'justify-center px-0' : ''"
       :aria-label="me?.staff.name || '个人菜单'"
     >
-      <UAvatar :alt="me?.staff.name || '未登录'" size="2xs" />
-      <span v-if="!collapsed" class="truncate">{{ me?.staff.name }}</span>
-    </UButton>
+      <span class="grid size-[26px] shrink-0 place-items-center rounded-full bg-tag-orange text-xs font-semibold" aria-hidden="true">{{ me?.staff.name.slice(0, 1) }}</span>
+      <span v-if="!collapsed" class="min-w-0 leading-tight">
+        <span class="block truncate">{{ me?.staff.name }}</span>
+        <small v-if="roleLine" class="block truncate text-xs text-dimmed">{{ roleLine }}</small>
+      </span>
+      <small v-if="!collapsed" class="ms-auto text-dimmed" aria-hidden="true">▴</small>
+    </button>
   </UDropdownMenu>
 
   <UModal v-model:open="attendanceOpen" title="我的考勤">

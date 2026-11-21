@@ -26,11 +26,11 @@ const previewError = computed(() => 'preview_error' in props.draft ? props.draft
 
 const statusBadge = computed(() => {
   switch (current.value.status) {
-    case 'confirmed': return { label: '已确认', color: 'success' as const }
-    case 'confirmed_modified': return { label: '改后确认', color: 'success' as const }
-    case 'rejected': return { label: '已拒绝', color: 'neutral' as const }
-    case 'expired': return { label: '已过期', color: 'neutral' as const }
-    default: return { label: '待确认', color: 'warning' as const }
+    case 'confirmed': return { label: '已确认', tone: 'bg-tag-green' }
+    case 'confirmed_modified': return { label: '改后确认', tone: 'bg-tag-green' }
+    case 'rejected': return { label: '已拒绝', tone: 'bg-tag-gray' }
+    case 'expired': return { label: '已过期', tone: 'bg-tag-gray' }
+    default: return { label: '待确认', tone: 'bg-tag-yellow' }
   }
 })
 
@@ -87,49 +87,43 @@ async function saveReject() {
 </script>
 
 <template>
-  <article data-testid="draft-card" :data-draft-id="current.id" class="space-y-2 rounded-xl border border-default p-4">
-    <header class="flex items-center gap-1.5 text-xs text-muted">
-      <UIcon name="i-lucide-sparkles" class="size-3.5 shrink-0 text-ai" />
-      <span class="font-medium text-ai">AI 起草</span>
-      <span>·</span>
-      <span data-testid="draft-initiator" class="truncate">{{ staffName(current.initiator) }}</span>
-      <span>·</span>
-      <span class="tabular-nums">{{ formatStamp(props.draft.created_at) }}</span>
-      <UBadge v-if="statusBadge" :color="statusBadge.color" variant="subtle" size="sm" class="ms-auto">
-        {{ statusBadge.label }}
-      </UBadge>
+  <article data-testid="draft-card" :data-draft-id="current.id" class="box flex flex-col gap-1.5">
+    <header class="flex items-center gap-1.5 text-xs text-dimmed">
+      <span class="tag shrink-0 gap-[3px] bg-ai-soft text-ai">✦ AI 起草</span>
+      <span class="min-w-0 truncate"><span data-testid="draft-initiator">{{ staffName(current.initiator) }}</span>说 · <span class="tabular-nums">{{ formatStamp(props.draft.created_at) }}</span></span>
+      <span v-if="!isPending" class="tag ms-auto shrink-0" :class="statusBadge.tone">{{ statusBadge.label }}</span>
     </header>
-
-    <p v-if="props.draft.utterance" data-testid="draft-utterance" class="text-sm text-muted text-pretty">“{{ props.draft.utterance }}”</p>
 
     <button
       type="button"
       data-testid="draft-summary"
-      class="block w-full text-left text-sm font-medium text-pretty hover:underline"
+      class="block w-full text-left text-lead font-semibold text-pretty hover:underline"
       @click="emit('open', props.draft.id)"
     >
       {{ props.draft.summary }}
     </button>
 
-    <ul v-if="previewLines.length" class="space-y-0.5 text-sm">
+    <p v-if="props.draft.utterance" data-testid="draft-utterance" class="text-xs text-muted text-pretty">“{{ props.draft.utterance }}”</p>
+
+    <ul v-if="previewLines.length" class="space-y-0.5 rounded-md bg-elevated px-2 py-1.5 text-meta text-muted">
       <li v-for="(line, index) in previewLines" :key="index" class="flex gap-2">
-        <span class="truncate">{{ line.item_name }}</span>
-        <span class="truncate text-muted">{{ line.staff.map(s => s.staff_name).join('、') }}</span>
-        <span class="ms-auto tabular-nums">{{ yuan(line.price) }}</span>
+        <span class="truncate font-medium text-default">{{ line.item_name }}</span>
+        <span class="truncate">{{ line.staff.map(s => s.staff_name).join('、') }}</span>
+        <span class="ms-auto tabular-nums text-default">{{ yuan(line.price) }}</span>
       </li>
     </ul>
-    <p v-if="previewError" class="text-sm text-warning">{{ previewError }}</p>
-    <p v-if="current.status === 'rejected' && current.reject_reason" class="text-sm text-muted">
+    <p v-if="previewError" class="rounded-md bg-tag-yellow/60 px-2 py-1.5 text-meta">{{ previewError }}</p>
+    <p v-if="current.status === 'rejected' && current.reject_reason" class="text-meta text-muted">
       拒绝原因：{{ current.reject_reason }}
     </p>
 
-    <p v-if="stale" class="text-sm text-warning" data-testid="draft-stale">
+    <p v-if="stale" class="mt-auto text-meta text-ink-yellow" data-testid="draft-stale">
       这张草稿已经改过，<ULink to="/drafts" class="underline">到待确认里看最新内容</ULink>再确认。
     </p>
-    <footer v-else-if="isPending" class="flex items-center gap-2 pt-1">
-      <UButton color="neutral" size="sm" :loading="confirming" data-testid="draft-confirm" @click="confirm">确认</UButton>
-      <UButton color="neutral" variant="outline" size="sm" data-testid="draft-modify" @click="editDraft(props.draft)">修改</UButton>
-      <UButton color="neutral" variant="ghost" size="sm" data-testid="draft-reject" @click="beginReject">拒绝</UButton>
+    <footer v-else-if="isPending" class="mt-auto flex items-center gap-1.5 pt-1">
+      <UButton color="neutral" :loading="confirming" data-testid="draft-confirm" class="min-h-8 px-3" @click="confirm">确认</UButton>
+      <UButton color="neutral" variant="outline" data-testid="draft-modify" class="min-h-8 px-3" @click="editDraft(props.draft)">修改</UButton>
+      <UButton color="neutral" variant="outline" data-testid="draft-reject" class="min-h-8 px-3" @click="beginReject">拒绝</UButton>
     </footer>
 
     <UModal v-model:open="rejectOpen" title="拒绝草稿" :description="props.draft.summary">

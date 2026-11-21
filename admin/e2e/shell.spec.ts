@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { api, apiLogin, hire, login, owner } from './helpers'
 
-test('侧栏图标随客户端打包，不请求 Iconify，折叠后仍可用', async ({ page }) => {
+test('侧栏每项都有图标、不请求 Iconify，折叠后仍可用', async ({ page }) => {
   const iconifyRequests: string[] = []
   page.on('request', (request) => {
     if (/iconify/.test(new URL(request.url()).hostname)) iconifyRequests.push(request.url())
@@ -10,8 +10,9 @@ test('侧栏图标随客户端打包，不请求 Iconify，折叠后仍可用', 
   await login(page, owner.account, owner.password)
 
   const navLinks = page.locator('[data-testid="sidebar-nav"] a')
-  await expect(navLinks.first().locator('svg')).toBeVisible()
-  await expect.poll(() => navLinks.evaluateAll(links => links.every(link => !!link.querySelector('svg')))).toBe(true)
+  // 侧栏图标照原型用 emoji（DESIGN.md 图标一节），每项都要有。
+  await expect(navLinks.first().locator('.side-icon')).toBeVisible()
+  await expect.poll(() => navLinks.evaluateAll(links => links.every(link => !!link.querySelector('.side-icon')?.textContent?.trim()))).toBe(true)
 
   const search = page.getByRole('button', { name: /搜索/ })
   await expect(search).toContainText('搜索或吩咐 AI')
@@ -21,7 +22,7 @@ test('侧栏图标随客户端打包，不请求 Iconify，折叠后仍可用', 
   await page.getByTestId('sidebar-collapse').click()
   await expect(page.getByTestId('sidebar-collapse')).toHaveAttribute('aria-label', '展开侧栏')
   await expect(page.getByTestId('sidebar-collapse')).toBeVisible()
-  await expect(navLinks.first().locator('svg')).toBeVisible()
+  await expect(navLinks.first().locator('.side-icon')).toBeVisible()
   await expect(page.getByTestId('personal-menu')).toBeVisible()
   expect(iconifyRequests).toEqual([])
 })
