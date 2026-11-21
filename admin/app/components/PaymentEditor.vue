@@ -67,6 +67,6 @@ function remove(index: number) {
       <UButton color="neutral" variant="ghost" icon="i-lucide-x" aria-label="删除" @click="remove(index)" />
     </div>
     <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-plus" @click="add">添加收款方式</UButton>
-    <p v-if="total !== cents(expected)" class="text-meta text-ink-orange">已录入 {{ money(total) }}，还应录入 {{ money(cents(expected) - total) }}</p>
+    <p v-if="total !== cents(expected)" class="text-meta text-ink-orange">已录入 {{ money(total) }}，{{ total < cents(expected) ? '还应录入' : '多录入' }} {{ money(Math.abs(cents(expected) - total)) }}</p>
   </div>
 </template>

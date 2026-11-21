@@ -1000,7 +1000,7 @@ onMounted(init)
         <USelect v-if="canGroupbuy" v-model="platform" :items="platformItems" size="lg" class="w-28" aria-label="券码平台" :disabled="couponBusy !== '' || !!verifyResult || !!redemption || couponUnknown" />
         <UButton type="submit" size="lg" color="neutral" variant="outline">确认</UButton>
         <span v-if="scanLoading" class="text-meta text-muted">搜索中…</span>
-        <span v-if="scanKind" data-testid="scan-kind" class="tag bg-tag-blue">识别为{{ scanKind }}</span>
+        <span v-if="scanKind" data-testid="scan-kind" class="tag bg-tag-gray">识别为{{ scanKind }}</span>
       </form>
 
       <div v-if="customerMatches.length" class="box space-y-2" data-testid="customer-matches">
@@ -1032,7 +1032,7 @@ onMounted(init)
 
         <div v-if="verifyResult && !redemption && verifyResult.status === 'unused' && !couponUnknown" class="flex flex-wrap items-center gap-2">
           <span class="text-sm">券未使用，可以核销。</span>
-          <UButton size="sm" :loading="couponBusy === 'redeem'" @click="redeemCoupon">核销</UButton>
+          <UButton size="sm" color="neutral" :loading="couponBusy === 'redeem'" @click="redeemCoupon">核销</UButton>
         </div>
 
         <div v-if="couponUnknown || (redemption && redemption.status === 'unknown')" class="flex flex-wrap items-center gap-2">
@@ -1051,7 +1051,7 @@ onMounted(init)
           </div>
           <p v-if="!activeDeals.length" class="text-sm text-ink-orange">这个平台还没有启用的团购商品，请先到“团购商品”登记。</p>
           <div class="flex flex-wrap gap-2">
-            <UButton size="sm" :disabled="!activeDeals.length" @click="openOrderFromCoupon">立即开单</UButton>
+            <UButton size="sm" color="neutral" :disabled="!activeDeals.length" @click="openOrderFromCoupon">立即开单</UButton>
             <UButton size="sm" color="neutral" variant="outline" :disabled="!activeDeals.length || linkOrderID === NONE" :loading="couponBusy === 'link'" @click="linkRedeemed">关联挂单</UButton>
             <UButton size="sm" color="neutral" variant="ghost" @click="clearCoupon">暂不开单</UButton>
             <UButton size="sm" color="error" variant="ghost" class="ms-auto" :loading="actionSaving" @click="revokeCoupon(redemption)">撤销核销</UButton>
@@ -1073,7 +1073,7 @@ onMounted(init)
 
     <div class="grid items-start gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
       <section>
-        <div class="sec">挂单<span class="ms-1 font-normal text-dimmed">{{ openOrders.length }}</span></div>
+        <h2 class="sec">挂单<span class="ms-1 font-normal text-dimmed">{{ openOrders.length }}</span></h2>
         <div class="box overflow-hidden p-0" data-testid="open-orders">
           <p v-if="ordersLoading && !openOrders.length" class="px-3 py-2.5 text-sm text-muted">加载中…</p>
           <EmptyState v-else-if="!openOrders.length" title="暂无挂单" hint="顾客到店开单后会挂在这里，做完再结账" />
@@ -1082,39 +1082,39 @@ onMounted(init)
             :key="order.id"
             type="button"
             class="block w-full border-t border-default px-3 py-2.5 text-left first:border-t-0"
-            :class="order.id === selectedOrderID ? 'bg-selected' : 'hover:bg-hover'"
+            :class="order.id === selectedOrderID ? 'bg-selected shadow-[inset_2px_0_0_var(--ui-primary)]' : 'hover:bg-hover'"
+            :aria-current="order.id === selectedOrderID ? 'true' : undefined"
             :data-order-id="order.id"
             data-testid="open-order"
             :disabled="checkoutSaving"
             @click="selectOrder(order)"
           >
             <div class="flex items-center justify-between gap-2 text-sm">
-              <span class="truncate font-medium">{{ customerName(order.customer_id) }}</span>
+              <span class="truncate font-medium" :title="customerName(order.customer_id)">{{ customerName(order.customer_id) }}</span>
               <span class="font-medium tabular-nums">{{ yuanFixed(order.receivable) }}</span>
             </div>
             <div class="mt-0.5 flex items-center gap-1.5 text-meta text-muted">
               <span v-if="order.backfill" data-testid="backfill-badge" class="tag bg-tag-yellow">补录 {{ order.business_date }}</span>
-              <span class="truncate">{{ order.items.filter(i => !i.removed_at).map(i => i.item_name).join('、') || '无项目' }}</span>
+              <span class="truncate" :title="order.items.filter(i => !i.removed_at).map(i => i.item_name).join('、')">{{ order.items.filter(i => !i.removed_at).map(i => i.item_name).join('、') || '无项目' }}</span>
             </div>
           </button>
         </div>
         <div v-if="canCollect && lastReceipt" class="mt-2 flex items-center gap-2 px-1 text-meta text-muted" data-testid="last-receipt">
           <span>最近一次结账 {{ yuanFixed(lastReceipt.total) }}</span>
-          <UButton size="xs" color="neutral" variant="link" class="ms-auto" @click="receipt = lastReceipt">补打小票</UButton>
+          <UButton size="xs" color="neutral" variant="ghost" class="ms-auto" @click="receipt = lastReceipt">补打小票</UButton>
         </div>
       </section>
 
       <section data-testid="selected-order">
-        <div class="sec">
+        <h2 class="sec">
           当前单
           <template v-if="selectedOrder">
-            <span class="font-normal">· {{ customerName(selectedOrder.customer_id) }}</span>
-            <span class="tag bg-tag-gray">{{ selectedOrder.gender === 'male' ? '男客' : '女客' }}</span>
+            <span class="font-normal">· {{ customerName(selectedOrder.customer_id) }} · {{ selectedOrder.gender === 'male' ? '男客' : '女客' }}</span>
             <span v-if="selectedOrder.designated" class="tag bg-tag-gray">指定</span>
             <span v-if="selectedOrder.backfill" data-testid="selected-backfill" class="tag bg-tag-yellow">补录 {{ selectedOrder.business_date }}</span>
             <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto" @click="addItemBegin">加项目</UButton>
           </template>
-        </div>
+        </h2>
 
         <p v-if="orderLoading" class="box text-sm text-muted">加载中…</p>
         <EmptyState v-else-if="!selectedOrder" class="box" icon="i-lucide-receipt" title="还没选单" hint="从左侧选一张挂单，或扫码开单" />
@@ -1129,7 +1129,7 @@ onMounted(init)
               >
                 <div class="flex items-center gap-2">
                   <span class="font-medium">{{ item.item_name }}</span>
-                  <span v-if="item.price_source === 'manual'" class="tag bg-tag-orange">改价</span>
+                  <span v-if="item.price_source === 'manual'" class="text-meta text-ink-orange">改价</span>
                   <span class="ms-auto font-medium tabular-nums">{{ yuanFixed(item.price) }}</span>
                 </div>
                 <div v-for="position in [...item.positions].sort((a, b) => a.slot - b.slot)" :key="position.slot" class="flex items-center gap-2">
@@ -1150,30 +1150,30 @@ onMounted(init)
                   <template v-if="canCollect">
                     <template v-if="countPaymentFor(item.id)">
                       <span class="tag bg-tag-green">已用次卡 {{ countPaymentFor(item.id)?.card_name }}</span>
-                      <UButton size="xs" color="neutral" variant="ghost" @click="removeCountPayment(item.id)">取消用次卡</UButton>
+                      <UButton size="sm" color="neutral" variant="ghost" @click="removeCountPayment(item.id)">取消用次卡</UButton>
                     </template>
-                    <UButton v-else-if="countCardsFor(item.item_id).length" size="xs" color="neutral" variant="outline" :disabled="!preview || checkoutSaving" @click="countBegin(item)">用次卡</UButton>
+                    <UButton v-else-if="countCardsFor(item.item_id).length" size="sm" color="neutral" variant="outline" :disabled="!preview || checkoutSaving" @click="countBegin(item)">用次卡</UButton>
                   </template>
                   <div class="ms-auto flex gap-1 opacity-0 group-hover/row:opacity-100 focus-within:opacity-100 any-pointer-coarse:opacity-100">
-                    <UButton v-if="canReprice" size="xs" color="neutral" variant="ghost" @click="repriceBegin(item)">改价</UButton>
-                    <UButton v-if="canOrderEdit" size="xs" color="error" variant="ghost" :loading="actionSaving" @click="removeItem(item.id)">去掉</UButton>
+                    <UButton v-if="canReprice" size="sm" color="neutral" variant="ghost" @click="repriceBegin(item)">改价</UButton>
+                    <UButton v-if="canOrderEdit" size="sm" color="error" variant="ghost" :loading="actionSaving" @click="removeItem(item.id)">去掉</UButton>
                   </div>
                 </div>
               </div>
             </div>
 
             <div v-if="canGroupbuy && selectedOrder.groupbuy.length" data-testid="order-groupbuy">
-              <div class="sec">关联团购券</div>
+              <h2 class="sec">关联团购券</h2>
               <div class="box overflow-hidden p-0">
                 <div v-for="coupon in selectedOrder.groupbuy" :key="coupon.redemption_id" class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0">
                   <span class="font-medium">{{ coupon.deal_name }}</span>
                   <span class="tag bg-tag-gray">{{ platformLabel(coupon.platform) }}</span>
                   <span class="text-muted tabular-nums">购买价 {{ coupon.purchase_price }} · 门店标价 {{ coupon.store_price }}</span>
-                  <UButton size="xs" color="error" variant="ghost" class="ms-auto" :loading="actionSaving" @click="unlinkCoupon(coupon.redemption_id)">解除关联</UButton>
+                  <UButton size="sm" color="error" variant="ghost" class="ms-auto" :loading="actionSaving" @click="unlinkCoupon(coupon.redemption_id)">解除关联</UButton>
                 </div>
               </div>
             </div>
-            <p v-if="!canCollect" class="px-1 text-meta text-muted">应收 {{ yuanFixed(selectedOrder.receivable) }}</p>
+            <p v-if="!canCollect" class="px-1 text-meta text-muted tabular-nums">应收 {{ yuanFixed(selectedOrder.receivable) }} · 实收 {{ yuanFixed(selectedOrder.net) }}</p>
           </div>
 
           <div v-if="canCollect" class="box space-y-3">
@@ -1182,17 +1182,19 @@ onMounted(init)
               <span v-if="previewLoading" class="text-meta text-muted">试算中…</span>
             </div>
             <USelect v-model="selectedCardID" :items="[{ label: '不使用卡', value: NONE }, ...cardItems]" class="w-full" aria-label="计价卡" @update:model-value="recalculationCard" />
-            <template v-if="preview">
-              <dl class="space-y-1.5 border-t border-default pt-3 text-sm tabular-nums">
-                <div class="flex justify-between"><dt class="text-muted">应收</dt><dd>{{ yuanFixed(selectedOrder.receivable) }}</dd></div>
-                <div class="flex justify-between"><dt class="text-muted">实收</dt><dd>{{ yuanFixed(preview.net) }}</dd></div>
-                <div v-if="groupbuyTotal" class="flex justify-between"><dt class="text-muted">团购抵扣</dt><dd>-¥{{ money(groupbuyTotal) }}</dd></div>
-                <div v-if="countTotal" class="flex justify-between"><dt class="text-muted">次卡抵扣</dt><dd>-¥{{ money(countTotal) }}</dd></div>
+            <dl class="space-y-1.5 border-t border-default pt-3 text-sm tabular-nums">
+              <div class="flex justify-between"><dt class="text-muted">应收</dt><dd>{{ yuanFixed(selectedOrder.receivable) }}</dd></div>
+              <div class="flex justify-between"><dt class="text-muted">实收</dt><dd>{{ yuanFixed(preview?.net ?? selectedOrder.net) }}</dd></div>
+              <template v-if="preview">
+                <div v-if="groupbuyTotal" class="flex justify-between"><dt class="text-muted">团购抵扣</dt><dd>-{{ yuanFixed(groupbuyTotal / 100) }}</dd></div>
+                <div v-if="countTotal" class="flex justify-between"><dt class="text-muted">次卡抵扣</dt><dd>-{{ yuanFixed(countTotal / 100) }}</dd></div>
                 <div class="flex items-baseline justify-between border-t border-default pt-2 font-semibold">
                   <dt>现场补差</dt>
                   <dd class="text-xl">¥<span data-testid="cash-expected">{{ expectedCash }}</span></dd>
                 </div>
-              </dl>
+              </template>
+            </dl>
+            <template v-if="preview">
               <p v-if="groupbuyTotal" class="text-meta text-muted">团购支付由系统按关联的团购券生成，不需要在这里填写。</p>
               <div v-if="countPayments.length" class="space-y-1" data-testid="count-payments">
                 <div v-for="payment in countPayments" :key="payment.order_item_id" class="flex items-center justify-between gap-2 text-meta">
@@ -1209,15 +1211,15 @@ onMounted(init)
     </div>
 
     <section v-if="canGroupbuy" data-testid="unlinked-coupons">
-      <div class="sec">未关联团购券<span class="ms-1 font-normal text-dimmed">{{ unlinked.length }}</span><span class="ms-auto text-meta font-normal text-dimmed">近 90 天</span></div>
+      <h2 class="sec">未关联团购券<span class="ms-1 font-normal text-dimmed">{{ unlinked.length }}</span><span class="ms-auto text-meta font-normal text-dimmed">近 90 天</span></h2>
       <div class="box overflow-hidden p-0">
         <p v-if="!unlinked.length" class="px-3 py-2.5 text-sm text-muted">没有未关联的团购券</p>
-        <div v-for="row in unlinked" :key="row.id" class="group/row flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0 hover:bg-hover">
+        <div v-for="row in unlinked" :key="row.id" class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0 hover:bg-hover">
           <span class="tag bg-tag-gray">{{ platformLabel(row.platform) }}</span>
           <span class="font-medium tabular-nums">{{ row.coupon_code }}</span>
           <span class="text-meta text-muted">{{ row.redeemed_at ? new Date(row.redeemed_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '' }}</span>
-          <UButton size="xs" color="neutral" variant="outline" class="ms-auto" @click="linkBegin(row)">关联挂单</UButton>
-          <UButton size="xs" color="error" variant="ghost" :loading="actionSaving" @click="revokeCoupon(row)">撤销核销</UButton>
+          <UButton size="sm" color="neutral" variant="outline" class="ms-auto" @click="linkBegin(row)">关联挂单</UButton>
+          <UButton size="sm" color="error" variant="ghost" :loading="actionSaving" @click="revokeCoupon(row)">撤销核销</UButton>
         </div>
       </div>
     </section>
