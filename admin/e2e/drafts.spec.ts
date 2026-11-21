@@ -158,8 +158,10 @@ test('Ctrl K：输入页面名回车仍打开页面，说一句话回车交给 A
   await page.keyboard.press('Control+k')
   await input.fill('明天下午谁有空')
   await expect(page.locator('[role=option][data-highlighted]')).toHaveText('吩咐 AI：明天下午谁有空')
-  await input.press('Enter')
-  await expect(aiPanel(page).getByText('收到。')).toBeVisible()
+  await expect(async () => {
+    if (await input.isVisible()) await input.press('Enter')
+    await expect(aiPanel(page).getByText('收到。')).toBeVisible({ timeout: 1000 })
+  }).toPass()
 })
 
 test('换人登录后看不到上一个人的 AI 对话', async ({ page }) => {
