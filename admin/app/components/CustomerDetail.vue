@@ -322,14 +322,23 @@ function logFields(value: unknown): LogField[] | null {
   ]
 }
 
-function logChanges(entry: { before?: unknown, after?: unknown }): LogChange[] {
+const phoneActions = new Set(['add_customer_phone', 'change_customer_phone'])
+
+function logChanges(entry: { action: string, before?: unknown, after?: unknown }): LogChange[] {
   const before = logFields(entry.before)
   const after = logFields(entry.after) ?? []
   if (!before) return after.filter(f => !f.empty).map(f => ({ label: f.label, before: null, after: f.value }))
-  return after
+  const changes: LogChange[] = after
     .map((f, i) => ({ label: f.label, before: before[i]!.value, after: f.value }))
     .filter(change => change.before !== change.after)
+  // 看不到完整号码时，只改中间四位的前后打码相同，仍要说明号码改过
+  if (phoneActions.has(entry.action) && !changes.some(c => c.label === '手机号')) {
+    changes.unshift({ label: '手机号', before: null, after: '已修改' })
+  }
+  return changes
 }
+
+const logEntries = computed(() => logs.items.value.map(entry => ({ entry, changes: logChanges(entry) })))
 
 // 读取档案及营业日，切换顾客时关闭编辑入口
 watch(() => props.id, () => {
@@ -425,21 +434,23 @@ onBeforeUnmount(() => {
           <div class="sec">修改记录</div>
           <div class="box overflow-hidden p-0" data-testid="customer-logs">
             <p v-if="!logs.items.value.length" class="px-3 py-2.5 text-sm text-muted">暂无修改记录</p>
-            <div v-for="entry in logs.items.value" :key="entry.id" data-testid="customer-log-entry" class="space-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0">
+            <div v-for="{ entry, changes } in logEntries" :key="entry.id" data-testid="customer-log-entry" class="space-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0">
               <p class="flex flex-wrap items-center gap-x-2 text-meta text-muted">
                 <span class="font-medium text-default">{{ actions[entry.action] || entry.action }}</span>
                 <span>{{ entry.actor.name }}</span>
                 <span class="ms-auto tabular-nums">{{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</span>
               </p>
-              <p v-for="change in logChanges(entry)" :key="change.label" data-testid="log-change">
+              <p v-for="change in changes" :key="change.label" data-testid="log-change">
                 <span class="me-1.5 text-meta text-muted">{{ change.label }}</span>
                 <template v-if="change.before !== null">
+                  <span class="sr-only">原为</span>
                   <span data-testid="log-before" class="text-muted line-through">{{ change.before }}</span>
-                  <span class="mx-1 text-dimmed" aria-label="改为">→</span>
+                  <span class="mx-1 text-dimmed" aria-hidden="true">→</span>
+                  <span class="sr-only">改为</span>
                 </template>
                 <span data-testid="log-after">{{ change.after }}</span>
               </p>
-              <p v-if="!logChanges(entry).length" class="text-muted">资料没有变化</p>
+              <p v-if="!changes.length" class="text-muted">资料没有变化</p>
             </div>
             <div v-if="logs.hasMore.value" class="border-t border-default px-3 py-1.5">
               <UButton :loading="logs.loading.value" size="xs" color="neutral" variant="ghost" @click="logs.loadMore">加载更多</UButton>
