@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { api, apiLogin, hire, login, owner, uniqueSuffix } from './helpers'
+import { yuan } from '../app/utils/money'
 
 async function seed() {
   const token = await apiLogin(owner.account, owner.password)
@@ -54,11 +55,11 @@ test('团购对账显示核销分类并录入结算 @groupbuy-month', async ({ p
   await page.getByLabel('结算月').fill(month)
   await page.getByRole('button', { name: '查询', exact: true }).click()
   await expect(page.getByTestId('redeemed-count')).toHaveText(String(expected.redeemed_count))
-  await expect(page.getByTestId('purchase-total')).toHaveText(expected.purchase_total)
+  await expect(page.getByTestId('purchase-total')).toHaveText(yuan(expected.purchase_total))
   await expect(page.getByTestId('linked-open')).toContainText(`${expected.linked_open.count} 张`)
-  await expect(page.getByTestId('linked-open')).toContainText(expected.linked_open.purchase_total)
+  await expect(page.getByTestId('linked-open')).toContainText(yuan(expected.linked_open.purchase_total))
   await expect(page.getByTestId('unlinked')).toContainText(`${expected.unlinked.count} 张`)
-  await expect(page.getByTestId('unlinked')).toContainText(expected.unlinked.purchase_total)
+  await expect(page.getByTestId('unlinked')).toContainText(yuan(expected.unlinked.purchase_total))
   await expect(page.getByTestId('unlinked-no-deal')).toContainText(`${expected.unlinked_no_deal} 张`)
   await page.getByRole('button', { name: '录入结算', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '录入团购平台结算额', exact: true })
@@ -66,9 +67,9 @@ test('团购对账显示核销分类并录入结算 @groupbuy-month', async ({ p
   await dialog.getByLabel('结算备注').fill('平台后台账单')
   await dialog.getByRole('button', { name: '保存', exact: true }).click()
   await expect(dialog).not.toBeVisible()
-  await expect(page.getByTestId('settlement-amount')).toHaveText('150.00')
-  await expect(page.getByTestId('difference')).toHaveText((150 - Number(expected.purchase_total)).toFixed(2))
-  await expect(page.getByTestId('settlement-history')).toContainText('150.00')
+  await expect(page.getByTestId('settlement-amount')).toHaveText('¥150')
+  await expect(page.getByTestId('difference')).toHaveText(yuan(150 - Number(expected.purchase_total)))
+  await expect(page.getByTestId('settlement-history')).toContainText('¥150.00')
   await expect(page.getByTestId('settlement-history')).toContainText('平台后台账单')
 })
 

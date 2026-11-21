@@ -126,35 +126,40 @@ onMounted(loadSources)
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div class="mx-auto max-w-3xl space-y-6">
     <div>
       <p class="text-sm text-muted">修改从选定的日期开始执行，之前的业务和已经下的单不受影响。今天是营业日 {{ today }}。</p>
     </div>
 
-    <UCard v-for="s in settings" :key="s.key" :data-setting="s.key">
-      <div class="flex items-start justify-between gap-4">
-        <div class="space-y-1">
-          <div class="font-medium">{{ s.label }}</div>
-          <div class="text-sm text-muted">{{ s.hint }}</div>
-          <div class="flex items-center gap-2">
-            <span class="text-lg">{{ show(s, s.value) }}</span>
-            <UBadge v-if="s.is_default" color="neutral" variant="subtle">系统默认</UBadge>
-            <span v-else class="text-xs text-muted">{{ s.effective_from }} 起</span>
+    <div class="box overflow-hidden p-0">
+      <div
+        v-for="s in settings"
+        :key="s.key"
+        :data-setting="s.key"
+        class="grid gap-x-6 gap-y-2 border-t border-default px-4 py-3.5 first:border-t-0 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center"
+      >
+        <div>
+          <div class="text-sm font-medium">{{ s.label }}</div>
+          <div class="mt-0.5 text-xs text-muted">{{ s.hint }}</div>
+        </div>
+        <div class="text-sm">
+          <div class="flex flex-wrap items-center gap-2">
+            <span>{{ show(s, s.value) }}</span>
+            <span v-if="s.is_default" class="tag bg-tag-gray">系统默认</span>
+            <span v-else class="text-xs text-dimmed">{{ s.effective_from }} 起</span>
           </div>
-          <div v-for="u in s.upcoming" :key="u.effective_from" class="text-sm">
-            <UBadge color="warning" variant="subtle">已安排</UBadge>
+          <div v-for="u in s.upcoming" :key="u.effective_from" class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+            <span class="tag bg-tag-yellow">已安排</span>
             {{ u.effective_from }} 起改为 {{ show(s, u.value) }}{{ u.is_default ? '（系统默认）' : '' }}
           </div>
         </div>
-        <UButton v-if="can('settings.manage')" variant="outline" @click="openEditor(s)">修改</UButton>
+        <UButton v-if="can('settings.manage')" size="sm" color="neutral" variant="ghost" class="justify-self-start md:justify-self-end" @click="openEditor(s)">修改</UButton>
       </div>
-    </UCard>
+    </div>
 
-    <UCard data-setting="customer_sources">
-      <template #header>
-        <div class="font-medium">顾客来源</div>
-      </template>
-      <div class="space-y-2">
+    <section data-setting="customer_sources">
+      <div class="sec">顾客来源</div>
+      <div class="box space-y-2">
         <div v-for="source in sources" :key="source.id" class="flex items-center gap-2">
           <template v-if="can('settings.manage')">
             <UInput v-model="source.name" :aria-label="`顾客来源 ${source.name}`" class="flex-1" @change="saveSource(source)" />
@@ -162,38 +167,38 @@ onMounted(loadSources)
           </template>
           <template v-else>
             <span>{{ source.name }}</span>
-            <UBadge :color="source.active ? 'success' : 'neutral'" variant="subtle">{{ source.active ? '启用' : '停用' }}</UBadge>
+            <span v-if="!source.active" class="tag bg-tag-gray">停用</span>
           </template>
         </div>
         <form v-if="can('settings.manage')" class="flex gap-2 pt-2" @submit.prevent="addSource">
           <UInput v-model="sourceName" aria-label="新顾客来源" placeholder="新顾客来源" class="flex-1" />
-          <UButton type="submit" icon="i-lucide-plus">添加</UButton>
+          <UButton type="submit" size="sm" color="neutral" variant="outline" icon="i-lucide-plus">添加</UButton>
         </form>
       </div>
-    </UCard>
+    </section>
 
-    <UCard v-if="can('audit_log.view')">
-      <template #header>
-        <div class="font-medium">修改记录</div>
-      </template>
-      <div v-if="!changes.items.value.length" class="text-sm text-muted">还没有修改过设置</div>
-      <table v-else class="w-full text-sm">
-        <thead class="text-left text-muted">
-          <tr><th class="py-1">时间</th><th>修改人</th><th>设置</th><th>改前</th><th>改后</th><th>生效日期</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="c in changes.items.value" :key="c.id" class="border-t border-default">
-            <td class="py-1">{{ new Date(c.changed_at).toLocaleString('zh-CN') }}</td>
-            <td>{{ c.changed_by.name }}</td>
-            <td>{{ c.label }}</td>
-            <td>{{ show(settingOf(c.key), c.old_value) }}{{ c.old_is_default ? '（默认）' : '' }}</td>
-            <td>{{ show(settingOf(c.key), c.value) }}{{ c.is_default ? '（恢复默认）' : '' }}</td>
-            <td>{{ c.effective_from }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <UButton v-if="changes.hasMore.value" :loading="changes.loading.value" variant="outline" @click="changes.loadMore">加载更多</UButton>
-    </UCard>
+    <section v-if="can('audit_log.view')">
+      <div class="sec">修改记录</div>
+      <div class="box">
+        <div v-if="!changes.items.value.length" class="text-sm text-muted">还没有修改过设置</div>
+        <table v-else class="w-full text-sm">
+          <thead class="text-left text-xs text-dimmed">
+            <tr><th class="py-1.5 font-normal">时间</th><th class="font-normal">修改人</th><th class="font-normal">设置</th><th class="font-normal">改前</th><th class="font-normal">改后</th><th class="font-normal">生效日期</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="c in changes.items.value" :key="c.id" class="border-t border-default">
+              <td class="py-2 tabular-nums">{{ new Date(c.changed_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</td>
+              <td>{{ c.changed_by.name }}</td>
+              <td>{{ c.label }}</td>
+              <td>{{ show(settingOf(c.key), c.old_value) }}{{ c.old_is_default ? '（默认）' : '' }}</td>
+              <td>{{ show(settingOf(c.key), c.value) }}{{ c.is_default ? '（恢复默认）' : '' }}</td>
+              <td>{{ c.effective_from }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <UButton v-if="changes.hasMore.value" :loading="changes.loading.value" size="sm" color="neutral" variant="ghost" class="mt-2" @click="changes.loadMore">加载更多</UButton>
+      </div>
+    </section>
 
     <UModal :open="!!editing" :title="`修改${editing?.label ?? ''}`" @update:open="v => { if (!v) editing = null }">
       <template #body>

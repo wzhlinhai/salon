@@ -252,53 +252,75 @@ function changeSource(o: OverrideForm) {
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div class="space-y-6">
+    <PageActions>
+      <UButton size="sm" icon="i-lucide-pencil" :disabled="!today" @click="edit">修改方案</UButton>
+    </PageActions>
     <p class="text-sm text-muted">保存后从生效日期起执行，之前写入的业绩仍按当时的方案版本算；阶梯提成随当月累计变化，月底锁定后才固定。今天是营业日 {{ today }}。</p>
-    <p v-if="!versions.loading.value && !versions.items.value.length">还没有提成方案，没有方案时不计提成。</p>
-    <UCard>
-      <template #header><h2 class="font-semibold">方案版本</h2></template>
-      <div class="overflow-x-auto">
+    <EmptyState v-if="!versions.loading.value && !versions.items.value.length" class="box" title="还没有提成方案，没有方案时不计提成。" hint="点右上角修改方案，按项目、耗卡、手工费或销售设置提成" />
+    <section v-else>
+      <div class="sec">方案版本</div>
+      <div class="box overflow-x-auto p-0">
         <table class="w-full text-sm">
-          <thead class="text-left text-muted"><tr><th>版本</th><th>生效日期</th><th>修改人</th><th>保存时间</th><th>状态</th></tr></thead>
+          <thead class="text-left text-xs text-dimmed">
+            <tr><th class="px-3 py-2 font-normal">版本</th><th class="px-3 font-normal">生效日期</th><th class="px-3 font-normal">修改人</th><th class="px-3 font-normal">保存时间</th><th class="px-3 font-normal">状态</th></tr>
+          </thead>
           <tbody>
-            <tr v-for="v in versions.items.value" :key="v.version" :data-version="v.version" class="border-t border-default" :class="selected === v.version ? 'bg-elevated' : ''">
-              <td class="py-2"><UButton variant="link" @click="selectVersion(v.version)">版本 {{ v.version }}</UButton></td>
-              <td>{{ v.effective_from }}</td><td>{{ v.saved_by.name }}</td><td>{{ new Date(v.saved_at).toLocaleString('zh-CN') }}</td>
-              <td><UBadge v-if="inForce === v.version">执行中</UBadge><UBadge v-else-if="v.effective_from > today" color="warning">已安排</UBadge></td>
+            <tr
+              v-for="v in versions.items.value"
+              :key="v.version"
+              :data-version="v.version"
+              class="cursor-pointer border-t border-default hover:bg-hover"
+              :class="selected === v.version ? 'bg-selected' : ''"
+              @click="selectVersion(v.version)"
+            >
+              <td class="px-3 py-2"><button type="button" class="font-medium hover:underline" @click.stop="selectVersion(v.version)">版本 {{ v.version }}</button></td>
+              <td class="px-3 tabular-nums">{{ v.effective_from }}</td>
+              <td class="px-3">{{ v.saved_by.name }}</td>
+              <td class="px-3 text-muted tabular-nums">{{ new Date(v.saved_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</td>
+              <td class="px-3"><span v-if="inForce === v.version" class="tag bg-tag-green">执行中</span><span v-else-if="v.effective_from > today" class="tag bg-tag-yellow">已安排</span></td>
             </tr>
           </tbody>
         </table>
+        <UButton v-if="versions.hasMore.value" :loading="versions.loading.value" size="sm" color="neutral" variant="ghost" class="m-2" @click="versions.loadMore">加载更多</UButton>
       </div>
-      <UButton v-if="versions.hasMore.value" :loading="versions.loading.value" variant="outline" @click="versions.loadMore">加载更多</UButton>
-    </UCard>
-    <p v-if="detailLoading">加载中</p>
-    <UCard v-if="detail" data-testid="scheme-detail">
-      <template #header><h2 class="font-semibold">版本 {{ detail.version }} · {{ detail.effective_from }} 起执行</h2></template>
-      <section v-for="source in sources" :key="source.value" class="mb-4 space-y-2" :data-source="source.value">
-        <h3 class="font-medium">{{ source.label }}</h3>
-        <template v-for="rule in detail.scheme.rules.filter(r => r.source === source.value)" :key="rule.source">
-          <p>计提基数：{{ bases.find(b => b.value === rule.base)?.label }}</p>
-          <p>区分：{{ [rule.by_position ? '岗位' : '', rule.by_designated ? '指定或非指定' : '', rule.by_member ? '会员或散客' : ''].filter(Boolean).join('、') || '不区分' }}</p>
-          <table class="w-full text-sm">
-            <thead class="text-left text-muted"><tr><th v-if="rule.by_position">岗位</th><th v-if="rule.by_designated">指定或非指定</th><th v-if="rule.by_member">会员或散客</th><th>提成规则</th></tr></thead>
-            <tbody><tr v-for="(cell, index) in rule.cells" :key="index" class="border-t border-default"><td v-if="rule.by_position">{{ cell.position?.name }}</td><td v-if="rule.by_designated">{{ cell.designated ? '指定' : '非指定' }}</td><td v-if="rule.by_member">{{ cell.member ? '会员' : '散客' }}</td><td class="py-2">{{ valueText(cell) }}</td></tr></tbody>
-          </table>
-          <p class="text-sm text-muted">未填的格子不计提成。</p>
-        </template>
-        <p v-if="!detail.scheme.rules.some(r => r.source === source.value)">不计提成</p>
-      </section>
-      <h3 class="font-medium">覆盖比例</h3>
-      <p v-if="!detail.scheme.overrides.length">无</p>
-      <p v-for="(o, index) in detail.scheme.overrides" :key="index">
-        {{ sources.find(s => s.value === o.source)?.label }} ·
-        <template v-if="o.position_id">{{ o.position?.name }} × {{ o.category?.name }}</template>
-        <template v-else>{{ o.staff?.name ?? '全部员工' }} · {{ o.item?.name ?? '全部项目' }}</template>
-        · {{ valueText(o) }}
-      </p>
-      <h3 class="mt-4 font-medium">不计提成的员工</h3>
-      <p>{{ detail.scheme.excluded_staff.map(s => s.staff.name).join('、') || '无' }}</p>
-    </UCard>
-    <UButton :disabled="!today" @click="edit">修改方案</UButton>
+    </section>
+    <p v-if="detailLoading" class="text-sm text-muted">加载中</p>
+    <section v-if="detail" data-testid="scheme-detail">
+      <div class="sec">版本 {{ detail.version }} · {{ detail.effective_from }} 起执行</div>
+      <div class="box overflow-hidden p-0">
+        <div v-for="source in sources" :key="source.value" class="grid gap-x-6 gap-y-2 border-t border-default px-4 py-3.5 first:border-t-0 md:grid-cols-[10rem_minmax(0,1fr)]" :data-source="source.value">
+          <div class="text-sm font-medium">{{ source.label }}</div>
+          <div class="text-sm">
+            <template v-for="rule in detail.scheme.rules.filter(r => r.source === source.value)" :key="rule.source">
+              <p class="text-muted">计提基数：{{ bases.find(b => b.value === rule.base)?.label }} · 区分：{{ [rule.by_position ? '岗位' : '', rule.by_designated ? '指定或非指定' : '', rule.by_member ? '会员或散客' : ''].filter(Boolean).join('、') || '不区分' }}</p>
+              <table class="mt-1.5 w-full max-w-xl">
+                <thead class="text-left text-xs text-dimmed"><tr><th v-if="rule.by_position" class="py-1 font-normal">岗位</th><th v-if="rule.by_designated" class="font-normal">指定或非指定</th><th v-if="rule.by_member" class="font-normal">会员或散客</th><th class="font-normal">提成规则</th></tr></thead>
+                <tbody><tr v-for="(cell, index) in rule.cells" :key="index" class="border-t border-default"><td v-if="rule.by_position" class="py-1.5">{{ cell.position?.name }}</td><td v-if="rule.by_designated">{{ cell.designated ? '指定' : '非指定' }}</td><td v-if="rule.by_member">{{ cell.member ? '会员' : '散客' }}</td><td class="py-1.5 font-medium tabular-nums">{{ valueText(cell) }}</td></tr></tbody>
+              </table>
+              <p class="mt-1 text-xs text-dimmed">未填的格子不计提成。</p>
+            </template>
+            <p v-if="!detail.scheme.rules.some(r => r.source === source.value)" class="text-dimmed">不计提成</p>
+          </div>
+        </div>
+        <div class="grid gap-x-6 gap-y-2 border-t border-default px-4 py-3.5 md:grid-cols-[10rem_minmax(0,1fr)]">
+          <div class="text-sm font-medium">覆盖比例</div>
+          <div class="space-y-1 text-sm">
+            <p v-if="!detail.scheme.overrides.length" class="text-dimmed">无</p>
+            <p v-for="(o, index) in detail.scheme.overrides" :key="index">
+              {{ sources.find(s => s.value === o.source)?.label }} ·
+              <template v-if="o.position_id">{{ o.position?.name }} × {{ o.category?.name }}</template>
+              <template v-else>{{ o.staff?.name ?? '全部员工' }} · {{ o.item?.name ?? '全部项目' }}</template>
+              · <span class="font-medium tabular-nums">{{ valueText(o) }}</span>
+            </p>
+          </div>
+        </div>
+        <div class="grid gap-x-6 gap-y-2 border-t border-default px-4 py-3.5 md:grid-cols-[10rem_minmax(0,1fr)]">
+          <div class="text-sm font-medium">不计提成的员工</div>
+          <p class="text-sm" :class="detail.scheme.excluded_staff.length ? '' : 'text-dimmed'">{{ detail.scheme.excluded_staff.map(s => s.staff.name).join('、') || '无' }}</p>
+        </div>
+      </div>
+    </section>
     <UModal v-model:open="open" title="修改提成方案" :ui="{ content: 'sm:max-w-5xl' }">
       <template #body>
         <p v-if="loading">加载中</p>

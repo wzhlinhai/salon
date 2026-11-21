@@ -38,9 +38,9 @@ const labelNames: Record<string, string> = {
   recent_chemical: '近期烫染'
 }
 const columns = computed(() => [
-  ...(can('customer.assign') ? [{ id: 'select', header: '选择' }] : []),
+  ...(can('customer.assign') ? [{ id: 'select', header: '' }] : []),
   { id: 'name', header: '姓名' },
-  { accessorKey: 'phone', header: '手机号' },
+  { id: 'phone', header: '手机号' },
   { id: 'gender', header: '性别' },
   { id: 'source', header: '来源' },
   { id: 'responsible', header: '负责人' },
@@ -95,6 +95,11 @@ function search() {
   clearTimeout(timer)
   offset.value = 0
   load()
+}
+
+function clearFilters() {
+  query.value = ''
+  responsible.value = NONE
 }
 
 function changePage(change: number) {
@@ -256,46 +261,53 @@ async function handover() {
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <div class="flex gap-2">
-        <UButton v-if="can('customer.assign')" variant="outline" @click="handoverOpen = true">负责人交接</UButton>
-        <UButton v-if="can('customer.edit')" icon="i-lucide-plus" @click="openCreate">新建顾客</UButton>
+  <div class="space-y-3">
+    <PageActions>
+      <UButton v-if="can('customer.assign')" size="sm" color="neutral" variant="outline" @click="handoverOpen = true">负责人交接</UButton>
+      <UButton v-if="can('customer.edit')" size="sm" icon="i-lucide-plus" @click="openCreate">新建顾客</UButton>
+    </PageActions>
+    <div class="flex flex-wrap items-center gap-2">
+      <UInput v-model="query" icon="i-lucide-search" aria-label="搜索顾客" placeholder="手机号、后四位或姓名，回车搜索" class="w-72" @keydown.enter="search" />
+      <USelect v-model="responsible" aria-label="负责人筛选" :items="[{ label: '全部负责人', value: NONE }, ...staffItems]" class="min-w-40" />
+      <USwitch v-model="includeUnidentified" label="显示未识别顾客" />
+      <div v-if="can('customer.assign') && selected.length" class="ms-auto flex items-center gap-2">
+        <span class="text-meta text-muted">已选 {{ selected.length }} 位</span>
+        <UButton color="neutral" variant="outline" @click="openAssign">分配负责人</UButton>
       </div>
     </div>
-    <div class="flex flex-wrap items-end gap-4">
-      <UFormField label="搜索顾客">
-        <UInput v-model="query" placeholder="手机号、后四位或姓名" @keydown.enter="search" />
-      </UFormField>
-      <UFormField label="负责人筛选">
-        <USelect v-model="responsible" :items="[{ label: '全部负责人', value: NONE }, ...staffItems]" class="min-w-44" />
-      </UFormField>
-      <USwitch v-model="includeUnidentified" label="显示未识别顾客" />
-      <UButton v-if="can('customer.assign') && selected.length" @click="openAssign">分配负责人</UButton>
+    <div class="box overflow-hidden p-0">
+      <UTable :data="items" :columns="columns" :loading="loading" @select="selectRow">
+        <template #select-cell="{ row }">
+          <span @click.stop>
+            <UCheckbox :aria-label="`选择顾客 ${row.original.name || '未识别顾客'}`" :model-value="selected.includes(row.original.id)" @update:model-value="v => toggle(row.original.id, v)" />
+          </span>
+        </template>
+        <template #name-cell="{ row }">
+          <button type="button" class="font-medium hover:underline" @click.stop="openDetail(row.original.id)">{{ row.original.unidentified ? '未识别顾客' : row.original.name || '未填写姓名' }}</button>
+        </template>
+        <template #phone-cell="{ row }"><span class="tabular-nums">{{ row.original.phone || '—' }}</span></template>
+        <template #gender-cell="{ row }">{{ row.original.gender === 'male' ? '男' : row.original.gender === 'female' ? '女' : '—' }}</template>
+        <template #source-cell="{ row }">{{ row.original.source?.name || '—' }}</template>
+        <template #responsible-cell="{ row }">{{ row.original.responsible?.name || '—' }}</template>
+        <template #safety-cell="{ row }">
+          <div class="flex flex-wrap gap-1">
+            <span v-for="label in row.original.active_safety_labels" :key="label.id" class="tag bg-tag-red">{{ labelNames[label.kind] }}</span>
+          </div>
+        </template>
+        <template #created-cell="{ row }"><span class="text-muted tabular-nums">{{ formatDate(row.original.created_at) }}</span></template>
+        <template #empty>
+          <template v-if="loading" />
+          <EmptyState v-else-if="query || responsible !== NONE" title="没有找到顾客" hint="换个手机号或姓名试试">
+            <UButton color="neutral" variant="outline" @click="clearFilters">清除筛选</UButton>
+          </EmptyState>
+          <EmptyState v-else title="还没有顾客" :hint="can('customer.edit') ? '顾客第一次到店开单时会自动建档，也可以点右上角新建' : '顾客第一次到店开单时会自动建档'" />
+        </template>
+      </UTable>
     </div>
-    <UTable :data="items" :columns="columns" :loading="loading" @select="selectRow">
-      <template #select-cell="{ row }">
-        <span @click.stop>
-          <UCheckbox :aria-label="`选择顾客 ${row.original.name || '未识别顾客'}`" :model-value="selected.includes(row.original.id)" @update:model-value="v => toggle(row.original.id, v)" />
-        </span>
-      </template>
-      <template #name-cell="{ row }">
-        <UButton variant="link" @click.stop="openDetail(row.original.id)">{{ row.original.unidentified ? '未识别顾客' : row.original.name || '未填写姓名' }}</UButton>
-      </template>
-      <template #gender-cell="{ row }">{{ row.original.gender === 'male' ? '男' : row.original.gender === 'female' ? '女' : '—' }}</template>
-      <template #source-cell="{ row }">{{ row.original.source?.name || '—' }}</template>
-      <template #responsible-cell="{ row }">{{ row.original.responsible?.name || '—' }}</template>
-      <template #safety-cell="{ row }">
-        <div class="flex flex-wrap gap-1">
-          <UBadge v-for="label in row.original.active_safety_labels" :key="label.id" color="error">{{ labelNames[label.kind] }}</UBadge>
-        </div>
-      </template>
-      <template #created-cell="{ row }">{{ new Date(row.original.created_at).toLocaleString('zh-CN') }}</template>
-    </UTable>
-    <div class="flex items-center gap-3">
-      <UButton variant="outline" :disabled="offset === 0 || loading" @click="changePage(-1)">上一页</UButton>
-      <span>第 {{ offset / 50 + 1 }} 页</span>
-      <UButton variant="outline" :disabled="items.length < 50 || loading" @click="changePage(1)">下一页</UButton>
+    <div v-if="offset > 0 || items.length >= 50" class="flex items-center justify-end gap-2 text-meta text-muted">
+      <UButton color="neutral" variant="ghost" icon="i-lucide-chevron-left" :disabled="offset === 0 || loading" @click="changePage(-1)">上一页</UButton>
+      <span class="tabular-nums">第 {{ offset / 50 + 1 }} 页</span>
+      <UButton color="neutral" variant="ghost" trailing-icon="i-lucide-chevron-right" :disabled="items.length < 50 || loading" @click="changePage(1)">下一页</UButton>
     </div>
     <CustomerDetail v-if="detailID" :id="detailID" :sources="sources" @close="closeDetail" @open="openDetail" @changed="load" />
     <UModal v-model:open="createOpen" title="新建顾客">

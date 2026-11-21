@@ -6,3 +6,8 @@ export function yuan(value: string | number | null | undefined) {
     maximumFractionDigits: 2
   })}`
 }
+
+// 列表和表格里右对齐的金额：一律两位小数，数位对齐（¥99.00、¥1,234.56）。
+export function yuanFixed(value: string | number | null | undefined) {
+  return `¥${Number(value || '0').toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
