@@ -779,7 +779,14 @@ for (const fails of [false, true]) {
     const a = (await api(token, 'create_customer', { name: `保存回切甲${Date.now()}`, phone: phone() })).customer
     const b = (await api(token, 'create_customer', { name: `保存回切乙${Date.now()}`, phone: phone() })).customer
     await login(page, owner.account, owner.password)
-    await page.goto(`/customers?id=${a.id}`)
+    await page.goto('/customers')
+    // 没到过店的顾客按上次到店排在最后，整套测试建的顾客多了会翻到第二页；先搜出来，列表刷新才看得到。
+    await page.getByRole('textbox', { name: '搜索顾客' }).fill('保存回切')
+    await expect(page.getByTestId('customer-list').getByText(a.name, { exact: true })).toHaveCount(1)
+    await page.evaluate((id) => {
+      window.history.pushState({}, '', `/customers?id=${id}`)
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    }, a.id)
     const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
     await expect(detail.getByRole('heading', { name: a.name, exact: true })).toBeVisible()
     let release!: () => void
