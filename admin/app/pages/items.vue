@@ -152,7 +152,7 @@ function laborFee(item: Item) {
       <UButton size="sm" icon="i-lucide-plus" @click="openEditor(null)">新建项目</UButton>
     </PageActions>
     <ListSkeleton v-if="loading && !items.length" />
-    <EmptyState v-else-if="!items.length" class="box" title="还没有项目" hint="点右上角新建项目，填上价格和服务时长，开单和预约就能选它" />
+    <EmptyState v-else-if="!items.length" title="还没有项目" hint="点右上角新建项目，填上价格和服务时长，开单和预约就能选它" />
     <section v-for="group in groups" :key="group.key" :data-category="group.name">
       <div class="sec"><span class="size-2.5 rounded-sm" :class="group.items[0] ? toneOf(group.items[0].id) : 'bg-tag-gray'" aria-hidden="true" />{{ group.name }}<span class="ms-2 font-normal text-dimmed">{{ group.items.length }}</span></div>
       <div class="overflow-x-auto">
@@ -196,8 +196,8 @@ function laborFee(item: Item) {
               <USelect v-model="row.position_id" :aria-label="`岗位${index + 1}`" :items="positionOptions(index)" placeholder="选择岗位" />
               <UCheckbox v-model="row.required" label="必填" />
               <UFormField label="岗位比例 %"><UInput v-model="row.share_percent" type="number" min="0" max="100" :aria-label="`岗位${index + 1}比例`" /></UFormField>
-              <UButton :disabled="index === 0" aria-label="上移" @click="move(index, -1)">↑</UButton>
-              <UButton :disabled="index === positionRows.length - 1" aria-label="下移" @click="move(index, 1)">↓</UButton>
+              <UButton :disabled="index === 0" icon="i-lucide-arrow-up" color="neutral" variant="ghost" aria-label="上移" @click="move(index, -1)" />
+              <UButton :disabled="index === positionRows.length - 1" icon="i-lucide-arrow-down" color="neutral" variant="ghost" aria-label="下移" @click="move(index, 1)" />
               <UButton color="error" @click="positionRows.splice(index, 1)">移除岗位</UButton>
             </div>
             <UButton variant="outline" @click="positionRows.push({ position_id: positions.find(p => p.active)?.id ?? '', required: false, share_percent: '' })">添加岗位</UButton>

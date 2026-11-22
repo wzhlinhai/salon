@@ -157,3 +157,48 @@ body {
     min-height: 44px;
   }
 }
+
+/* 滚动条：全站细的灰条，不要系统自带的粗条和两头箭头。Chrome 一旦看到 scrollbar-width / scrollbar-color
+   就不再认 ::-webkit-scrollbar，所以标准属性只给不支持 ::-webkit-scrollbar 的浏览器（Firefox）。 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--ui-border-accented);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ui-border-accented) transparent;
+  }
+}
+
+/* 侧栏可滚动区（DESIGN.md 外壳）：更窄，平时不露，鼠标移上去才出。 */
+.side-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.side-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+.side-scroll:hover::-webkit-scrollbar-thumb {
+  background: var(--ui-border-accented);
+}
+@supports not selector(::-webkit-scrollbar) {
+  .side-scroll {
+    scrollbar-color: transparent transparent;
+  }
+  .side-scroll:hover {
+    scrollbar-color: var(--ui-border-accented) transparent;
+  }
+}

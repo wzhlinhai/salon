@@ -95,6 +95,17 @@ test('侧栏配置类分组默认收起，当前页所在组展开，点组名�
   await page.goto('/items')
   await expect(itemsGroup).toHaveAttribute('aria-expanded', 'true')
   await expect(nav.getByRole('link', { name: '卡类型' })).toBeVisible()
+
+  // 收成窄条后收起的组照样收着：只留一个按钮，点开列出组里的页面。
+  await page.goto('/staff')
+  await page.getByTestId('sidebar-collapse').click()
+  await expect(nav.getByRole('link', { name: '卡类型' })).toBeHidden()
+  await expect(nav.getByRole('link', { name: '员工' })).toBeVisible()
+  await nav.getByRole('button', { name: '项目与卡（已收起）' }).click()
+  await page.getByRole('menuitem', { name: '卡类型' }).click()
+  await expect(page).toHaveURL(/\/card-types$/)
+  await expect(nav.getByRole('link', { name: '卡类型' })).toBeVisible()
+  await page.getByTestId('sidebar-collapse').click()
 })
 
 test('收起侧栏的按钮在顶栏固定位置，收起和展开时不挪动', async ({ page }) => {
