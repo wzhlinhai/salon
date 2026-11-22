@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'booking.manage', title: '预约' })
+definePageMeta({ permission: 'booking.manage', title: '预约', workbench: true })
 
 type Appointment = components['schemas']['Appointment']
 type AppointmentEvent = components['schemas']['AppointmentEvent']

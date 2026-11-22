@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'order.create', title: '收银' })
+definePageMeta({ permission: 'order.create', title: '收银', workbench: true })
 
 type Order = components['schemas']['Order']
 type Customer = components['schemas']['Customer']
