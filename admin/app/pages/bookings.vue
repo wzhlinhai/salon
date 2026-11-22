@@ -129,6 +129,15 @@ const staffColumns = computed(() => {
 const bookableItems = computed(() => items.value.filter(item => item.active && item.kind === 'service' && item.bookable))
 const activeStaffItems = computed(() => staff.value.filter(person => person.active).map(person => ({ label: person.name, value: person.id })))
 
+// 列头的「N 约」：这位员工当天没取消的预约数，私约占位不算。
+const bookedCount = computed(() => {
+  const counts = new Map<string, number>()
+  for (const entry of entries.value) {
+    if (entry.kind === 'appointment' && entry.status !== 'cancelled') counts.set(entry.staff.id, (counts.get(entry.staff.id) ?? 0) + 1)
+  }
+  return counts
+})
+
 function visibleEntries(staffID: string) {
   return entries.value.filter(entry => entry.staff.id === staffID && (showCancelled.value || entry.status !== 'cancelled'))
 }
@@ -656,7 +665,7 @@ function actorLabel(actor: Actor) {
       </div>
       <div class="flex min-w-max">
         <div class="w-14 shrink-0">
-          <div class="sticky top-0 z-20 h-8 border-b border-default bg-white" />
+          <div class="sticky top-0 z-20 h-11 border-b border-default bg-white" />
           <div class="relative" :style="{ height: `${gridHeight}px` }">
             <div
               v-for="slot in hourSlots"
@@ -670,8 +679,10 @@ function actorLabel(actor: Actor) {
           </div>
         </div>
         <div v-for="person in staffColumns" :key="person.id" class="min-w-40 flex-1 border-l border-default" :data-staff-column="person.id">
-          <div class="sticky top-0 z-20 h-8 content-center truncate border-b border-default bg-white px-2 text-sm font-medium" :title="person.name">
-            {{ person.name }}{{ person.active ? '' : '（已停用）' }}
+          <div class="sticky top-0 z-20 flex h-11 items-center gap-2 border-b border-default bg-white px-2" :title="person.name" data-testid="booking-column-head">
+            <StaffAvatar :id="person.id" :name="person.name" size="sm" />
+            <span class="min-w-0 truncate text-sm font-medium">{{ person.name }}{{ person.active ? '' : '（已停用）' }}</span>
+            <span class="ms-auto shrink-0 text-meta tabular-nums" :class="bookedCount.get(person.id) ? 'text-muted' : 'text-dimmed'">{{ bookedCount.get(person.id) ?? 0 }} 约</span>
           </div>
           <div class="relative" :style="{ height: `${gridHeight}px` }">
             <template v-if="person.active">
