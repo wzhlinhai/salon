@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { env } from './env'
 
 export const owner = env.owner
@@ -59,4 +59,20 @@ export async function navLabels(page: Page): Promise<string[]> {
 
 export function cash(amount: string) {
   return [{ method: 'cash', amount }]
+}
+
+// 收进 ··· 菜单的操作：先点开菜单（trigger），再点菜单项。
+export async function menuAction(page: Page, trigger: Locator, name: string) {
+  await trigger.click()
+  await page.getByRole('menuitem', { name, exact: true }).click()
+}
+
+// 顾客详情里卡的操作（充值以外都在卡行尾的 ··· 里）。
+export async function cardAction(page: Page, card: Locator, name: string) {
+  await menuAction(page, card.getByRole('button', { name: / 的操作$/ }), name)
+}
+
+// 顾客详情左栏"修改资料"旁边的 ··· 菜单。
+export async function customerAction(page: Page, name: string) {
+  await menuAction(page, page.getByRole('button', { name: '顾客操作', exact: true }), name)
 }

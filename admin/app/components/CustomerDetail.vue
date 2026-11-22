@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
+import type { CustomerOverview } from '~/utils/customer'
 
 type Customer = components['schemas']['Customer']
 type LabelInput = components['schemas']['AddSafetyLabelInput']
@@ -7,6 +8,8 @@ type LabelInput = components['schemas']['AddSafetyLabelInput']
 const props = defineProps<{
   id: string
   sources: components['schemas']['CustomerSource'][]
+  // 列表里这一行的到店和余额汇总；从合并跳到不在当前页的顾客时没有，指标小卡就不出现
+  overview?: CustomerOverview
 }>()
 const emit = defineEmits<{
   close: []
@@ -38,7 +41,7 @@ const genderItems = [
   { label: '女', value: 'female' }
 ]
 const genderName = (value: string | null) => value === 'male' ? '男' : value === 'female' ? '女' : '未填写'
-const customerName = (c: Customer) => c.unidentified ? '未识别顾客' : c.name || '未填写姓名'
+const customerName = (c: Customer) => c.name || (c.unidentified ? '未识别顾客' : '未填写姓名')
 const sourceItems = computed(() => [
   { label: '不设来源', value: NONE },
   ...props.sources
@@ -114,6 +117,37 @@ async function saveProfile() {
     editing.value = false
   }
 }
+
+// 左栏（drawer-01）：主操作"修改资料"，其余收进 ··· 菜单；分节导航点了滚到对应分节。
+const moreItems = computed(() => {
+  const c = customer.value
+  if (!c || c.merged_into) return []
+  return [[
+    ...((!c.phone && can('customer.edit')) || (c.phone && can('customer.merge')) ? [{ label: c.phone ? '改手机号' : '补手机号', icon: 'i-lucide-phone', onSelect: openPhone }] : []),
+    ...(can('customer.safety_label') && today.value ? [{ label: '添加安全标签', icon: 'i-lucide-shield-alert', onSelect: openLabel }] : []),
+    ...(can('customer.merge') ? [{ label: '合并重复顾客', icon: 'i-lucide-merge', onSelect: openMerge }] : [])
+  ]].filter(group => group.length)
+})
+
+const sections = computed(() => [
+  { key: 'overview', label: '概览', icon: 'i-lucide-layout-grid' },
+  ...(can('customer.view')
+    ? [
+        { key: 'cards', label: '卡', icon: 'i-lucide-credit-card' },
+        { key: 'red-packets', label: '红包', icon: 'i-lucide-gift' }
+      ]
+    : []),
+  ...(can('customer.view') && !customer.value?.merged_into ? [{ key: 'debts', label: '欠款', icon: 'i-lucide-hand-coins' }] : []),
+  ...(can('audit_log.view') ? [{ key: 'logs', label: '修改记录', icon: 'i-lucide-history' }] : [])
+])
+
+function jump(key: string) {
+  document.getElementById(`customer-sec-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+const createdOn = computed(() => customer.value
+  ? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(new Date(customer.value.created_at))
+  : '')
 
 function setDetailOpen(open: boolean) {
   if (!open) {
@@ -377,93 +411,145 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <USlideover :open="true" title="顾客详情" :ui="{ content: 'sm:max-w-3xl' }" @update:open="setDetailOpen">
+  <USlideover :open="true" title="顾客详情" :ui="{ content: 'sm:max-w-4xl', body: 'p-0 sm:p-0 sm:overflow-hidden' }" @update:open="setDetailOpen">
     <template #body>
-      <div v-if="customer" class="space-y-6">
-        <UAlert v-if="customer.merged_into" title="已合并到另一位顾客" color="warning" variant="subtle">
-          <template #description>
-            <UButton size="sm" color="neutral" variant="outline" class="mt-1" @click="emit('open', customer.merged_into)">查看保留的顾客</UButton>
-          </template>
-        </UAlert>
-        <div class="flex flex-wrap items-center gap-2">
-          <h2 class="text-lg font-semibold">{{ customerName(customer) }}</h2>
-          <div v-if="!customer.merged_into" class="ms-auto flex gap-1">
-            <UButton v-if="can('customer.edit')" size="sm" color="neutral" variant="ghost" icon="i-lucide-pencil" @click="edit">修改资料</UButton>
-            <UButton v-if="can('customer.merge')" size="sm" color="neutral" variant="ghost" icon="i-lucide-merge" @click="openMerge">合并重复顾客</UButton>
+      <div v-if="customer" class="sm:grid sm:h-full sm:grid-cols-[15rem_minmax(0,1fr)]">
+        <aside class="side-scroll border-b border-default p-5 sm:overflow-y-auto sm:border-e sm:border-b-0" data-testid="customer-rail">
+          <div class="flex flex-col items-center text-center">
+            <span class="grid size-16 place-items-center rounded-full text-2xl font-semibold" :class="customerTone(customer.id)" aria-hidden="true">{{ customerName(customer).slice(0, 1) }}</span>
+            <h2 class="mt-3 text-lg font-semibold">{{ customerName(customer) }}</h2>
+            <p class="text-sm text-muted tabular-nums">{{ customer.phone || '没留手机号' }}</p>
+            <div v-if="!customer.merged_into && (can('customer.edit') || moreItems.length)" class="mt-4 flex gap-2">
+              <UButton v-if="can('customer.edit')" color="neutral" variant="outline" icon="i-lucide-pencil" @click="edit">修改资料</UButton>
+              <UDropdownMenu v-if="moreItems.length" :items="moreItems" :content="{ align: 'end' }">
+                <UButton color="neutral" variant="outline" icon="i-lucide-ellipsis" aria-label="顾客操作" />
+              </UDropdownMenu>
+            </div>
           </div>
-        </div>
-        <dl class="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-3 gap-y-2 text-sm sm:grid-cols-[4.5rem_minmax(0,1fr)_4.5rem_minmax(0,1fr)]">
-          <dt class="text-muted">姓名</dt>
-          <dd>{{ customer.name || '未填写' }}</dd>
-          <dt class="text-muted">手机号</dt>
-          <dd class="flex items-center gap-1 tabular-nums">
-            {{ customer.phone || '未填写' }}
-            <UButton v-if="!customer.merged_into && ((!customer.phone && can('customer.edit')) || (customer.phone && can('customer.merge')))" size="xs" color="neutral" variant="link" class="text-muted" @click="openPhone">{{ customer.phone ? '改手机号' : '补手机号' }}</UButton>
-          </dd>
-          <dt class="text-muted">性别</dt>
-          <dd>{{ genderName(customer.gender) }}</dd>
-          <dt class="text-muted">来源</dt>
-          <dd>{{ customer.source?.name || '未填写' }}</dd>
-          <dt class="text-muted">负责人</dt>
-          <dd>{{ customer.responsible?.name || '不设负责人' }}</dd>
-          <dt class="text-muted">建档时间</dt>
-          <dd class="tabular-nums">{{ new Date(customer.created_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</dd>
-          <dt class="text-muted">备注</dt>
-          <dd class="whitespace-pre-wrap sm:col-span-3">{{ customer.note || '无' }}</dd>
-        </dl>
-        <section>
-          <div class="sec">
-            安全标签<span class="ms-1 font-normal text-dimmed">{{ customer.active_safety_labels.length }}</span>
-            <UButton v-if="!customer.merged_into && can('customer.safety_label')" :disabled="!today" size="xs" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto" @click="openLabel">添加安全标签</UButton>
-          </div>
-          <div class="box overflow-hidden p-0">
-            <p v-if="!customer.active_safety_labels.length" class="px-3 py-2.5 text-sm text-muted">暂无有效安全标签</p>
-            <div v-for="l in customer.active_safety_labels" :key="l.id" class="group/row flex items-start gap-3 border-t border-default px-3 py-2.5 text-sm first:border-t-0">
-              <span class="tag bg-tag-red shrink-0">{{ labelNames[l.kind] }}</span>
-              <div class="min-w-0 flex-1 space-y-0.5">
-                <p class="text-meta text-muted">{{ labelSources[l.source] }} · {{ l.observed_on }}</p>
-                <p class="whitespace-pre-wrap">{{ l.note || '无备注' }}</p>
+          <ul class="mt-5 space-y-2.5 text-sm">
+            <li class="flex gap-2.5">
+              <UIcon name="i-lucide-user" class="mt-0.5 size-4 shrink-0 text-muted" aria-hidden="true" />
+              <span :class="customer.gender ? '' : 'text-dimmed'"><span class="sr-only">性别：</span>{{ customer.gender ? genderName(customer.gender) : '性别未填' }}</span>
+            </li>
+            <li class="flex gap-2.5">
+              <UIcon name="i-lucide-megaphone" class="mt-0.5 size-4 shrink-0 text-muted" aria-hidden="true" />
+              <span :class="customer.source ? '' : 'text-dimmed'"><span class="sr-only">来源：</span>{{ customer.source?.name || '来源未填' }}</span>
+            </li>
+            <li class="flex gap-2.5">
+              <UIcon name="i-lucide-user-check" class="mt-0.5 size-4 shrink-0 text-muted" aria-hidden="true" />
+              <span :class="customer.responsible ? '' : 'text-dimmed'">{{ customer.responsible ? `负责人 ${customer.responsible.name}` : '不设负责人' }}</span>
+            </li>
+            <li class="flex gap-2.5">
+              <UIcon name="i-lucide-user-plus" class="mt-0.5 size-4 shrink-0 text-muted" aria-hidden="true" />
+              <span class="tabular-nums">{{ createdOn }} 建档</span>
+            </li>
+            <li class="flex gap-2.5">
+              <UIcon name="i-lucide-sticky-note" class="mt-0.5 size-4 shrink-0 text-muted" aria-hidden="true" />
+              <span class="min-w-0 whitespace-pre-wrap break-words" :class="customer.note ? '' : 'text-dimmed'"><span class="sr-only">备注：</span>{{ customer.note || '没有备注' }}</span>
+            </li>
+          </ul>
+          <nav aria-label="顾客详情分节" class="mt-5 border-t border-default pt-3 max-sm:hidden">
+            <button v-for="sec in sections" :key="sec.key" type="button" class="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-toned hover:bg-hover" @click="jump(sec.key)">
+              <UIcon :name="sec.icon" class="size-4 shrink-0 text-muted" aria-hidden="true" />
+              <span>{{ sec.label }}</span>
+            </button>
+          </nav>
+        </aside>
+        <div class="min-w-0 space-y-8 p-5 sm:overflow-y-auto">
+          <UAlert v-if="customer.merged_into" title="已合并到另一位顾客" color="warning" variant="subtle">
+            <template #description>
+              <UButton size="sm" color="neutral" variant="outline" class="mt-1" @click="emit('open', customer.merged_into)">查看保留的顾客</UButton>
+            </template>
+          </UAlert>
+          <section id="customer-sec-overview" class="scroll-mt-4 space-y-3">
+            <h3 class="sec">概览</h3>
+            <div v-if="overview" class="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="customer-metrics">
+              <div class="box">
+                <p class="text-meta text-muted">卡余额</p>
+                <p class="mt-1 text-2xl font-semibold tabular-nums" :class="zeroText(overview.stored_balance) && 'text-dimmed'">{{ yuan(overview.stored_balance) }}</p>
+                <p class="mt-0.5 text-meta text-muted">{{ overview.count_remaining ? `另有 ${overview.count_remaining} 次` : '本金加赠送金' }}</p>
               </div>
-              <UButton v-if="!customer.merged_into && can('customer.safety_label')" size="xs" color="error" variant="ghost" class="opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100" @click="revokeTarget = l">撤销</UButton>
+              <div class="box">
+                <p class="text-meta text-muted">累计消费</p>
+                <p class="mt-1 text-2xl font-semibold tabular-nums" :class="zeroText(overview.total_spend) && 'text-dimmed'">{{ yuan(overview.total_spend) }}</p>
+                <p class="mt-0.5 text-meta text-muted">{{ overview.visit_count ? `平均每次 ${yuan(averageSpend(overview))}` : '实收，不扣售后' }}</p>
+              </div>
+              <div class="box">
+                <p class="text-meta text-muted">来过</p>
+                <p class="mt-1 text-2xl font-semibold tabular-nums" :class="overview.visit_count ? '' : 'text-dimmed'">{{ overview.visit_count }} 次</p>
+                <p class="mt-0.5 text-meta text-muted">{{ overview.cycle_days ? `约 ${overview.cycle_days} 天一次` : overview.visit_count ? '只来过一天' : '还没来过' }}</p>
+              </div>
+              <div class="box">
+                <p class="text-meta text-muted">上次到店</p>
+                <p class="mt-1 text-2xl font-semibold" :class="overview.days_since_last_visit == null && 'text-dimmed'">{{ overview.days_since_last_visit == null ? '没有' : sinceText(overview.days_since_last_visit) }}</p>
+                <p class="mt-0.5 truncate text-meta" :class="overview.overdue_days ? 'text-ink-orange' : 'text-muted'">{{ overview.overdue_days ? `比平时晚了 ${overview.overdue_days} 天` : overview.first_visit_date ? `首次 ${shortDate(overview.first_visit_date)}` : '' }}</p>
+              </div>
             </div>
-          </div>
-        </section>
-        <CustomerCards v-if="can('customer.view')" :id="id" :merged="!!customer.merged_into" />
-        <CustomerRedPackets v-if="can('customer.view')" :id="customer.id" :merged="!!customer.merged_into" />
-        <CustomerDebts v-if="can('customer.view') && !customer.merged_into" :id="customer.id" />
-        <section v-if="can('audit_log.view')">
-          <div class="sec">修改记录</div>
-          <div class="box overflow-hidden p-0" data-testid="customer-logs">
-            <p v-if="!logs.items.value.length" class="px-3 py-2.5 text-sm text-muted">暂无修改记录</p>
-            <div v-for="{ entry, changes } in logEntries" :key="entry.id" data-testid="customer-log-entry" class="space-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0">
-              <p class="flex flex-wrap items-center gap-x-2 text-meta text-muted">
-                <span class="font-medium text-default">{{ actions[entry.action] || entry.action }}</span>
-                <span>{{ entry.actor.name }}</span>
-                <span class="ms-auto tabular-nums">{{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</span>
+            <div v-if="overview && (overview.next_appointment || overview.last_visit_date)" class="box divide-y divide-default p-0 text-sm">
+              <p v-if="overview.next_appointment" class="flex items-center gap-3 px-3 py-2.5">
+                <span class="w-16 shrink-0 text-meta text-muted">下次预约</span>
+                <span class="tag bg-tag-blue tabular-nums">{{ nextText(overview.next_appointment.starts_at) }}</span>
+                <span class="text-muted">{{ overview.next_appointment.staff.name }}</span>
               </p>
-              <p v-for="change in changes" :key="change.label" data-testid="log-change">
-                <span class="me-1.5 text-meta text-muted">{{ change.label }}</span>
-                <template v-if="change.before !== null">
-                  <span class="sr-only">原为</span>
-                  <span data-testid="log-before" class="text-muted line-through">{{ change.before }}</span>
-                  <span class="mx-1 text-dimmed" aria-hidden="true">→</span>
-                  <span class="sr-only">改为</span>
-                </template>
-                <span data-testid="log-after">{{ change.after }}</span>
+              <p v-if="overview.last_visit_date" class="flex items-center gap-3 px-3 py-2.5">
+                <span class="w-16 shrink-0 text-meta text-muted">上次做了</span>
+                <span class="min-w-0 truncate" :title="lastVisitMeta(overview)">{{ lastVisitMeta(overview) || overview.last_visit_date }}</span>
               </p>
-              <p v-if="!changes.length" class="text-muted">资料没有变化</p>
             </div>
-            <div v-if="logs.hasMore.value" class="border-t border-default px-3 py-1.5">
-              <UButton :loading="logs.loading.value" size="xs" color="neutral" variant="ghost" @click="logs.loadMore">加载更多</UButton>
+            <div>
+              <div class="sec">
+                安全标签<span class="ms-1 font-normal text-dimmed">{{ customer.active_safety_labels.length }}</span>
+              </div>
+              <div class="box overflow-hidden p-0">
+                <p v-if="!customer.active_safety_labels.length" class="px-3 py-2.5 text-sm text-muted">暂无有效安全标签</p>
+                <div v-for="l in customer.active_safety_labels" :key="l.id" class="group/row flex items-start gap-3 border-t border-default px-3 py-2.5 text-sm first:border-t-0">
+                  <span class="tag bg-tag-red shrink-0">{{ labelNames[l.kind] }}</span>
+                  <div class="min-w-0 flex-1 space-y-0.5">
+                    <p class="text-meta text-muted">{{ labelSources[l.source] }} · {{ l.observed_on }}</p>
+                    <p class="whitespace-pre-wrap">{{ l.note || '无备注' }}</p>
+                  </div>
+                  <UButton v-if="!customer.merged_into && can('customer.safety_label')" size="xs" color="error" variant="ghost" class="opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100" @click="revokeTarget = l">撤销</UButton>
+                </div>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+          <CustomerCards v-if="can('customer.view')" :id="id" :merged="!!customer.merged_into" />
+          <CustomerRedPackets v-if="can('customer.view')" :id="customer.id" :merged="!!customer.merged_into" />
+          <CustomerDebts v-if="can('customer.view') && !customer.merged_into" :id="customer.id" />
+          <section v-if="can('audit_log.view')" id="customer-sec-logs" class="scroll-mt-4">
+            <div class="sec">修改记录</div>
+            <div class="box overflow-hidden p-0" data-testid="customer-logs">
+              <p v-if="!logs.items.value.length" class="px-3 py-2.5 text-sm text-muted">暂无修改记录</p>
+              <div v-for="{ entry, changes } in logEntries" :key="entry.id" data-testid="customer-log-entry" class="space-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0">
+                <p class="flex flex-wrap items-center gap-x-2 text-meta text-muted">
+                  <span class="font-medium text-default">{{ actions[entry.action] || entry.action }}</span>
+                  <span>{{ entry.actor.name }}</span>
+                  <span class="ms-auto tabular-nums">{{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</span>
+                </p>
+                <p v-for="change in changes" :key="change.label" data-testid="log-change">
+                  <span class="me-1.5 text-meta text-muted">{{ change.label }}</span>
+                  <template v-if="change.before !== null">
+                    <span class="sr-only">原为</span>
+                    <span data-testid="log-before" class="text-muted line-through">{{ change.before }}</span>
+                    <span class="mx-1 text-dimmed" aria-hidden="true">→</span>
+                    <span class="sr-only">改为</span>
+                  </template>
+                  <span data-testid="log-after">{{ change.after }}</span>
+                </p>
+                <p v-if="!changes.length" class="text-muted">资料没有变化</p>
+              </div>
+              <div v-if="logs.hasMore.value" class="border-t border-default px-3 py-1.5">
+                <UButton :loading="logs.loading.value" size="xs" color="neutral" variant="ghost" @click="logs.loadMore">加载更多</UButton>
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
-      <div v-else-if="loadError" class="space-y-3">
+      <div v-else-if="loadError" class="space-y-3 p-5">
         <p>{{ loadError }}</p>
         <UButton variant="outline" @click="load">重试</UButton>
       </div>
-      <p v-else class="text-muted">正在读取顾客档案…</p>
+      <p v-else class="p-5 text-muted">正在读取顾客档案…</p>
     </template>
   </USlideover>
   <UModal v-model:open="editing" title="修改顾客资料">
