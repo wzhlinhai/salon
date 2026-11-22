@@ -1,5 +1,5 @@
-// 报表入口：有其中任一权限就能进，里面按每张报表各自的权限列出。员工业绩（performance.view）随那张报表一起加进来。
-export const REPORT_PERMISSIONS = ['report.view']
+// 报表入口：有其中任一权限就能进，里面按每张报表各自的权限列出（发型师有 performance.view，只看得到员工业绩）。
+export const REPORT_PERMISSIONS = ['report.view', 'performance.view']
 
 // 导航项。permission 为空表示登录即可见。分组照原型 J 的侧栏；图标是 Notion 式灰色线条图标（Lucide），见 DESIGN.md 图标一节。
 export const navItems: { label: string, icon: string, to: string, permission: string | string[], group: string }[] = [
