@@ -1,5 +1,5 @@
 import { expect, test, type Locator } from '@playwright/test'
-import { api, apiLogin, hire, login, navLabels, owner, uniqueSuffix } from './helpers'
+import { api, apiLogin, hire, login, owner, uniqueSuffix } from './helpers'
 
 async function seedCheckout() {
   const token = await apiLogin(owner.account, owner.password)
@@ -29,7 +29,7 @@ async function seedCheckout() {
     orders: [{ order_id: order.id, payments: [{ method: 'wechat', amount: order.net }] }]
   })
   const settings = await api<{ business_date: string }>(token, 'get_settings', {})
-  return { today: settings.business_date }
+  return { today: settings.business_date, stylist, itemName: `报表项目${suffix}`, orderId: order.id }
 }
 
 // 表格里的数换成分（金额）或整数（单数），合计逐列核对用。
@@ -85,12 +85,75 @@ test('店长从报表入口进营业报表：合计等于各行之和，切按�
   await expect(page.getByTestId('range-problem')).toHaveText('按日最多查 92 天，长了请切到按月')
 })
 
-test('发型师看不到报表入口，直接打开营业报表也进不去', async ({ page }) => {
-  const stylist = await hire('发型师')
-  await login(page, stylist.account, stylist.password)
-  expect(await navLabels(page)).not.toContain('报表')
-  await page.goto('/reports/business')
-  await expect(page).toHaveURL('/forbidden')
+// 员工业绩表里的列，合计行逐列核对；客数四位小数只显示一位，不在这里核。
+async function expectStaffTotalsAreSums(table: Locator) {
+  const totals = table.getByTestId('staff-totals')
+  const cols = await totals.locator('td[data-col]').evaluateAll(cells => cells.map(c => c.getAttribute('data-col')!))
+  expect(cols.length).toBeGreaterThan(8)
+  for (const col of cols) {
+    if (col.startsWith('guest_')) continue
+    const cells = await table.locator(`tbody td[data-col="${col}"]`).allTextContents()
+    const sum = cells.reduce((s, t) => s + amount(t), 0)
+    expect(amount(await totals.locator(`td[data-col="${col}"]`).textContent() ?? ''), col).toBe(sum)
+  }
+}
+
+test('店长看员工业绩：每人一行、合计等于各行之和，点一个人看每笔业绩，撤单的冲回记负数', async ({ page }) => {
+  const { today, stylist, itemName, orderId } = await seedCheckout()
+  // 撤掉这一单：业绩写一笔冲回，明细里要显示成负数。
+  const ownerToken = await apiLogin(owner.account, owner.password)
+  // 撤单授权窗口默认不开（不用授权）；收银用例会临时开 5 分钟，那时得先输密码开窗口，没开就忽略。
+  await api(ownerToken, 'open_void_window', { password: owner.password }).catch(() => undefined)
+  await api(ownerToken, 'void_order', { order_id: orderId, reason: '报表用例撤单' })
+  const manager = await hire('店长')
+  await login(page, manager.account, manager.password)
   await page.goto('/reports')
+  await page.getByTestId('report-list').getByRole('link', { name: /员工业绩/ }).click()
+  await expect(page).toHaveURL(/\/reports\/staff\?from=/)
+  // 员工业绩只按营业日查，没有按日 / 按月切换。
+  await expect(page.getByRole('radiogroup', { name: '按日或按月' })).toHaveCount(0)
+
+  const table = page.getByTestId('staff-table')
+  const row = table.locator(`tbody tr[data-staff="${stylist.name}"]`)
+  await expect(row).toBeVisible()
+  const token = await apiLogin(manager.account, manager.password)
+  const report = await api<{ rows: { staff: { id: string } | null, item_performance: string }[] }>(token, 'get_staff_report', { from: `${today.slice(0, 7)}-01`, to: today, staff_id: stylist.id })
+  expect(report.rows).toHaveLength(1)
+  expect(amount(await row.locator('td[data-col="item_performance"]').textContent() ?? '')).toBe(amount(report.rows[0]!.item_performance))
+  await expectStaffTotalsAreSums(table)
+
+  await row.getByRole('button', { name: stylist.name }).click()
+  const detail = page.getByTestId('staff-detail')
+  const list = detail.getByTestId('staff-performance-list')
+  await expect(list).toContainText(itemName)
+  const reversal = list.locator('li').filter({ hasText: '冲回' })
+  await expect(reversal).toHaveCount(1)
+  await expect(reversal).toContainText(/-¥\d/)
+  await detail.getByRole('radiogroup', { name: '明细类别' }).getByRole('radio', { name: '提成' }).click()
+  await expect(detail.getByText(/提成合计/)).toBeVisible()
+
+  // 超过 92 天：不查，旁边写为什么（不提示切按月）。
+  await page.keyboard.press('Escape')
+  await page.getByLabel('开始').fill('2020-01-01')
+  await expect(page.getByTestId('range-problem')).toHaveText('最多查 92 天')
+})
+
+test('发型师从报表入口只看得到员工业绩，表里只有自己，营业报表进不去', async ({ page }) => {
+  const { stylist, itemName } = await seedCheckout()
+  await login(page, stylist.account, stylist.password)
+  await page.getByTestId('sidebar-nav').getByRole('link', { name: '报表' }).click()
+  await expect(page).toHaveURL('/reports')
+  const list = page.getByTestId('report-list')
+  await expect(list.getByRole('link')).toHaveText([/员工业绩/])
+  await list.getByRole('link', { name: /员工业绩/ }).click()
+
+  const rows = page.getByTestId('staff-table').locator('tbody tr')
+  await expect(rows).toHaveCount(1)
+  await expect(rows.first()).toHaveAttribute('data-staff', stylist.name)
+  await expect(page.getByText('只显示你自己的业绩。')).toBeVisible()
+  await rows.first().getByRole('button', { name: stylist.name }).click()
+  await expect(page.getByTestId('staff-performance-list')).toContainText(itemName)
+
+  await page.goto('/reports/business')
   await expect(page).toHaveURL('/forbidden')
 })

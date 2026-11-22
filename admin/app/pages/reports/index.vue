@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 报表入口（DESIGN.md 报表入口，照 report-02）：左边分类，右边报表列表；只列当前员工有权限看的报表。
-definePageMeta({ permission: REPORT_PERMISSIONS, title: '报表', description: '按日、按月看门店的经营数字，点一张报表进去。' })
+definePageMeta({ permission: REPORT_PERMISSIONS, title: '报表', description: '看门店和员工的经营数字，点一张报表进去。' })
 
 const { can } = useMe()
 const visible = computed(() => reportCatalog.filter(r => can(r.permission)))
@@ -45,7 +45,7 @@ const shown = computed(() => picked.value ? visible.value.filter(r => r.category
         </span>
         <UIcon name="i-lucide-chevron-right" class="size-4 text-dimmed" aria-hidden="true" />
       </NuxtLink>
-      <EmptyState v-if="!shown.length" title="没有可看的报表" hint="营业报表要「营业报表」权限，找老板开通" />
+      <EmptyState v-if="!shown.length" title="没有可看的报表" hint="看报表要相应的权限，找老板开通" />
     </div>
   </div>
 </template>

@@ -1,4 +1,5 @@
 // 报表共用：报表目录、日期范围（快捷范围、上一段、范围上限）和数字显示。
+import type { components } from '~/utils/api'
 import { addDays } from './datetime'
 
 export type Granularity = 'day' | 'month'
@@ -7,8 +8,16 @@ export interface ReportRange { granularity: Granularity, from: string, to: strin
 // 报表入口的目录（DESIGN.md 报表入口，照 report-02）：分类在左，报表在右。只列做好了的报表。
 export const reportCategories = ['营业', '员工', '项目与卡', '顾客'] as const
 export const reportCatalog: { key: string, label: string, description: string, icon: string, category: typeof reportCategories[number], permission: string }[] = [
-  { key: 'business', label: '营业报表', description: '每天或每月的实收、办卡充值、客数，按收款方式分列', icon: 'i-lucide-chart-line', category: '营业', permission: 'report.view' }
+  { key: 'business', label: '营业报表', description: '每天或每月的实收、办卡充值、客数，按收款方式分列', icon: 'i-lucide-chart-line', category: '营业', permission: 'report.view' },
+  { key: 'staff', label: '员工业绩', description: '每人的项目、耗卡、手工费、销售业绩和客数、提成；发型师只看自己', icon: 'i-lucide-users', category: '员工', permission: 'performance.view' }
 ]
+
+// 业绩明细里每笔的来源方式：项目、耗卡、手工费按支付方式，销售按开卡、充值这类动作。
+export const performanceMethodNames: Record<components['schemas']['PerformanceEntry']['method'], string> = {
+  cash: '现金', unionpay: '银联', wechat: '微信', alipay: '支付宝', groupbuy: '团购', debt: '挂账', red_packet: '红包',
+  card_principal: '卡本金', card_bonus: '卡赠送金', count_paid: '扣次（购买）', count_gift: '扣次（赠送）', labor: '手工费',
+  card_open: '开卡', card_recharge: '充值', card_upgrade: '补差价', red_packet_sold: '卖红包'
+}
 
 // 后端上限：日报起止相差不超过 92 天，月报不超过 12 个月。
 export const MAX_DAY_SPAN = 92
@@ -49,10 +58,11 @@ export function validPeriod(value: string, granularity: Granularity) {
 }
 
 // 范围有问题时返回一句说明，放在范围旁边；没问题返回空串。
-export function rangeProblem(range: ReportRange) {
+// dayOnly：报表只能按日查，超限时不提示切按月。
+export function rangeProblem(range: ReportRange, dayOnly = false) {
   if (!validPeriod(range.from, range.granularity) || !validPeriod(range.to, range.granularity)) return range.granularity === 'month' ? '请填写有效的起止月份' : '请填写有效的起止日期'
   if (range.from > range.to) return range.granularity === 'month' ? '开始月份不能晚于结束月份' : '开始日期不能晚于结束日期'
-  if (range.granularity === 'day' && rangeLength(range) - 1 > MAX_DAY_SPAN) return `按日最多查 ${MAX_DAY_SPAN} 天，长了请切到按月`
+  if (range.granularity === 'day' && rangeLength(range) - 1 > MAX_DAY_SPAN) return dayOnly ? `最多查 ${MAX_DAY_SPAN} 天` : `按日最多查 ${MAX_DAY_SPAN} 天，长了请切到按月`
   if (range.granularity === 'month' && rangeLength(range) > MAX_MONTHS) return `按月最多查 ${MAX_MONTHS} 个月`
   return ''
 }

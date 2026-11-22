@@ -17,7 +17,7 @@ test('老板看到全部页面', async ({ page }) => {
 test('发型师能进收银开单，直接访问管理页面被挡住', async ({ page }) => {
   const stylist = await hire('发型师')
   await login(page, stylist.account, stylist.password)
-  expect(await navLabels(page)).toEqual(['首页', '收银', '预约', '轮牌', '顾客', '门店设置'])
+  expect(await navLabels(page)).toEqual(['首页', '收银', '预约', '轮牌', '顾客', '报表', '门店设置'])
   for (const path of managementPages) {
     await page.goto(path)
     await expect(page).toHaveURL('/forbidden')
@@ -29,7 +29,7 @@ test('发型师能进收银开单，直接访问管理页面被挡住', async ({
 test('助理没有开单权限，进不了收银', async ({ page }) => {
   const assistant = await hire('助理')
   await login(page, assistant.account, assistant.password)
-  expect(await navLabels(page)).toEqual(['首页', '轮牌', '顾客', '门店设置'])
+  expect(await navLabels(page)).toEqual(['首页', '轮牌', '顾客', '报表', '门店设置'])
   await page.goto('/cashier')
   await expect(page).toHaveURL('/forbidden')
 })

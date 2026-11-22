@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // 报表顶栏（DESIGN.md 报表）：按日 / 按月、起止、快捷范围在一行；范围超限或填错时在后面写一句为什么不查。
+// dayOnly：接口只按营业日查的报表（员工业绩）不出按日 / 按月切换。
 import type { Granularity, ReportRange } from '~/utils/report'
 
-const props = defineProps<{ today: string }>()
+const props = defineProps<{ today: string, dayOnly?: boolean }>()
 const range = defineModel<ReportRange>({ required: true })
 
 const granularityItems: { label: string, value: Granularity }[] = [{ label: '按日', value: 'day' }, { label: '按月', value: 'month' }]
@@ -11,7 +12,7 @@ const granularity = computed({
   set: value => (range.value = switchGranularity(range.value, value ?? 'day', props.today))
 })
 const presets = computed(() => rangePresets(range.value.granularity, props.today))
-const problem = computed(() => rangeProblem(range.value))
+const problem = computed(() => rangeProblem(range.value, props.dayOnly))
 const month = computed(() => range.value.granularity === 'month')
 
 function same(a: ReportRange, b: ReportRange) {
@@ -30,7 +31,7 @@ function setTo(value: string) {
 <template>
   <div class="space-y-1.5" data-testid="report-range">
     <div class="flex flex-wrap items-center gap-2">
-      <MethodPicker v-model="granularity" :items="granularityItems" label="按日或按月" />
+      <MethodPicker v-if="!dayOnly" v-model="granularity" :items="granularityItems" label="按日或按月" />
       <div class="flex items-center gap-1.5">
         <DateInput :key="`from-${range.granularity}`" :model-value="range.from" :month="month" :max="today" size="sm" class="w-36" aria-label="开始" @update:model-value="setFrom" />
         <span class="text-meta text-muted">至</span>
