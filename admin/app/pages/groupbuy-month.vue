@@ -151,10 +151,9 @@ async function saveSettlement() {
         </div>
       </template>
       <template #footer>
-        <div class="flex gap-2">
+        <ModalActions @cancel="settlementOpen = false">
           <UButton :loading="settlementSaving" @click="saveSettlement">保存</UButton>
-          <UButton variant="ghost" @click="settlementOpen = false">取消</UButton>
-        </div>
+        </ModalActions>
       </template>
     </UModal>
   </div>

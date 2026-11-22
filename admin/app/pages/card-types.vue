@@ -190,7 +190,11 @@ async function saveRule() {
           <USwitch v-if="ruleEditing" v-model="ruleActive" label="启用升级规则" />
         </div>
       </template>
-      <template #footer><UButton :loading="ruleSaving" :disabled="!ruleFrom || !ruleTo" @click="saveRule">保存</UButton></template>
+      <template #footer>
+        <ModalActions @cancel="ruleOpen = false">
+          <UButton :loading="ruleSaving" :disabled="!ruleFrom || !ruleTo" @click="saveRule">保存</UButton>
+        </ModalActions>
+      </template>
     </UModal>
     <UModal v-model:open="open" :title="editing ? '编辑卡类型' : '新建卡类型'">
       <template #body>
@@ -216,7 +220,11 @@ async function saveRule() {
           <USwitch v-if="editing" v-model="active" label="启用卡类型" />
         </div>
       </template>
-      <template #footer><UButton :loading="saving" @click="save">保存</UButton></template>
+      <template #footer>
+        <ModalActions @cancel="open = false">
+          <UButton :loading="saving" @click="save">保存</UButton>
+        </ModalActions>
+      </template>
     </UModal>
   </div>
 </template>

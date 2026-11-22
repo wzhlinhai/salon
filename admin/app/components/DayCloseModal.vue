@@ -192,10 +192,9 @@ function sealNow() {
         <UButton v-if="props.canSeal(date)" color="neutral" variant="outline" icon="i-lucide-lock" @click="sealNow">封账到这天…</UButton>
         <UButton @click="form.open.value = false">完成</UButton>
       </div>
-      <div v-else class="flex w-full justify-end gap-2">
-        <UButton color="neutral" variant="ghost" @click="form.open.value = false">取消</UButton>
+      <ModalActions v-else @cancel="form.open.value = false">
         <UButton :loading="form.saving.value" :disabled="form.loading.value || !system" @click="save">保存日结</UButton>
-      </div>
+      </ModalActions>
     </template>
   </UModal>
 </template>

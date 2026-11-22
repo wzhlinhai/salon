@@ -223,7 +223,11 @@ function laborFee(item: Item) {
           <USwitch v-if="editing" v-model="active" label="启用项目" />
         </div>
       </template>
-      <template #footer><UButton :loading="saving" @click="save">保存</UButton></template>
+      <template #footer>
+        <ModalActions @cancel="open = false">
+          <UButton :loading="saving" @click="save">保存</UButton>
+        </ModalActions>
+      </template>
     </UModal>
   </div>
 </template>

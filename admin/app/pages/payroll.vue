@@ -217,7 +217,11 @@ onMounted(reloadMonths)
           <UFormField v-else label="备注"><UTextarea v-model="form.note" :maxlength="100" class="w-full" /></UFormField>
         </div>
       </template>
-      <template #footer><UButton :loading="saving" @click="save">保存</UButton></template>
+      <template #footer>
+        <ModalActions @cancel="open = false">
+          <UButton :loading="saving" @click="save">保存</UButton>
+        </ModalActions>
+      </template>
     </UModal>
     <UModal v-model:open="lockOpen" :title="`锁定 ${monthLabel(lockMonth)}`">
       <template #body>
@@ -225,8 +229,9 @@ onMounted(reloadMonths)
         <p class="mt-3">全店应发 {{ lockTotal }}</p>
       </template>
       <template #footer>
-        <UButton color="neutral" variant="outline" @click="lockOpen = false">取消</UButton>
-        <UButton :loading="lockSaving" @click="lock">确认锁定</UButton>
+        <ModalActions @cancel="lockOpen = false">
+          <UButton :loading="lockSaving" @click="lock">确认锁定</UButton>
+        </ModalActions>
       </template>
     </UModal>
   </div>

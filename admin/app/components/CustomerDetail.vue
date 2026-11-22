@@ -484,7 +484,9 @@ onBeforeUnmount(() => {
       </div>
     </template>
     <template #footer>
-      <UButton :loading="saving" @click="saveProfile">保存</UButton>
+      <ModalActions @cancel="editing = false">
+        <UButton :loading="saving" @click="saveProfile">保存</UButton>
+      </ModalActions>
     </template>
   </UModal>
   <UModal v-model:open="phoneOpen" :title="customer?.phone ? '改手机号' : '补手机号'">
@@ -494,7 +496,9 @@ onBeforeUnmount(() => {
       </UFormField>
     </template>
     <template #footer>
-      <UButton :loading="saving" @click="savePhone">保存</UButton>
+      <ModalActions @cancel="phoneOpen = false">
+        <UButton :loading="saving" @click="savePhone">保存</UButton>
+      </ModalActions>
     </template>
   </UModal>
   <UModal v-model:open="labelOpen" title="添加安全标签">
@@ -515,13 +519,17 @@ onBeforeUnmount(() => {
       </div>
     </template>
     <template #footer>
-      <UButton :loading="saving" :disabled="!label.observed_on || label.observed_on > today" @click="addLabel">保存</UButton>
+      <ModalActions @cancel="labelOpen = false">
+        <UButton :loading="saving" :disabled="!label.observed_on || label.observed_on > today" @click="addLabel">保存</UButton>
+      </ModalActions>
     </template>
   </UModal>
   <UModal :open="!!revokeTarget" title="撤销安全标签" @update:open="setRevokeOpen">
     <template #body>确认撤销“{{ labelNames[revokeTarget?.kind ?? ''] }}”安全标签？历史记录仍然保留。</template>
     <template #footer>
-      <UButton :loading="saving" color="error" @click="revoke">确认撤销</UButton>
+      <ModalActions @cancel="setRevokeOpen(false)">
+        <UButton :loading="saving" color="error" @click="revoke">确认撤销</UButton>
+      </ModalActions>
     </template>
   </UModal>
   <UModal v-model:open="mergeOpen" title="合并重复顾客" :ui="{ content: 'sm:max-w-2xl' }">
@@ -559,7 +567,9 @@ onBeforeUnmount(() => {
       </div>
     </template>
     <template #footer>
-      <UButton :disabled="!other" color="error" @click="mergeConfirm = true">继续合并</UButton>
+      <ModalActions @cancel="mergeOpen = false">
+        <UButton :disabled="!other" color="error" @click="mergeConfirm = true">继续合并</UButton>
+      </ModalActions>
     </template>
   </UModal>
   <UModal v-model:open="mergeConfirm" title="确认合并顾客">
@@ -568,7 +578,9 @@ onBeforeUnmount(() => {
       <p v-if="customer && other" class="mt-3">保留：{{ customerName(keepID === id ? customer : other) }}；被合并：{{ customerName(keepID === id ? other : customer) }}</p>
     </template>
     <template #footer>
-      <UButton :loading="saving" color="error" @click="merge">确认合并</UButton>
+      <ModalActions @cancel="mergeConfirm = false">
+        <UButton :loading="saving" color="error" @click="merge">确认合并</UButton>
+      </ModalActions>
     </template>
   </UModal>
 </template>

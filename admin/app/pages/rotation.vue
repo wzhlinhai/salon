@@ -588,10 +588,9 @@ function statusText(t: Turn) {
         </UFormField>
       </template>
       <template #footer>
-        <div class="flex w-full justify-end gap-2">
-          <UButton color="neutral" variant="ghost" @click="skipOpen = false">取消</UButton>
+        <ModalActions @cancel="skipOpen = false">
           <UButton :loading="busy" @click="submitSkip">跳过</UButton>
-        </div>
+        </ModalActions>
       </template>
     </UModal>
 
@@ -605,10 +604,9 @@ function statusText(t: Turn) {
         </UFormField>
       </template>
       <template #footer>
-        <div class="flex w-full justify-end gap-2">
-          <UButton color="neutral" variant="ghost" @click="restOpen = false">取消</UButton>
+        <ModalActions @cancel="restOpen = false">
           <UButton :loading="busy" @click="submitRest">开始休息</UButton>
-        </div>
+        </ModalActions>
       </template>
     </UModal>
 
@@ -624,10 +622,9 @@ function statusText(t: Turn) {
         </div>
       </template>
       <template #footer>
-        <div class="flex w-full justify-end gap-2">
-          <UButton color="neutral" variant="ghost" @click="moveOpen = false">取消</UButton>
+        <ModalActions @cancel="moveOpen = false">
           <UButton :loading="busy" @click="submitMove">调整</UButton>
-        </div>
+        </ModalActions>
       </template>
     </UModal>
 
@@ -638,19 +635,17 @@ function statusText(t: Turn) {
         </UFormField>
       </template>
       <template #footer>
-        <div class="flex w-full justify-end gap-2">
-          <UButton color="neutral" variant="ghost" @click="nameOpen = false">取消</UButton>
+        <ModalActions @cancel="nameOpen = false">
           <UButton :loading="nameSaving" :disabled="!nameForm.name.trim()" @click="submitName">{{ nameForm.id ? '保存' : '新建' }}</UButton>
-        </div>
+        </ModalActions>
       </template>
     </UModal>
 
     <UModal v-model:open="deactivateOpen" :title="`停用「${queue?.name ?? ''}」？`" description="停用后不再显示在轮牌页，记录都保留，以后可以在 ··· 菜单里重新启用。">
       <template #footer>
-        <div class="flex w-full justify-end gap-2">
-          <UButton color="neutral" variant="ghost" @click="deactivateOpen = false">取消</UButton>
+        <ModalActions @cancel="deactivateOpen = false">
           <UButton color="error" :loading="activeSaving" @click="queue && setActive(queue, false)">停用</UButton>
-        </div>
+        </ModalActions>
       </template>
     </UModal>
 

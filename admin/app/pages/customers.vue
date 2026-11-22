@@ -501,7 +501,9 @@ async function handover() {
         </div>
       </template>
       <template #footer>
-        <UButton :loading="creating" @click="create">保存</UButton>
+        <ModalActions @cancel="createOpen = false">
+          <UButton :loading="creating" @click="create">保存</UButton>
+        </ModalActions>
       </template>
     </UModal>
     <UModal v-if="can('customer.assign')" v-model:open="assignOpen" title="分配负责人">
@@ -512,7 +514,9 @@ async function handover() {
         <p class="mt-3">为选中的 {{ selected.length }} 位顾客分配负责人。</p>
       </template>
       <template #footer>
-        <UButton :loading="assigning" @click="assign">确认分配</UButton>
+        <ModalActions @cancel="assignOpen = false">
+          <UButton :loading="assigning" @click="assign">确认分配</UButton>
+        </ModalActions>
       </template>
     </UModal>
     <UModal v-if="can('customer.assign')" v-model:open="handoverOpen" title="负责人交接">
@@ -528,7 +532,9 @@ async function handover() {
         </div>
       </template>
       <template #footer>
-        <UButton :disabled="!fromStaff || !toStaff || fromStaff === toStaff" :loading="handingOver" @click="handover">确认交接</UButton>
+        <ModalActions @cancel="handoverOpen = false">
+          <UButton :disabled="!fromStaff || !toStaff || fromStaff === toStaff" :loading="handingOver" @click="handover">确认交接</UButton>
+        </ModalActions>
       </template>
     </UModal>
   </div>

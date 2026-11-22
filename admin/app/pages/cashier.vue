@@ -1308,10 +1308,9 @@ onMounted(init)
         </div>
       </template>
       <template #footer>
-        <div class="flex gap-2">
+        <ModalActions @cancel="openOrderOpen = false">
           <UButton :loading="openOrderSaving" @click="saveOpenOrder">开单</UButton>
-          <UButton variant="ghost" @click="openOrderOpen = false">取消</UButton>
-        </div>
+        </ModalActions>
       </template>
     </UModal>
 
@@ -1326,10 +1325,9 @@ onMounted(init)
         </div>
       </template>
       <template #footer>
-        <div class="flex gap-2">
+        <ModalActions @cancel="addItemOpen = false">
           <UButton :loading="addItemSaving" @click="saveAddItem">添加</UButton>
-          <UButton variant="ghost" @click="addItemOpen = false">取消</UButton>
-        </div>
+        </ModalActions>
       </template>
     </UModal>
 
@@ -1342,10 +1340,9 @@ onMounted(init)
         </div>
       </template>
       <template #footer>
-        <div class="flex gap-2">
+        <ModalActions @cancel="repriceOpen = false">
           <UButton :loading="repriceSaving" @click="saveReprice">保存</UButton>
-          <UButton variant="ghost" @click="repriceOpen = false">取消</UButton>
-        </div>
+        </ModalActions>
       </template>
     </UModal>
 
@@ -1358,10 +1355,9 @@ onMounted(init)
         </div>
       </template>
       <template #footer>
-        <div class="flex gap-2">
+        <ModalActions @cancel="linkOpen = false">
           <UButton :loading="linkSaving" @click="saveLink">关联</UButton>
-          <UButton variant="ghost" @click="linkOpen = false">取消</UButton>
-        </div>
+        </ModalActions>
       </template>
     </UModal>
 
@@ -1375,10 +1371,9 @@ onMounted(init)
         </div>
       </template>
       <template #footer>
-        <div class="flex gap-2">
+        <ModalActions @cancel="countOpen = false">
           <UButton @click="addCountPayment">确定</UButton>
-          <UButton variant="ghost" @click="countOpen = false">取消</UButton>
-        </div>
+        </ModalActions>
       </template>
     </UModal>
 

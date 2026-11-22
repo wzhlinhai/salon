@@ -107,10 +107,9 @@ function save() {
       </template>
     </template>
     <template #footer>
-      <div class="flex w-full justify-end gap-2">
-        <UButton color="neutral" variant="ghost" @click="form.open.value = false">取消</UButton>
+      <ModalActions @cancel="form.open.value = false">
         <UButton :loading="form.saving.value" :disabled="form.loading.value" @click="save">保存</UButton>
-      </div>
+      </ModalActions>
     </template>
   </UModal>
 </template>

@@ -144,7 +144,9 @@ async function submitVoid() {
       </div>
     </template>
     <template #footer>
-      <UButton color="error" :loading="voiding" :disabled="!reason.trim() || (needPassword && !password)" @click="submitVoid">确认撤单</UButton>
+      <ModalActions @cancel="voidOpen = false">
+        <UButton color="error" :loading="voiding" :disabled="!reason.trim() || (needPassword && !password)" @click="submitVoid">确认撤单</UButton>
+      </ModalActions>
     </template>
   </UModal>
 </template>

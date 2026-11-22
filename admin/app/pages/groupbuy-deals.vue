@@ -117,10 +117,9 @@ async function save() {
         </div>
       </template>
       <template #footer>
-        <div class="flex gap-2">
+        <ModalActions @cancel="open = false">
           <UButton :loading="saving" @click="save">保存</UButton>
-          <UButton variant="ghost" @click="open = false">取消</UButton>
-        </div>
+        </ModalActions>
       </template>
     </UModal>
   </div>

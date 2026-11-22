@@ -440,7 +440,11 @@ onMounted(cardLoad)
         </template>
       </div>
     </template>
-    <template #footer><UButton :loading="refundSaving" :disabled="refundLoading || !refundQuote || !refundMethod" @click="saveRefund">确认退卡</UButton></template>
+    <template #footer>
+      <ModalActions @cancel="refundOpen = false">
+        <UButton :loading="refundSaving" :disabled="refundLoading || !refundQuote || !refundMethod" @click="saveRefund">确认退卡</UButton>
+      </ModalActions>
+    </template>
   </UModal>
   <UModal v-model:open="balanceOpen" :title="balanceMode === 'upgrade' ? '升级' : '转余额'">
     <template #body>
@@ -457,7 +461,11 @@ onMounted(cardLoad)
         <UFormField v-if="balanceMode === 'transfer'" label="原因" required><UTextarea v-model="balanceReason" :maxlength="200" class="w-full" /></UFormField>
       </div>
     </template>
-    <template #footer><UButton :loading="balanceSaving" :disabled="balanceLoading || !balanceTo || (balanceMode === 'upgrade' && hasDifference && !balanceSales.length) || (balanceMode === 'transfer' && (!hasDifference || !balanceReason.trim()))" @click="saveBalance">保存</UButton></template>
+    <template #footer>
+      <ModalActions @cancel="balanceOpen = false">
+        <UButton :loading="balanceSaving" :disabled="balanceLoading || !balanceTo || (balanceMode === 'upgrade' && hasDifference && !balanceSales.length) || (balanceMode === 'transfer' && (!hasDifference || !balanceReason.trim()))" @click="saveBalance">保存</UButton>
+      </ModalActions>
+    </template>
   </UModal>
   <UModal v-model:open="adjustModal" title="调整">
     <template #body>
@@ -476,7 +484,11 @@ onMounted(cardLoad)
         <UFormField label="原因" required><UTextarea v-model="adjustReason" :maxlength="200" class="w-full" /></UFormField>
       </div>
     </template>
-    <template #footer><UButton :loading="adjustSaving" :disabled="adjustLoading || !adjustReason.trim() || (!adjustUnlimited && !adjustExpires)" @click="saveAdjustment">保存</UButton></template>
+    <template #footer>
+      <ModalActions @cancel="adjustModal = false">
+        <UButton :loading="adjustSaving" :disabled="adjustLoading || !adjustReason.trim() || (!adjustUnlimited && !adjustExpires)" @click="saveAdjustment">保存</UButton>
+      </ModalActions>
+    </template>
   </UModal>
   <UModal v-model:open="cardModal" :title="cardTarget ? '充值' : '开卡'">
     <template #body>
@@ -489,6 +501,10 @@ onMounted(cardLoad)
         <PaymentEditor v-model="cardPayments" v-model:touched="cardPaymentsTouched" :expected="openingExpected" />
       </div>
     </template>
-    <template #footer><UButton :loading="cardSaving" :disabled="cardOptionsLoading || !cardSales.length || (!cardTarget && !cardCardType)" @click="cardSave">保存</UButton></template>
+    <template #footer>
+      <ModalActions @cancel="cardModal = false">
+        <UButton :loading="cardSaving" :disabled="cardOptionsLoading || !cardSales.length || (!cardTarget && !cardCardType)" @click="cardSave">保存</UButton>
+      </ModalActions>
+    </template>
   </UModal>
 </template>

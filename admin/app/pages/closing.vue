@@ -295,10 +295,9 @@ function saveUnseal() {
         </div>
       </template>
       <template #footer>
-        <div class="flex w-full justify-end gap-2">
-          <UButton color="neutral" variant="ghost" @click="sealForm.open.value = false">取消</UButton>
+        <ModalActions @cancel="sealForm.open.value = false">
           <UButton :loading="sealForm.saving.value" icon="i-lucide-lock" @click="saveSeal">封账</UButton>
-        </div>
+        </ModalActions>
       </template>
     </UModal>
 
@@ -309,10 +308,9 @@ function saveUnseal() {
         </UFormField>
       </template>
       <template #footer>
-        <div class="flex w-full justify-end gap-2">
-          <UButton color="neutral" variant="ghost" @click="unsealForm.open.value = false">取消</UButton>
+        <ModalActions @cancel="unsealForm.open.value = false">
           <UButton :loading="unsealForm.saving.value" color="error" @click="saveUnseal">撤销封账</UButton>
-        </div>
+        </ModalActions>
       </template>
     </UModal>
   </div>

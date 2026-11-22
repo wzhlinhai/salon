@@ -169,7 +169,9 @@ function summary(g: components['schemas']['GrantSpec']) {
         <p class="text-xs text-muted mt-3">天数填 0 表示只能处理当天的单，不填表示不限。灰色的权限你自己没有，不能授予。</p>
       </template>
       <template #footer>
-        <UButton :loading="saving" @click="save">保存</UButton>
+        <ModalActions @cancel="open = false">
+          <UButton :loading="saving" @click="save">保存</UButton>
+        </ModalActions>
       </template>
     </UModal>
   </div>

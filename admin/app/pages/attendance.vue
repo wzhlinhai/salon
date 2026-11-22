@@ -373,7 +373,11 @@ onMounted(async () => {
           <p class="text-sm text-muted">在营业日结束时间前补卡，会算到前一个营业日。</p>
         </div>
       </template>
-      <template #footer><UButton :loading="addPunchSaving" @click="savePunch">保存</UButton></template>
+      <template #footer>
+        <ModalActions @cancel="addPunchOpen = false">
+          <UButton :loading="addPunchSaving" @click="savePunch">保存</UButton>
+        </ModalActions>
+      </template>
     </UModal>
 
     <UModal v-model:open="createShiftOpen" title="新建班次">
@@ -385,7 +389,11 @@ onMounted(async () => {
           <p class="text-sm text-muted">上班时间要早于下班时间，不跨午夜。班次建好后不能改时间，要改就新建一个再改指定。</p>
         </div>
       </template>
-      <template #footer><UButton :loading="createShiftSaving" @click="saveShift">保存</UButton></template>
+      <template #footer>
+        <ModalActions @cancel="createShiftOpen = false">
+          <UButton :loading="createShiftSaving" @click="saveShift">保存</UButton>
+        </ModalActions>
+      </template>
     </UModal>
 
     <UModal v-model:open="deactivateOpen" :title="`停用班次「${deactivateTarget?.name ?? ''}」？`">
@@ -393,8 +401,9 @@ onMounted(async () => {
         <p>已经指定的员工照常执行，直到改指定；停用后不能再指定给员工。</p>
       </template>
       <template #footer>
-        <UButton color="neutral" variant="outline" @click="deactivateOpen = false">取消</UButton>
-        <UButton color="error" :loading="deactivateSaving" @click="deactivateShift">确认停用</UButton>
+        <ModalActions @cancel="deactivateOpen = false">
+          <UButton color="error" :loading="deactivateSaving" @click="deactivateShift">确认停用</UButton>
+        </ModalActions>
       </template>
     </UModal>
 
@@ -407,7 +416,11 @@ onMounted(async () => {
           <p class="text-sm text-muted">从这一天起执行，之前的日子仍按原来的班次计算</p>
         </div>
       </template>
-      <template #footer><UButton :loading="assignSaving" :disabled="!assign.shift_id" @click="saveAssign">保存</UButton></template>
+      <template #footer>
+        <ModalActions @cancel="assignOpen = false">
+          <UButton :loading="assignSaving" :disabled="!assign.shift_id" @click="saveAssign">保存</UButton>
+        </ModalActions>
+      </template>
     </UModal>
   </div>
 </template>

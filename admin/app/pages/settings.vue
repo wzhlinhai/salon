@@ -235,10 +235,12 @@ onMounted(loadSources)
         </div>
       </template>
       <template #footer>
-        <div class="flex gap-2">
+        <ModalActions @cancel="editing = null">
+          <template #leading>
+            <UButton color="neutral" variant="ghost" @click="save(true)">恢复系统默认</UButton>
+          </template>
           <UButton @click="save(false)">保存</UButton>
-          <UButton variant="ghost" @click="save(true)">恢复系统默认</UButton>
-        </div>
+        </ModalActions>
       </template>
     </UModal>
   </div>
