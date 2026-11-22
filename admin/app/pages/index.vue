@@ -219,9 +219,10 @@ onMounted(async () => {
         </p>
       </template>
       <AiCommandBox :suggestions="personalSuggestions" />
-      <div class="grid gap-3 md:grid-cols-[1fr_1.4fr]">
-        <HomeRotation v-if="can('queue.view') && me" :staff-id="me.staff.id" />
-        <HomeMyDay v-if="can('performance.view') && me && businessDate" :date="today" :staff-id="me.staff.id" />
+      <!-- 不在轮牌队列里时轮牌块不显示，「我今天」占满整行。 -->
+      <div class="flex flex-col gap-3 md:flex-row">
+        <HomeRotation v-if="can('queue.view') && me" :staff-id="me.staff.id" class="md:w-[42%] md:shrink-0" />
+        <HomeMyDay v-if="can('performance.view') && me && businessDate" :date="today" :staff-id="me.staff.id" class="min-w-0 flex-1" />
       </div>
       <template v-if="can('booking.manage') && me && businessDate">
         <div class="sec"><UIcon name="i-lucide-calendar" class="size-4 shrink-0" aria-hidden="true" /> 我的今天<span class="ms-auto font-normal text-dimmed">时间按门店营业时间排</span></div>
@@ -262,7 +263,7 @@ onMounted(async () => {
         </div>
       </template>
       <template v-if="can('booking.manage') && businessDate">
-        <div class="sec"><span aria-hidden="true">▥</span> 今日顾客<span class="ms-auto font-normal text-dimmed">预约和散客</span></div>
+        <div class="sec"><UIcon name="i-lucide-layout-list" class="size-4 shrink-0" aria-hidden="true" /> 今日顾客<span class="ms-auto font-normal text-dimmed">预约和散客</span></div>
         <HomeBoard :date="today" @summary="visits = $event" />
       </template>
     </template>

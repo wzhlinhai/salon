@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test'
+import type { components } from '../app/utils/api'
+import { commissionExplanation } from '../app/utils/commission'
+import { yuan } from '../app/utils/money'
 import { api, apiLogin, hire, login, owner, uniqueSuffix } from './helpers'
+
+type Schema = components['schemas']
 
 async function seedCheckout() {
   const token = await apiLogin(owner.account, owner.password)
@@ -28,6 +33,7 @@ async function seedCheckout() {
   await api(token, 'checkout_orders', {
     orders: [{ order_id: order.id, payments: [{ method: 'cash', amount: order.net }] }]
   })
+  return { stylist, itemName: `首页项目${suffix}` }
 }
 
 test('发型师是个人首页，打卡后按钮消失并显示打卡时间', async ({ page }) => {
@@ -40,6 +46,24 @@ test('发型师是个人首页，打卡后按钮消失并显示打卡时间', as
   await page.getByTestId('home-punch').click()
   await expect(page.getByTestId('home-punch')).toHaveCount(0)
   await expect(page.getByTestId('home-punch-time')).toContainText('已打卡')
+})
+
+// 提成按读取时的方案算，别的用例会改今天的方案，所以期望值取自本人的 list_commissions，而不是写死比例。
+test('发型师在首页看到今天的提成，点开看每笔怎么算', async ({ page }) => {
+  const { stylist, itemName } = await seedCheckout()
+  const token = await apiLogin(stylist.account, stylist.password)
+  const { business_date: today } = await api<{ business_date: string }>(await apiLogin(owner.account, owner.password), 'get_settings', {})
+  const earned = await api<Schema['CommissionList']>(token, 'list_commissions', { date_from: today, date_to: today, staff_id: stylist.id })
+  expect(earned.entries).toHaveLength(1)
+  await login(page, stylist.account, stylist.password)
+  const card = page.getByTestId('home-my-commission')
+  await expect(card).toContainText(yuan(earned.total))
+  await card.click()
+  const sheet = page.getByRole('dialog', { name: `我今天的提成 ${yuan(earned.total)}`, exact: true })
+  const list = sheet.getByTestId('home-commission-list')
+  await expect(list.getByRole('listitem')).toHaveCount(1)
+  await expect(list).toContainText(`项目业绩${itemName}`)
+  await expect(list).toContainText(commissionExplanation(earned.entries[0]!))
 })
 
 test('前台是前台首页，显示快捷按钮且没有首页切换', async ({ page }) => {
