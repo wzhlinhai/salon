@@ -378,8 +378,7 @@ test('计价卡试算刷新后保留默认收款行，卡余额支付要选卡',
   await page.getByLabel('计价卡').click()
   await page.getByRole('option', { name: '不使用卡', exact: true }).click()
   await secondPreview
-  await page.getByTestId('sale-payments').getByRole('combobox', { name: '方式' }).click()
-  await page.getByRole('option', { name: '卡余额', exact: true }).click()
+  await page.getByTestId('sale-payments').getByRole('radio', { name: '卡余额', exact: true }).click()
 
   let checkoutCalls = 0
   await page.route('**/api/ops/checkout_orders', async (route) => {
@@ -662,19 +661,18 @@ test('未识别顾客没有挂账；挂账结账后在顾客详情收还款', as
   })
   await login(page, owner.account, owner.password)
   await page.goto('/cashier')
-  const method = page.getByTestId('sale-payments').getByRole('combobox', { name: '方式' })
+  const method = page.getByTestId('sale-payments').getByRole('radiogroup', { name: '方式' })
 
   await page.locator(`[data-order-id="${walkin.id}"]`).click()
   await expect(page.getByTestId('cash-expected')).toHaveText('88.00')
-  await method.click()
-  await expect(page.getByRole('option', { name: '现金', exact: true })).toBeVisible()
-  await expect(page.getByRole('option', { name: '挂账', exact: true })).toHaveCount(0)
-  await page.keyboard.press('Escape')
+  // 收款方式平铺成一排，一点就选；默认现金。
+  await expect(method.getByRole('radio', { name: '现金', exact: true })).toHaveAttribute('aria-checked', 'true')
+  await expect(method.getByRole('radio', { name: '挂账', exact: true })).toHaveCount(0)
 
   await page.locator(`[data-order-id="${order.id}"]`).click()
   await expect(page.getByTestId('cash-expected')).toHaveText('88.00')
-  await method.click()
-  await page.getByRole('option', { name: '挂账', exact: true }).click()
+  await method.getByRole('radio', { name: '挂账', exact: true }).click()
+  await expect(method.getByRole('radio', { name: '挂账', exact: true })).toHaveAttribute('aria-checked', 'true')
   await page.getByRole('button', { name: '结账', exact: true }).click()
   await expect(page.locator(`[data-order-id="${order.id}"]`)).toHaveCount(0)
 
