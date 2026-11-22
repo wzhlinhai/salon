@@ -888,6 +888,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/end_rest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提前结束临时休息，恢复等待 */
+        post: operations["end_rest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/explain_commission": {
         parameters: {
             query?: never;
@@ -1817,6 +1834,23 @@ export interface paths {
         put?: never;
         /** 按营业日查询客数及冲回记录 */
         post: operations["list_guest_visits"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_half_turn_items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 列出按项目记半轮的项目清单 */
+        post: operations["list_half_turn_items"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4877,6 +4911,10 @@ export interface components {
             /** Format: int64 */
             to_position: number;
         };
+        EndRestInput: {
+            queue_id: string;
+            staff_id: string;
+        };
         Entry: {
             action: string;
             actor: components["schemas"]["Actor"];
@@ -5409,6 +5447,7 @@ export interface components {
             limit?: number;
             staff_id?: string;
         };
+        ListHalfTurnItemsInput: Record<string, never>;
         ListImportBatchesInput: Record<string, never>;
         ListInput: Record<string, never>;
         ListItemsInput: Record<string, never>;
@@ -8691,6 +8730,39 @@ export interface operations {
             };
         };
     };
+    end_rest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EndRestInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Rotation"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     explain_commission: {
         parameters: {
             query?: never;
@@ -10493,6 +10565,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GuestVisitList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_half_turn_items: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListHalfTurnItemsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HalfTurnItemList"];
                 };
             };
             /** @description Error */

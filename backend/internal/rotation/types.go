@@ -151,6 +151,12 @@ type UncoverTurnInput struct {
 	StaffID uuid.UUID `json:"staff_id"`
 }
 
+// EndRestInput 是提前结束临时休息的参数。
+type EndRestInput struct {
+	QueueID uuid.UUID `json:"queue_id"`
+	StaffID uuid.UUID `json:"staff_id"`
+}
+
 // RestStaffInput 是临时休息的参数。
 type RestStaffInput struct {
 	QueueID uuid.UUID `json:"queue_id"`
@@ -170,6 +176,9 @@ type DragTurnInput struct {
 type SetHalfTurnItemsInput struct {
 	ItemIDs []uuid.UUID `json:"item_ids" maxItems:"200"`
 }
+
+// ListHalfTurnItemsInput 是查询按项目记半轮项目清单的参数。
+type ListHalfTurnItemsInput struct{}
 
 // HalfTurnItem 是记半轮的项目。
 type HalfTurnItem struct {
