@@ -285,7 +285,7 @@ const { open: refundOpen, loading: refundLoading, saving: refundSaving } = refun
 const refundQuote = ref<components['schemas']['CardRefundQuote'] | null>(null)
 const refundMethod = ref<components['schemas']['RefundCardInput']['method']>()
 const refundError = ref('')
-const refundMethods = [{ label: '现金', value: 'cash' }, { label: '银联', value: 'unionpay' }, { label: '微信', value: 'wechat' }, { label: '支付宝', value: 'alipay' }]
+const refundMethods: { label: string, value: NonNullable<typeof refundMethod.value> }[] = [{ label: '现金', value: 'cash' }, { label: '银联', value: 'unionpay' }, { label: '微信', value: 'wechat' }, { label: '支付宝', value: 'alipay' }]
 
 async function editRefund(card: CustomerCard) {
   refundForm.begin(() => {
@@ -457,7 +457,7 @@ onMounted(cardLoad)
           <p v-if="refundQuote.bonus_policy === 'deduct_used'">扣回赠送金 {{ refundQuote.bonus_deducted }}</p>
           <p>手续费 {{ refundQuote.fee_percent }}% · {{ refundQuote.fee }}</p>
           <p data-testid="refund-amount">退款金额 {{ refundQuote.amount }}</p>
-          <UFormField label="退款方式" required><USelect v-model="refundMethod" :items="refundMethods" class="w-full" /></UFormField>
+          <UFormField label="退款方式" required><MethodPicker v-model="refundMethod" :items="refundMethods" label="退款方式" /></UFormField>
         </template>
       </div>
     </template>
