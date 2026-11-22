@@ -29,11 +29,11 @@ async function load() {
 watch(() => props.staffId, load, { immediate: true })
 
 const statusLabels: Record<Turn['status'], string> = {
-  off: '未上牌',
+  off: '未到岗',
   waiting: '等待中',
   serving: '服务中',
   resting: '休息中',
-  covered: '顶牌中'
+  covered: '盖牌中'
 }
 
 const turns = computed(() => [...(rotation.value?.entries ?? [])].sort((a, b) => a.position - b.position))
@@ -47,7 +47,7 @@ const myPlace = computed(() => {
 
 <template>
   <div v-if="rotation" data-testid="home-rotation">
-    <div class="sec"><UIcon name="i-lucide-repeat" class="size-4 shrink-0" aria-hidden="true" /> 轮牌<span class="ms-auto font-normal text-dimmed">{{ rotation.queue.name }}</span></div>
+    <div class="sec"><UIcon name="i-lucide-list-ordered" class="size-4 shrink-0" aria-hidden="true" /> 轮牌<NuxtLink :to="`/rotation?queue=${rotation.queue.id}`" class="ms-auto font-normal text-dimmed hover:text-muted">{{ rotation.queue.name }}</NuxtLink></div>
     <div class="box">
       <div class="flex items-center gap-3.5">
         <div v-if="myPlace" class="text-hero leading-none font-bold tabular-nums">

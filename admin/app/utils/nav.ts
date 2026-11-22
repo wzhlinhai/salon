@@ -3,6 +3,7 @@ export const navItems = [
   { label: '首页', icon: 'i-lucide-house', to: '/', permission: '', group: '门店' },
   { label: '收银', icon: 'i-lucide-receipt', to: '/cashier', permission: 'order.create', group: '门店' },
   { label: '预约', icon: 'i-lucide-calendar', to: '/bookings', permission: 'booking.manage', group: '门店' },
+  { label: '轮牌', icon: 'i-lucide-list-ordered', to: '/rotation', permission: 'queue.view', group: '门店' },
   { label: '顾客', icon: 'i-lucide-user', to: '/customers', permission: 'customer.view', group: '门店' },
   { label: '员工', icon: 'i-lucide-users', to: '/staff', permission: 'staff.manage', group: '员工' },
   { label: '考勤', icon: 'i-lucide-clock', to: '/attendance', permission: 'attendance.manage', group: '员工' },

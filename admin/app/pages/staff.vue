@@ -96,15 +96,6 @@ const shown = computed(() => {
   return staff.value.filter(s => filter.value.test(s) && (!term || s.name.includes(term) || s.number.includes(term)))
 })
 
-// 头像底色按员工 id 固定取一种标签色，同一个人每次一样。
-const AVATAR_TONES = ['bg-tag-orange', 'bg-tag-blue', 'bg-tag-pink', 'bg-tag-green', 'bg-tag-purple', 'bg-tag-brown', 'bg-tag-yellow']
-
-function avatarTone(id: string) {
-  let sum = 0
-  for (const ch of id) sum += ch.charCodeAt(0)
-  return AVATAR_TONES[sum % AVATAR_TONES.length]
-}
-
 function rowActions(s: Staff): DropdownMenuItem[][] {
   return [
     [
@@ -261,7 +252,7 @@ async function setActive(s: Staff, active: boolean) {
       <UTable :data="shown" :columns="columns" :loading="loading" :aria-busy="loading" :ui="{ tr: 'group/row' }" @select="selectRow">
         <template #who-cell="{ row }">
           <div class="flex items-center gap-2.5" :class="row.original.active ? '' : 'opacity-60'">
-            <span class="grid size-[30px] shrink-0 place-items-center rounded-full text-meta" :class="avatarTone(row.original.id)" aria-hidden="true">{{ row.original.name.slice(0, 1) }}</span>
+            <StaffAvatar :id="row.original.id" :name="row.original.name" />
             <div class="min-w-0">
               <div class="flex items-center gap-1.5">
                 <span class="font-medium" data-staff-name>{{ row.original.name }}</span>
