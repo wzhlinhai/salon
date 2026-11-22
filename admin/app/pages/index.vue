@@ -94,11 +94,6 @@ function formatGuest(value: string | number) {
   return Number(value || '0').toLocaleString('zh-CN', { maximumFractionDigits: 1 })
 }
 
-function addDays(value: string, delta: number) {
-  const [year, month, day] = value.split('-').map(Number)
-  return new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, (day ?? 1) + delta)).toISOString().slice(0, 10)
-}
-
 const lastWeekHasData = computed(() => {
   const totals = lastWeekReport.value?.totals
   if (!totals) return false

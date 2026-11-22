@@ -1,15 +1,10 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import type { components } from '../app/utils/api'
 import { api, apiLogin, hire, login, navLabels, owner, uniqueSuffix } from './helpers'
+import { addDays } from '../app/utils/datetime'
 
 // 考勤用例只改自己创建的员工、班次和指定，不影响其他 spec 读取门店级数据，放在默认项目运行。
 type Schema = components['schemas']
-
-function addDays(date: string, days: number) {
-  const value = new Date(`${date}T00:00:00Z`)
-  value.setUTCDate(value.getUTCDate() + days)
-  return value.toISOString().slice(0, 10)
-}
 
 function previousMonth(month: string) {
   const [year, monthNumber] = month.split('-').map(Number)

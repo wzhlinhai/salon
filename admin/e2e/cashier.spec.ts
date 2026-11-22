@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { api, apiLogin, hire, login, owner, uniqueSuffix } from './helpers'
+import { addDays } from '../app/utils/datetime'
 
 interface Seed {
   token: string
@@ -42,11 +43,6 @@ async function seed(): Promise<Seed> {
 async function businessDate(token: string) {
   const settings = await api<{ business_date: string, settings: { key: string, value: unknown }[] }>(token, 'get_settings', {})
   return settings
-}
-
-function addDays(value: string, delta: number) {
-  const [year, month, date] = value.split('-').map(Number)
-  return new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, (date ?? 1) + delta)).toISOString().slice(0, 10)
 }
 
 async function chooseItem(page: Page, dialogRole: 'dialog', itemName: string, staffName: string) {

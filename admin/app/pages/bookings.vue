@@ -78,12 +78,6 @@ function clockMinutes(value: string) {
   return (hour ?? 0) * 60 + (minute ?? 0)
 }
 
-function addDays(value: string, delta: number) {
-  const [year, month, date] = value.split('-').map(Number)
-  const next = new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, (date ?? 1) + delta))
-  return next.toISOString().slice(0, 10)
-}
-
 function shanghai(iso: string) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: TIME_ZONE,
@@ -214,13 +208,11 @@ watch(day, () => {
   void loadDay()
 })
 
-const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 const dayTitle = computed(() => {
   if (!day.value) return ''
   const [year, month, date] = day.value.split('-').map(Number)
-  const weekday = new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, date ?? 1)).getUTCDay()
   const sameYear = businessDate.value.slice(0, 4) === day.value.slice(0, 4)
-  return `${sameYear ? '' : `${year}年`}${month}月${date}日 ${WEEKDAYS[weekday]}`
+  return `${sameYear ? '' : `${year}年`}${month}月${date}日 ${weekdayOf(day.value)}`
 })
 
 // 当前时间线和打开时的滚动位置：今天滚到现在，别的日子滚到第一条预约。

@@ -11,11 +11,6 @@ const today = ref<PerformanceList | null>(null)
 const lastWeek = ref<PerformanceList | null>(null)
 const guard = useRequestGuard()
 
-function addDays(value: string, delta: number) {
-  const [year, month, day] = value.split('-').map(Number)
-  return new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, (day ?? 1) + delta)).toISOString().slice(0, 10)
-}
-
 async function load() {
   if (!props.date) return
   const current = guard.next()

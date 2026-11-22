@@ -12,3 +12,15 @@ export function formatStamp(value: string, now = new Date()) {
 export function formatDate(value: string) {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value))
 }
+
+// 营业日 YYYY-MM-DD 加减天数，按日历算，不受时区影响。
+export function addDays(value: string, delta: number) {
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, (day ?? 1) + delta)).toISOString().slice(0, 10)
+}
+
+// 营业日的星期：周一……周日。
+export function weekdayOf(value: string) {
+  const [year, month, day] = value.split('-').map(Number)
+  return WEEKDAYS[new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, day ?? 1)).getUTCDay()]!
+}

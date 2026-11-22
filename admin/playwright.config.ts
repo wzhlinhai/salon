@@ -13,12 +13,14 @@ export default defineConfig({
   workers: 2,
   // 只有全店顾客分页用例依赖“最新 50 位全是本用例创建”的数据；等默认项目结束后独占运行，避免其他用例建顾客干扰断言。
   projects: [
-    { name: 'default', grepInvert: /@store-customer-dataset|@payroll-store|@groupbuy-month/ },
+    { name: 'default', grepInvert: /@store-customer-dataset|@payroll-store|@groupbuy-month|@closing/ },
     // 工资表用例保存全店提成方案和锁月，必须等默认项目读取提成数据结束。
     { name: 'payroll-store', grep: /@payroll-store/, dependencies: ['default'] },
     { name: 'store-customer-dataset', grep: /@store-customer-dataset/, dependencies: ['default'] },
     // 团购对账是门店级汇总，必须等默认项目里的核销都结束再断言。
-    { name: 'groupbuy-month', grep: /@groupbuy-month/, dependencies: ['default'] }
+    { name: 'groupbuy-month', grep: /@groupbuy-month/, dependencies: ['default'] },
+    // 日结页会封账，封了的日子不能再改单；等其他项目都跑完再跑，用完撤销。
+    { name: 'closing', grep: /@closing/, dependencies: ['default', 'payroll-store', 'store-customer-dataset', 'groupbuy-month'] }
   ],
   use: {
     baseURL: env.baseURL,
