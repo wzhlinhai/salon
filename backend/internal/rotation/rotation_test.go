@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -396,6 +397,42 @@ func TestHalfItemSaveKeepsExistingRows(t *testing.T) {
 	s.call("set_half_turn_items", map[string]any{"item_ids": []uuid.UUID{other}}, 200)
 	if _, ok := s.halfItemRows()[s.item]; ok {
 		t.Fatal("removed half item still exists")
+	}
+}
+
+func TestListHalfTurnItems(t *testing.T) {
+	s := openRotation(t)
+	owner := s.MustCaller(s.Owner)
+	for _, ch := range s.Channels() {
+		r := ch.Call(t, owner, "list_half_turn_items", map[string]any{})
+		if r.Status != 200 || len(r.Body["entries"].([]any)) != 0 {
+			t.Fatal(ch.Name, r)
+		}
+	}
+	other := s.createItem("染发", "80")
+	s.call("set_half_turn_items", map[string]any{"item_ids": []uuid.UUID{s.item, other}}, 200)
+	want := map[string]string{s.item.String(): "剪发", other.String(): "染发"}
+	for _, ch := range s.Channels() {
+		r := ch.Call(t, owner, "list_half_turn_items", map[string]any{})
+		if r.Status != 200 {
+			t.Fatal(ch.Name, r)
+		}
+		got := map[string]string{}
+		for _, raw := range r.Body["entries"].([]any) {
+			entry := raw.(map[string]any)
+			got[entry["item_id"].(string)] = entry["name"].(string)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("%s: items = %v, want %v", ch.Name, got, want)
+		}
+	}
+	_, nobody := s.Hire("无权限", "202", "nobody-half")
+	unprivileged := s.MustCaller(nobody)
+	for _, ch := range s.Channels() {
+		r := ch.Call(t, unprivileged, "list_half_turn_items", map[string]any{})
+		if r.Status != 403 || r.Detail() != "permission denied" {
+			t.Fatal(ch.Name, r)
+		}
 	}
 }
 

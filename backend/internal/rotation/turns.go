@@ -414,6 +414,33 @@ func restStaff(ctx context.Context, env ops.Env, in *RestStaffInput) (*Rotation,
 	return finish(ctx, env, queue, day, turns)
 }
 
+func endRest(ctx context.Context, env ops.Env, in *EndRestInput) (*Rotation, error) {
+	queue, day, _, turns, err := daySetup(ctx, env, in.QueueID, true)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireMember(ctx, env, queue.ID, in.StaffID); err != nil {
+		return nil, err
+	}
+	index := indexOf(turns, in.StaffID)
+	if index < 0 {
+		return nil, ops.Rule("员工不在轮牌中")
+	}
+	turn := &turns[index]
+	if turn.turn.Status != StatusResting {
+		return nil, ops.Rule("员工当前状态不能执行这个操作")
+	}
+	setWaiting(turn)
+	turn.turn.RestUntil = timeValue(nil)
+	if err := recordEvent(ctx, env, queue.ID, day, &in.StaffID, "rest_end", nil, nil, position(turn.turn.Position), position(turn.turn.Position), nil, nil, nil); err != nil {
+		return nil, err
+	}
+	if err := persistTurns(ctx, env, queue.ID, day, turns, true); err != nil {
+		return nil, err
+	}
+	return finish(ctx, env, queue, day, turns)
+}
+
 func dragTurn(ctx context.Context, env ops.Env, in *DragTurnInput) (*Rotation, error) {
 	reason := strings.TrimSpace(in.Reason)
 	if reason == "" {

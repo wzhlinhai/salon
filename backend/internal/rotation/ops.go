@@ -32,8 +32,10 @@ func Register(r *ops.Registry) {
 	ops.Register(r, ops.Operation[CoverTurnInput, Rotation]{Name: "cover_turn", Summary: "盖牌：保留位置但暂不接客", Kind: ops.Write, Permission: perm.QueueOperate, AI: ops.AIDraft, Handle: coverTurn})
 	ops.Register(r, ops.Operation[UncoverTurnInput, Rotation]{Name: "uncover_turn", Summary: "取消盖牌，恢复等待", Kind: ops.Write, Permission: perm.QueueOperate, AI: ops.AIDraft, Handle: uncoverTurn})
 	ops.Register(r, ops.Operation[RestStaffInput, Rotation]{Name: "rest_staff", Summary: "临时休息指定分钟数，到点自动恢复等待", Kind: ops.Write, Permission: perm.QueueOperate, AI: ops.AIDraft, Handle: restStaff})
+	ops.Register(r, ops.Operation[EndRestInput, Rotation]{Name: "end_rest", Summary: "提前结束临时休息，恢复等待", Kind: ops.Write, Permission: perm.QueueOperate, AI: ops.AIDraft, Handle: endRest})
 	ops.Register(r, ops.Operation[DragTurnInput, Rotation]{Name: "drag_turn", Summary: "手动拖动员工到指定位置并记录原因", Kind: ops.Write, Permission: perm.QueueOperate, AI: ops.AIDraft, Handle: dragTurn})
 	ops.Register(r, ops.Operation[SetHalfTurnItemsInput, HalfTurnItemList]{Name: "set_half_turn_items", Summary: "设置按项目记半轮的项目清单", Kind: ops.Write, Permission: perm.QueueOperate, AI: ops.AIDraft, Handle: setHalfTurnItems})
+	ops.Register(r, ops.Operation[ListHalfTurnItemsInput, HalfTurnItemList]{Name: "list_half_turn_items", Summary: "列出按项目记半轮的项目清单", Kind: ops.Read, Permission: perm.QueueView, AI: ops.AIDirect, Handle: listHalfTurnItems})
 	ops.Register(r, ops.Operation[ListRotationEventsInput, RotationEventList]{Name: "list_rotation_events", Summary: "按日期范围查看轮牌跳过、拖动、接客和推进记录", Kind: ops.Read, Permission: perm.QueueView, AI: ops.AIDirect, Handle: listEvents})
 	ops.Register(r, ops.Operation[GetRotationStatsInput, RotationStats]{Name: "get_rotation_stats", Summary: "按员工统计点客和轮牌接客数", Kind: ops.Read, Permission: perm.QueueView, AI: ops.AIDirect, Handle: getStats})
 }
@@ -317,4 +319,8 @@ func halfItems(ctx context.Context, env ops.Env) (*HalfTurnItemList, error) {
 		out.Entries = append(out.Entries, HalfTurnItem{ItemID: row.ItemID, Name: row.ItemName})
 	}
 	return out, nil
+}
+
+func listHalfTurnItems(ctx context.Context, env ops.Env, _ *ListHalfTurnItemsInput) (*HalfTurnItemList, error) {
+	return halfItems(ctx, env)
 }

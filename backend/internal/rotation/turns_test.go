@@ -152,6 +152,47 @@ func TestRestExpiry(t *testing.T) {
 	reject(t, s.HTTPWithToken(t, s.Owner, "rest_staff", map[string]any{"queue_id": s.queue, "staff_id": s.members[1], "minutes": 241}), 422, "validation failed")
 }
 
+func TestEndRest(t *testing.T) {
+	s := openRotation(t)
+	s.join(s.members[0])
+	s.join(s.members[1])
+	view := s.call("rest_staff", map[string]any{"queue_id": s.queue, "staff_id": s.members[0], "minutes": 5}, 200)
+	if entries(view)[0]["status"] != "resting" {
+		t.Fatal(view)
+	}
+	view = s.call("end_rest", map[string]any{"queue_id": s.queue, "staff_id": s.members[0]}, 200)
+	entry := entries(view)[0]
+	if entry["status"] != "waiting" || entry["position"] != float64(1) || entry["rest_until"] != nil {
+		t.Fatal(entry)
+	}
+	event := s.event("rest_end")
+	if event["staff"].(map[string]any)["id"] != s.members[0].String() || event["from_position"] != float64(1) || event["to_position"] != float64(1) {
+		t.Fatal(event)
+	}
+	reject(t, s.HTTPWithToken(t, s.Owner, "end_rest", map[string]any{"queue_id": s.queue, "staff_id": s.members[0]}), 409, "员工当前状态不能执行这个操作")
+	s.call("rest_staff", map[string]any{"queue_id": s.queue, "staff_id": s.members[1], "minutes": 1}, 200)
+	s.Advance(time.Minute)
+	reject(t, s.HTTPWithToken(t, s.Owner, "end_rest", map[string]any{"queue_id": s.queue, "staff_id": s.members[1]}), 409, "员工当前状态不能执行这个操作")
+	_, stylist := s.Hire("发型师", "203", "stylist-rest", s.Role("发型师"))
+	before := s.snapshot()
+	reject(t, s.HTTPWithToken(t, stylist, "end_rest", map[string]any{"queue_id": s.queue, "staff_id": s.members[1]}), 403, "permission denied")
+	if s.snapshot() != before {
+		t.Fatal("denied end_rest changed data")
+	}
+}
+
+func TestEndRestAI(t *testing.T) {
+	s := openRotation(t)
+	s.join(s.members[0])
+	s.call("rest_staff", map[string]any{"queue_id": s.queue, "staff_id": s.members[0], "minutes": 5}, 200)
+	before := s.snapshot()
+	r := s.AI(t, s.MustCaller(s.Owner), "end_rest", map[string]any{"queue_id": s.queue, "staff_id": s.members[0]})
+	optest.RequireDraftCreated(t, r, s.snapshot() == before)
+	if got := entries(s.today())[0]["status"]; got != "resting" {
+		t.Fatal(got)
+	}
+}
+
 func TestConcurrentAssign(t *testing.T) {
 	s := openRotation(t)
 	s.join(s.members[0])
