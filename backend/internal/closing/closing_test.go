@@ -288,12 +288,58 @@ func TestListDayCloses(t *testing.T) {
 	order := f.order("2026-10-01", f.customer, "10.00")
 	f.checkout(order, payment("cash", "10"))
 	f.now("2026-10-03", 12)
-	f.Call(t, f.Owner, "close_day", map[string]any{"date": "2026-10-01", "cash_counted": "10", "unionpay_actual": "0", "wechat_actual": "0", "alipay_actual": "0"}, 200)
-	f.Call(t, f.Owner, "seal_day", map[string]any{"date": "2026-10-01"}, 200)
+	first := f.Call(t, f.Owner, "close_day", map[string]any{"date": "2026-10-01", "cash_counted": "10", "unionpay_actual": "0", "wechat_actual": "0", "alipay_actual": "0"}, 200).Body
 	body := f.Call(t, f.Owner, "list_day_closes", map[string]any{"date_from": "2026-10-01", "date_to": "2026-10-02"}, 200).Body
 	items := body["items"].([]any)
-	if len(items) != 1 || items[0].(map[string]any)["business_date"] != "2026-10-01" || items[0].(map[string]any)["sealed"] != true || body["sealed_through"] != "2026-10-01" {
+	if len(items) != 1 || items[0].(map[string]any)["business_date"] != "2026-10-01" || items[0].(map[string]any)["version"] != float64(1) {
 		t.Fatal(body)
+	}
+	sameDifferences(t, items[0].(map[string]any)["differences"].([]any), first["differences"].([]any))
+	if difference(t, items[0].(map[string]any)["differences"].([]any), "cash") != "0.00" {
+		t.Fatal(items[0])
+	}
+
+	second := f.Call(t, f.Owner, "close_day", map[string]any{"date": "2026-10-01", "cash_counted": "12", "unionpay_actual": "3", "wechat_actual": "0", "alipay_actual": "0"}, 200).Body
+	body = f.Call(t, f.Owner, "list_day_closes", map[string]any{"date_from": "2026-10-01", "date_to": "2026-10-02"}, 200).Body
+	items = body["items"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["version"] != float64(2) {
+		t.Fatal(body)
+	}
+	sameDifferences(t, items[0].(map[string]any)["differences"].([]any), second["differences"].([]any))
+	if difference(t, items[0].(map[string]any)["differences"].([]any), "cash") != "2.00" || difference(t, items[0].(map[string]any)["differences"].([]any), "unionpay") != "3.00" {
+		t.Fatal(items[0])
+	}
+
+	f.Call(t, f.Owner, "seal_day", map[string]any{"date": "2026-10-01"}, 200)
+	body = f.Call(t, f.Owner, "list_day_closes", map[string]any{"date_from": "2026-10-01", "date_to": "2026-10-02"}, 200).Body
+	items = body["items"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["sealed"] != true || body["sealed_through"] != "2026-10-01" {
+		t.Fatal(body)
+	}
+}
+
+func sameDifferences(t *testing.T, got, want []any) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("differences length = %d, want %d", len(got), len(want))
+	}
+	byMethod := map[string]map[string]any{}
+	for _, raw := range got {
+		line := raw.(map[string]any)
+		byMethod[line["method"].(string)] = line
+	}
+	for _, raw := range want {
+		line := raw.(map[string]any)
+		method := line["method"].(string)
+		listed, ok := byMethod[method]
+		if !ok {
+			t.Fatalf("method %s not listed in %v", method, got)
+		}
+		for _, key := range []string{"system", "actual", "difference"} {
+			if listed[key] != line[key] {
+				t.Fatalf("%s %s = %v, want %v", method, key, listed[key], line[key])
+			}
+		}
 	}
 }
 

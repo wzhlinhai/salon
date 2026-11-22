@@ -4773,6 +4773,7 @@ export interface components {
             cash_counted: string;
             /** Format: date-time */
             created_at: string;
+            differences: components["schemas"]["MethodDifference"][];
             id: string;
             note: string | null;
             sealed: boolean;
