@@ -668,6 +668,11 @@ test('未识别顾客没有挂账；挂账结账后在顾客详情收还款', as
   // 收款方式平铺成一排，一点就选；默认现金。
   await expect(method.getByRole('radio', { name: '现金', exact: true })).toHaveAttribute('aria-checked', 'true')
   await expect(method.getByRole('radio', { name: '挂账', exact: true })).toHaveCount(0)
+  // 方向键在方式间移动并选中。
+  await method.getByRole('radio', { name: '现金', exact: true }).focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(method.getByRole('radio', { name: '银联', exact: true })).toHaveAttribute('aria-checked', 'true')
+  await expect(method.getByRole('radio', { name: '银联', exact: true })).toBeFocused()
 
   await page.locator(`[data-order-id="${order.id}"]`).click()
   await expect(page.getByTestId('cash-expected')).toHaveText('88.00')
