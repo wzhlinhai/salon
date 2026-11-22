@@ -3,7 +3,6 @@
 // 店长看全店（没记到人的业绩单列「未分配」）；发型师、助理只看自己，后端按本人范围过滤。
 // 点一个人从右侧滑出这段时间的每笔业绩和每笔提成。合计行直接用接口的 totals。
 import type { components } from '~/utils/api'
-import type { ReportRange } from '~/utils/report'
 
 definePageMeta({ permission: 'performance.view', title: '员工业绩', description: '业绩按做单那天计；撤单在撤单那天冲回。' })
 
@@ -13,72 +12,10 @@ type PerformanceEntry = components['schemas']['PerformanceEntry']
 type Commission = components['schemas']['Commission']
 
 const api = useApi()
-const route = useRoute()
-const router = useRouter()
 const toast = useToast()
 const { grant } = useMe()
-const today = ref('')
-const range = ref<ReportRange>({ granularity: 'day', from: '', to: '' })
-const report = ref<StaffReport | null>(null)
-const loading = ref(false)
-const failed = ref(false)
-const loadGuard = useRequestGuard()
+const { today, range, report, loading, failed, retry } = useDayReport<StaffReport>((from, to) => api.POST('/api/ops/get_staff_report', { body: { from, to } }))
 const self = computed(() => grant('performance.view')?.scope === 'self')
-
-function fromQuery(): ReportRange | null {
-  const { from, to } = route.query
-  const pattern = /^\d{4}-\d{2}-\d{2}$/
-  if (typeof from !== 'string' || typeof to !== 'string' || !pattern.test(from) || !pattern.test(to)) return null
-  const asked: ReportRange = { granularity: 'day', from, to }
-  return rangeProblem(asked, true) ? null : asked
-}
-
-async function load() {
-  // 范围无效时也要作废还在路上的旧请求，免得旧范围的结果落到新范围下面。
-  const current = loadGuard.next()
-  if (rangeProblem(range.value, true)) {
-    loading.value = false
-    return
-  }
-  loading.value = true
-  failed.value = false
-  try {
-    const { data, error } = await api.POST('/api/ops/get_staff_report', { body: { from: range.value.from, to: range.value.to } })
-    if (!current()) return
-    if (!data) {
-      failed.value = true
-      report.value = null
-      toast.add({ title: errorText(error), color: 'error' })
-      return
-    }
-    report.value = data
-  } finally {
-    if (current()) loading.value = false
-  }
-}
-
-async function start() {
-  failed.value = false
-  const settings = await api.POST('/api/ops/get_settings', { body: {} })
-  if (!settings.data) {
-    failed.value = true
-    toast.add({ title: errorText(settings.error), color: 'error' })
-    return
-  }
-  today.value = settings.data.business_date
-  range.value = fromQuery() ?? defaultRange('day', today.value)
-}
-
-function retry() {
-  void (today.value ? load() : start())
-}
-
-onMounted(start)
-
-watch(range, (value) => {
-  void router.replace({ query: { from: value.from, to: value.to } })
-  void load()
-}, { deep: true })
 
 const rows = computed(() => report.value?.rows ?? [])
 const nameOf = (row: Row) => row.staff?.name ?? '未分配'
