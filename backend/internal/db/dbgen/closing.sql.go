@@ -180,6 +180,89 @@ func (q *Queries) AftersaleRefundsByMethod(ctx context.Context, arg AftersaleRef
 	return items, nil
 }
 
+const businessDaysInRange = `-- name: BusinessDaysInRange :many
+SELECT x.business_date FROM orders x
+WHERE x.store_id=$1 AND x.business_date BETWEEN $2::date AND $3::date
+UNION
+SELECT x.business_date FROM checkouts x
+WHERE x.store_id=$1 AND x.business_date BETWEEN $2::date AND $3::date
+UNION
+SELECT x.business_date FROM card_ledger x
+WHERE x.store_id=$1 AND x.business_date BETWEEN $2::date AND $3::date
+UNION
+SELECT x.business_date FROM card_count_ledger x
+WHERE x.store_id=$1 AND x.business_date BETWEEN $2::date AND $3::date
+UNION
+SELECT x.business_date FROM card_adjustments x
+WHERE x.store_id=$1 AND x.business_date BETWEEN $2::date AND $3::date
+UNION
+SELECT x.business_date FROM card_upgrades x
+WHERE x.store_id=$1 AND x.business_date BETWEEN $2::date AND $3::date
+UNION
+SELECT x.business_date FROM card_refunds x
+WHERE x.store_id=$1 AND x.business_date BETWEEN $2::date AND $3::date
+UNION
+SELECT x.business_date FROM card_transfers x
+WHERE x.store_id=$1 AND x.business_date BETWEEN $2::date AND $3::date
+UNION
+SELECT x.business_date FROM debts x
+WHERE x.store_id=$1 AND x.business_date BETWEEN $2::date AND $3::date
+UNION
+SELECT x.business_date FROM debt_repayments x
+WHERE x.store_id=$1 AND x.business_date BETWEEN $2::date AND $3::date
+UNION
+SELECT x.business_date FROM red_packets x
+WHERE x.store_id=$1 AND x.business_date BETWEEN $2::date AND $3::date
+UNION
+SELECT x.business_date FROM order_voids x
+WHERE x.store_id=$1 AND x.business_date BETWEEN $2::date AND $3::date
+UNION
+SELECT x.business_date FROM aftersale_refunds x JOIN aftersales a ON a.tenant_id=x.tenant_id AND a.id=x.aftersale_id
+WHERE x.store_id=$1 AND x.business_date BETWEEN $2::date AND $3::date AND a.status='approved'
+UNION
+SELECT x.business_date FROM sale_payments x
+WHERE x.store_id=$1 AND x.business_date BETWEEN $2::date AND $3::date
+UNION
+SELECT x.business_date FROM card_points_ledger x
+WHERE x.store_id=$1 AND x.business_date BETWEEN $2::date AND $3::date
+UNION
+SELECT x.business_date FROM guest_visits x
+WHERE x.store_id=$1 AND x.business_date BETWEEN $2::date AND $3::date
+UNION
+SELECT x.business_date FROM collections x
+WHERE x.store_id=$1 AND x.business_date BETWEEN $2::date AND $3::date
+UNION
+SELECT x.business_date FROM performance_entries x
+WHERE x.store_id=$1 AND x.business_date BETWEEN $2::date AND $3::date
+ORDER BY business_date
+`
+
+type BusinessDaysInRangeParams struct {
+	StoreID  uuid.UUID
+	DateFrom pgtype.Date
+	DateTo   pgtype.Date
+}
+
+func (q *Queries) BusinessDaysInRange(ctx context.Context, arg BusinessDaysInRangeParams) ([]pgtype.Date, error) {
+	rows, err := q.db.Query(ctx, businessDaysInRange, arg.StoreID, arg.DateFrom, arg.DateTo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.Date
+	for rows.Next() {
+		var business_date pgtype.Date
+		if err := rows.Scan(&business_date); err != nil {
+			return nil, err
+		}
+		items = append(items, business_date)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const cardRefundsByMethod = `-- name: CardRefundsByMethod :many
 SELECT method, COALESCE(sum(amount),0)::text AS amount, count(*)::bigint AS count
 FROM card_refunds
@@ -284,16 +367,33 @@ func (q *Queries) CheckoutPaymentsByMethod(ctx context.Context, arg CheckoutPaym
 }
 
 const collectionCreatedAts = `-- name: CollectionCreatedAts :many
-SELECT created_at, business_date FROM collections WHERE store_id=$1
+SELECT created_at, business_date FROM collections
+WHERE store_id=$1
+  AND (business_date BETWEEN $2::date AND $3::date
+       OR (created_at >= $4 AND created_at < $5))
 `
+
+type CollectionCreatedAtsParams struct {
+	StoreID    uuid.UUID
+	DateFrom   pgtype.Date
+	DateTo     pgtype.Date
+	WindowFrom pgtype.Timestamptz
+	WindowTo   pgtype.Timestamptz
+}
 
 type CollectionCreatedAtsRow struct {
 	CreatedAt    pgtype.Timestamptz
 	BusinessDate pgtype.Date
 }
 
-func (q *Queries) CollectionCreatedAts(ctx context.Context, storeID uuid.UUID) ([]CollectionCreatedAtsRow, error) {
-	rows, err := q.db.Query(ctx, collectionCreatedAts, storeID)
+func (q *Queries) CollectionCreatedAts(ctx context.Context, arg CollectionCreatedAtsParams) ([]CollectionCreatedAtsRow, error) {
+	rows, err := q.db.Query(ctx, collectionCreatedAts,
+		arg.StoreID,
+		arg.DateFrom,
+		arg.DateTo,
+		arg.WindowFrom,
+		arg.WindowTo,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -319,7 +419,14 @@ SELECT e.at, c.business_date,
                ORDER BY e2.at, e2.id LIMIT 1) AS initial
 FROM collection_events e JOIN collections c ON c.tenant_id=e.tenant_id AND c.id=e.collection_id
 WHERE e.store_id=$1
+  AND e.at >= $2 AND e.at < $3
 `
+
+type CollectionEventAtsParams struct {
+	StoreID    uuid.UUID
+	WindowFrom pgtype.Timestamptz
+	WindowTo   pgtype.Timestamptz
+}
 
 type CollectionEventAtsRow struct {
 	At           pgtype.Timestamptz
@@ -327,8 +434,8 @@ type CollectionEventAtsRow struct {
 	Initial      bool
 }
 
-func (q *Queries) CollectionEventAts(ctx context.Context, storeID uuid.UUID) ([]CollectionEventAtsRow, error) {
-	rows, err := q.db.Query(ctx, collectionEventAts, storeID)
+func (q *Queries) CollectionEventAts(ctx context.Context, arg CollectionEventAtsParams) ([]CollectionEventAtsRow, error) {
+	rows, err := q.db.Query(ctx, collectionEventAts, arg.StoreID, arg.WindowFrom, arg.WindowTo)
 	if err != nil {
 		return nil, err
 	}
@@ -348,15 +455,24 @@ func (q *Queries) CollectionEventAts(ctx context.Context, storeID uuid.UUID) ([]
 }
 
 const couponRedemptionAts = `-- name: CouponRedemptionAts :many
-SELECT x.created_at AS at FROM coupon_redemptions x WHERE x.store_id=$1
+SELECT x.created_at AS at FROM coupon_redemptions x
+WHERE x.store_id=$1 AND x.created_at >= $2 AND x.created_at < $3
 UNION ALL
-SELECT x.redeemed_at AS at FROM coupon_redemptions x WHERE x.store_id=$1 AND x.redeemed_at IS NOT NULL
+SELECT x.redeemed_at AS at FROM coupon_redemptions x
+WHERE x.store_id=$1 AND x.redeemed_at IS NOT NULL AND x.redeemed_at >= $2 AND x.redeemed_at < $3
 UNION ALL
-SELECT x.revoked_at AS at FROM coupon_redemptions x WHERE x.store_id=$1 AND x.revoked_at IS NOT NULL
+SELECT x.revoked_at AS at FROM coupon_redemptions x
+WHERE x.store_id=$1 AND x.revoked_at IS NOT NULL AND x.revoked_at >= $2 AND x.revoked_at < $3
 `
 
-func (q *Queries) CouponRedemptionAts(ctx context.Context, storeID uuid.UUID) ([]pgtype.Timestamptz, error) {
-	rows, err := q.db.Query(ctx, couponRedemptionAts, storeID)
+type CouponRedemptionAtsParams struct {
+	StoreID    uuid.UUID
+	WindowFrom pgtype.Timestamptz
+	WindowTo   pgtype.Timestamptz
+}
+
+func (q *Queries) CouponRedemptionAts(ctx context.Context, arg CouponRedemptionAtsParams) ([]pgtype.Timestamptz, error) {
+	rows, err := q.db.Query(ctx, couponRedemptionAts, arg.StoreID, arg.WindowFrom, arg.WindowTo)
 	if err != nil {
 		return nil, err
 	}
@@ -390,41 +506,6 @@ func (q *Queries) DayCheckoutCount(ctx context.Context, arg DayCheckoutCountPara
 	var count int64
 	err := row.Scan(&count)
 	return count, err
-}
-
-const dayHasBusiness = `-- name: DayHasBusiness :one
-SELECT
- EXISTS (SELECT 1 FROM orders x WHERE x.store_id=$1 AND x.business_date=$2)
- OR EXISTS (SELECT 1 FROM checkouts x WHERE x.store_id=$1 AND x.business_date=$2)
- OR EXISTS (SELECT 1 FROM card_ledger x WHERE x.store_id=$1 AND x.business_date=$2)
- OR EXISTS (SELECT 1 FROM card_count_ledger x WHERE x.store_id=$1 AND x.business_date=$2)
- OR EXISTS (SELECT 1 FROM card_adjustments x WHERE x.store_id=$1 AND x.business_date=$2)
- OR EXISTS (SELECT 1 FROM card_upgrades x WHERE x.store_id=$1 AND x.business_date=$2)
- OR EXISTS (SELECT 1 FROM card_refunds x WHERE x.store_id=$1 AND x.business_date=$2)
- OR EXISTS (SELECT 1 FROM card_transfers x WHERE x.store_id=$1 AND x.business_date=$2)
- OR EXISTS (SELECT 1 FROM debts x WHERE x.store_id=$1 AND x.business_date=$2)
- OR EXISTS (SELECT 1 FROM debt_repayments x WHERE x.store_id=$1 AND x.business_date=$2)
- OR EXISTS (SELECT 1 FROM red_packets x WHERE x.store_id=$1 AND x.business_date=$2)
- OR EXISTS (SELECT 1 FROM order_voids x WHERE x.store_id=$1 AND x.business_date=$2)
- OR EXISTS (SELECT 1 FROM aftersale_refunds x JOIN aftersales a ON a.tenant_id=x.tenant_id AND a.id=x.aftersale_id WHERE x.store_id=$1 AND x.business_date=$2 AND a.status='approved')
- OR EXISTS (SELECT 1 FROM sale_payments x WHERE x.store_id=$1 AND x.business_date=$2)
- OR EXISTS (SELECT 1 FROM card_points_ledger x WHERE x.store_id=$1 AND x.business_date=$2)
- OR EXISTS (SELECT 1 FROM guest_visits x WHERE x.store_id=$1 AND x.business_date=$2)
- OR EXISTS (SELECT 1 FROM collections x WHERE x.store_id=$1 AND x.business_date=$2)
- OR EXISTS (SELECT 1 FROM performance_entries x WHERE x.store_id=$1 AND x.business_date=$2)
- AS has_business
-`
-
-type DayHasBusinessParams struct {
-	StoreID uuid.UUID
-	Day     pgtype.Date
-}
-
-func (q *Queries) DayHasBusiness(ctx context.Context, arg DayHasBusinessParams) (*bool, error) {
-	row := q.db.QueryRow(ctx, dayHasBusiness, arg.StoreID, arg.Day)
-	var has_business *bool
-	err := row.Scan(&has_business)
-	return has_business, err
 }
 
 const dayVoidCount = `-- name: DayVoidCount :one

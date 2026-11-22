@@ -195,6 +195,18 @@ func TestClosingQueryCounts(t *testing.T) {
 				t.Fatalf("%s queries grew: %d -> %d", tc.name, counts[tc.name], got)
 			}
 		}
+		listQueries := func(to string) int64 {
+			counter.count.Store(0)
+			r := app.HTTP(t, &caller, "list_day_closes", map[string]any{"date_from": "2026-10-01", "date_to": to})
+			if r.Status != 200 {
+				t.Fatal(r)
+			}
+			return counter.count.Load()
+		}
+		oneDay, month := listQueries("2026-10-01"), listQueries("2026-10-31")
+		if oneDay != month {
+			t.Fatalf("list_day_closes queries depend on range: 1 day %d, 31 days %d", oneDay, month)
+		}
 	}
 	t.Run("store_sealings/delete", func(t *testing.T) {
 		tx := dbtest.AppTx(t, f.Pool, f.Res.TenantID)

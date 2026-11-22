@@ -170,20 +170,30 @@ func systemFigures(ctx context.Context, env ops.Env, day time.Time) (*SystemFigu
 	return out, nil
 }
 
-func hasBusiness(ctx context.Context, env ops.Env, day time.Time) (bool, error) {
+// businessDaysIn 返回 [from,to] 内按日结规则有营业的营业日，升序，YYYY-MM-DD。
+// 全店的时间戳只读取一次，查询次数不随范围天数增长。
+func businessDaysIn(ctx context.Context, env ops.Env, from, to time.Time) ([]string, error) {
 	q, storeID := env.Q, env.Caller.StoreID
-	has, err := q.DayHasBusiness(ctx, dbgen.DayHasBusinessParams{StoreID: storeID, Day: pgDate(day)})
+	// 营业日换算受日界线设置和时区影响，时间戳窗口在日期范围两端各放宽几天，
+	// 换算后的营业日仍由下面的循环只取 [from,to]。
+	windowFrom := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, -2)
+	windowTo := time.Date(to.Year(), to.Month(), to.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, 3)
+	marked := map[string]bool{}
+	rows, err := q.BusinessDaysInRange(ctx, dbgen.BusinessDaysInRangeParams{StoreID: storeID, DateFrom: pgDate(from), DateTo: pgDate(to)})
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	if has != nil && *has {
-		return true, nil
+	for _, day := range rows {
+		marked[day.Time.Format(settings.DateLayout)] = true
 	}
 	times := []time.Time{}
 	explicit := []time.Time{}
-	collections, err := q.CollectionCreatedAts(ctx, storeID)
+	collections, err := q.CollectionCreatedAts(ctx, dbgen.CollectionCreatedAtsParams{
+		StoreID: storeID, DateFrom: pgDate(from), DateTo: pgDate(to),
+		WindowFrom: pgTimestamp(windowFrom), WindowTo: pgTimestamp(windowTo),
+	})
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	for _, row := range collections {
 		if row.BusinessDate.Valid {
@@ -192,9 +202,9 @@ func hasBusiness(ctx context.Context, env ops.Env, day time.Time) (bool, error) 
 			times = append(times, row.CreatedAt.Time)
 		}
 	}
-	events, err := q.CollectionEventAts(ctx, storeID)
+	events, err := q.CollectionEventAts(ctx, dbgen.CollectionEventAtsParams{StoreID: storeID, WindowFrom: pgTimestamp(windowFrom), WindowTo: pgTimestamp(windowTo)})
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	for _, row := range events {
 		if row.BusinessDate.Valid && row.Initial {
@@ -202,24 +212,29 @@ func hasBusiness(ctx context.Context, env ops.Env, day time.Time) (bool, error) 
 		}
 		times = append(times, row.At.Time)
 	}
-	coupons, err := q.CouponRedemptionAts(ctx, storeID)
+	coupons, err := q.CouponRedemptionAts(ctx, dbgen.CouponRedemptionAtsParams{StoreID: storeID, WindowFrom: pgTimestamp(windowFrom), WindowTo: pgTimestamp(windowTo)})
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	for _, at := range coupons {
 		times = append(times, at.Time)
 	}
 	days, err := settings.BusinessDates(ctx, q, storeID, times)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	days = append(days, explicit...)
 	for _, d := range days {
-		if d.Equal(day) {
-			return true, nil
+		marked[d.Format(settings.DateLayout)] = true
+	}
+	out := []string{}
+	for day := from; !day.After(to); day = day.AddDate(0, 0, 1) {
+		key := day.Format(settings.DateLayout)
+		if marked[key] {
+			out = append(out, key)
 		}
 	}
-	return false, nil
+	return out, nil
 }
 
 func unrecordedSales(ctx context.Context, env ops.Env, day time.Time) (UnrecordedSales, error) {
@@ -267,3 +282,5 @@ func differences(system *SystemFigures, in *CloseDayInput) []MethodDifference {
 }
 
 func pgDate(day time.Time) pgtype.Date { return pgtype.Date{Time: day, Valid: true} }
+
+func pgTimestamp(t time.Time) pgtype.Timestamptz { return pgtype.Timestamptz{Time: t, Valid: true} }

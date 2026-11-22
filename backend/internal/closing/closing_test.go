@@ -288,12 +288,96 @@ func TestListDayCloses(t *testing.T) {
 	order := f.order("2026-10-01", f.customer, "10.00")
 	f.checkout(order, payment("cash", "10"))
 	f.now("2026-10-03", 12)
-	f.Call(t, f.Owner, "close_day", map[string]any{"date": "2026-10-01", "cash_counted": "10", "unionpay_actual": "0", "wechat_actual": "0", "alipay_actual": "0"}, 200)
-	f.Call(t, f.Owner, "seal_day", map[string]any{"date": "2026-10-01"}, 200)
+	first := f.Call(t, f.Owner, "close_day", map[string]any{"date": "2026-10-01", "cash_counted": "10", "unionpay_actual": "0", "wechat_actual": "0", "alipay_actual": "0"}, 200).Body
 	body := f.Call(t, f.Owner, "list_day_closes", map[string]any{"date_from": "2026-10-01", "date_to": "2026-10-02"}, 200).Body
 	items := body["items"].([]any)
-	if len(items) != 1 || items[0].(map[string]any)["business_date"] != "2026-10-01" || items[0].(map[string]any)["sealed"] != true || body["sealed_through"] != "2026-10-01" {
+	if len(items) != 1 || items[0].(map[string]any)["business_date"] != "2026-10-01" || items[0].(map[string]any)["version"] != float64(1) {
 		t.Fatal(body)
+	}
+	sameDifferences(t, items[0].(map[string]any)["differences"].([]any), first["differences"].([]any))
+	if difference(t, items[0].(map[string]any)["differences"].([]any), "cash") != "0.00" {
+		t.Fatal(items[0])
+	}
+
+	second := f.Call(t, f.Owner, "close_day", map[string]any{"date": "2026-10-01", "cash_counted": "12", "unionpay_actual": "3", "wechat_actual": "0", "alipay_actual": "0"}, 200).Body
+	body = f.Call(t, f.Owner, "list_day_closes", map[string]any{"date_from": "2026-10-01", "date_to": "2026-10-02"}, 200).Body
+	items = body["items"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["version"] != float64(2) {
+		t.Fatal(body)
+	}
+	sameDifferences(t, items[0].(map[string]any)["differences"].([]any), second["differences"].([]any))
+	if difference(t, items[0].(map[string]any)["differences"].([]any), "cash") != "2.00" || difference(t, items[0].(map[string]any)["differences"].([]any), "unionpay") != "3.00" {
+		t.Fatal(items[0])
+	}
+
+	f.Call(t, f.Owner, "seal_day", map[string]any{"date": "2026-10-01"}, 200)
+	body = f.Call(t, f.Owner, "list_day_closes", map[string]any{"date_from": "2026-10-01", "date_to": "2026-10-02"}, 200).Body
+	items = body["items"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["sealed"] != true || body["sealed_through"] != "2026-10-01" {
+		t.Fatal(body)
+	}
+}
+
+func TestListDayClosesBusinessDays(t *testing.T) {
+	f := open(t)
+	// date_from 当天只有团购券时间戳，没有显式 business_date；时刻早于不宽放的
+	// from 零点（UTC），守住时间窗口起点的宽放。
+	redeemed := at("2026-10-01", 0).Add(30 * time.Minute)
+	tx := dbtest.AppTx(t, f.Pool, f.Res.TenantID)
+	if _, err := tx.Exec(t.Context(), `INSERT INTO coupon_redemptions (tenant_id,store_id,platform,coupon_code,idempotency_key,status,redeemed_by,created_at,redeemed_at)
+VALUES ($1,$2,'douyin','window-boundary','window-boundary','redeemed',$3,$4,$4)`, f.Res.TenantID, f.Res.StoreID, f.Res.OwnerID, redeemed); err != nil {
+		t.Fatal(err)
+	}
+	dbtest.Commit(t, tx)
+
+	// date_to 当天有营业，守住结果包含 to。
+	order := f.order("2026-10-03", f.customer, "10.00")
+	f.checkout(order, payment("cash", "10"))
+	// 范围外的一天有营业，不应出现在结果里。
+	outside := f.order("2026-10-05", f.customer, "10.00")
+	f.checkout(outside, payment("cash", "10"))
+	f.now("2026-10-04", 12)
+
+	body := f.Call(t, f.Owner, "list_day_closes", map[string]any{"date_from": "2026-10-01", "date_to": "2026-10-03"}, 200).Body
+	days := body["business_days"].([]any)
+	if len(days) != 2 || days[0] != "2026-10-01" || days[1] != "2026-10-03" {
+		t.Fatalf("business_days = %v", body["business_days"])
+	}
+
+	r := f.HTTP(t, new(f.MustCaller(f.Owner)), "seal_day", map[string]any{"date": "2026-10-01"})
+	if r.Status != http.StatusConflict || r.Detail() != "请先日结 2026-10-01" {
+		t.Fatal(r)
+	}
+	f.Call(t, f.Owner, "seal_day", map[string]any{"date": "2026-10-02"}, 200)
+
+	body = f.Call(t, f.Owner, "list_day_closes", map[string]any{"date_from": "2026-10-02", "date_to": "2026-10-02"}, 200).Body
+	if days, ok := body["business_days"].([]any); !ok || len(days) != 0 {
+		t.Fatalf("business_days = %v", body["business_days"])
+	}
+}
+
+func sameDifferences(t *testing.T, got, want []any) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("differences length = %d, want %d", len(got), len(want))
+	}
+	byMethod := map[string]map[string]any{}
+	for _, raw := range got {
+		line := raw.(map[string]any)
+		byMethod[line["method"].(string)] = line
+	}
+	for _, raw := range want {
+		line := raw.(map[string]any)
+		method := line["method"].(string)
+		listed, ok := byMethod[method]
+		if !ok {
+			t.Fatalf("method %s not listed in %v", method, got)
+		}
+		for _, key := range []string{"system", "actual", "difference"} {
+			if listed[key] != line[key] {
+				t.Fatalf("%s %s = %v, want %v", method, key, listed[key], line[key])
+			}
+		}
 	}
 }
 

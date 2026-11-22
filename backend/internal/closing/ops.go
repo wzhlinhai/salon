@@ -152,14 +152,22 @@ func listDayCloses(ctx context.Context, env ops.Env, in *ListDayClosesInput) (*D
 	if err != nil {
 		return nil, err
 	}
+	businessDays, err := businessDaysIn(ctx, env, query.From, query.To)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := env.Q.ListCurrentDayCloses(ctx, dbgen.ListCurrentDayClosesParams{StoreID: env.Caller.StoreID, DateFrom: pgDate(query.From), DateTo: pgDate(query.To)})
 	if err != nil {
 		return nil, err
 	}
-	out := &DayCloseList{SealedThrough: dateValue(sealed), Items: []DayCloseListItem{}}
+	out := &DayCloseList{SealedThrough: dateValue(sealed), BusinessDays: businessDays, Items: []DayCloseListItem{}}
 	for _, row := range rows {
 		day := row.BusinessDate.Time
-		out.Items = append(out.Items, DayCloseListItem{ID: row.ID, BusinessDate: day.Format(settings.DateLayout), Version: row.Version, CashCounted: row.CashCounted, UnionpayActual: row.UnionpayActual, WechatActual: row.WechatActual, AlipayActual: row.AlipayActual, Note: row.Note, Sealed: sealed != nil && !day.After(*sealed), CreatedAt: row.CreatedAt.Time})
+		diffs, err := decodeDifferences(row.Differences)
+		if err != nil {
+			return nil, err
+		}
+		out.Items = append(out.Items, DayCloseListItem{ID: row.ID, BusinessDate: day.Format(settings.DateLayout), Version: row.Version, Differences: diffs, CashCounted: row.CashCounted, UnionpayActual: row.UnionpayActual, WechatActual: row.WechatActual, AlipayActual: row.AlipayActual, Note: row.Note, Sealed: sealed != nil && !day.After(*sealed), CreatedAt: row.CreatedAt.Time})
 	}
 	return out, nil
 }
@@ -202,11 +210,11 @@ func sealDay(ctx context.Context, env ops.Env, in *DayInput) (*SealResult, error
 		return nil, err
 	}
 	if len(versions) == 0 {
-		has, err := hasBusiness(ctx, env, day)
+		businessDays, err := businessDaysIn(ctx, env, day, day)
 		if err != nil {
 			return nil, err
 		}
-		if has {
+		if len(businessDays) > 0 {
 			return nil, ops.Rule("请先日结 " + day.Format(settings.DateLayout))
 		}
 	} else {
@@ -296,11 +304,19 @@ func viewDayClose(row dbgen.DayClose) (*DayClose, error) {
 	if err := json.Unmarshal(row.System, &system); err != nil {
 		return nil, err
 	}
-	var diffs []MethodDifference
-	if err := json.Unmarshal(row.Differences, &diffs); err != nil {
+	diffs, err := decodeDifferences(row.Differences)
+	if err != nil {
 		return nil, err
 	}
 	return &DayClose{ID: row.ID, BusinessDate: row.BusinessDate.Time.Format(settings.DateLayout), Version: row.Version, System: system, Differences: diffs, CashCounted: row.CashCounted, UnionpayActual: row.UnionpayActual, WechatActual: row.WechatActual, AlipayActual: row.AlipayActual, Note: row.Note, CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt.Time}, nil
+}
+
+func decodeDifferences(raw []byte) ([]MethodDifference, error) {
+	var diffs []MethodDifference
+	if err := json.Unmarshal(raw, &diffs); err != nil {
+		return nil, err
+	}
+	return diffs, nil
 }
 
 func dateValue(day *time.Time) *string {

@@ -95,21 +95,23 @@ type DayCloseDetail struct {
 
 // DayCloseListItem 是日结列表中的一天。
 type DayCloseListItem struct {
-	ID             uuid.UUID    `json:"id"`
-	BusinessDate   string       `json:"business_date"`
-	Version        int32        `json:"version"`
-	CashCounted    money.Amount `json:"cash_counted"`
-	UnionpayActual money.Amount `json:"unionpay_actual"`
-	WechatActual   money.Amount `json:"wechat_actual"`
-	AlipayActual   money.Amount `json:"alipay_actual"`
-	Note           *string      `json:"note" nullable:"true"`
-	Sealed         bool         `json:"sealed"`
-	CreatedAt      time.Time    `json:"created_at"`
+	ID             uuid.UUID          `json:"id"`
+	BusinessDate   string             `json:"business_date"`
+	Version        int32              `json:"version"`
+	Differences    []MethodDifference `json:"differences"`
+	CashCounted    money.Amount       `json:"cash_counted"`
+	UnionpayActual money.Amount       `json:"unionpay_actual"`
+	WechatActual   money.Amount       `json:"wechat_actual"`
+	AlipayActual   money.Amount       `json:"alipay_actual"`
+	Note           *string            `json:"note" nullable:"true"`
+	Sealed         bool               `json:"sealed"`
+	CreatedAt      time.Time          `json:"created_at"`
 }
 
 // DayCloseList 是日期范围内的当前日结版本。
 type DayCloseList struct {
 	SealedThrough *string            `json:"sealed_through" nullable:"true"`
+	BusinessDays  []string           `json:"business_days"`
 	Items         []DayCloseListItem `json:"items"`
 }
 

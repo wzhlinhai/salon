@@ -4764,6 +4764,7 @@ export interface components {
             versions: components["schemas"]["DayClose"][];
         };
         DayCloseList: {
+            business_days: string[];
             items: components["schemas"]["DayCloseListItem"][];
             sealed_through: string | null;
         };
@@ -4773,6 +4774,7 @@ export interface components {
             cash_counted: string;
             /** Format: date-time */
             created_at: string;
+            differences: components["schemas"]["MethodDifference"][];
             id: string;
             note: string | null;
             sealed: boolean;
