@@ -69,7 +69,7 @@ function isActive(to: string) {
 }
 
 // 页面骨架（DESIGN.md）：首页有自己的问候，其余页面正文顶上统一一个大标题；宽度按页面元数据分两档。
-const showPageHeader = computed(() => route.path !== '/')
+const showPageHeader = computed(() => route.path !== '/' && !route.meta.workbench)
 const pageWidth = computed(() => route.meta.width === 'narrow' ? 'mx-auto w-full max-w-[800px]' : 'w-full')
 const pageDescription = computed(() => String(route.meta.description || ''))
 
@@ -353,6 +353,7 @@ const searchGroups = computed(() => {
               </div>
               <p id="page-description" class="mt-1 text-muted text-pretty empty:hidden" data-testid="page-description"><span v-if="pageDescription">{{ pageDescription }}</span></p>
             </header>
+            <h1 v-else-if="route.meta.workbench" class="sr-only">{{ pageTitle }}</h1>
             <NuxtPage />
           </div>
         </template>

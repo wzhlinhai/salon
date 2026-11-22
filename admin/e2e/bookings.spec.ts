@@ -135,6 +135,8 @@ test('代约、改约、完成后显示全部状态变化', async ({ page }) => 
   const confirmedEntry = entry(page, seeded.staff.id, seeded.customer.name)
   await expect(confirmedEntry).toHaveAttribute('data-entry-status', 'confirmed')
   await expect(confirmedEntry).toContainText(seeded.item.name)
+  // 列头：头像 + 姓名 + 当天没取消的预约数。
+  await expect(page.locator(`[data-staff-column="${seeded.staff.id}"]`).getByTestId('booking-column-head')).toContainText(`${seeded.staff.name}1 约`)
   const detail = await openEntry(page, seeded.staff.id, seeded.customer.name)
   await expect(detail.locator('[data-event-kind="create"]')).toHaveCount(1)
 
@@ -251,6 +253,8 @@ test('私约占位可以新增和取消', async ({ page }) => {
   await expect(block).not.toBeVisible()
   await reload
 
+  // 私约占位不算预约数。
+  await expect(page.locator(`[data-staff-column="${seeded.staff.id}"]`).getByTestId('booking-column-head')).toContainText(`${seeded.staff.name}0 约`)
   const detail = await openEntry(page, seeded.staff.id, '私约占位')
   await expect(detail.locator('[data-appointment-detail]')).toHaveAttribute('data-detail-status', 'confirmed')
   await detail.getByRole('button', { name: '取消占位', exact: true }).click()

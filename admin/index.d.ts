@@ -6,6 +6,8 @@ declare module '#app' {
     width?: 'narrow'
     // 标题下一句灰字：这页管什么、怎么用。
     description?: string
+    // 工作台（收银、预约）：顶栏面包屑已经写了页名，正文不再放大标题，高度留给内容；标题只留给读屏。
+    workbench?: boolean
   }
 }
 

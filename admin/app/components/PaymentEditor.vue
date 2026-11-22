@@ -39,6 +39,23 @@ function change() {
   touched.value = true
 }
 
+function pick(payment: Payment, method: string) {
+  if (payment.method === method) return
+  payment.method = method
+  change()
+}
+
+// 单选组的键盘约定：整组只占一个 Tab 位，方向键在方式间移动并选中。
+function move(event: KeyboardEvent, payment: Payment, step: number) {
+  const list = methods.value
+  const index = list.findIndex(m => m.value === payment.method)
+  const next = list[(index + step + list.length) % list.length]
+  if (!next) return
+  pick(payment, next.value)
+  const group = (event.currentTarget as HTMLElement).parentElement
+  void nextTick(() => group?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus())
+}
+
 function add() {
   touched.value = true
   const left = cents(props.expected) - total.value
@@ -57,13 +74,31 @@ function remove(index: number) {
       <p>收款方式</p>
       <p class="tabular-nums">应收合计 {{ yuanFixed(expected) }}</p>
     </div>
-    <div v-for="(payment, index) in payments" :key="index" class="flex items-end gap-2">
-      <UFormField label="方式" class="w-28" :ui="{ label: 'text-meta text-muted font-normal' }">
-        <USelect v-model="payment.method" :items="methods" class="w-full" @update:model-value="change" />
-      </UFormField>
-      <UFormField label="金额" class="flex-1" :ui="{ label: 'text-meta text-muted font-normal' }">
-        <UInput v-model="payment.amount" inputmode="decimal" class="w-full tabular-nums" @update:model-value="change" />
-      </UFormField>
+    <!-- 收款方式一键选（DESIGN.md 表单）：方式不多，平铺成一排按钮，不用下拉。 -->
+    <div v-for="(payment, index) in payments" :key="index" class="flex flex-wrap items-center gap-2" :class="index ? 'border-t border-default pt-2' : ''" data-testid="payment-row">
+      <div role="radiogroup" aria-label="方式" class="flex flex-wrap gap-1.5">
+        <UButton
+          v-for="m in methods"
+          :key="m.value"
+          role="radio"
+          :aria-checked="payment.method === m.value"
+          :tabindex="payment.method === m.value || !methods.some(x => x.value === payment.method) ? 0 : -1"
+          size="sm"
+          :color="payment.method === m.value ? 'primary' : 'neutral'"
+          :variant="payment.method === m.value ? 'soft' : 'outline'"
+          :class="payment.method === m.value ? 'font-medium ring-1 ring-primary/40 ring-inset' : ''"
+          @click="pick(payment, m.value)"
+          @keydown.left.prevent="move($event, payment, -1)"
+          @keydown.right.prevent="move($event, payment, 1)"
+          @keydown.up.prevent="move($event, payment, -1)"
+          @keydown.down.prevent="move($event, payment, 1)"
+        >
+          {{ m.label }}
+        </UButton>
+      </div>
+      <UInput v-model="payment.amount" aria-label="金额" inputmode="decimal" class="min-w-32 flex-1 tabular-nums" @update:model-value="change">
+        <template #leading><span class="text-meta text-muted">¥</span></template>
+      </UInput>
       <UButton color="neutral" variant="ghost" icon="i-lucide-x" aria-label="删除" @click="remove(index)" />
     </div>
     <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-plus" @click="add">添加收款方式</UButton>
