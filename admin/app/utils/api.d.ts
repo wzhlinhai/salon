@@ -4764,6 +4764,7 @@ export interface components {
             versions: components["schemas"]["DayClose"][];
         };
         DayCloseList: {
+            business_days: string[];
             items: components["schemas"]["DayCloseListItem"][];
             sealed_through: string | null;
         };

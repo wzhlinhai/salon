@@ -318,6 +318,44 @@ func TestListDayCloses(t *testing.T) {
 	}
 }
 
+func TestListDayClosesBusinessDays(t *testing.T) {
+	f := open(t)
+	// date_from 当天只有团购券时间戳，没有显式 business_date；时刻早于不宽放的
+	// from 零点（UTC），守住时间窗口起点的宽放。
+	redeemed := at("2026-10-01", 0).Add(30 * time.Minute)
+	tx := dbtest.AppTx(t, f.Pool, f.Res.TenantID)
+	if _, err := tx.Exec(t.Context(), `INSERT INTO coupon_redemptions (tenant_id,store_id,platform,coupon_code,idempotency_key,status,redeemed_by,created_at,redeemed_at)
+VALUES ($1,$2,'douyin','window-boundary','window-boundary','redeemed',$3,$4,$4)`, f.Res.TenantID, f.Res.StoreID, f.Res.OwnerID, redeemed); err != nil {
+		t.Fatal(err)
+	}
+	dbtest.Commit(t, tx)
+
+	// date_to 当天有营业，守住结果包含 to。
+	order := f.order("2026-10-03", f.customer, "10.00")
+	f.checkout(order, payment("cash", "10"))
+	// 范围外的一天有营业，不应出现在结果里。
+	outside := f.order("2026-10-05", f.customer, "10.00")
+	f.checkout(outside, payment("cash", "10"))
+	f.now("2026-10-04", 12)
+
+	body := f.Call(t, f.Owner, "list_day_closes", map[string]any{"date_from": "2026-10-01", "date_to": "2026-10-03"}, 200).Body
+	days := body["business_days"].([]any)
+	if len(days) != 2 || days[0] != "2026-10-01" || days[1] != "2026-10-03" {
+		t.Fatalf("business_days = %v", body["business_days"])
+	}
+
+	r := f.HTTP(t, new(f.MustCaller(f.Owner)), "seal_day", map[string]any{"date": "2026-10-01"})
+	if r.Status != http.StatusConflict || r.Detail() != "请先日结 2026-10-01" {
+		t.Fatal(r)
+	}
+	f.Call(t, f.Owner, "seal_day", map[string]any{"date": "2026-10-02"}, 200)
+
+	body = f.Call(t, f.Owner, "list_day_closes", map[string]any{"date_from": "2026-10-02", "date_to": "2026-10-02"}, 200).Body
+	if days, ok := body["business_days"].([]any); !ok || len(days) != 0 {
+		t.Fatalf("business_days = %v", body["business_days"])
+	}
+}
+
 func sameDifferences(t *testing.T, got, want []any) {
 	t.Helper()
 	if len(got) != len(want) {

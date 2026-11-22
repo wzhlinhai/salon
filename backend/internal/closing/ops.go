@@ -152,11 +152,15 @@ func listDayCloses(ctx context.Context, env ops.Env, in *ListDayClosesInput) (*D
 	if err != nil {
 		return nil, err
 	}
+	businessDays, err := businessDaysIn(ctx, env, query.From, query.To)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := env.Q.ListCurrentDayCloses(ctx, dbgen.ListCurrentDayClosesParams{StoreID: env.Caller.StoreID, DateFrom: pgDate(query.From), DateTo: pgDate(query.To)})
 	if err != nil {
 		return nil, err
 	}
-	out := &DayCloseList{SealedThrough: dateValue(sealed), Items: []DayCloseListItem{}}
+	out := &DayCloseList{SealedThrough: dateValue(sealed), BusinessDays: businessDays, Items: []DayCloseListItem{}}
 	for _, row := range rows {
 		day := row.BusinessDate.Time
 		diffs, err := decodeDifferences(row.Differences)
@@ -206,11 +210,11 @@ func sealDay(ctx context.Context, env ops.Env, in *DayInput) (*SealResult, error
 		return nil, err
 	}
 	if len(versions) == 0 {
-		has, err := hasBusiness(ctx, env, day)
+		businessDays, err := businessDaysIn(ctx, env, day, day)
 		if err != nil {
 			return nil, err
 		}
-		if has {
+		if len(businessDays) > 0 {
 			return nil, ops.Rule("请先日结 " + day.Format(settings.DateLayout))
 		}
 	} else {

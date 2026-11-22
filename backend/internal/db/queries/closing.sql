@@ -24,7 +24,10 @@ WHERE store_id=sqlc.arg(store_id) AND kind='seal' AND business_date=sqlc.arg(bus
 ORDER BY at DESC, id DESC LIMIT 1;
 
 -- name: CollectionCreatedAts :many
-SELECT created_at, business_date FROM collections WHERE store_id=sqlc.arg(store_id);
+SELECT created_at, business_date FROM collections
+WHERE store_id=sqlc.arg(store_id)
+  AND (business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
+       OR (created_at >= sqlc.arg(window_from) AND created_at < sqlc.arg(window_to)));
 
 -- name: CollectionEventAts :many
 SELECT e.at, c.business_date,
@@ -32,14 +35,18 @@ SELECT e.at, c.business_date,
                WHERE e2.tenant_id=e.tenant_id AND e2.collection_id=e.collection_id
                ORDER BY e2.at, e2.id LIMIT 1) AS initial
 FROM collection_events e JOIN collections c ON c.tenant_id=e.tenant_id AND c.id=e.collection_id
-WHERE e.store_id=sqlc.arg(store_id);
+WHERE e.store_id=sqlc.arg(store_id)
+  AND e.at >= sqlc.arg(window_from) AND e.at < sqlc.arg(window_to);
 
 -- name: CouponRedemptionAts :many
-SELECT x.created_at AS at FROM coupon_redemptions x WHERE x.store_id=sqlc.arg(store_id)
+SELECT x.created_at AS at FROM coupon_redemptions x
+WHERE x.store_id=sqlc.arg(store_id) AND x.created_at >= sqlc.arg(window_from) AND x.created_at < sqlc.arg(window_to)
 UNION ALL
-SELECT x.redeemed_at AS at FROM coupon_redemptions x WHERE x.store_id=sqlc.arg(store_id) AND x.redeemed_at IS NOT NULL
+SELECT x.redeemed_at AS at FROM coupon_redemptions x
+WHERE x.store_id=sqlc.arg(store_id) AND x.redeemed_at IS NOT NULL AND x.redeemed_at >= sqlc.arg(window_from) AND x.redeemed_at < sqlc.arg(window_to)
 UNION ALL
-SELECT x.revoked_at AS at FROM coupon_redemptions x WHERE x.store_id=sqlc.arg(store_id) AND x.revoked_at IS NOT NULL;
+SELECT x.revoked_at AS at FROM coupon_redemptions x
+WHERE x.store_id=sqlc.arg(store_id) AND x.revoked_at IS NOT NULL AND x.revoked_at >= sqlc.arg(window_from) AND x.revoked_at < sqlc.arg(window_to);
 
 -- name: UndoCardLedgerDates :many
 SELECT l.business_date FROM import_batch_records r
@@ -71,27 +78,61 @@ SELECT id FROM orders
 WHERE store_id=sqlc.arg(store_id) AND status='open' AND business_date <= sqlc.arg(through_date)
 ORDER BY id;
 
--- name: DayHasBusiness :one
-SELECT
- EXISTS (SELECT 1 FROM orders x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
- OR EXISTS (SELECT 1 FROM checkouts x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
- OR EXISTS (SELECT 1 FROM card_ledger x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
- OR EXISTS (SELECT 1 FROM card_count_ledger x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
- OR EXISTS (SELECT 1 FROM card_adjustments x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
- OR EXISTS (SELECT 1 FROM card_upgrades x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
- OR EXISTS (SELECT 1 FROM card_refunds x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
- OR EXISTS (SELECT 1 FROM card_transfers x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
- OR EXISTS (SELECT 1 FROM debts x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
- OR EXISTS (SELECT 1 FROM debt_repayments x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
- OR EXISTS (SELECT 1 FROM red_packets x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
- OR EXISTS (SELECT 1 FROM order_voids x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
- OR EXISTS (SELECT 1 FROM aftersale_refunds x JOIN aftersales a ON a.tenant_id=x.tenant_id AND a.id=x.aftersale_id WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day) AND a.status='approved')
- OR EXISTS (SELECT 1 FROM sale_payments x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
- OR EXISTS (SELECT 1 FROM card_points_ledger x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
- OR EXISTS (SELECT 1 FROM guest_visits x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
- OR EXISTS (SELECT 1 FROM collections x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
- OR EXISTS (SELECT 1 FROM performance_entries x WHERE x.store_id=sqlc.arg(store_id) AND x.business_date=sqlc.arg(day))
- AS has_business;
+-- name: BusinessDaysInRange :many
+SELECT x.business_date FROM orders x
+WHERE x.store_id=sqlc.arg(store_id) AND x.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
+UNION
+SELECT x.business_date FROM checkouts x
+WHERE x.store_id=sqlc.arg(store_id) AND x.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
+UNION
+SELECT x.business_date FROM card_ledger x
+WHERE x.store_id=sqlc.arg(store_id) AND x.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
+UNION
+SELECT x.business_date FROM card_count_ledger x
+WHERE x.store_id=sqlc.arg(store_id) AND x.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
+UNION
+SELECT x.business_date FROM card_adjustments x
+WHERE x.store_id=sqlc.arg(store_id) AND x.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
+UNION
+SELECT x.business_date FROM card_upgrades x
+WHERE x.store_id=sqlc.arg(store_id) AND x.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
+UNION
+SELECT x.business_date FROM card_refunds x
+WHERE x.store_id=sqlc.arg(store_id) AND x.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
+UNION
+SELECT x.business_date FROM card_transfers x
+WHERE x.store_id=sqlc.arg(store_id) AND x.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
+UNION
+SELECT x.business_date FROM debts x
+WHERE x.store_id=sqlc.arg(store_id) AND x.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
+UNION
+SELECT x.business_date FROM debt_repayments x
+WHERE x.store_id=sqlc.arg(store_id) AND x.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
+UNION
+SELECT x.business_date FROM red_packets x
+WHERE x.store_id=sqlc.arg(store_id) AND x.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
+UNION
+SELECT x.business_date FROM order_voids x
+WHERE x.store_id=sqlc.arg(store_id) AND x.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
+UNION
+SELECT x.business_date FROM aftersale_refunds x JOIN aftersales a ON a.tenant_id=x.tenant_id AND a.id=x.aftersale_id
+WHERE x.store_id=sqlc.arg(store_id) AND x.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date AND a.status='approved'
+UNION
+SELECT x.business_date FROM sale_payments x
+WHERE x.store_id=sqlc.arg(store_id) AND x.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
+UNION
+SELECT x.business_date FROM card_points_ledger x
+WHERE x.store_id=sqlc.arg(store_id) AND x.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
+UNION
+SELECT x.business_date FROM guest_visits x
+WHERE x.store_id=sqlc.arg(store_id) AND x.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
+UNION
+SELECT x.business_date FROM collections x
+WHERE x.store_id=sqlc.arg(store_id) AND x.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
+UNION
+SELECT x.business_date FROM performance_entries x
+WHERE x.store_id=sqlc.arg(store_id) AND x.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date
+ORDER BY business_date;
 
 -- name: NextDayCloseVersion :one
 SELECT COALESCE(max(version),0)+1 AS version FROM day_closes

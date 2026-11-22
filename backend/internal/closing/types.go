@@ -111,6 +111,7 @@ type DayCloseListItem struct {
 // DayCloseList 是日期范围内的当前日结版本。
 type DayCloseList struct {
 	SealedThrough *string            `json:"sealed_through" nullable:"true"`
+	BusinessDays  []string           `json:"business_days"`
 	Items         []DayCloseListItem `json:"items"`
 }
 
