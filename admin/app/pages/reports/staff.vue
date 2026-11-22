@@ -139,6 +139,7 @@ const commissions = ref<Commission[]>([])
 const moreEntries = ref(false)
 const moreCommissions = ref(false)
 const detailLoading = ref(false)
+const detailFailed = ref(false)
 const detailGuard = useRequestGuard()
 
 async function fetchEntries(staffId: string, before?: string) {
@@ -156,6 +157,9 @@ async function openDetail(row: Row) {
   tab.value = 'performance'
   entries.value = []
   commissions.value = []
+  moreEntries.value = false
+  moreCommissions.value = false
+  detailFailed.value = false
   open.value = true
   const current = detailGuard.next()
   detailLoading.value = true
@@ -163,6 +167,7 @@ async function openDetail(row: Row) {
     const [perf, earned] = await Promise.all([fetchEntries(staffId), fetchCommissions(staffId)])
     if (!current()) return
     if (!perf.data || !earned.data) {
+      detailFailed.value = true
       toast.add({ title: errorText(perf.error ?? earned.error), color: 'error' })
       return
     }
@@ -292,7 +297,10 @@ function signed(amount: string, reversal: boolean) {
             <template v-else>提成合计 {{ yuan(picked.commission_total) }}</template>
           </p>
 
-          <template v-if="tab === 'performance'">
+          <EmptyState v-if="detailFailed" icon="i-lucide-circle-alert" title="明细没有读出来" hint="检查网络后再试一次">
+            <UButton color="neutral" variant="outline" @click="openDetail(picked)">重试</UButton>
+          </EmptyState>
+          <template v-else-if="tab === 'performance'">
             <EmptyState v-if="!entries.length && !detailLoading" title="这段时间没有业绩" />
             <ul v-else class="divide-y divide-default text-sm" data-testid="staff-performance-list">
               <li v-for="e in entries" :key="e.id" class="py-2.5">

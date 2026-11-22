@@ -29,7 +29,7 @@ async function seedCheckout() {
     orders: [{ order_id: order.id, payments: [{ method: 'wechat', amount: order.net }] }]
   })
   const settings = await api<{ business_date: string }>(token, 'get_settings', {})
-  return { today: settings.business_date, stylist, itemName: `报表项目${suffix}` }
+  return { today: settings.business_date, stylist, itemName: `报表项目${suffix}`, orderId: order.id }
 }
 
 // 表格里的数换成分（金额）或整数（单数），合计逐列核对用。
@@ -98,8 +98,13 @@ async function expectStaffTotalsAreSums(table: Locator) {
   }
 }
 
-test('店长看员工业绩：每人一行、合计等于各行之和，点一个人看每笔业绩', async ({ page }) => {
-  const { today, stylist, itemName } = await seedCheckout()
+test('店长看员工业绩：每人一行、合计等于各行之和，点一个人看每笔业绩，撤单的冲回记负数', async ({ page }) => {
+  const { today, stylist, itemName, orderId } = await seedCheckout()
+  // 撤掉这一单：业绩写一笔冲回，明细里要显示成负数。
+  const ownerToken = await apiLogin(owner.account, owner.password)
+  // 撤单授权窗口默认不开（不用授权）；收银用例会临时开 5 分钟，那时得先输密码开窗口，没开就忽略。
+  await api(ownerToken, 'open_void_window', { password: owner.password }).catch(() => undefined)
+  await api(ownerToken, 'void_order', { order_id: orderId, reason: '报表用例撤单' })
   const manager = await hire('店长')
   await login(page, manager.account, manager.password)
   await page.goto('/reports')
@@ -119,7 +124,11 @@ test('店长看员工业绩：每人一行、合计等于各行之和，点一�
 
   await row.getByRole('button', { name: stylist.name }).click()
   const detail = page.getByTestId('staff-detail')
-  await expect(detail.getByTestId('staff-performance-list')).toContainText(itemName)
+  const list = detail.getByTestId('staff-performance-list')
+  await expect(list).toContainText(itemName)
+  const reversal = list.locator('li').filter({ hasText: '冲回' })
+  await expect(reversal).toHaveCount(1)
+  await expect(reversal).toContainText(/-¥\d/)
   await detail.getByRole('radiogroup', { name: '明细类别' }).getByRole('radio', { name: '提成' }).click()
   await expect(detail.getByText(/提成合计/)).toBeVisible()
 
