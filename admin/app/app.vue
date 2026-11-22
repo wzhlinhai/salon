@@ -203,7 +203,7 @@ const searchGroups = computed(() => {
         :max-size="20"
         :collapsed-size="4.5"
         class="bg-side"
-        :ui="{ header: 'h-auto px-2 pt-2 pb-1.5', body: 'gap-px px-2 py-0 text-muted', footer: 'px-2 pb-3 pt-2' }"
+        :ui="{ header: 'h-auto px-2 pt-2 pb-1.5', body: 'side-scroll gap-px px-2 py-0 text-muted', footer: 'px-2 pb-3 pt-2' }"
       >
         <template #header="{ collapsed }">
           <div class="flex min-h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 font-semibold" :class="collapsed ? 'justify-center px-0' : ''">
@@ -263,9 +263,19 @@ const searchGroups = computed(() => {
                 />
               </button>
               <div v-else class="mx-2 mt-2 mb-1 border-t border-default" />
+              <!-- 收成窄条时照样遵守分组的收起：收起的组只留一个按钮，点开从右边列出组里的页面。 -->
+              <UDropdownMenu
+                v-if="collapsed && !groupOpen(group)"
+                :items="group.items.map(item => ({ label: item.label, icon: item.icon, to: item.to }))"
+                :content="{ side: 'right', align: 'start' }"
+              >
+                <button type="button" class="side-item justify-center" :aria-label="`${group.label}（已收起）`" :title="group.label" data-testid="nav-group-rail">
+                  <UIcon name="i-lucide-ellipsis" class="side-icon" aria-hidden="true" />
+                </button>
+              </UDropdownMenu>
               <NuxtLink
                 v-for="item in group.items"
-                v-show="collapsed || groupOpen(group)"
+                v-show="groupOpen(group)"
                 :key="item.to"
                 :to="item.to"
                 class="side-item"
