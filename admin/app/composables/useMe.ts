@@ -14,9 +14,11 @@ export function useMe() {
     return me.value
   }
 
-  function can(permission: string): boolean {
+  // 传数组表示有其中任一项即可（例如报表入口：营业报表或员工业绩）。
+  function can(permission: string | readonly string[]): boolean {
     if (!me.value) return false
-    return me.value.is_owner || me.value.permissions.some(p => p.permission === permission)
+    const wanted = typeof permission === 'string' ? [permission] : permission
+    return me.value.is_owner || me.value.permissions.some(p => wanted.includes(p.permission))
   }
 
   // 某项权限的数据范围和时间窗口；老板不受限。没有该权限时返回 null。
