@@ -8,8 +8,6 @@ const emit = defineEmits<{ changed: [] }>()
 const api = useApi()
 const toast = useToast()
 const totals = ref<Schema['CommissionSourceTotal'][]>([])
-const sourceNames = { item: '项目业绩', consume: '耗卡业绩', labor: '手工费', sale: '销售业绩' }
-const bases = { line_price: '项目行价格（原价）', paid: '实收（折后价）', performance: '业绩', cash_performance: '现金业绩', card_performance: '卡金业绩' }
 const commissions = useCursorList(async (beforeId) => {
   const { data, error } = await api.POST('/api/ops/list_payroll_commissions', { body: { month: props.month, staff_id: props.staffId, limit: LOG_PAGE_SIZE, before_id: beforeId } })
   if (data) totals.value = data.totals
@@ -19,13 +17,6 @@ const adjustments = useCursorList(async (beforeId) => {
   const { data, error } = await api.POST('/api/ops/list_payroll_adjustments', { body: { month: props.month, staff_id: props.staffId, limit: LOG_PAGE_SIZE, before_id: beforeId } })
   return { data: data?.entries, error }
 })
-
-function explanation(c: Schema['Commission']) {
-  const e = c.explanation
-  const match = e.match.override ?? e.match.cell
-  const value = e.tier ? `${e.tier.mode === 'whole' ? '整笔跳档' : '超额累进'}，从 ${e.tier.level.from} 元起 ${e.tier.level.percent}%` : match?.percent !== undefined ? `${match.percent}%` : match?.fixed_amount !== undefined ? `固定 ${match.fixed_amount} 元` : '不计提成'
-  return `${bases[e.base.kind]} ${e.base.amount} · ${value} · 方案第 ${e.version.version} 版`
-}
 
 const deletion = useModalForm()
 const { open, saving } = deletion
@@ -65,12 +56,12 @@ onMounted(() => Promise.all([commissions.reload(), adjustments.reload()]))
     <section>
       <h2 class="sec">提成明细</h2>
       <div data-testid="commission-totals" class="mb-3 grid grid-cols-2 gap-2 text-sm">
-        <p v-for="t in totals" :key="t.source" class="rounded-md bg-elevated px-3 py-2"><span class="text-muted">{{ sourceNames[t.source] }}</span> <span class="font-medium tabular-nums">{{ t.amount }}</span></p>
+        <p v-for="t in totals" :key="t.source" class="rounded-md bg-elevated px-3 py-2"><span class="text-muted">{{ commissionSourceNames[t.source] }}</span> <span class="font-medium tabular-nums">{{ t.amount }}</span></p>
       </div>
       <div class="box overflow-hidden p-0">
         <div v-for="c in commissions.items.value" :key="c.id" class="border-t border-default px-3 py-2.5 text-sm first:border-t-0" data-testid="payroll-commission">
-          <p class="flex items-center gap-2"><span class="tabular-nums">{{ c.business_date }} · {{ sourceNames[c.source] }} · {{ c.amount }}</span><span v-if="c.reversal" class="tag bg-tag-gray">冲回</span></p>
-          <p class="text-meta text-muted">{{ explanation(c) }}</p>
+          <p class="flex items-center gap-2"><span class="tabular-nums">{{ c.business_date }} · {{ commissionSourceNames[c.source] }} · {{ c.amount }}</span><span v-if="c.reversal" class="tag bg-tag-gray">冲回</span></p>
+          <p class="text-meta text-muted">{{ commissionExplanation(c) }}</p>
         </div>
         <p v-if="!commissions.loading.value && !commissions.items.value.length" class="px-3 py-2.5 text-sm text-muted">本月还没有提成</p>
       </div>
