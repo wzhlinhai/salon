@@ -62,13 +62,14 @@ onMounted(load)
 </script>
 
 <template>
-  <section v-if="loading || debts.length" data-testid="debts">
+  <section id="customer-sec-debts" class="scroll-mt-4" data-testid="debts">
     <div class="sec">
       欠款
       <span v-if="totals && Number(totals.outstanding) > 0" class="ms-1 font-normal text-ink-orange tabular-nums">未还 {{ yuanFixed(totals.outstanding) }}</span>
     </div>
     <div class="box overflow-hidden p-0">
       <p v-if="loading && !debts.length" class="px-3 py-2.5 text-sm text-muted">正在读取欠款…</p>
+      <p v-else-if="!debts.length" class="px-3 py-2.5 text-sm text-muted">没有欠款</p>
       <div v-for="debt in debts" :key="debt.id" :data-debt="debt.id" class="space-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0" :class="debt.status === 'outstanding' ? '' : 'text-muted'">
         <p class="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span class="tag bg-tag-gray">{{ debt.kind === 'order' ? '挂账' : '历史欠款' }}</span>

@@ -2,6 +2,8 @@
 import type { components } from '~/utils/api'
 
 const props = defineProps<{ id: string, merged: boolean }>()
+// 卡变了（开卡、充值、调整、升级、转余额、退卡）：详情顶部的卡余额小卡取自列表行，要让列表重读
+const emit = defineEmits<{ changed: [] }>()
 const api = useApi()
 const toast = useToast()
 const { can } = useMe()
@@ -326,6 +328,7 @@ const ledgerKinds: Record<string, string> = { open: '开卡', recharge: '充值'
 
 // 所有写操作刷新同一组已展开的明细，避免某个弹窗漏掉积分或升级记录。
 async function refreshCards() {
+  emit('changed')
   await Promise.all([
     cardLoad(),
     ...(pointsCard.value ? [cardPoints.reload()] : []),
@@ -336,12 +339,35 @@ async function refreshCards() {
   ])
 }
 
+// 卡的操作（DESIGN.md 行内操作）：充值常显，其余收进 ··· 菜单，分成改卡、看记录、退卡三组。
+function canRecharge(card: CustomerCard) {
+  return card.status === 'active' && card.kind !== 'count' && can('card.sell') && !props.merged
+}
+
+function cardMenu(card: CustomerCard) {
+  const active = card.status === 'active'
+  const change = [
+    ...(active && can('card.adjust') ? [{ label: '调整', icon: 'i-lucide-sliders-horizontal', onSelect: () => editAdjustment(card) }] : []),
+    ...(active && can('card.sell') && card.kind === 'stored_value' ? [{ label: '升级', icon: 'i-lucide-arrow-up-circle', onSelect: () => editBalance(card, 'upgrade') }] : []),
+    ...(active && can('card.adjust') ? [{ label: '转余额', icon: 'i-lucide-arrow-right-left', onSelect: () => editBalance(card, 'transfer') }] : [])
+  ]
+  const records = [
+    { label: '流水', icon: 'i-lucide-receipt-text', onSelect: () => cardShowLedger(card.id) },
+    { label: '积分流水', icon: 'i-lucide-star', onSelect: () => showPoints(card.id) },
+    ...(card.items.length ? [{ label: '次数流水', icon: 'i-lucide-list-ordered', onSelect: () => showCounts(card.id) }] : []),
+    { label: '升级记录', icon: 'i-lucide-history', onSelect: () => showUpgrades(card.id) },
+    { label: '调整记录', icon: 'i-lucide-file-clock', onSelect: () => showAdjustments(card.id) }
+  ]
+  const refund = active && can('card.adjust') ? [{ label: '退卡', icon: 'i-lucide-undo-2', color: 'error' as const, onSelect: () => editRefund(card) }] : []
+  return [change, records, refund].filter(group => group.length)
+}
+
 onMounted(cardLoad)
 </script>
 
 <template>
   <div>
-    <section>
+    <section id="customer-sec-cards" class="scroll-mt-4">
       <div class="sec">
         卡<span class="ms-1 font-normal text-dimmed">{{ cardCards.length }}</span>
         <UButton v-if="can('card.sell') && !props.merged" size="sm" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto" @click="cardEdit(null)">开卡</UButton>
@@ -350,30 +376,25 @@ onMounted(cardLoad)
         <p v-if="cardLoading" class="px-3 py-2.5 text-sm text-muted">正在读取卡…</p>
         <p v-else-if="!cardCards.length" class="px-3 py-2.5 text-sm text-muted">暂无卡</p>
         <div v-for="card in cardCards" :key="card.id" :data-card="card.id" class="space-y-2 border-t border-default px-3 py-2.5 text-sm first:border-t-0" :class="card.status === 'refunded' ? 'text-muted' : ''">
-          <p class="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span class="font-medium">{{ card.card_type_name }}</span>
-            <span v-if="card.status === 'refunded'" class="tag bg-tag-gray">已退</span>
-            <span class="tabular-nums"><span class="text-muted">本金</span> {{ yuanFixed(card.principal) }}</span>
-            <span class="tabular-nums"><span class="text-muted">赠送金</span> {{ yuanFixed(card.bonus) }}</span>
-            <span class="tabular-nums"><span class="text-muted">积分</span> {{ card.points }}</span>
-            <span class="ms-auto text-meta text-muted">有效期 {{ card.expires_on || '不限' }}</span>
-          </p>
+          <div class="flex items-start gap-2">
+            <p class="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+              <span class="font-medium">{{ card.card_type_name }}</span>
+              <span v-if="card.status === 'refunded'" class="tag bg-tag-gray">已退</span>
+              <span class="tabular-nums"><span class="text-muted">本金</span> {{ yuanFixed(card.principal) }}</span>
+              <span class="tabular-nums"><span class="text-muted">赠送金</span> {{ yuanFixed(card.bonus) }}</span>
+              <span class="tabular-nums"><span class="text-muted">积分</span> {{ card.points }}</span>
+              <span class="ms-auto text-meta text-muted">有效期 {{ card.expires_on || '不限' }}</span>
+            </p>
+            <div class="-my-1 flex shrink-0 items-center gap-1">
+              <UButton v-if="canRecharge(card)" size="sm" color="neutral" variant="outline" @click="cardEdit(card)">充值</UButton>
+              <UDropdownMenu :items="cardMenu(card)" :content="{ align: 'end' }">
+                <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-ellipsis" :aria-label="`${card.card_type_name} 的操作`" />
+              </UDropdownMenu>
+            </div>
+          </div>
           <div v-if="card.items.length" class="rounded-md bg-elevated px-2 py-1.5 text-meta">
             <p v-for="item in card.items" :key="item.item_id" data-testid="remaining-counts" class="tabular-nums">{{ item.item_name }} · 购买 {{ item.paid_remaining }} · 赠送 {{ item.gift_remaining }}</p>
             <p class="text-muted">次数售价 {{ yuanFixed(card.counts_price) }}</p>
-          </div>
-          <div class="-mx-1.5 flex flex-wrap gap-0.5">
-            <UButton v-if="card.status === 'active' && card.kind !== 'count' && can('card.sell') && !props.merged" size="sm" color="neutral" variant="ghost" @click="cardEdit(card)">充值</UButton>
-            <UButton v-if="card.status === 'active' && can('card.adjust')" size="sm" color="neutral" variant="ghost" @click="editAdjustment(card)">调整</UButton>
-            <span v-if="card.status === 'active' && ((card.kind !== 'count' && can('card.sell') && !props.merged) || can('card.adjust'))" class="mx-1 my-1.5 w-px bg-line" aria-hidden="true" />
-            <UButton size="sm" color="neutral" variant="ghost" @click="cardShowLedger(card.id)">流水</UButton>
-            <UButton size="sm" color="neutral" variant="ghost" @click="showPoints(card.id)">积分流水</UButton>
-            <UButton v-if="card.items.length" size="sm" color="neutral" variant="ghost" @click="showCounts(card.id)">次数流水</UButton>
-            <UButton v-if="card.status === 'active' && can('card.sell') && card.kind === 'stored_value'" size="sm" color="neutral" variant="ghost" @click="editBalance(card, 'upgrade')">升级</UButton>
-            <UButton v-if="card.status === 'active' && can('card.adjust')" size="sm" color="neutral" variant="ghost" @click="editBalance(card, 'transfer')">转余额</UButton>
-            <UButton v-if="card.status === 'active' && can('card.adjust')" size="sm" color="error" variant="ghost" @click="editRefund(card)">退卡</UButton>
-            <UButton size="sm" color="neutral" variant="ghost" @click="showUpgrades(card.id)">升级记录</UButton>
-            <UButton size="sm" color="neutral" variant="ghost" @click="showAdjustments(card.id)">调整记录</UButton>
           </div>
           <div v-if="upgradeCardID === card.id" data-testid="card-upgrades" class="space-y-1.5 border-s-2 border-default ps-3 text-meta">
             <p v-if="upgrades.loading.value">正在读取升级记录…</p>

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { api, apiLogin, hire, login, owner } from './helpers'
+import { api, apiLogin, customerAction, hire, login, owner } from './helpers'
 
 let phoneSequence = Date.now() % 100000000
 const phone = () => `138${String(++phoneSequence).padStart(8, '0')}`
@@ -76,7 +76,7 @@ test('店长合并顾客时迁移安全标签，默认搜索隐藏被合并顾�
   await api(token, 'add_safety_label', { customer_id: merged.id, kind: 'allergy', source: 'customer_said', observed_on: business_date, note: `染发过敏${suffix}` })
   await login(page, manager.account, manager.password)
   await page.goto(`/customers?id=${keep.id}`)
-  await page.getByRole('button', { name: '合并重复顾客', exact: true }).click()
+  await customerAction(page, '合并重复顾客')
   await page.getByLabel('搜索另一位顾客', { exact: true }).fill(mergedName)
   await page.getByLabel('搜索另一位顾客', { exact: true }).press('Enter')
   await page.getByRole('button', { name: new RegExp(mergedName) }).click()
@@ -117,7 +117,7 @@ test('店长从空查询分页找到全空未识别顾客，并选择保留另�
   }
   await login(page, manager.account, manager.password)
   await page.goto(`/customers?id=${keep.id}`)
-  await page.getByRole('button', { name: '合并重复顾客', exact: true }).click()
+  await customerAction(page, '合并重复顾客')
   const mergeDialog = page.getByRole('dialog', { name: '合并重复顾客', exact: true })
   await expect(mergeDialog.getByLabel('搜索另一位顾客', { exact: true })).toHaveValue('')
   await expect(mergeDialog.locator('[data-customer-id]')).toHaveCount(50)
@@ -130,7 +130,7 @@ test('店长从空查询分页找到全空未识别顾客，并选择保留另�
   await mergeDialog.getByRole('button', { name: '上一页', exact: true }).click()
   await expect(mergeDialog.locator('[data-customer-id]')).toHaveCount(50)
   await page.goto(`/customers?id=${blank.id}`)
-  await page.getByRole('button', { name: '合并重复顾客', exact: true }).click()
+  await customerAction(page, '合并重复顾客')
   await expect(mergeDialog.locator('[data-customer-id]')).toHaveCount(50)
   await mergeDialog.getByRole('button', { name: '下一页', exact: true }).click()
   await expect(mergeDialog.locator(`[data-customer-id="${blank.id}"]`)).toHaveCount(0)
@@ -238,7 +238,10 @@ test('发型师没有合并重复顾客和负责人交接入口', async ({ page 
   await expect(page.getByTestId('customer-list').getByRole('checkbox')).toHaveCount(0)
   await page.goto(`/customers?id=${customer.id}`)
   await expect(page.getByRole('button', { name: '修改资料', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: '合并重复顾客', exact: true })).toHaveCount(0)
+  // 发型师有安全标签权限，菜单一定在；里面不能有合并
+  await page.getByRole('button', { name: '顾客操作', exact: true }).click()
+  await expect(page.getByRole('menuitem', { name: '添加安全标签', exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '合并重复顾客', exact: true })).toHaveCount(0)
 })
 
 test('修改顾客资料保留已有字段，补改手机号及安全标签可操作并留下日志', async ({ page }) => {
@@ -257,17 +260,16 @@ test('修改顾客资料保留已有字段，补改手机号及安全标签可�
   const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
   await expect(detail).toContainText(`原备注${suffix}`)
   await expect(detail).toContainText('女')
-  await page.getByRole('button', { name: '补手机号', exact: true }).click()
+  await customerAction(page, '补手机号')
   await page.getByRole('dialog', { name: '补手机号', exact: true }).getByLabel('手机号', { exact: true }).fill(number)
   await page.getByRole('dialog', { name: '补手机号', exact: true }).getByRole('button', { name: '保存', exact: true }).click()
-  await expect(detail.getByRole('button', { name: '改手机号', exact: true })).toBeVisible()
   await expect(detail).toContainText(number)
-  await page.getByRole('button', { name: '改手机号', exact: true }).click()
+  await customerAction(page, '改手机号')
   const newNumber = phone()
   await page.getByRole('dialog', { name: '改手机号', exact: true }).getByLabel('手机号', { exact: true }).fill(newNumber)
   await page.getByRole('dialog', { name: '改手机号', exact: true }).getByRole('button', { name: '保存', exact: true }).click()
   await expect(detail).toContainText(newNumber)
-  await detail.getByRole('button', { name: '添加安全标签', exact: true }).click()
+  await customerAction(page, '添加安全标签')
   const labelForm = page.getByRole('dialog', { name: '添加安全标签', exact: true })
   await labelForm.getByLabel('备注', { exact: true }).fill(`观察备注${suffix}`)
   await labelForm.getByRole('button', { name: '保存', exact: true }).click()
@@ -515,7 +517,7 @@ test('切换顾客后迟到的合并不跳转详情或提示成功', async ({ pa
   await page.goto(`/customers?id=${a.id}`)
   const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
   await expect(detail.getByRole('heading', { name: a.name, exact: true })).toBeVisible()
-  await detail.getByRole('button', { name: '合并重复顾客', exact: true }).click()
+  await customerAction(page, '合并重复顾客')
   const mergeDialog = page.getByRole('dialog', { name: '合并重复顾客', exact: true })
   await mergeDialog.getByLabel('搜索另一位顾客', { exact: true }).fill(c.name)
   await mergeDialog.getByLabel('搜索另一位顾客', { exact: true }).press('Enter')
@@ -714,7 +716,7 @@ test('合并搜索断网后结束搜索并可重试', async ({ page }) => {
   })
   const pageErrors: string[] = []
   page.on('pageerror', error => pageErrors.push(error.message))
-  await detail.getByRole('button', { name: '合并重复顾客', exact: true }).click()
+  await customerAction(page, '合并重复顾客')
   const dialog = page.getByRole('dialog', { name: '合并重复顾客', exact: true })
   await expect(page.getByText('网络连接失败，请重试', { exact: true })).toBeVisible()
   await expect(dialog.locator('.animate-spin')).toHaveCount(0)
@@ -944,4 +946,21 @@ test('切回同一顾客后旧保存断网仍提示错误且新窗口不关', as
   await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeEnabled()
   await expect(dialog).toBeVisible()
   await expect(dialog.getByLabel('姓名', { exact: true })).toHaveValue(a.name)
+})
+
+test('从列表点开详情：左栏资料和分节导航，右边指标小卡', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const name = `详情顾客${Date.now().toString(36)}`
+  await api(token, 'create_customer', { name, phone: phone(), note: `详情备注${name}` })
+  await login(page, owner.account, owner.password)
+  await page.goto('/customers')
+  await search(page, name)
+  await page.getByTestId('customer-row').filter({ hasText: name }).click()
+  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  await expect(detail.getByTestId('customer-rail')).toContainText(`详情备注${name}`)
+  const metrics = detail.getByTestId('customer-metrics')
+  await expect(metrics).toContainText('卡余额')
+  await expect(metrics).toContainText('还没来过')
+  await detail.getByRole('navigation', { name: '顾客详情分节' }).getByRole('button', { name: '修改记录', exact: true }).click()
+  await expect(detail.getByTestId('customer-logs')).toBeInViewport()
 })
