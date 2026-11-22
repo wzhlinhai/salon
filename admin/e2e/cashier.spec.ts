@@ -687,10 +687,13 @@ test('未识别顾客没有挂账；挂账结账后在顾客详情收还款', as
   await debts.getByRole('button', { name: '收还款' }).click()
   const dialog = page.getByRole('dialog', { name: '收还款' })
   await dialog.getByLabel('还款金额').fill('50.00')
+  const methods = dialog.getByRole('radiogroup', { name: '收款方式' })
+  await expect(methods.getByRole('radio', { name: '现金', exact: true })).toHaveAttribute('aria-checked', 'true')
+  await methods.getByRole('radio', { name: '微信', exact: true }).click()
   await dialog.getByRole('button', { name: '确认收款' }).click()
   await expect(dialog).toHaveCount(0)
   await expect(debts).toContainText('未还 ¥38.00')
-  await expect(debts).toContainText('还 ¥50.00 · 现金')
+  await expect(debts).toContainText('还 ¥50.00 · 微信')
 })
 
 test('今日已结里撤单；开了授权窗口要先输登录密码', async ({ page }) => {

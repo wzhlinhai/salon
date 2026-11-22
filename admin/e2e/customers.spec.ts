@@ -203,10 +203,15 @@ test('翻到第二页后切分组、改排序都从第一页开始', async ({ pa
   const offsets: number[] = []
   await page.route('**/api/ops/list_customer_overview', async (route) => {
     offsets.push(route.request().postDataJSON().offset ?? 0)
-    const response = await route.fetch()
-    const body = await response.json()
-    // 只把总数放大到三页，翻页和切分组走真实接口
-    await route.fulfill({ response, json: { ...body, total: 120 } })
+    // 只把总数放大到三页，翻页和切分组走真实接口。切分组、改排序会取消上一条请求，
+    // 被取消的请求读不到响应，直接放弃，不算失败。
+    try {
+      const response = await route.fetch()
+      const body = await response.json()
+      await route.fulfill({ response, json: { ...body, total: 120 } })
+    } catch {
+      // 请求已被页面取消
+    }
   })
   await login(page, owner.account, owner.password)
   await page.goto('/customers')

@@ -89,7 +89,7 @@ onMounted(load)
       <div class="space-y-4">
         <p v-if="target" class="text-sm text-muted tabular-nums">这笔还欠 {{ yuanFixed(target.outstanding) }}，可以只还一部分</p>
         <UFormField label="还款金额" required><UInput v-model="amount" inputmode="decimal" class="w-full" /></UFormField>
-        <UFormField label="收款方式"><USelect v-model="method" :items="methodItems" class="w-full" /></UFormField>
+        <UFormField label="收款方式"><MethodPicker v-model="method" :items="methodItems" label="收款方式" /></UFormField>
       </div>
     </template>
     <template #footer>
