@@ -238,12 +238,10 @@ test('发型师没有合并重复顾客和负责人交接入口', async ({ page 
   await expect(page.getByTestId('customer-list').getByRole('checkbox')).toHaveCount(0)
   await page.goto(`/customers?id=${customer.id}`)
   await expect(page.getByRole('button', { name: '修改资料', exact: true })).toBeVisible()
-  const more = page.getByRole('button', { name: '顾客操作', exact: true })
-  if (await more.count()) {
-    await more.click()
-    await expect(page.getByRole('menuitem', { name: '合并重复顾客', exact: true })).toHaveCount(0)
-    await page.keyboard.press('Escape')
-  }
+  // 发型师有安全标签权限，菜单一定在；里面不能有合并
+  await page.getByRole('button', { name: '顾客操作', exact: true }).click()
+  await expect(page.getByRole('menuitem', { name: '添加安全标签', exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '合并重复顾客', exact: true })).toHaveCount(0)
 })
 
 test('修改顾客资料保留已有字段，补改手机号及安全标签可操作并留下日志', async ({ page }) => {

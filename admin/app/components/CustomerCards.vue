@@ -2,6 +2,8 @@
 import type { components } from '~/utils/api'
 
 const props = defineProps<{ id: string, merged: boolean }>()
+// 卡变了（开卡、充值、调整、升级、转余额、退卡）：详情顶部的卡余额小卡取自列表行，要让列表重读
+const emit = defineEmits<{ changed: [] }>()
 const api = useApi()
 const toast = useToast()
 const { can } = useMe()
@@ -326,6 +328,7 @@ const ledgerKinds: Record<string, string> = { open: '开卡', recharge: '充值'
 
 // 所有写操作刷新同一组已展开的明细，避免某个弹窗漏掉积分或升级记录。
 async function refreshCards() {
+  emit('changed')
   await Promise.all([
     cardLoad(),
     ...(pointsCard.value ? [cardPoints.reload()] : []),

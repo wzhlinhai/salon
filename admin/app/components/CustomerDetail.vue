@@ -513,7 +513,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </section>
-          <CustomerCards v-if="can('customer.view')" :id="id" :merged="!!customer.merged_into" />
+          <CustomerCards v-if="can('customer.view')" :id="id" :merged="!!customer.merged_into" @changed="emit('changed')" />
           <CustomerRedPackets v-if="can('customer.view')" :id="customer.id" :merged="!!customer.merged_into" />
           <CustomerDebts v-if="can('customer.view') && !customer.merged_into" :id="customer.id" />
           <section v-if="can('audit_log.view')" id="customer-sec-logs" class="scroll-mt-4">
