@@ -175,7 +175,11 @@ async function saveRevoke() {
           <UFormField label="作废原因"><UInput v-model="voidReason" :maxlength="100" class="w-full" /></UFormField>
         </div>
       </template>
-      <template #footer><UButton :loading="voidSaving" @click="saveVoid">保存</UButton></template>
+      <template #footer>
+        <ModalActions @cancel="voidOpen = false">
+          <UButton :loading="voidSaving" @click="saveVoid">保存</UButton>
+        </ModalActions>
+      </template>
     </UModal>
 
     <UModal v-model:open="approvalOpen" title="核准">
@@ -185,14 +189,22 @@ async function saveRevoke() {
           <UFormField label="原因"><UInput v-model="approvalReason" :maxlength="100" class="w-full" /></UFormField>
         </div>
       </template>
-      <template #footer><UButton :loading="approvalSaving" @click="saveApproval">保存</UButton></template>
+      <template #footer>
+        <ModalActions @cancel="approvalOpen = false">
+          <UButton :loading="approvalSaving" @click="saveApproval">保存</UButton>
+        </ModalActions>
+      </template>
     </UModal>
 
     <UModal v-model:open="revokeOpen" title="撤销核准">
       <template #body>
         <p>撤销 {{ revokeTarget?.business_date }} 的核准？撤销后这一天的异常重新计入统计。</p>
       </template>
-      <template #footer><UButton color="error" :loading="revokeSaving" @click="saveRevoke">确认撤销</UButton></template>
+      <template #footer>
+        <ModalActions @cancel="revokeOpen = false">
+          <UButton color="error" :loading="revokeSaving" @click="saveRevoke">确认撤销</UButton>
+        </ModalActions>
+      </template>
     </UModal>
   </div>
 </template>

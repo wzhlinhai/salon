@@ -91,6 +91,10 @@ onMounted(load)
         <UFormField label="收款方式"><USelect v-model="method" :items="methodItems" class="w-full" /></UFormField>
       </div>
     </template>
-    <template #footer><UButton :loading="repaying" :disabled="!amount.trim()" @click="repay">确认收款</UButton></template>
+    <template #footer>
+      <ModalActions @cancel="repayOpen = false">
+        <UButton :loading="repaying" :disabled="!amount.trim()" @click="repay">确认收款</UButton>
+      </ModalActions>
+    </template>
   </UModal>
 </template>

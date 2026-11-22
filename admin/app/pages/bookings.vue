@@ -766,8 +766,9 @@ function actorLabel(actor: Actor) {
         </div>
       </template>
       <template #footer>
-        <UButton color="neutral" variant="outline" @click="bookingOpen = false">关闭</UButton>
-        <UButton :loading="bookingSaving" @click="saveBooking">保存</UButton>
+        <ModalActions @cancel="bookingOpen = false">
+          <UButton :loading="bookingSaving" @click="saveBooking">保存</UButton>
+        </ModalActions>
       </template>
     </UModal>
 
@@ -782,8 +783,9 @@ function actorLabel(actor: Actor) {
         </div>
       </template>
       <template #footer>
-        <UButton color="neutral" variant="outline" @click="blockOpen = false">关闭</UButton>
-        <UButton :loading="blockSaving" @click="saveBlock">保存</UButton>
+        <ModalActions @cancel="blockOpen = false">
+          <UButton :loading="blockSaving" @click="saveBlock">保存</UButton>
+        </ModalActions>
       </template>
     </UModal>
 
@@ -844,8 +846,9 @@ function actorLabel(actor: Actor) {
         </div>
       </template>
       <template #footer>
-        <UButton color="neutral" variant="outline" @click="rescheduleOpen = false">关闭</UButton>
-        <UButton :loading="rescheduleSaving" @click="saveReschedule">保存</UButton>
+        <ModalActions @cancel="rescheduleOpen = false">
+          <UButton :loading="rescheduleSaving" @click="saveReschedule">保存</UButton>
+        </ModalActions>
       </template>
     </UModal>
 
@@ -857,8 +860,9 @@ function actorLabel(actor: Actor) {
         </div>
       </template>
       <template #footer>
-        <UButton color="neutral" variant="outline" @click="cancelOpen = false">关闭</UButton>
-        <UButton :disabled="cancelDisabled" :loading="cancelSaving" @click="saveCancel">确定</UButton>
+        <ModalActions @cancel="cancelOpen = false">
+          <UButton :disabled="cancelDisabled" :loading="cancelSaving" @click="saveCancel">确定</UButton>
+        </ModalActions>
       </template>
     </UModal>
 
@@ -869,8 +873,9 @@ function actorLabel(actor: Actor) {
         </UFormField>
       </template>
       <template #footer>
-        <UButton color="neutral" variant="outline" @click="completeOpen = false">关闭</UButton>
-        <UButton :loading="completeSaving" @click="saveComplete">确定</UButton>
+        <ModalActions @cancel="completeOpen = false">
+          <UButton :loading="completeSaving" @click="saveComplete">确定</UButton>
+        </ModalActions>
       </template>
     </UModal>
   </div>

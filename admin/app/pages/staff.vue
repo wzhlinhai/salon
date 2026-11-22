@@ -320,7 +320,9 @@ async function setActive(s: Staff, active: boolean) {
         </div>
       </template>
       <template #footer>
-        <UButton :loading="profileSaving" @click="saveProfile">保存</UButton>
+        <ModalActions @cancel="profileOpen = false">
+          <UButton :loading="profileSaving" @click="saveProfile">保存</UButton>
+        </ModalActions>
       </template>
     </UModal>
 
@@ -330,7 +332,9 @@ async function setActive(s: Staff, active: boolean) {
         <USelectMenu v-model="roleSelection" :items="roleItems" value-key="value" multiple class="w-full" />
       </template>
       <template #footer>
-        <UButton :loading="rolesSaving" @click="saveRoles">保存</UButton>
+        <ModalActions @cancel="rolesOpen = false">
+          <UButton :loading="rolesSaving" @click="saveRoles">保存</UButton>
+        </ModalActions>
       </template>
     </UModal>
 
@@ -342,7 +346,9 @@ async function setActive(s: Staff, active: boolean) {
         </div>
       </template>
       <template #footer>
-        <UButton :loading="loginSaving" @click="saveLogin">保存</UButton>
+        <ModalActions @cancel="loginOpen = false">
+          <UButton :loading="loginSaving" @click="saveLogin">保存</UButton>
+        </ModalActions>
       </template>
     </UModal>
   </div>

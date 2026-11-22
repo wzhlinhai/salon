@@ -365,7 +365,11 @@ function changeSource(o: OverrideForm) {
           <UFormField label="不计提成的员工"><USelect v-model="excludedStaff" multiple :items="staffOptions" class="w-full" /></UFormField>
         </div>
       </template>
-      <template #footer><UButton :loading="saving" :disabled="loading || !ready" @click="save">保存</UButton></template>
+      <template #footer>
+        <ModalActions @cancel="open = false">
+          <UButton :loading="saving" :disabled="loading || !ready" @click="save">保存</UButton>
+        </ModalActions>
+      </template>
     </UModal>
   </div>
 </template>

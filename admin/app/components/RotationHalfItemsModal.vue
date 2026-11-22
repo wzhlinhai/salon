@@ -84,13 +84,12 @@ function save() {
       </div>
     </template>
     <template #footer>
-      <div class="flex w-full items-center justify-between gap-2">
-        <span class="text-meta text-muted tabular-nums">已选 {{ chosen.size }} 个</span>
-        <div class="flex gap-2">
-          <UButton color="neutral" variant="ghost" @click="form.open.value = false">取消</UButton>
-          <UButton :loading="form.saving.value" :disabled="form.loading.value" @click="save">保存</UButton>
-        </div>
-      </div>
+      <ModalActions @cancel="form.open.value = false">
+        <template #leading>
+          <span class="text-meta text-muted tabular-nums">已选 {{ chosen.size }} 个</span>
+        </template>
+        <UButton :loading="form.saving.value" :disabled="form.loading.value" @click="save">保存</UButton>
+      </ModalActions>
     </template>
   </UModal>
 </template>

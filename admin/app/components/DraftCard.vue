@@ -133,10 +133,9 @@ async function saveReject() {
         </UFormField>
       </template>
       <template #footer>
-        <div class="flex w-full justify-end gap-2">
-          <UButton color="neutral" variant="outline" @click="rejectOpen = false">取消</UButton>
+        <ModalActions @cancel="rejectOpen = false">
           <UButton color="error" :loading="rejecting" :disabled="!rejectReason.trim()" data-testid="reject-submit" @click="saveReject">拒绝</UButton>
-        </div>
+        </ModalActions>
       </template>
     </UModal>
   </article>

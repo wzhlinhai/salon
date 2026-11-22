@@ -138,10 +138,18 @@ onMounted(load)
         </template>
       </div>
     </template>
-    <template #footer><UButton :loading="issuing" :disabled="staffLoading || !faceValue || !expiresOn || (kind === 'sold' && (!price || !sales.length))" @click="issue">保存</UButton></template>
+    <template #footer>
+      <ModalActions @cancel="issueOpen = false">
+        <UButton :loading="issuing" :disabled="staffLoading || !faceValue || !expiresOn || (kind === 'sold' && (!price || !sales.length))" @click="issue">保存</UButton>
+      </ModalActions>
+    </template>
   </UModal>
   <UModal v-model:open="revokeOpen" title="撤回红包">
     <template #body><UFormField label="撤回原因" required><UTextarea v-model="reason" :maxlength="200" class="w-full" /></UFormField></template>
-    <template #footer><UButton :loading="revoking" :disabled="!reason.trim()" color="error" @click="revoke">确认撤回</UButton></template>
+    <template #footer>
+      <ModalActions @cancel="revokeOpen = false">
+        <UButton :loading="revoking" :disabled="!reason.trim()" color="error" @click="revoke">确认撤回</UButton>
+      </ModalActions>
+    </template>
   </UModal>
 </template>
