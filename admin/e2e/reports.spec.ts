@@ -37,11 +37,12 @@ function amount(text: string) {
   return Math.round(Number(text.replace(/[¥,\s]/g, '')) * 100)
 }
 
-// 合计行逐列核对：每个带 data-col 的格等于表身同列之和。skip 跳过不该相加的列（客数四位小数只显示一位，逐行相加有舍入差）。
-async function expectTotalsAreSums(table: Locator, totalsId: string, skip: (col: string) => boolean = () => false) {
+// 合计行逐列核对：每个带 data-col 的格等于表身同列之和。minCols 是这张表至少该有的列数，防止列没渲染出来时空过。
+// skip 跳过不该相加的列（客数四位小数只显示一位，逐行相加有舍入差）。
+async function expectTotalsAreSums(table: Locator, totalsId: string, minCols: number, skip: (col: string) => boolean = () => false) {
   const totals = table.getByTestId(totalsId)
   const cols = await totals.locator('td[data-col]').evaluateAll(cells => cells.map(c => c.getAttribute('data-col')!))
-  expect(cols.length).toBeGreaterThan(2)
+  expect(cols.length).toBeGreaterThanOrEqual(minCols)
   for (const col of cols) {
     if (skip(col)) continue
     const cells = await table.locator(`tbody td[data-col="${col}"]`).allTextContents()
@@ -68,7 +69,7 @@ test('店长从报表入口进营业报表：合计等于各行之和，切按�
   const report = await api<{ rows: { period: string, on_site: { method: string, amount: string }[] }[], totals: { service_revenue: string } }>(token, 'get_business_report', { granularity: 'day', from: `${today.slice(0, 7)}-01`, to: today })
   const wechat = report.rows.find(r => r.period === today)!.on_site.find(m => m.method === 'wechat')!.amount
   expect(amount(await todayRow.locator('td[data-col="wechat"]').textContent() ?? '')).toBe(amount(wechat))
-  await expectTotalsAreSums(table, 'business-totals', col => col === 'guest_total')
+  await expectTotalsAreSums(table, 'business-totals', 10, col => col === 'guest_total')
   const service = await table.getByTestId('business-totals').locator('td[data-col="service_revenue"]').textContent()
   expect(amount(service ?? '')).toBe(amount(report.totals.service_revenue))
   expect(amount(await page.locator('[data-metric="实收"]').getByTestId('metric-value').textContent() ?? '')).toBe(amount(service ?? ''))
@@ -77,7 +78,7 @@ test('店长从报表入口进营业报表：合计等于各行之和，切按�
   await page.getByRole('radiogroup', { name: '按日或按月' }).getByRole('radio', { name: '按月' }).click()
   await expect(page).toHaveURL(/g=month/)
   await expect(table.locator(`tbody tr[data-period="${today.slice(0, 7)}"]`)).toBeVisible()
-  await expectTotalsAreSums(table, 'business-totals', col => col === 'guest_total')
+  await expectTotalsAreSums(table, 'business-totals', 10, col => col === 'guest_total')
 
   // 按日超过 92 天：不查，旁边写为什么。
   await page.getByRole('radiogroup', { name: '按日或按月' }).getByRole('radio', { name: '按日' }).click()
@@ -107,7 +108,7 @@ test('店长看员工业绩：每人一行、合计等于各行之和，点一�
   const report = await api<{ rows: { staff: { id: string } | null, item_performance: string }[] }>(token, 'get_staff_report', { from: `${today.slice(0, 7)}-01`, to: today, staff_id: stylist.id })
   expect(report.rows).toHaveLength(1)
   expect(amount(await row.locator('td[data-col="item_performance"]').textContent() ?? '')).toBe(amount(report.rows[0]!.item_performance))
-  await expectTotalsAreSums(table, 'staff-totals', col => col.startsWith('guest_'))
+  await expectTotalsAreSums(table, 'staff-totals', 7, col => col.startsWith('guest_'))
 
   await row.getByRole('button', { name: stylist.name }).click()
   const detail = page.getByTestId('staff-detail')
@@ -145,7 +146,7 @@ test('发型师从报表入口只看得到员工业绩，表里只有自己，�
   await expect(page).toHaveURL('/forbidden')
 })
 
-test('店长看项目报表：今天做的项目在表里，合计等于各行之和，只看商品时服务项目不在', async ({ page }) => {
+test('店长看项目报表：今天做的项目在表里，合计等于各行之和，只看服务时合计是服务各行相加，只看卖品时它不在', async ({ page }) => {
   const { itemName } = await seedCheckout()
   const manager = await hire('店长')
   await login(page, manager.account, manager.password)
@@ -157,12 +158,18 @@ test('店长看项目报表：今天做的项目在表里，合计等于各行�
   const row = table.locator(`tbody tr[data-item="${itemName}"]`)
   await expect(row.locator('td[data-col="times"]')).toHaveText('1')
   await expect(row.locator('td[data-col="paid"]')).toHaveText('¥66.00')
-  await expectTotalsAreSums(table, 'item-totals')
+  await expectTotalsAreSums(table, 'item-totals', 8)
 
-  // 只看商品：合计改成这一类各行相加。
-  await page.getByRole('radiogroup', { name: '项目类型' }).getByRole('radio', { name: '商品' }).click()
+  // 只看服务：合计改成服务各行在前端相加，这个服务项目还在。
+  const kinds = page.getByRole('radiogroup', { name: '项目类型' })
+  await kinds.getByRole('radio', { name: '服务' }).click()
+  await expect(row.locator('td[data-col="paid"]')).toHaveText('¥66.00')
+  await expect(table.locator('tbody tr', { has: page.getByText('卖品', { exact: true }) })).toHaveCount(0)
+  await expectTotalsAreSums(table, 'item-totals', 8)
+
+  // 只看卖品：服务项目不在。
+  await kinds.getByRole('radio', { name: '卖品' }).click()
   await expect(row).toHaveCount(0)
-  if (await table.isVisible()) await expectTotalsAreSums(table, 'item-totals')
 })
 
 test('店长看卡项报表：今天开的卡记在它的卡类型下，合计等于各行之和', async ({ page }) => {
@@ -180,7 +187,7 @@ test('店长看卡项报表：今天开的卡记在它的卡类型下，合计�
   await expect(row.locator('td[data-col="open_principal"]')).toHaveText('¥300.00')
   await expect(row.locator('td[data-col="open_bonus"]')).toHaveText('¥30.00')
   await expect(row.locator('td[data-col="ending_balance"]')).toHaveText('¥330.00')
-  await expectTotalsAreSums(table, 'card-totals')
+  await expectTotalsAreSums(table, 'card-totals', 14)
 })
 
 test('店长看新客来源：今天第一次结账的顾客算新客；新客来源和欠款对账的合计都等于各行之和', async ({ page }) => {
@@ -191,12 +198,12 @@ test('店长看新客来源：今天第一次结账的顾客算新客；新客�
   const table = page.getByTestId('source-table')
   // 用例造的顾客都没填来源。
   await expect(table.locator('tbody tr[data-source="未填来源"] td[data-col="new_customers"]')).not.toHaveText('0')
-  await expectTotalsAreSums(table, 'source-totals')
+  await expectTotalsAreSums(table, 'source-totals', 3)
 
   await page.goto('/reports/debts')
   const debts = page.getByTestId('debt-table')
   await expect(debts).toBeVisible()
-  await expectTotalsAreSums(debts, 'debt-totals')
+  await expectTotalsAreSums(debts, 'debt-totals', 3)
 })
 
 test('发型师打不开只给店长看的报表', async ({ page }) => {

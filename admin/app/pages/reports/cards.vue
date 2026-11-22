@@ -12,6 +12,8 @@ const api = useApi()
 const { today, range, report, loading, failed, retry } = useDayReport<CardReport>((from, to) => api.POST('/api/ops/get_card_report', { body: { from, to } }))
 
 const rows = computed(() => report.value?.rows ?? [])
+// 接口把每种卡类型都列出来，全是 0 也列；这段时间没有任何进出、结束时也没有余额才算空。
+const idle = computed(() => rows.value.every(r => Object.entries(r).every(([k, v]) => k === 'card_type' || Number(v) === 0)))
 
 // 表头分组：每组若干列，key 是行上的字段；count 为整数列（张数、次数），其余为金额。
 type Key = Exclude<keyof Row, 'card_type'>
@@ -37,10 +39,11 @@ function cents(value: string) {
 const metrics = computed(() => {
   const t = report.value?.totals
   if (!t) return []
+  // 次卡开卡的流水本金是 0（卖价记在次数上），所以这里只算得到储值部分的进账。
   const sold = (cents(t.open_principal) + cents(t.recharge_principal) + cents(t.upgrade)) / 100
   const used = (cents(t.consumed_principal) + cents(t.consumed_bonus)) / 100
   return [
-    { label: '卡收款', value: yuan(sold), note: `开卡 ${t.open_count} 张 · 本金 + 补差价` },
+    { label: '本金进账', value: yuan(sold), note: `开卡 ${t.open_count} 张 · 次卡卖价不在内` },
     { label: '耗卡', value: yuan(used), note: `本金 ${yuan(t.consumed_principal)}` },
     { label: '扣次', value: `${t.count_used} 次`, note: `折 ${yuan(t.count_amount)}` },
     { label: '退卡', value: yuan(t.refund_amount), note: `${t.refund_count} 张` },
@@ -72,7 +75,8 @@ function cell(value: string | number) {
 
       <section>
         <div class="sec">明细</div>
-        <EmptyState v-if="!rows.length" class="box" title="这段时间没有卡的进出" hint="开卡、充值、耗卡后这里会有数" />
+        <EmptyState v-if="!rows.length" class="box" title="还没有卡类型" hint="在“卡类型”里新建后这里会有数" />
+        <EmptyState v-else-if="idle" class="box" title="这段时间没有卡的进出" hint="开卡、充值、耗卡后这里会有数" />
         <div v-else class="overflow-x-auto">
           <table class="w-full text-sm tabular-nums" data-testid="card-table">
             <thead class="border-b border-default text-xs text-dimmed">

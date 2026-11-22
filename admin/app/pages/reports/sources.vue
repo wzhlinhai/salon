@@ -22,7 +22,7 @@ const metrics = computed(() => {
   const t = report.value?.totals
   if (!t) return []
   return [
-    { label: '新客', value: `${t.new_customers} 人`, note: `来源 ${rows.value.filter(r => r.new_customers).length} 个` },
+    { label: '新客', value: `${t.new_customers} 人`, note: `来源 ${rows.value.filter(r => r.source_id && r.new_customers).length} 个` },
     { label: '回头客', value: `${t.returning} 人`, note: `回头率 ${percent(t.returning, t.new_customers)}` },
     { label: '新客消费', value: yuan(t.revenue), note: t.new_customers ? `人均 ${yuan(Number(t.revenue) / t.new_customers)}` : '这段时间的结账' }
   ]

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// 项目报表（DESIGN.md 报表）：一段营业日里每个项目、商品一行，按实收从高到低；撤单在撤单那天冲回。
-// 可以只看服务或只看商品。看全部时合计行用接口的 totals；只看一类时合计是这一类各行相加（按分算）。
+// 项目报表（DESIGN.md 报表）：一段营业日里每个服务、卖品一行，按实收从高到低；撤单在撤单那天冲回。
+// 可以只看服务或只看卖品。看全部时合计行用接口的 totals；只看一类时合计是这一类各行相加（按分算）。
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'report.view', title: '项目报表', description: '每个项目、商品做了几次、收了多少；实收是折后价，撤单在撤单那天冲回。' })
+definePageMeta({ permission: 'report.view', title: '项目报表', description: '每个服务、卖品做了几次、收了多少；实收是折后价，撤单在撤单那天冲回。' })
 
 type ItemReport = components['schemas']['ItemReport']
 type Row = components['schemas']['ItemReportRow']
@@ -13,7 +13,7 @@ const api = useApi()
 const { today, range, report, loading, failed, retry } = useDayReport<ItemReport>((from, to) => api.POST('/api/ops/get_item_report', { body: { from, to } }))
 
 const kind = ref<Kind>('all')
-const kinds: { label: string, value: Kind }[] = [{ label: '全部', value: 'all' }, { label: '服务', value: 'service' }, { label: '商品', value: 'goods' }]
+const kinds: { label: string, value: Kind }[] = [{ label: '全部', value: 'all' }, { label: '服务', value: 'service' }, { label: '卖品', value: 'goods' }]
 const rows = computed(() => (report.value?.rows ?? []).filter(r => kind.value === 'all' || r.item_kind === kind.value))
 
 type MoneyKey = 'line_price' | 'paid' | 'card_paid' | 'count_paid' | 'groupbuy_paid' | 'performance'
@@ -22,7 +22,7 @@ const moneyColumns: { key: MoneyKey, label: string }[] = [
   { key: 'paid', label: '实收' },
   { key: 'card_paid', label: '其中卡付' },
   { key: 'groupbuy_paid', label: '其中团购' },
-  { key: 'count_paid', label: '扣次' },
+  { key: 'count_paid', label: '其中扣次' },
   { key: 'performance', label: '业绩' }
 ]
 
@@ -115,7 +115,7 @@ function cell(value: string | number) {
             <tbody>
               <tr v-for="row in rows" :key="row.item_id" class="border-t border-default" :data-item="row.item_name">
                 <th scope="row" class="sticky left-0 bg-page px-3 py-2 text-left font-normal whitespace-nowrap">
-                  {{ row.item_name }}<span v-if="row.item_kind === 'goods'" class="tag ms-1.5 bg-tag-gray">商品</span>
+                  {{ row.item_name }}<span v-if="row.item_kind === 'goods'" class="tag ms-1.5 bg-tag-gray">卖品</span>
                 </th>
                 <td class="px-3 text-right" :class="cell(row.times)" data-col="times">{{ row.times }}</td>
                 <td class="px-3 text-right" :class="cell(row.designated)" data-col="designated">{{ row.designated }}</td>
