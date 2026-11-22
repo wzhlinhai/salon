@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { api, apiLogin, hire, login, navLabels, owner, uniqueSuffix } from './helpers'
 import { env } from './env'
+import { addDays } from '../app/utils/datetime'
 
 interface Hours { open: string, close: string }
 interface Customer { id: string, name: string, phone: string }
@@ -21,11 +22,6 @@ function clockText(total: number) {
   const hour = Math.floor(total / 60) % 24
   const minute = total % 60
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
-}
-
-function addDays(value: string, delta: number) {
-  const [year, month, date] = value.split('-').map(Number)
-  return new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, (date ?? 1) + delta)).toISOString().slice(0, 10)
 }
 
 function clockAt(hours: Hours, offset: number) {

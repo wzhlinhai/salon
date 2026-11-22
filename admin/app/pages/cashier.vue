@@ -43,11 +43,6 @@ const canReprice = computed(() => mayChange('order.reprice', selectedOrder.value
 const NONE = '__none__'
 const platformItems = [{ label: '美团', value: 'meituan' }, { label: '抖音', value: 'douyin' }]
 
-function addDays(value: string, delta: number) {
-  const [year, month, date] = value.split('-').map(Number)
-  return new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, (date ?? 1) + delta)).toISOString().slice(0, 10)
-}
-
 function cents(value: string) {
   const n = Number(value || '0')
   return Number.isFinite(n) ? Math.round(n * 100) : 0

@@ -256,7 +256,7 @@ AI 只出现在下面四处，都用 `text-ai` 和 `✦`：
 | 收银（`order.create` 可进；结账等按各自权限显示） | orders（开单、加减项、换人、改价、结账、小票），groupbuy 的验券、核销、撤销、关联和 `open_groupbuy_order`，结账可选挂账；当前单上方提示并入同顾客同日挂单 `merge_orders`；左栏「今日结账」`list_orders` 里撤单（`open_void_window`、`void_order`，补录单和更早的单不在这里） | 已有 |
 | 预约 | booking 全部 | 已有 |
 | 顾客 | customers 全部；详情里放 cards、redpackets，欠款 `list_customer_debts` 和收还款 `repay_debt`，消费记录、`list_audit_log` | 已有 |
-| 日结 | closing 全部；collections（收款列表、退款、撤销） | 待做 |
+| 日结 | closing 全部：最近 31 天按营业日列出，筛选块分待日结、已日结、已封账；日结弹窗保存后换成完成页；详情抽屉里重新日结、封账、撤销封账。collections（收款列表、退款、撤销）按单查询，放到收银的单据详情里，不放这里 | 已有；collections 待做 |
 | 售后 | aftersales 全部 | 待做 |
 | 报表 | reports 全部，performance，`list_commissions`，`debt_summary`，分标签页 | 待做 |
 | 团购对账 | `get_groupbuy_month`、`record_groupbuy_settlement` | 已有 |
