@@ -1,11 +1,15 @@
+// 报表入口：有其中任一权限就能进，里面按每张报表各自的权限列出。员工业绩（performance.view）随那张报表一起加进来。
+export const REPORT_PERMISSIONS = ['report.view']
+
 // 导航项。permission 为空表示登录即可见。分组照原型 J 的侧栏；图标是 Notion 式灰色线条图标（Lucide），见 DESIGN.md 图标一节。
-export const navItems = [
+export const navItems: { label: string, icon: string, to: string, permission: string | string[], group: string }[] = [
   { label: '首页', icon: 'i-lucide-house', to: '/', permission: '', group: '门店' },
   { label: '收银', icon: 'i-lucide-receipt', to: '/cashier', permission: 'order.create', group: '门店' },
   { label: '预约', icon: 'i-lucide-calendar', to: '/bookings', permission: 'booking.manage', group: '门店' },
   { label: '轮牌', icon: 'i-lucide-list-ordered', to: '/rotation', permission: 'queue.view', group: '门店' },
   { label: '顾客', icon: 'i-lucide-user', to: '/customers', permission: 'customer.view', group: '门店' },
   { label: '日结', icon: 'i-lucide-calculator', to: '/closing', permission: 'closing.daily', group: '经营' },
+  { label: '报表', icon: 'i-lucide-chart-column', to: '/reports', permission: REPORT_PERMISSIONS, group: '经营' },
   { label: '团购对账', icon: 'i-lucide-file-check', to: '/groupbuy-month', permission: 'report.view', group: '经营' },
   { label: '员工', icon: 'i-lucide-users', to: '/staff', permission: 'staff.manage', group: '员工' },
   { label: '考勤', icon: 'i-lucide-clock', to: '/attendance', permission: 'attendance.manage', group: '员工' },

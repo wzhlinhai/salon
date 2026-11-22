@@ -53,6 +53,14 @@
 }
 
 :root {
+  /* 图表系列色（DESIGN.md 图表）：按顺序取，不循环；ReportChart 运行时读这几个变量。
+     标签色太浅画不了线和柱，所以另起一组，已用 dataviz 校验脚本验过色盲区分度。 */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
+  --chart-grid: rgba(55, 53, 47, 0.09);
   --ui-radius: 0.375rem;
   --ui-primary: #2383e2;
   --ui-ai: #7b55c7;

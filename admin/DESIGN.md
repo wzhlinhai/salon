@@ -39,6 +39,7 @@
 | `text-default` / `text-muted` / `text-dimmed` | #37352f / 65% / 52% | 正文 / 说明 / 更次要的说明、占位、计数 |
 | `text-ink-red` `text-ink-green` `text-ink-yellow` `text-ink-orange` | Notion 深色字 | 金额涨跌、迟到时长等需要上色的字 |
 | `primary` | #2383e2 | 主按钮、选中项、焦点框 |
+| `--chart-1` … `--chart-5`（`:root` 变量） | #2a78d6 #eb6834 #1baf7a #eda100 #e87ba4 | 只给图表的系列：按顺序取、不循环，超过 5 个归进「其他」。标签色太浅画不了线和柱，所以另起一组，已用 dataviz 校验脚本验过色盲区分度；对比度不足 3:1 的几个靠图下的明细表补。`ReportChart` 运行时读这几个变量 |
 | `error` / `warning` / `success` | #d44c47 / #cb912f / #448361 | Nuxt UI 组件的 `color` 属性 |
 
 Nuxt UI 组件（`UButton`、`UBadge` 等）的 `color` 只用语义名：`primary`、`neutral`、`ai`、`error`、`warning`、`success`。
@@ -176,7 +177,9 @@ Notion 的九种浅底标签，类名 `bg-tag-*`，配合 `tag` 工具类（20px
 | **指标卡** | 首页、报表、团购对账、工资表 | 一行 3–5 张：名称、`text-2xl` 数字、一行对比（涨用 `text-ink-green`，跌用 `text-ink-red`，同时写"↑""↓"）。不放图标；能点开看明细的卡在名称后加一个灰色 `chevron-right`。放在窄栏里（例如个人首页和轮牌并排）时 2×2 | 原型 J；report-01、report-03 |
 | **工作台** | 收银 | 左边列表（挂单），右边当前单的明细和操作；结账时右侧是订单汇总（小计、优惠、实收）和一个实心按钮 | checkout-01、checkout-02 |
 | **完成页** | 结账完成、日结完成 | 居中对勾、一句话、几行摘要、后续动作，一个按钮 | checkout-03 |
-| **报表入口** | 报表 | 左侧分类，右侧报表列表（图标 + 名称 + 一行说明） | report-02 |
+| **报表入口** | 报表 | `/reports`：左侧分类（带数量），右侧报表列表（浅色方块里的图标 + 名称 + 一行说明 + 灰色 `chevron-right`），只列当前员工有权限看的报表；目录在 `utils/report.ts` | report-02 |
+| **报表页** | 营业报表等 | 每张报表一页 `/reports/<key>`，范围写在网址里（`?g=day&from=…&to=…`），刷新、转发都还在。从上到下：顶栏 `ReportRangeBar`（按日 / 按月、起止、快捷范围；日报最多 92 天、月报最多 12 个月，超了不查，在下面写一句为什么）→ 指标卡（和紧挨在前、同样长的一段比，上一段是 0 就只写口径）→ 走势图（只有一行时不画）→ 明细表（一天或一月一行，第一列固定；**数字表里 0 照写、用 `text-dimmed`**，和普通表格的空值留白不同；末行合计取接口的合计，不在前端再加） | report-01 |
+| **图表** | 报表 | `ReportChart`（echarts/core 按需引入，SVG 渲染）：折线看走势、柱子比大小，一根数值轴；线 2px，柱不超过 24px、数据端 4px 圆角；网格细实线；两个以上系列才有图例；悬停一条竖线，提示框里数在前、名在后。图不单独承载数字，下面总有明细表，读屏读表 | dataviz 规则 |
 
 ### 详情、弹窗和提示
 
@@ -260,7 +263,7 @@ AI 只出现在下面四处，都用 `text-ai` 和 `✦`：
 | 顾客 | customers 全部；详情里放 cards、redpackets，欠款 `list_customer_debts` 和收还款 `repay_debt`，消费记录、`list_audit_log` | 已有 |
 | 日结 | closing 全部：最近 31 天按营业日列出，筛选块分待日结、已日结、已封账；日结弹窗保存后换成完成页；详情抽屉里重新日结、封账、撤销封账。collections（收款列表、退款、撤销）按单查询，放到收银的单据详情里，不放这里 | 已有；collections 待做 |
 | 售后 | aftersales 全部 | 待做 |
-| 报表 | reports 全部，performance，`list_commissions`，`debt_summary`，分标签页 | 待做 |
+| 报表 | 入口 `/reports` + 每张报表一页：营业报表 `get_business_report`（已有）；员工业绩 `get_staff_report` + `list_performance`、`list_commissions`；项目、卡项、新客来源、`debt_summary` | 营业报表已有，其余待做 |
 | 团购对账 | `get_groupbuy_month`、`record_groupbuy_settlement` | 已有 |
 | 员工 | staff 的员工档案、登录账号、角色分配 | 已有 |
 | 考勤 | attendance 的班次、补卡、审核 | 已有 |

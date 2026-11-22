@@ -90,10 +90,6 @@ const dateLine = computed(() => {
   return parts.join(' · ')
 })
 
-function formatGuest(value: string | number) {
-  return Number(value || '0').toLocaleString('zh-CN', { maximumFractionDigits: 1 })
-}
-
 const lastWeekHasData = computed(() => {
   const totals = lastWeekReport.value?.totals
   if (!totals) return false
