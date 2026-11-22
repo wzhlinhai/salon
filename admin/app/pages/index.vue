@@ -85,7 +85,7 @@ const dateLine = computed(() => {
   const date = new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, day ?? 1))
   const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
   const time = nowStamp.value.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false })
-  const parts = [`${month} 月 ${day} 日 ${weekdays[date.getUTCDay()]}`, time]
+  const parts = [`${month}月${day}日 ${weekdays[date.getUTCDay()]}`, time]
   if (selectedHome.value !== 'personal' && visits.value?.waiting) parts.push(`今天还有 ${visits.value.waiting} 位顾客没到店`)
   return parts.join(' · ')
 })

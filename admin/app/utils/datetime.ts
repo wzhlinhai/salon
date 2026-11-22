@@ -5,7 +5,7 @@ export function formatStamp(value: string, now = new Date()) {
   const date = new Date(value)
   const time = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
   if (date.toDateString() === now.toDateString()) return time
-  return `${date.getMonth() + 1} 月 ${date.getDate()} 日 ${WEEKDAYS[date.getDay()]} ${time}`
+  return `${date.getMonth() + 1}月${date.getDate()}日 ${WEEKDAYS[date.getDay()]} ${time}`
 }
 
 // 表格里的日期：门店时区的 2026-11-20（DESIGN.md 组件约定）。
