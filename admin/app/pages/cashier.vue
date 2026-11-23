@@ -327,39 +327,48 @@ async function saveOpenOrder() {
       .map(p => ({ slot: p.slot, staff_id: row.staff[p.slot]! }))
   }))
   await openOrderForm.save(async (current) => {
-    const { data, error } = await api.POST('/api/ops/open_order', {
-      body: {
-        customer_id: orderCustomer.value?.id,
-        gender: orderGender.value,
-        designated: orderDesignated.value,
-        paper_date: orderBackfill.value ? orderPaperDate.value : undefined,
-        items: inputItems
-      }
-    })
-    if (!current()) return
-    if (!data) {
-      toast.add({ title: errorText(error), color: 'error' })
-      return
-    }
-    let opened = data
-    if (pendingRedemption.value && pendingDeal.value) {
-      const linked = await api.POST('/api/ops/link_coupon_order', {
-        body: { redemption_id: pendingRedemption.value.id, deal_id: pendingDeal.value.id, order_id: data.id }
+    let opened: Order
+    const redemption = pendingRedemption.value
+    const deal = pendingDeal.value
+    if (redemption && deal) {
+      // 开单和关联团购券在同一个事务里，不会出现单开了券没关上。团购开单不支持补录。
+      const { data, error } = await api.POST('/api/ops/open_groupbuy_order', {
+        body: {
+          customer_id: orderCustomer.value?.id,
+          gender: orderGender.value,
+          designated: orderDesignated.value,
+          redemption_id: redemption.id,
+          deal_id: deal.id,
+          items: inputItems
+        }
       })
       if (!current()) return
-      if (linked.data) {
-        opened = { ...data, groupbuy: data.groupbuy }
-        toast.add({ title: '已开单并关联团购券', color: 'success' })
-      } else {
-        toast.add({ title: `已开单，但关联团购券失败：${errorText(linked.error)}`, color: 'error' })
+      if (!data) {
+        toast.add({ title: errorText(error), color: 'error' })
+        return
       }
-    } else {
-      toast.add({ title: '已开单', color: 'success' })
-    }
-    if (pendingRedemption.value && pendingDeal.value) {
+      opened = data.order
+      toast.add({ title: '已开单并关联团购券', color: 'success' })
       pendingRedemption.value = null
       pendingDeal.value = null
       clearCoupon()
+    } else {
+      const { data, error } = await api.POST('/api/ops/open_order', {
+        body: {
+          customer_id: orderCustomer.value?.id,
+          gender: orderGender.value,
+          designated: orderDesignated.value,
+          paper_date: orderBackfill.value ? orderPaperDate.value : undefined,
+          items: inputItems
+        }
+      })
+      if (!current()) return
+      if (!data) {
+        toast.add({ title: errorText(error), color: 'error' })
+        return
+      }
+      opened = data
+      toast.add({ title: '已开单', color: 'success' })
     }
     openOrderOpen.value = false
     pickedCustomer.value = null
@@ -1291,9 +1300,9 @@ onMounted(init)
             </div>
             <div class="flex items-center gap-6 border-t border-default pt-3">
               <USwitch v-model="orderDesignated" label="指定" />
-              <USwitch v-model="orderBackfill" label="补录" />
+              <USwitch v-if="!pendingDeal" v-model="orderBackfill" label="补录" />
             </div>
-            <UFormField v-if="orderBackfill" label="纸单营业日" :help="`最多补录最近 ${backfillMaxDays} 个营业日`">
+            <UFormField v-if="orderBackfill && !pendingDeal" label="纸单营业日" :help="`最多补录最近 ${backfillMaxDays} 个营业日`">
               <DateInput v-model="orderPaperDate" :max="businessDate" :aria-label="'纸单营业日'" />
             </UFormField>
           </div>

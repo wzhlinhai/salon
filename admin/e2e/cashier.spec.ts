@@ -172,9 +172,13 @@ test('团购验券、核销、立即开单、暂不开单后关联与撤销', as
   await expect(scan).toBeFocused()
   await page.getByRole('button', { name: '立即开单', exact: true }).click()
   const groupbuyDialog = page.getByRole('dialog', { name: '团购立即开单' })
+  // 团购开单走 open_groupbuy_order 一步完成，不能补录。
+  await expect(groupbuyDialog.getByRole('switch', { name: '补录' })).toHaveCount(0)
   await groupbuyDialog.getByRole('combobox', { name: '项目1岗位1员工' }).click()
   await page.getByRole('option', { name: staff.name, exact: true }).click()
+  const openedGroupbuy = page.waitForResponse(r => r.url().endsWith('/api/ops/open_groupbuy_order'))
   await groupbuyDialog.getByRole('button', { name: '开单', exact: true }).click()
+  expect((await openedGroupbuy).status()).toBe(200)
   await expect(groupbuyDialog).not.toBeVisible()
   await expect(page.getByTestId('coupon-panel')).toHaveCount(0)
   await expect(page.getByTestId('order-groupbuy')).toContainText(deal.name)
