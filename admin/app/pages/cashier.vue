@@ -1280,19 +1280,23 @@ onMounted(init)
     <UModal v-model:open="openOrderOpen" :title="pendingDeal ? '团购立即开单' : '开单'" description="选好项目和做的人，开单后挂在左边，做完再结账" :ui="{ content: 'sm:max-w-[600px]' }">
       <template #body>
         <div class="space-y-5">
-          <FieldGroup label="顾客">
-            <div class="flex items-center gap-2">
-              <span class="min-w-0 flex-1 truncate font-medium">{{ orderCustomer?.name || '未识别顾客' }}</span>
-              <USelect v-model="orderGender" :items="[{ label: '女客', value: 'female' }, { label: '男客', value: 'male' }]" class="w-28" aria-label="顾客性别" />
+          <!-- 顾客、性别、指定、补录收进一块浅底：都是"这单是谁、怎么来的"，和下面的项目分开。 -->
+          <div class="space-y-3 rounded-lg bg-side p-3.5 ring-1 ring-default ring-inset">
+            <div class="flex items-center gap-3">
+              <div class="min-w-0 flex-1">
+                <p class="text-meta text-muted">顾客</p>
+                <p class="truncate font-medium" :class="orderCustomer ? 'text-default' : 'text-muted'">{{ orderCustomer?.name || '未识别顾客' }}</p>
+              </div>
+              <MethodPicker v-model="orderGender" label="顾客性别" :items="[{ label: '女客', value: 'female' }, { label: '男客', value: 'male' }]" />
             </div>
-          </FieldGroup>
-          <div class="flex items-center gap-6">
-            <USwitch v-model="orderDesignated" label="指定" />
-            <USwitch v-model="orderBackfill" label="补录" />
+            <div class="flex items-center gap-6 border-t border-default pt-3">
+              <USwitch v-model="orderDesignated" label="指定" />
+              <USwitch v-model="orderBackfill" label="补录" />
+            </div>
+            <UFormField v-if="orderBackfill" label="纸单营业日" :help="`最多补录最近 ${backfillMaxDays} 个营业日`">
+              <DateInput v-model="orderPaperDate" :max="businessDate" :aria-label="'纸单营业日'" />
+            </UFormField>
           </div>
-          <UFormField v-if="orderBackfill" label="纸单营业日" :help="`最多补录最近 ${backfillMaxDays} 个营业日`">
-            <DateInput v-model="orderPaperDate" :max="businessDate" :aria-label="'纸单营业日'" />
-          </UFormField>
           <FieldGroup label="项目">
             <div v-for="(row, index) in orderItemRows" :key="index" class="space-y-2" data-testid="order-item-row">
               <div class="flex items-center gap-2">

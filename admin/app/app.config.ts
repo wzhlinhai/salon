@@ -75,9 +75,9 @@ export default defineAppConfig({
         footer: 'dialog-actions justify-end gap-3 px-6 py-4 sm:px-6'
       }
     },
-    // 禁用的实心按钮变成灰底灰字，而不是半透明的蓝：半透明蓝看着像"能点但没反应"。
-    // 描边按钮一律照 Fresha 的取消按钮：白底深色字、一圈灰框，不出现蓝框蓝字（没写 color 时默认是 primary）。
-    // 实心主按钮照 Notion 的蓝按钮：一道内描边加 1px 阴影，看着压得住。
+    // 禁用的实心按钮变成灰底灰字，而不是半透明的主色：半透明看着像"能点但没反应"。
+    // 描边按钮一律照 Fresha 的取消按钮：白底深色字、一圈灰框，不出现主色框和主色字（没写 color 时默认是 primary）。
+    // 实心主按钮（墨色）照 Notion 按钮的做法：一道内描边加 1px 阴影，看着压得住。
     // 行内的删除类文字按钮（去掉、撤销、删除）平时是灰字，悬停才变红，免得列表里一排红字。
     button: {
       compoundVariants: [
