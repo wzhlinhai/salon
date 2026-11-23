@@ -137,7 +137,7 @@ async function saveRule() {
       <UButton size="sm" icon="i-lucide-plus" @click="edit(null)">新建卡类型</UButton>
     </PageActions>
     <section aria-label="卡类型">
-      <div class="sec">卡类型<span class="ms-2 font-normal text-dimmed">{{ items.length }}</span></div>
+      <div v-if="items.length" class="sec mt-0!"><span class="font-normal text-dimmed">{{ items.length }} 种</span></div>
       <div class="overflow-x-auto">
         <ListSkeleton v-if="loading && !items.length" :rows="3" />
         <EmptyState v-else-if="!items.length" title="还没有卡类型" hint="点右上角新建储值卡、次卡或套餐" />
