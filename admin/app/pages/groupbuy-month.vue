@@ -145,7 +145,7 @@ async function saveSettlement() {
 
     <UModal v-model:open="settlementOpen" title="录入团购平台结算额">
       <template #body>
-        <div class="space-y-3">
+        <div class="space-y-5">
           <UFormField label="结算额"><UInput v-model="settlementAmount" inputmode="decimal" aria-label="结算额" /></UFormField>
           <UFormField label="备注"><UInput v-model="settlementNote" :maxlength="500" aria-label="结算备注" /></UFormField>
         </div>

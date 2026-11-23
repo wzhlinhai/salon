@@ -97,6 +97,10 @@ const items = ref<Schema['Item'][]>([])
 const rules = ref<RuleForm[]>([])
 const overrides = ref<OverrideForm[]>([])
 const excludedStaff = ref<string[]>([])
+// 手工费本店不用，来源默认不显示；已有方案开着手工费时照常显示，保存时原样带回。
+const laborInUse = ref(false)
+const shownSources = (labor: boolean) => sources.filter(s => s.value !== 'labor' || labor)
+const editRules = computed(() => rules.value.filter(r => r.source !== 'labor' || laborInUse.value))
 const enabledSources = computed(() => sources.filter(s => rules.value.some(r => r.source === s.value && r.enabled)))
 const staffOptions = computed(() => staff.value.map(s => ({ value: s.id, label: `${s.name}${s.active ? '' : '（离职）'}` })))
 const categoryOptions = computed(() => categories.value.map(c => ({ value: c.id, label: c.name })))
@@ -177,6 +181,7 @@ async function edit() {
       rebuild(rule)
       return rule
     })
+    laborInUse.value = rules.value.some(r => r.source === 'labor' && r.enabled)
     overrides.value = scheme?.overrides.map(o => ({
       source: o.source,
       target: o.position_id ? 'position_category' : 'staff_item',
@@ -257,7 +262,7 @@ function changeSource(o: OverrideForm) {
       <UButton size="sm" icon="i-lucide-pencil" :disabled="!today" @click="edit">修改方案</UButton>
     </PageActions>
     <PageDescriptionTail v-if="today">今天是营业日 {{ today }}。</PageDescriptionTail>
-    <EmptyState v-if="!versions.loading.value && !versions.items.value.length" title="还没有提成方案，没有方案时不计提成。" hint="点右上角修改方案，按项目、耗卡、手工费或销售设置提成" />
+    <EmptyState v-if="!versions.loading.value && !versions.items.value.length" art="chart" title="还没有提成方案，没有方案时不计提成。" hint="点右上角修改方案，按项目、耗卡或销售设置提成" />
     <section v-else>
       <div class="sec">方案版本</div>
       <div class="overflow-x-auto">
@@ -289,7 +294,7 @@ function changeSource(o: OverrideForm) {
     <section v-if="detail" data-testid="scheme-detail">
       <div class="sec">版本 {{ detail.version }} · {{ detail.effective_from }} 起执行</div>
       <div class="overflow-x-auto">
-        <div v-for="source in sources" :key="source.value" class="grid gap-x-6 gap-y-2 border-t border-default px-4 py-3.5 first:border-t-0 md:grid-cols-[10rem_minmax(0,1fr)]" :data-source="source.value">
+        <div v-for="source in shownSources(detail.scheme.rules.some(r => r.source === 'labor'))" :key="source.value" class="grid gap-x-6 gap-y-2 border-t border-default px-4 py-3.5 first:border-t-0 md:grid-cols-[10rem_minmax(0,1fr)]" :data-source="source.value">
           <div class="text-sm font-medium">{{ source.label }}</div>
           <div class="text-sm">
             <template v-for="rule in detail.scheme.rules.filter(r => r.source === source.value)" :key="rule.source">
@@ -326,8 +331,8 @@ function changeSource(o: OverrideForm) {
         <p v-if="loading">加载中</p>
         <p v-if="categoryLoading">加载类别中</p>
         <div v-if="ready" class="space-y-5">
-          <UFormField label="生效日期" help="不能早于今天，也不能早于最新版本；同一天保存多次，取最后保存的。"><DateInput v-model="effectiveFrom" :min="minDate" /></UFormField>
-          <section v-for="rule in rules" :key="rule.source" :data-rule="rule.source" class="space-y-3 rounded border border-default p-4">
+          <UFormField label="生效日期" help="不能早于今天，也不能早于最新版本；同一天保存多次，取最后保存的。" class="max-w-xs"><DateInput v-model="effectiveFrom" :min="minDate" /></UFormField>
+          <section v-for="rule in editRules" :key="rule.source" :data-rule="rule.source" class="space-y-3 rounded-lg bg-side p-4">
             <USwitch v-model="rule.enabled" :label="`按${sources.find(s => s.value === rule.source)?.label}计提成`" @update:model-value="toggleRule(rule)" />
             <template v-if="rule.enabled">
               <UFormField label="计提基数"><USelect v-if="rule.source === 'item'" v-model="rule.base" :items="bases" /><span v-else>业绩</span></UFormField>
@@ -345,8 +350,8 @@ function changeSource(o: OverrideForm) {
           </section>
           <section class="space-y-3">
             <h3 class="font-medium">覆盖比例</h3>
-            <p class="text-sm text-muted">覆盖比例是比例或固定金额，不带阶梯；项目覆盖和岗位 × 类别覆盖只作用于项目业绩、耗卡业绩和手工费。</p>
-            <div v-for="(o, index) in overrides" :key="index" data-testid="override-row" class="space-y-2 rounded border border-default p-3">
+            <p class="text-sm text-muted">覆盖比例是比例或固定金额，不带阶梯；项目覆盖和岗位 × 类别覆盖只作用于项目业绩和耗卡业绩。</p>
+            <div v-for="(o, index) in overrides" :key="index" data-testid="override-row" class="space-y-2 rounded-lg bg-side p-3">
               <UFormField label="目标"><USelect v-model="o.target" :items="targets" @update:model-value="changeTarget(o)" /></UFormField>
               <UFormField label="来源"><USelect v-model="o.source" :items="o.target === 'position_category' ? enabledSources.filter(s => s.value !== 'sale') : enabledSources" @update:model-value="changeSource(o)" /></UFormField>
               <template v-if="o.target === 'position_category'">
@@ -360,7 +365,7 @@ function changeSource(o: OverrideForm) {
               <CommissionValueEditor v-model="o.value" />
               <UButton variant="ghost" @click="overrides.splice(index, 1)">删除覆盖</UButton>
             </div>
-            <UButton :disabled="!enabledSources.length" variant="outline" @click="overrides.push({ source: enabledSources[0]!.value, target: 'staff_item', staff_id: '__all__', item_id: '__all__', position_id: '__all__', category_id: '__all__', value: formValue({ percent: '' }) })">添加覆盖</UButton>
+            <UButton color="neutral" icon="i-lucide-plus" class="-ms-2.5 self-start" :disabled="!enabledSources.length" variant="ghost" @click="overrides.push({ source: enabledSources[0]!.value, target: 'staff_item', staff_id: '__all__', item_id: '__all__', position_id: '__all__', category_id: '__all__', value: formValue({ percent: '' }) })">添加覆盖</UButton>
           </section>
           <UFormField label="不计提成的员工"><USelect v-model="excludedStaff" multiple :items="staffOptions" class="w-full" /></UFormField>
         </div>

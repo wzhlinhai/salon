@@ -24,12 +24,13 @@ const kinds = computed(() => [
     <UInput v-if="value.kind === 'percent' || value.kind === 'fixed_amount'" v-model="value.amount" :aria-label="value.kind === 'percent' ? '比例' : '固定金额'" inputmode="decimal" />
     <template v-if="value.kind === 'tiers'">
       <USelect v-model="value.mode" aria-label="阶梯方式" :items="[{ label: '整笔跳档', value: 'whole' }, { label: '超额累进', value: 'progressive' }]" />
-      <div v-for="(level, index) in value.levels" :key="index" class="flex flex-wrap gap-2" data-testid="tier-level">
+      <div v-for="(level, index) in value.levels" :key="index" class="grid grid-cols-[1fr_1fr_auto] items-end gap-3" data-testid="tier-level">
         <UFormField label="起点"><UInput v-model="level.from" :disabled="index === 0" aria-label="起点" inputmode="decimal" /></UFormField>
         <UFormField label="比例"><UInput v-model="level.percent" aria-label="档比例" inputmode="decimal" /></UFormField>
-        <UButton v-if="index > 0" variant="ghost" @click="value.levels.splice(index, 1)">删除</UButton>
+        <UButton v-if="index > 0" color="error" variant="ghost" @click="value.levels.splice(index, 1)">删除</UButton>
+        <span v-else />
       </div>
-      <UButton variant="outline" @click="value.levels.push({ from: '', percent: '' })">加一档</UButton>
+      <UButton color="neutral" icon="i-lucide-plus" class="-ms-2.5 self-start" variant="ghost" @click="value.levels.push({ from: '', percent: '' })">加一档</UButton>
     </template>
   </div>
 </template>

@@ -59,8 +59,6 @@ const discountable = ref(true)
 const durationMinutes = ref('0')
 const bookable = ref(true)
 const active = ref(true)
-const feeKind = ref('none')
-const feeValue = ref('0.00')
 const categoryId = ref('none')
 const positionRows = ref<{ position_id: string, required: boolean, share_percent: string }[]>([])
 const memberRows = ref<{ card_type_id: string, price: string }[]>([])
@@ -86,8 +84,6 @@ function openEditor(item: Item | null) {
     durationMinutes.value = String(item?.duration_minutes ?? 0)
     bookable.value = item?.bookable ?? true
     active.value = item?.active ?? true
-    feeKind.value = item?.labor_fee_amount != null ? 'amount' : item?.labor_fee_percent != null ? 'percent' : 'none'
-    feeValue.value = item?.labor_fee_amount ?? item?.labor_fee_percent ?? '0.00'
     categoryId.value = item?.category?.id ?? 'none'
     positionRows.value = item?.positions.map(p => ({ position_id: p.position_id, required: p.required, share_percent: p.share_percent == null ? '' : String(p.share_percent) })) ?? []
     memberRows.value = item?.member_prices.map(m => ({ ...m })) ?? []
@@ -107,8 +103,9 @@ async function save() {
     name: name.value, kind: kind.value, price: price.value, discountable: discountable.value,
     duration_minutes: Number(durationMinutes.value), bookable: bookable.value,
     category_id: categoryId.value === 'none' ? null : categoryId.value,
-    labor_fee_amount: feeKind.value === 'amount' ? feeValue.value : null,
-    labor_fee_percent: feeKind.value === 'percent' ? feeValue.value : null,
+    // 手工费本店不用（美管加里也没有），界面不显示；编辑时原样带回已有的值，新建为无。
+    labor_fee_amount: editing.value?.labor_fee_amount ?? null,
+    labor_fee_percent: editing.value?.labor_fee_percent ?? null,
     positions: positionRows.value.map(p => ({ ...p, share_percent: p.share_percent === '' ? null : Number(p.share_percent) })),
     member_prices: memberRows.value.map(m => ({ ...m })),
     level_prices: levelRows.value.map(l => ({ ...l }))
@@ -138,12 +135,6 @@ const groups = computed(() => {
   }
   return [...map.values()].sort((a, b) => a.rank - b.rank)
 })
-
-function laborFee(item: Item) {
-  if (item.labor_fee_amount != null) return `固定 ${item.labor_fee_amount} 元`
-  if (item.labor_fee_percent != null) return `售价的 ${item.labor_fee_percent}%`
-  return '无'
-}
 </script>
 
 <template>
@@ -152,7 +143,7 @@ function laborFee(item: Item) {
       <UButton size="sm" icon="i-lucide-plus" @click="openEditor(null)">新建项目</UButton>
     </PageActions>
     <ListSkeleton v-if="loading && !items.length" />
-    <EmptyState v-else-if="!items.length" title="还没有项目" hint="点右上角新建项目，填上价格和服务时长，开单和预约就能选它" />
+    <EmptyState v-else-if="!items.length" art="scissors" title="还没有项目" hint="点右上角新建项目，填上价格和服务时长，开单和预约就能选它" />
     <section v-for="group in groups" :key="group.key" :data-category="group.name">
       <div class="sec"><span class="size-2.5 rounded-sm" :class="group.items[0] ? toneOf(group.items[0].id) : 'bg-tag-gray'" aria-hidden="true" />{{ group.name }}<span class="ms-2 font-normal text-dimmed">{{ group.items.length }}</span></div>
       <div class="overflow-x-auto">
@@ -170,56 +161,54 @@ function laborFee(item: Item) {
             <span v-if="!item.active" class="tag bg-tag-gray">停用</span>
           </div>
           <span class="w-36 text-muted">{{ item.duration_minutes ? `${item.duration_minutes} 分钟` : '时长未设置' }} · {{ item.bookable ? '可预约' : '不可预约' }}</span>
-          <span class="w-36 text-muted">手工费 {{ laborFee(item) }}</span>
           <span class="w-24 text-right font-medium tabular-nums">{{ yuanFixed(item.price) }}</span>
           <UButton size="sm" color="neutral" variant="ghost" class="opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100" @click="openEditor(item)">编辑</UButton>
         </div>
       </div>
     </section>
-    <UModal v-model:open="open" :title="editing ? '编辑项目' : '新建项目'">
+    <UModal v-model:open="open" :title="editing ? '编辑项目' : '新建项目'" description="开单和预约按这里的价格、时长和岗位来" :ui="{ content: 'sm:max-w-[600px]' }">
       <template #body>
-        <div class="space-y-4">
+        <div class="space-y-5">
           <UFormField label="项目名称"><UInput v-model="name" aria-label="项目名称" :maxlength="40" /></UFormField>
-          <UFormField label="种类"><USelect v-model="kind" aria-label="种类" :items="[{ label: '服务', value: 'service' }, { label: '卖品', value: 'goods' }]" /></UFormField>
-          <UFormField label="类别"><USelect v-model="categoryId" aria-label="类别" :items="categoryOptions" /></UFormField>
-          <UFormField label="标准价"><UInput v-model="price" aria-label="标准价" inputmode="decimal" /></UFormField>
-          <UFormField label="服务时长（分钟）" help="0 表示未设置，最多 600"><UInput v-model="durationMinutes" type="number" min="0" max="600" aria-label="服务时长（分钟）" /></UFormField>
-          <USwitch v-model="bookable" label="可以预约" />
-          <USwitch v-model="discountable" label="可以打折" />
-          <UFormField label="手工费">
-            <USelect v-model="feeKind" aria-label="手工费类型" :items="[{ label: '无', value: 'none' }, { label: '固定金额', value: 'amount' }, { label: '售价百分比', value: 'percent' }]" />
-            <UInput v-if="feeKind !== 'none'" v-model="feeValue" aria-label="手工费数值" inputmode="decimal" class="ml-2" />
-          </UFormField>
-          <div class="space-y-2">
-            <h2 class="font-medium">项目岗位</h2>
-            <div v-for="(row, index) in positionRows" :key="index" class="flex flex-wrap gap-2" data-testid="position-row">
-              <USelect v-model="row.position_id" :aria-label="`岗位${index + 1}`" :items="positionOptions(index)" placeholder="选择岗位" />
+          <div class="grid grid-cols-2 gap-3">
+            <UFormField label="种类"><USelect v-model="kind" aria-label="种类" :items="[{ label: '服务', value: 'service' }, { label: '卖品', value: 'goods' }]" /></UFormField>
+            <UFormField label="类别"><USelect v-model="categoryId" aria-label="类别" :items="categoryOptions" /></UFormField>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <UFormField label="标准价"><UInput v-model="price" aria-label="标准价" inputmode="decimal" /></UFormField>
+            <UFormField label="服务时长（分钟）" help="0 表示未设置，最多 600"><UInput v-model="durationMinutes" type="number" min="0" max="600" aria-label="服务时长（分钟）" /></UFormField>
+          </div>
+          <div class="flex items-center gap-6">
+            <USwitch v-model="bookable" label="可以预约" />
+            <USwitch v-model="discountable" label="可以打折" />
+          </div>
+          <FieldGroup label="项目岗位">
+            <div v-for="(row, index) in positionRows" :key="index" class="flex items-center gap-2" data-testid="position-row">
+              <USelect v-model="row.position_id" :aria-label="`岗位${index + 1}`" :items="positionOptions(index)" placeholder="选择岗位" class="min-w-0 flex-1" />
               <UCheckbox v-model="row.required" label="必填" />
-              <UFormField label="岗位比例 %"><UInput v-model="row.share_percent" type="number" min="0" max="100" :aria-label="`岗位${index + 1}比例`" /></UFormField>
+              <UInput v-model="row.share_percent" type="number" min="0" max="100" placeholder="比例 %" class="w-24" :aria-label="`岗位${index + 1}比例`" />
               <UButton :disabled="index === 0" icon="i-lucide-arrow-up" color="neutral" variant="ghost" aria-label="上移" @click="move(index, -1)" />
               <UButton :disabled="index === positionRows.length - 1" icon="i-lucide-arrow-down" color="neutral" variant="ghost" aria-label="下移" @click="move(index, 1)" />
-              <UButton color="error" @click="positionRows.splice(index, 1)">移除岗位</UButton>
+              <UButton color="error" variant="ghost" icon="i-lucide-x" aria-label="移除岗位" @click="positionRows.splice(index, 1)" />
             </div>
-            <UButton variant="outline" @click="positionRows.push({ position_id: positions.find(p => p.active)?.id ?? '', required: false, share_percent: '' })">添加岗位</UButton>
-          </div>
-          <div class="space-y-2">
-            <h2 class="font-medium">级别价</h2>
-            <div v-for="(row, index) in levelRows" :key="index" class="flex gap-2" data-testid="level-row">
-              <USelect v-model="row.level_id" :aria-label="`级别${index + 1}`" :items="levelOptions" placeholder="选择级别" />
-              <UInput v-model="row.price" :aria-label="`级别价${index + 1}`" inputmode="decimal" />
-              <UButton color="error" @click="levelRows.splice(index, 1)">移除级别价</UButton>
+            <UButton color="neutral" icon="i-lucide-plus" class="-ms-2.5 self-start" variant="ghost" @click="positionRows.push({ position_id: positions.find(p => p.active)?.id ?? '', required: false, share_percent: '' })">添加岗位</UButton>
+          </FieldGroup>
+          <FieldGroup label="级别价">
+            <div v-for="(row, index) in levelRows" :key="index" class="flex items-center gap-2" data-testid="level-row">
+              <USelect v-model="row.level_id" :aria-label="`级别${index + 1}`" :items="levelOptions" placeholder="选择级别" class="min-w-0 flex-1" />
+              <UInput v-model="row.price" :aria-label="`级别价${index + 1}`" inputmode="decimal" class="w-32" />
+              <UButton color="error" variant="ghost" icon="i-lucide-x" aria-label="移除级别价" @click="levelRows.splice(index, 1)" />
             </div>
-            <UButton variant="outline" @click="levelRows.push({ level_id: levels.find(l => l.active)?.id ?? '', price: '0.00' })">添加级别价</UButton>
-          </div>
-          <div class="space-y-2">
-            <h2 class="font-medium">会员价</h2>
-            <div v-for="(row, index) in memberRows" :key="index" class="flex gap-2" data-testid="member-row">
-              <USelect v-model="row.card_type_id" :aria-label="`卡类型${index + 1}`" :items="memberOptions" placeholder="选择卡类型" />
-              <UInput v-model="row.price" :aria-label="`会员价${index + 1}`" inputmode="decimal" />
-              <UButton color="error" @click="memberRows.splice(index, 1)">移除会员价</UButton>
+            <UButton color="neutral" icon="i-lucide-plus" class="-ms-2.5 self-start" variant="ghost" @click="levelRows.push({ level_id: levels.find(l => l.active)?.id ?? '', price: '0.00' })">添加级别价</UButton>
+          </FieldGroup>
+          <FieldGroup label="会员价">
+            <div v-for="(row, index) in memberRows" :key="index" class="flex items-center gap-2" data-testid="member-row">
+              <USelect v-model="row.card_type_id" :aria-label="`卡类型${index + 1}`" :items="memberOptions" placeholder="选择卡类型" class="min-w-0 flex-1" />
+              <UInput v-model="row.price" :aria-label="`会员价${index + 1}`" inputmode="decimal" class="w-32" />
+              <UButton color="error" variant="ghost" icon="i-lucide-x" aria-label="移除会员价" @click="memberRows.splice(index, 1)" />
             </div>
-            <UButton variant="outline" @click="memberRows.push({ card_type_id: cardTypes.find(t => t.active)?.id ?? '', price: '0.00' })">添加会员价</UButton>
-          </div>
+            <UButton color="neutral" icon="i-lucide-plus" class="-ms-2.5 self-start" variant="ghost" @click="memberRows.push({ card_type_id: cardTypes.find(t => t.active)?.id ?? '', price: '0.00' })">添加会员价</UButton>
+          </FieldGroup>
           <USwitch v-if="editing" v-model="active" label="启用项目" />
         </div>
       </template>

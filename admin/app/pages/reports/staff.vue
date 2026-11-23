@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 员工业绩（DESIGN.md 报表）：一段营业日里每人一行，项目、耗卡、手工费、销售业绩，客数和提成，末行合计。
+// 员工业绩（DESIGN.md 报表）：一段营业日里每人一行，项目、耗卡、销售业绩（手工费本店不用，有数时才显示），客数和提成，末行合计。
 // 店长看全店（没记到人的业绩单列「未分配」）；发型师、助理只看自己，后端按本人范围过滤。
 // 点一个人从右侧滑出这段时间的每笔业绩和每笔提成。合计行直接用接口的 totals。
 import type { components } from '~/utils/api'
@@ -53,6 +53,7 @@ const moneyColumns: { key: MoneyKey, label: string }[] = [
   { key: 'labor_performance', label: '手工费' },
   { key: 'sale_performance', label: '销售业绩' }
 ]
+const shownMoneyColumns = computed(() => moneyColumns.filter(c => c.key !== 'labor_performance' || rows.value.some(r => Number(r.labor_performance) !== 0)))
 const guestColumns: { key: GuestKey, label: string }[] = [
   { key: 'guest_total', label: '客数' },
   { key: 'guest_designated', label: '指定' },
@@ -176,13 +177,13 @@ function signed(amount: string, reversal: boolean) {
 
       <section>
         <div class="sec">明细<span class="ms-auto font-normal text-dimmed">点一行看每笔业绩和提成</span></div>
-        <EmptyState v-if="!rows.length" class="box" title="这段时间没有业绩" hint="结账、开卡充值后这里会有数" />
+        <EmptyState v-if="!rows.length" class="box" art="chart" title="这段时间没有业绩" hint="结账、开卡充值后这里会有数" />
         <div v-else class="overflow-x-auto">
           <table class="w-full text-sm tabular-nums" data-testid="staff-table">
             <thead class="border-b border-default text-xs text-dimmed">
               <tr>
                 <th scope="col" class="sticky left-0 bg-page px-3 py-1.5 text-left font-normal">员工</th>
-                <th v-for="c in moneyColumns" :key="c.key" scope="col" class="px-3 text-right font-normal whitespace-nowrap">{{ c.label }}</th>
+                <th v-for="c in shownMoneyColumns" :key="c.key" scope="col" class="px-3 text-right font-normal whitespace-nowrap">{{ c.label }}</th>
                 <th v-for="(c, i) in guestColumns" :key="c.key" scope="col" class="px-3 text-right font-normal whitespace-nowrap" :class="!i && 'border-l border-default'">{{ c.label }}</th>
                 <th scope="col" class="px-3 text-right font-normal whitespace-nowrap">服务项次</th>
                 <th scope="col" class="border-l border-default px-3 text-right font-normal whitespace-nowrap">提成</th>
@@ -201,7 +202,7 @@ function signed(amount: string, reversal: boolean) {
                   <button v-if="row.staff" type="button" class="font-medium hover:underline" @click.stop="openDetail(row)">{{ row.staff.name }}</button>
                   <span v-else class="text-muted" title="结账时没记到员工的业绩，没有个人明细">未分配</span>
                 </th>
-                <td v-for="c in moneyColumns" :key="c.key" class="px-3 text-right whitespace-nowrap" :class="cell(row[c.key])" :data-col="c.key">{{ yuanFixed(row[c.key]) }}</td>
+                <td v-for="c in shownMoneyColumns" :key="c.key" class="px-3 text-right whitespace-nowrap" :class="cell(row[c.key])" :data-col="c.key">{{ yuanFixed(row[c.key]) }}</td>
                 <td v-for="(c, i) in guestColumns" :key="c.key" class="px-3 text-right" :class="[cell(row[c.key]), !i && 'border-l border-default']" :data-col="c.key">{{ formatGuest(row[c.key]) }}</td>
                 <td class="px-3 text-right" :class="cell(row.service_item_lines)" data-col="service_item_lines">{{ row.service_item_lines }}</td>
                 <td class="border-l border-default px-3 text-right whitespace-nowrap" :class="cell(row.commission_total)" data-col="commission_total">{{ yuanFixed(row.commission_total) }}</td>
@@ -210,7 +211,7 @@ function signed(amount: string, reversal: boolean) {
             <tfoot class="font-semibold">
               <tr class="border-y border-default" data-testid="staff-totals">
                 <th scope="row" class="sticky left-0 bg-page px-3 py-2 text-left">合计</th>
-                <td v-for="c in moneyColumns" :key="c.key" class="px-3 text-right whitespace-nowrap" :data-col="c.key">{{ yuanFixed(report.totals[c.key]) }}</td>
+                <td v-for="c in shownMoneyColumns" :key="c.key" class="px-3 text-right whitespace-nowrap" :data-col="c.key">{{ yuanFixed(report.totals[c.key]) }}</td>
                 <td v-for="(c, i) in guestColumns" :key="c.key" class="px-3 text-right" :class="!i && 'border-l border-default'" :data-col="c.key">{{ formatGuest(report.totals[c.key]) }}</td>
                 <td class="px-3 text-right" data-col="service_item_lines">{{ report.totals.service_item_lines }}</td>
                 <td class="border-l border-default px-3 text-right whitespace-nowrap" data-col="commission_total">{{ yuanFixed(report.totals.commission_total) }}</td>
@@ -227,10 +228,10 @@ function signed(amount: string, reversal: boolean) {
       :description="`${range.from} 至 ${range.to}；冲回是撤单或售后在那天写的负数。`"
     >
       <template #body>
-        <div v-if="picked" class="space-y-3" data-testid="staff-detail">
+        <div v-if="picked" class="space-y-5" data-testid="staff-detail">
           <MethodPicker v-model="tab" :items="tabs" label="明细类别" />
           <p class="text-meta text-muted tabular-nums">
-            <template v-if="tab === 'performance'">项目 {{ yuan(picked.item_performance) }} · 耗卡 {{ yuan(picked.consume_performance) }} · 手工费 {{ yuan(picked.labor_performance) }} · 销售 {{ yuan(picked.sale_performance) }}</template>
+            <template v-if="tab === 'performance'">项目 {{ yuan(picked.item_performance) }} · 耗卡 {{ yuan(picked.consume_performance) }}<template v-if="Number(picked.labor_performance) !== 0"> · 手工费 {{ yuan(picked.labor_performance) }}</template> · 销售 {{ yuan(picked.sale_performance) }}</template>
             <template v-else>提成合计 {{ yuan(picked.commission_total) }}</template>
           </p>
 

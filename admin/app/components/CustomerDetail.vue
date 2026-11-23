@@ -553,16 +553,18 @@ onBeforeUnmount(() => {
   </USlideover>
   <UModal v-model:open="editing" title="修改顾客资料">
     <template #body>
-      <div class="space-y-3">
+      <div class="space-y-5">
         <UFormField label="姓名">
           <UInput v-model="profile.name" class="w-full" />
         </UFormField>
-        <UFormField label="性别">
-          <USelect v-model="profile.gender" :items="genderItems" class="w-full" />
-        </UFormField>
-        <UFormField label="顾客来源">
-          <USelect v-model="profile.source" :items="sourceItems" class="w-full" />
-        </UFormField>
+        <div class="grid grid-cols-2 gap-4">
+          <UFormField label="性别">
+            <USelect v-model="profile.gender" :items="genderItems" class="w-full" />
+          </UFormField>
+          <UFormField label="顾客来源">
+            <USelect v-model="profile.source" :items="sourceItems" class="w-full" />
+          </UFormField>
+        </div>
         <UFormField label="备注">
           <UTextarea v-model="profile.note" class="w-full" />
         </UFormField>
@@ -588,13 +590,15 @@ onBeforeUnmount(() => {
   </UModal>
   <UModal v-model:open="labelOpen" title="添加安全标签">
     <template #body>
-      <div class="space-y-3">
-        <UFormField label="类型">
-          <USelect v-model="label.kind" :items="Object.entries(labelNames).map(([value, label]) => ({ value, label }))" class="w-full" />
-        </UFormField>
-        <UFormField label="来源">
-          <USelect v-model="label.source" :items="Object.entries(labelSources).map(([value, label]) => ({ value, label }))" class="w-full" />
-        </UFormField>
+      <div class="space-y-5">
+        <div class="grid grid-cols-2 gap-4">
+          <UFormField label="类型">
+            <USelect v-model="label.kind" :items="Object.entries(labelNames).map(([value, label]) => ({ value, label }))" class="w-full" />
+          </UFormField>
+          <UFormField label="来源">
+            <USelect v-model="label.source" :items="Object.entries(labelSources).map(([value, label]) => ({ value, label }))" class="w-full" />
+          </UFormField>
+        </div>
         <UFormField label="观察日期">
           <DateInput v-model="label.observed_on" :max="today" />
         </UFormField>
@@ -619,7 +623,7 @@ onBeforeUnmount(() => {
   </UModal>
   <UModal v-model:open="mergeOpen" title="合并重复顾客" :ui="{ content: 'sm:max-w-2xl' }">
     <template #body>
-      <div class="space-y-4">
+      <div class="space-y-5">
         <UFormField label="搜索另一位顾客">
           <UInput v-model="mergeQuery" placeholder="手机号、后四位或姓名" :loading="searching" class="w-full" @keydown.enter="searchCandidates" />
         </UFormField>
@@ -643,7 +647,7 @@ onBeforeUnmount(() => {
               <dd class="whitespace-pre-wrap">备注：{{ c.note || '无' }}</dd>
               <dd>建档时间：{{ new Date(c.created_at).toLocaleString('zh-CN') }}</dd>
               <dd>
-                <UBadge v-for="l in c.active_safety_labels" :key="l.id" color="error" class="mr-1">{{ labelNames[l.kind] }}</UBadge>
+                <span v-for="l in c.active_safety_labels" :key="l.id" class="tag mr-1 bg-tag-red">{{ labelNames[l.kind] }}</span>
               </dd>
             </dl>
             <UButton class="mt-3" :variant="keepID === c.id ? 'solid' : 'outline'" :aria-pressed="keepID === c.id" @click="keepID = c.id">保留这位顾客</UButton>

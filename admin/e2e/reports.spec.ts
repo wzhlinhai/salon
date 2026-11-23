@@ -33,7 +33,9 @@ async function seedCheckout() {
 }
 
 // 表格里的数换成分（金额）或整数（单数），合计逐列核对用。
+// 表身的零写成一道短横（yuanCell）。
 function amount(text: string) {
+  if (text.trim() === '–') return 0
   return Math.round(Number(text.replace(/[¥,\s]/g, '')) * 100)
 }
 

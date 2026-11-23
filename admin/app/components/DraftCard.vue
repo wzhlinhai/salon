@@ -34,10 +34,6 @@ const statusBadge = computed(() => {
   }
 })
 
-function yuan(value: string) {
-  return `¥${Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
-
 const confirming = ref(false)
 
 async function confirm() {
@@ -109,7 +105,7 @@ async function saveReject() {
       <li v-for="(line, index) in previewLines" :key="index" class="flex gap-2">
         <span class="truncate font-medium text-default">{{ line.item_name }}</span>
         <span class="truncate">{{ line.staff.map(s => s.staff_name).join('、') }}</span>
-        <span class="ms-auto tabular-nums text-default">{{ yuan(line.price) }}</span>
+        <span class="ms-auto tabular-nums text-default">{{ yuanFixed(line.price) }}</span>
       </li>
     </ul>
     <p v-if="previewError" class="rounded-md bg-tag-yellow/60 px-2 py-1.5 text-meta">{{ previewError }}</p>

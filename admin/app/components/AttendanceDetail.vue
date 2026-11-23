@@ -170,7 +170,7 @@ async function saveRevoke() {
 
     <UModal v-model:open="voidOpen" title="作废补卡">
       <template #body>
-        <div class="space-y-3">
+        <div class="space-y-5">
           <p v-if="voidTarget">补卡时间：{{ formatAttendanceDateTime(voidTarget.at) }}，原因：{{ voidTarget.reason }}</p>
           <UFormField label="作废原因"><UInput v-model="voidReason" :maxlength="100" class="w-full" /></UFormField>
         </div>
@@ -182,10 +182,9 @@ async function saveRevoke() {
       </template>
     </UModal>
 
-    <UModal v-model:open="approvalOpen" title="核准">
+    <UModal v-model:open="approvalOpen" title="核准" :description="approvalTarget ? `${approvalTarget.business_date} 的异常：${[approvalTarget.late ? `迟到 ${approvalTarget.late_minutes} 分钟` : '', approvalTarget.early ? `早退 ${approvalTarget.early_minutes} 分钟` : '', approvalTarget.missing ? '缺卡' : ''].filter(Boolean).join(' · ')}` : undefined">
       <template #body>
-        <div class="space-y-3">
-          <p v-if="approvalTarget">{{ approvalTarget.business_date }} 的异常：{{ [approvalTarget.late ? `迟到 ${approvalTarget.late_minutes} 分钟` : '', approvalTarget.early ? `早退 ${approvalTarget.early_minutes} 分钟` : '', approvalTarget.missing ? '缺卡' : ''].filter(Boolean).join(' · ') }}</p>
+        <div class="space-y-5">
           <UFormField label="原因"><UInput v-model="approvalReason" :maxlength="100" class="w-full" /></UFormField>
         </div>
       </template>

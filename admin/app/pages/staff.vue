@@ -285,7 +285,7 @@ async function setActive(s: Staff, active: boolean) {
           <ListSkeleton />
         </template>
         <template #empty>
-          <EmptyState v-if="!staff.length" title="还没有员工" hint="点右上角新建员工，再开登录账号和角色" />
+          <EmptyState v-if="!staff.length" art="chair" title="还没有员工" hint="点右上角新建员工，再开登录账号和角色" />
           <EmptyState v-else :title="search.trim() ? '没有找到这位员工' : filter.empty" :hint="search.trim() ? '换个姓名或编号试试' : undefined" />
         </template>
       </UTable>
@@ -293,11 +293,15 @@ async function setActive(s: Staff, active: boolean) {
 
     <UModal v-model:open="profileOpen" :title="editing ? '修改档案' : '新建员工'">
       <template #body>
-        <div class="space-y-3">
-          <UFormField label="姓名"><UInput v-model="profile.name" class="w-full" /></UFormField>
-          <UFormField label="编号"><UInput v-model="profile.number" class="w-full" /></UFormField>
-          <UFormField label="级别"><USelect v-model="profile.level" :items="optionItems(levels)" class="w-full" /></UFormField>
-          <UFormField label="岗位"><USelect v-model="profile.position" :items="optionItems(positions)" class="w-full" /></UFormField>
+        <div class="space-y-5">
+          <div class="grid grid-cols-2 gap-4">
+            <UFormField label="姓名"><UInput v-model="profile.name" class="w-full" /></UFormField>
+            <UFormField label="编号"><UInput v-model="profile.number" class="w-full" /></UFormField>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <UFormField label="级别"><USelect v-model="profile.level" :items="optionItems(levels)" class="w-full" /></UFormField>
+            <UFormField label="岗位"><USelect v-model="profile.position" :items="optionItems(positions)" class="w-full" /></UFormField>
+          </div>
           <UFormField label="小程序预约">
             <UCheckbox v-model="profile.self_bookable" label="顾客可在小程序预约" aria-label="顾客可在小程序预约" />
           </UFormField>
@@ -313,10 +317,11 @@ async function setActive(s: Staff, active: boolean) {
       </template>
     </UModal>
 
-    <UModal v-model:open="rolesOpen" :title="`设置角色：${roleTarget?.name ?? ''}`">
+    <UModal v-model:open="rolesOpen" :title="`设置角色：${roleTarget?.name ?? ''}`" description="一个员工可以有多个角色，权限取各角色的并集。">
       <template #body>
-        <p class="text-sm text-muted mb-3">一个员工可以有多个角色，权限取各角色的并集。</p>
-        <USelectMenu v-model="roleSelection" :items="roleItems" value-key="value" multiple class="w-full" />
+        <UFormField label="角色">
+          <USelectMenu v-model="roleSelection" :items="roleItems" value-key="value" multiple class="w-full" />
+        </UFormField>
       </template>
       <template #footer>
         <ModalActions @cancel="rolesOpen = false">
@@ -327,7 +332,7 @@ async function setActive(s: Staff, active: boolean) {
 
     <UModal v-model:open="loginOpen" :title="`登录账号：${loginTarget?.name ?? ''}`">
       <template #body>
-        <div class="space-y-3">
+        <div class="space-y-5">
           <UFormField label="账号"><UInput v-model="login.login_account" class="w-full" /></UFormField>
           <UFormField label="新密码（至少 8 位）"><UInput v-model="login.password" type="password" class="w-full" /></UFormField>
         </div>

@@ -9,7 +9,7 @@ export interface ReportRange { granularity: Granularity, from: string, to: strin
 export const reportCatalog: { key: string, label: string, description: string, icon: string, permission: string }[] = [
   { key: 'business', label: '营业报表', description: '每天或每月的实收、办卡充值、客数，按收款方式分列', icon: 'i-lucide-chart-line', permission: 'report.view' },
   { key: 'debts', label: '欠款对账', description: '到现在为止的挂账和历史欠款，已还多少、还剩多少', icon: 'i-lucide-hand-coins', permission: 'report.view' },
-  { key: 'staff', label: '员工业绩', description: '每人的项目、耗卡、手工费、销售业绩和客数、提成；发型师只看自己', icon: 'i-lucide-users', permission: 'performance.view' },
+  { key: 'staff', label: '员工业绩', description: '每人的项目、耗卡、销售业绩和客数、提成；发型师只看自己', icon: 'i-lucide-users', permission: 'performance.view' },
   { key: 'items', label: '项目报表', description: '每个服务、卖品做了几次、收了多少，实收前 10 名', icon: 'i-lucide-scissors', permission: 'report.view' },
   { key: 'cards', label: '卡项报表', description: '每种卡开卡、充值、耗卡、退卡多少，结束时余额', icon: 'i-lucide-credit-card', permission: 'report.view' },
   { key: 'sources', label: '新客来源', description: '新客从哪来、几个回头、花了多少；只有人数，不列顾客', icon: 'i-lucide-user-plus', permission: 'report.view' }

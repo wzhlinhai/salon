@@ -1167,7 +1167,7 @@ onMounted(init)
         </h2>
 
         <p v-if="orderLoading" class="box text-sm text-muted">加载中…</p>
-        <EmptyState v-else-if="!selectedOrder" class="box" icon="i-lucide-receipt" title="还没选单" hint="从左侧选一张挂单，或扫码开单" />
+        <EmptyState v-else-if="!selectedOrder" class="box" art="receipt" title="还没选单" hint="从左侧选一张挂单，或扫码开单" />
         <div v-else class="grid items-start gap-4" :class="canCollect ? 'xl:grid-cols-[minmax(0,1fr)_20rem]' : ''">
           <div class="space-y-4">
             <div v-if="canOrderEdit && mergeableOrders.length" class="box flex items-center gap-2 py-2 text-sm" role="status" data-testid="merge-hint">
@@ -1277,34 +1277,40 @@ onMounted(init)
         </div>
       </div>
     </section>
-    <UModal v-model:open="openOrderOpen" :title="pendingDeal ? '团购立即开单' : '开单'">
+    <UModal v-model:open="openOrderOpen" :title="pendingDeal ? '团购立即开单' : '开单'" description="选好项目和做的人，开单后挂在左边，做完再结账" :ui="{ content: 'sm:max-w-[600px]' }">
       <template #body>
-        <div class="space-y-4">
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="font-medium">{{ orderCustomer?.name || '未识别顾客' }}</span>
-            <USelect v-model="orderGender" :items="[{ label: '女客', value: 'female' }, { label: '男客', value: 'male' }]" class="w-28" aria-label="顾客性别" />
-            <USwitch v-model="orderDesignated" label="指定" />
-          </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <USwitch v-model="orderBackfill" label="补录" />
-            <UFormField v-if="orderBackfill" label="纸单营业日" :help="`最多补录最近 ${backfillMaxDays} 个营业日`" class="w-56">
+        <div class="space-y-5">
+          <!-- 顾客、性别、指定、补录收进一块浅底：都是"这单是谁、怎么来的"，和下面的项目分开。 -->
+          <div class="space-y-3 rounded-lg bg-side p-3.5 ring-1 ring-default ring-inset">
+            <div class="flex items-center gap-3">
+              <div class="min-w-0 flex-1">
+                <p class="text-meta text-muted">顾客</p>
+                <p class="truncate font-medium" :class="orderCustomer ? 'text-default' : 'text-muted'">{{ orderCustomer?.name || '未识别顾客' }}</p>
+              </div>
+              <MethodPicker v-model="orderGender" label="顾客性别" :items="[{ label: '女客', value: 'female' }, { label: '男客', value: 'male' }]" />
+            </div>
+            <div class="flex items-center gap-6 border-t border-default pt-3">
+              <USwitch v-model="orderDesignated" label="指定" />
+              <USwitch v-model="orderBackfill" label="补录" />
+            </div>
+            <UFormField v-if="orderBackfill" label="纸单营业日" :help="`最多补录最近 ${backfillMaxDays} 个营业日`">
               <DateInput v-model="orderPaperDate" :max="businessDate" :aria-label="'纸单营业日'" />
             </UFormField>
           </div>
-          <div class="space-y-3">
-            <div v-for="(row, index) in orderItemRows" :key="index" class="rounded-lg border border-default p-3" data-testid="order-item-row">
+          <FieldGroup label="项目">
+            <div v-for="(row, index) in orderItemRows" :key="index" class="space-y-2" data-testid="order-item-row">
               <div class="flex items-center gap-2">
-                <USelect v-model="row.item_id" :items="activeItems.map(i => ({ label: `${i.name}（${i.price}）`, value: i.id }))" class="flex-1" :aria-label="`项目${index + 1}`" placeholder="选择项目" @update:model-value="row.staff = {}" />
-                <UButton size="sm" variant="ghost" color="error" :disabled="orderItemRows.length === 1" @click="removeOrderRow(index)">去掉</UButton>
+                <USelect v-model="row.item_id" :items="activeItems.map(i => ({ label: `${i.name}（${i.price}）`, value: i.id }))" class="min-w-0 flex-1" :aria-label="`项目${index + 1}`" placeholder="选择项目" @update:model-value="row.staff = {}" />
+                <UButton variant="ghost" color="error" icon="i-lucide-x" aria-label="去掉" :disabled="orderItemRows.length === 1" @click="removeOrderRow(index)" />
               </div>
-              <div v-for="position in positionsOf(row.item_id)" :key="position.slot" class="mt-2 flex items-center gap-2">
-                <span class="w-16 text-sm text-muted">岗位 {{ position.slot }}</span>
-                <USelect v-model="row.staff[position.slot]" :items="staffItems" class="w-56" :aria-label="`项目${index + 1}岗位${position.slot}员工`" placeholder="选择员工" />
-                <UBadge v-if="position.required" color="warning" variant="subtle">必填</UBadge>
+              <div v-for="position in positionsOf(row.item_id)" :key="position.slot" class="flex items-center gap-2 ps-3">
+                <span class="w-14 shrink-0 text-meta text-muted">岗位 {{ position.slot }}</span>
+                <USelect v-model="row.staff[position.slot]" :items="staffItems" class="min-w-0 flex-1" :aria-label="`项目${index + 1}岗位${position.slot}员工`" placeholder="选择员工" />
+                <span v-if="position.required" class="tag shrink-0 bg-tag-yellow">必填</span>
               </div>
             </div>
-            <UButton variant="outline" @click="addOrderRow">添加项目</UButton>
-          </div>
+            <UButton color="neutral" icon="i-lucide-plus" class="-ms-2.5 self-start" variant="ghost" @click="addOrderRow">添加项目</UButton>
+          </FieldGroup>
         </div>
       </template>
       <template #footer>
@@ -1316,11 +1322,14 @@ onMounted(init)
 
     <UModal v-model:open="addItemOpen" title="加项目">
       <template #body>
-        <div class="space-y-3">
-          <USelect v-model="addItemID" :items="activeItems.map(i => ({ label: `${i.name}（${i.price}）`, value: i.id }))" class="w-full" aria-label="加项目" placeholder="选择项目" @update:model-value="addItemStaff = {}" />
-          <div v-for="position in positionsOf(addItemID)" :key="position.slot" class="flex items-center gap-2">
-            <span class="w-16 text-sm text-muted">岗位 {{ position.slot }}</span>
-            <USelect v-model="addItemStaff[position.slot]" :items="staffItems" class="w-56" :aria-label="`加项目岗位${position.slot}员工`" placeholder="选择员工" />
+        <div class="space-y-5">
+          <UFormField label="项目">
+            <USelect v-model="addItemID" :items="activeItems.map(i => ({ label: `${i.name}（${i.price}）`, value: i.id }))" class="w-full" aria-label="加项目" placeholder="选择项目" @update:model-value="addItemStaff = {}" />
+          </UFormField>
+          <div v-if="positionsOf(addItemID).length" class="grid grid-cols-2 gap-4">
+            <UFormField v-for="position in positionsOf(addItemID)" :key="position.slot" :label="`岗位 ${position.slot}`">
+              <USelect v-model="addItemStaff[position.slot]" :items="staffItems" class="w-full" :aria-label="`加项目岗位${position.slot}员工`" placeholder="选择员工" />
+            </UFormField>
           </div>
         </div>
       </template>
@@ -1331,10 +1340,9 @@ onMounted(init)
       </template>
     </UModal>
 
-    <UModal v-model:open="repriceOpen" title="改价">
+    <UModal v-model:open="repriceOpen" title="改价" :description="repriceItem?.item_name">
       <template #body>
-        <div class="space-y-3">
-          <p class="text-sm text-muted">{{ repriceItem?.item_name }}</p>
+        <div class="space-y-5">
           <UFormField label="新价格"><UInput v-model="repricePrice" inputmode="decimal" aria-label="新价格" /></UFormField>
           <UFormField label="原因"><UInput v-model="repriceReason" aria-label="改价原因" /></UFormField>
         </div>
@@ -1346,10 +1354,9 @@ onMounted(init)
       </template>
     </UModal>
 
-    <UModal v-model:open="linkOpen" title="关联团购券到挂单">
+    <UModal v-model:open="linkOpen" title="关联团购券到挂单" :description="`券码 ${linkTarget?.coupon_code ?? ''}（${linkTarget ? platformLabel(linkTarget.platform) : ''}）`">
       <template #body>
-        <div class="space-y-3">
-          <p class="text-sm">券码 {{ linkTarget?.coupon_code }}（{{ linkTarget ? platformLabel(linkTarget.platform) : '' }}）</p>
+        <div class="space-y-5">
           <UFormField label="团购商品"><USelect v-model="linkDealID" :items="dealItems" class="w-full" aria-label="关联团购商品" /></UFormField>
           <UFormField label="挂单"><USelect v-model="linkTargetOrderID" :items="[{ label: '选择挂单', value: NONE }, ...linkOrderItems]" class="w-full" aria-label="关联到挂单" /></UFormField>
         </div>
@@ -1361,10 +1368,9 @@ onMounted(init)
       </template>
     </UModal>
 
-    <UModal v-model:open="countOpen" title="用次卡">
+    <UModal v-model:open="countOpen" title="用次卡" :description="`${countTarget?.item_name ?? ''} · 次卡抵扣 ${countTarget ? previewLineNet(countTarget.id) : ''}`">
       <template #body>
-        <div class="space-y-3">
-          <p class="text-sm text-muted">{{ countTarget?.item_name }} · 次卡抵扣 {{ countTarget ? previewLineNet(countTarget.id) : '' }}</p>
+        <div class="space-y-5">
           <UFormField label="次卡">
             <USelect v-model="countCardID" :items="countCardOptions" class="w-full" aria-label="次卡" />
           </UFormField>

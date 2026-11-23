@@ -232,7 +232,7 @@ const searchGroups = computed(() => {
             data-testid="search-button"
             @click="searchOpen = true"
           >
-            <UIcon name="i-lucide-search" class="side-icon" aria-hidden="true" />
+            <span class="side-glyph" style="--tone: var(--color-tag-gray)"><UIcon name="i-lucide-search" class="side-icon" aria-hidden="true" /></span>
             <template v-if="!collapsed">
               <span class="truncate">搜索</span>
               <kbd class="ms-auto font-mono text-2xs text-dimmed">Ctrl K</kbd>
@@ -245,7 +245,7 @@ const searchGroups = computed(() => {
             :class="[isActive('/drafts') ? 'side-on' : '', collapsed ? 'justify-center' : '']"
             :aria-label="collapsed ? '待确认' : undefined"
           >
-            <UIcon :name="DRAFTS_ICON" class="side-icon" aria-hidden="true" />
+            <span class="side-glyph" style="--tone: var(--color-tag-red)"><UIcon :name="DRAFTS_ICON" class="side-icon" aria-hidden="true" /></span>
             <template v-if="!collapsed">
               <span>待确认</span>
               <span v-if="pendingDrafts.length" class="ms-auto text-xs text-dimmed tabular-nums">{{ pendingDrafts.length }}</span>
@@ -294,7 +294,7 @@ const searchGroups = computed(() => {
                 :aria-label="collapsed ? item.label : undefined"
                 :title="collapsed ? item.label : undefined"
               >
-                <UIcon :name="item.icon" class="side-icon" aria-hidden="true" />
+                <span class="side-glyph" :style="{ '--tone': `var(--color-tag-${item.tone})` }"><UIcon :name="item.icon" class="side-icon" aria-hidden="true" /></span>
                 <span v-if="!collapsed" data-nav-label>{{ item.label }}</span>
               </NuxtLink>
             </template>
@@ -389,10 +389,10 @@ const searchGroups = computed(() => {
         aria-label="吩咐 AI"
         title="吩咐 AI"
         data-testid="ai-fab"
-        class="fixed right-5 bottom-5 z-40 grid size-12 place-items-center rounded-full bg-white text-sm font-semibold text-default shadow-float transition-colors hover:bg-side"
+        class="fixed right-5 bottom-5 z-40 grid size-12 place-items-center rounded-full bg-white text-default shadow-float transition-colors hover:bg-side"
         @click="aiOpen = true"
       >
-        AI
+        <AiMark class="size-8" />
       </button>
     </UDashboardGroup>
   </UApp>
@@ -425,6 +425,31 @@ const searchGroups = computed(() => {
   color: var(--ui-text-muted);
 }
 .side-on .side-icon {
+  color: var(--ui-text);
+}
+/* 图标后面垫一块错开的低饱和圆（照空状态插画 SpotArt 的画法）：线条用墨色，色块偏右下，露出一半。 */
+.side-glyph {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+.side-glyph::before {
+  content: "";
+  position: absolute;
+  right: -4px;
+  bottom: -3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--tone);
+  /* 标签色是给白底调的，放在暖灰侧栏上太淡，加深一档。 */
+  filter: saturate(1.8) brightness(0.96);
+}
+.side-glyph > .side-icon {
+  position: relative;
   color: var(--ui-text);
 }
 @media (pointer: coarse) {

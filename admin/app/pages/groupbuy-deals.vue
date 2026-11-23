@@ -84,7 +84,7 @@ async function save() {
     <p class="text-sm text-muted">平台购买价用于和平台月结账对账；门店标价取所对应项目的标准价。平台创建后不能修改。</p>
     <div class="overflow-x-auto">
       <ListSkeleton v-if="loading && !deals.length" :rows="3" />
-      <EmptyState v-else-if="!deals.length" title="还没有团购商品" hint="把美团、抖音上卖的团购商品录进来，核销和月底对账才对得上" />
+      <EmptyState v-else-if="!deals.length" art="receipt" title="还没有团购商品" hint="把美团、抖音上卖的团购商品录进来，核销和月底对账才对得上" />
       <div
         v-for="deal in deals"
         :key="deal.id"
@@ -105,13 +105,15 @@ async function save() {
 
     <UModal v-model:open="open" :title="editing ? '编辑团购商品' : '新建团购商品'">
       <template #body>
-        <div class="space-y-4">
-          <UFormField label="平台">
-            <USelect v-if="!editing" v-model="platform" :items="platformItems" class="w-full" aria-label="平台" />
-            <p v-else>{{ platformItems.find(p => p.value === editing?.platform)?.label ?? editing.platform }}</p>
-          </UFormField>
+        <div class="space-y-5">
+          <div class="grid grid-cols-2 gap-4">
+            <UFormField label="平台">
+              <USelect v-if="!editing" v-model="platform" :items="platformItems" class="w-full" aria-label="平台" />
+              <p v-else class="flex min-h-11 items-center">{{ platformItems.find(p => p.value === editing?.platform)?.label ?? editing.platform }}</p>
+            </UFormField>
+            <UFormField label="平台购买价"><UInput v-model="purchasePrice" inputmode="decimal" aria-label="平台购买价" /></UFormField>
+          </div>
           <UFormField label="商品名称"><UInput v-model="name" :maxlength="200" aria-label="商品名称" /></UFormField>
-          <UFormField label="平台购买价"><UInput v-model="purchasePrice" inputmode="decimal" aria-label="平台购买价" /></UFormField>
           <UFormField label="对应门店项目"><USelect v-model="itemID" :items="itemItems" class="w-full" aria-label="对应门店项目" placeholder="选择项目" /></UFormField>
           <USwitch v-if="editing" v-model="active" label="启用" />
         </div>

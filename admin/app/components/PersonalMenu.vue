@@ -96,9 +96,9 @@ const menuItems = computed(() => {
         >
           <span class="w-24 tabular-nums">{{ day.business_date }}</span>
           <span class="w-32 tabular-nums text-muted">{{ clockTime(day.clock_in) }} – {{ clockTime(day.clock_out) }}</span>
-          <UBadge v-if="day.missing" color="error" variant="subtle">缺卡</UBadge>
-          <UBadge v-else-if="day.late" color="warning" variant="subtle">迟到</UBadge>
-          <UBadge v-else-if="day.early" color="warning" variant="subtle">早退</UBadge>
+          <span v-if="day.missing" class="tag bg-tag-red">缺卡</span>
+          <span v-else-if="day.late" class="tag bg-tag-yellow">迟到</span>
+          <span v-else-if="day.early" class="tag bg-tag-yellow">早退</span>
         </div>
       </div>
     </template>

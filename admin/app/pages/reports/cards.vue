@@ -75,8 +75,8 @@ function cell(value: string | number) {
 
       <section>
         <div class="sec">明细</div>
-        <EmptyState v-if="!rows.length" class="box" title="还没有卡类型" hint="在“卡类型”里新建后这里会有数" />
-        <EmptyState v-else-if="idle" class="box" title="这段时间没有卡的进出" hint="开卡、充值、耗卡后这里会有数" />
+        <EmptyState v-if="!rows.length" class="box" art="card" title="还没有卡类型" hint="在“卡类型”里新建后这里会有数" />
+        <EmptyState v-else-if="idle" class="box" art="card" title="这段时间没有卡的进出" hint="开卡、充值、耗卡后这里会有数" />
         <div v-else class="overflow-x-auto">
           <table class="w-full text-sm tabular-nums" data-testid="card-table">
             <thead class="border-b border-default text-xs text-dimmed">

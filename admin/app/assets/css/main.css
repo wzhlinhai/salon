@@ -2,7 +2,7 @@
 @import "@nuxt/ui";
 
 /* 视觉照 Notion 现在的界面（2026-11 实测公开页的计算样式，记录在 DESIGN.md「Notion 实测值」）：
-   内容区纯白、侧栏暖灰、墨色 #2c2c2b、细线 #f0efed、低饱和标签色、蓝色主按钮。AI 不另起颜色。 */
+   内容区纯白、侧栏暖灰、墨色 #2c2c2b、细线 #f0efed、低饱和标签色、墨色主按钮（店主 2026-11-23 选定，不用 Notion 蓝）。AI 不另起颜色。 */
 @theme {
   --color-page: #ffffff;
   --color-side: #f7f7f5;
@@ -24,6 +24,8 @@
   /* 看板列底、悬停、细线、提醒条。 */
   --color-lane: #f4f4f2;
   --color-card-hover: #fcfcfb;
+  /* 表格悬停行：不透明，固定首列横向滚动时不透出底下的格子。 */
+  --color-row-hover: #fafaf9;
   --color-line: rgba(42, 28, 0, 0.07);
   --color-hover: rgba(42, 28, 0, 0.03);
   --color-selected: rgba(33, 27, 23, 0.076);
@@ -35,9 +37,12 @@
   --text-meta: 13px;
   --text-lead: 15px;
   --text-greet: 26px;
+  --text-greet--letter-spacing: -0.02em;
   --text-title: 32px;
   --text-title--line-height: 1.2;
+  --text-title--letter-spacing: -0.02em;
   --text-hero: 40px;
+  --text-hero--letter-spacing: -0.03em;
 
   /* 圆角：标签 4、按钮输入框 6（--ui-radius）、看板列 10、卡片 12、浮起的大输入框 14。 */
   --radius-tag: 4px;
@@ -62,7 +67,7 @@
   --chart-5: #e87ba4;
   --chart-grid: rgba(42, 28, 0, 0.07);
   --ui-radius: 0.375rem;
-  --ui-primary: #2383e2;
+  --ui-primary: #2c2c2b;
   --ui-ai: #2c2c2b;
   --ui-success: #448361;
   --ui-error: #d44c47;
@@ -82,10 +87,52 @@
   --ui-border-inverted: #2c2c2b;
 }
 
+/* 字体只用系统自带的，不打包网页字体（中文字体动辄几 MB）。数字和英文排在前面，中文字体只补汉字。
+   Windows 11 的 Segoe UI Variable 分 Text（小字号）和 Display（大标题）两种光学尺寸：正文用 Text，小字不发虚；
+   大标题用 Display。微软雅黑先取 UI 版，行高为界面收紧过，混排时不把行撑高。 */
 body {
   color: #2c2c2b;
-  font: 14px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  font: 14px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+:is(.text-title, .text-hero, .text-greet) {
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+}
+
+/* 表单字段的控件铺满一栏（app.config.ts 的 formField）：输入框、下拉、日期都一样宽，不出现长短不齐的框。
+   写成普通样式：类名只出现在 app.config.ts 里，工具类扫描不到。 */
+.field-fill > * {
+  width: 100%;
+}
+
+/* 弹窗和侧滑面板照 Fresha（app.config.ts 的 modal、slideover 给内容区加 .dialog-form、按钮栏加 .dialog-actions）：
+   输入框、下拉、文本框 44 高、8 圆角、白底一圈灰框，聚焦时框变成墨色；按钮栏的按钮 44 高、8 圆角、15px 字。
+   只在弹窗里放大，页面上的筛选栏、搜索框仍是 Nuxt UI 的常规尺寸。写成普通样式，盖过组件自带的工具类。
+   填错的控件（aria-invalid）框变红。AI 对话面板的底栏带 .ai-chat，发送按钮不放大。 */
+.dialog-form :is(input[data-slot="base"]:not([type="checkbox"], [type="radio"]), button:is([role="combobox"], [aria-haspopup="listbox"])[data-slot="base"]) {
+  min-height: 44px;
+}
+.dialog-form :is(input[data-slot="base"]:not([type="checkbox"], [type="radio"]), textarea[data-slot="base"], button:is([role="combobox"], [aria-haspopup="listbox"])[data-slot="base"]) {
+  border-radius: 8px;
+  background: #fff;
+  font-size: 15px;
+  padding-left: 14px;
+  box-shadow: inset 0 0 0 1px #d6d3d1;
+}
+.dialog-form :is(input[data-slot="base"], textarea[data-slot="base"], button:is([role="combobox"], [aria-haspopup="listbox"])[data-slot="base"]):focus-visible {
+  box-shadow: inset 0 0 0 1.5px #2c2c2b;
+}
+.dialog-form :is(input[data-slot="base"], textarea[data-slot="base"], button:is([role="combobox"], [aria-haspopup="listbox"])[data-slot="base"])[aria-invalid="true"] {
+  box-shadow: inset 0 0 0 1.5px var(--ui-error);
+}
+.dialog-form :is(input[data-slot="base"], textarea[data-slot="base"], button:is([role="combobox"], [aria-haspopup="listbox"])[data-slot="base"]):disabled {
+  background: #f7f7f5;
+}
+.dialog-actions:not(.ai-chat) button[data-slot="base"] {
+  height: 44px;
+  border-radius: 8px;
+  padding-inline: 20px;
+  font-size: 15px;
 }
 
 /* 原型里的白色卡片：细线描边加一点点投影。 */
@@ -102,7 +149,7 @@ body {
   padding: 14px 0;
 }
 
-/* 列表页顶上的筛选块（照 Stripe）：白底细线，选中的描蓝边。 */
+/* 列表页顶上的筛选块（照 Stripe）：白底细线，选中的描主色边。 */
 @utility tile {
   display: block;
   text-align: start;
@@ -244,4 +291,10 @@ body {
   .side-scroll:hover {
     scrollbar-color: var(--ui-border-accented) transparent;
   }
+}
+
+/* 报表明细的悬停行（DESIGN.md 报表）：整行一层不透明的浅暖灰，横向滚动时固定在左边的首列跟着变。 */
+.row-hover:hover,
+.row-hover:hover > .sticky {
+  background: var(--color-row-hover);
 }
