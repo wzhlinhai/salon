@@ -24,6 +24,8 @@
   /* 看板列底、悬停、细线、提醒条。 */
   --color-lane: #f4f4f2;
   --color-card-hover: #fcfcfb;
+  /* 表格悬停行：不透明，固定首列横向滚动时不透出底下的格子。 */
+  --color-row-hover: #fafaf9;
   --color-line: rgba(42, 28, 0, 0.07);
   --color-hover: rgba(42, 28, 0, 0.03);
   --color-selected: rgba(33, 27, 23, 0.076);
@@ -291,5 +293,5 @@ body {
 /* 报表明细的悬停行（DESIGN.md 报表）：整行一层不透明的浅暖灰，横向滚动时固定在左边的首列跟着变。 */
 .row-hover:hover,
 .row-hover:hover > .sticky {
-  background: #fafaf9;
+  background: var(--color-row-hover);
 }
