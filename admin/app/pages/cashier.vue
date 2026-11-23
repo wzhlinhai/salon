@@ -1152,7 +1152,7 @@ onMounted(init)
           </div>
         </section>
 
-        <CashierSettled :refresh-key="settledKey" :customer-name="customerName" :resolve-names="resolveNames" :can-void="o => mayChange('order.void', o)" @voided="onVoided" />
+        <CashierSettled :refresh-key="settledKey" :customer-name="customerName" :resolve-names="resolveNames" :can-void="o => mayChange('order.void', o)" :can-change-staff="o => mayChange('order.edit', o)" :staff-items="staffItems" :staff-name="staffName" @voided="onVoided" />
       </div>
 
       <section data-testid="selected-order">
