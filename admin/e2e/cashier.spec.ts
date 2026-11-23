@@ -747,3 +747,31 @@ test('今日已结里撤单；开了授权窗口要先输登录密码', async ({
     await api(token, 'change_setting', { key: 'void_window_minutes', value: 0, effective_from: settings.business_date })
   }
 })
+
+test('今日已结里改做的人：业绩改记给新员工，单上留改人记录', async ({ page }) => {
+  const { token, staff, item, customer } = await seed()
+  const other = await hire('发型师')
+  const order = await api<{ id: string }>(token, 'open_order', { customer_id: customer.id, gender: 'female', designated: false, items: [{ item_id: item.id, staff: [{ slot: 1, staff_id: staff.id }] }] })
+  await api(token, 'checkout_orders', { orders: [{ order_id: order.id, payments: [{ method: 'cash', amount: '88.00' }] }] })
+  await login(page, owner.account, owner.password)
+  await page.goto('/cashier')
+  const row = page.getByTestId('settled-orders').locator(`[data-settled-order="${order.id}"]`)
+  const dialog = page.getByRole('dialog', { name: '改做的人' })
+
+  await row.hover()
+  await row.getByRole('button', { name: /^改做的人/ }).click()
+  const select = dialog.getByRole('combobox', { name: `${item.name} 岗位1员工` })
+  await expect(select).toContainText(staff.name)
+  await expect(dialog.getByRole('button', { name: '保存' })).toBeDisabled()
+  await select.click()
+  // 必填岗位不给「未填」。
+  await expect(page.getByRole('option', { name: '未填' })).toHaveCount(0)
+  await page.getByRole('option', { name: other.name, exact: true }).click()
+  await dialog.getByRole('button', { name: '保存' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(row).toContainText(`改人：${item.name} 岗位1 ${staff.name} → ${other.name}`)
+
+  const saved = await api<{ items: { positions: { staff_id: string | null }[] }[], staff_changes: unknown[] }>(token, 'get_order', { id: order.id })
+  expect(saved.items[0]!.positions[0]!.staff_id).toBe(other.id)
+  expect(saved.staff_changes).toHaveLength(1)
+})
