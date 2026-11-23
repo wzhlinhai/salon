@@ -55,13 +55,13 @@
 | `bg-white` | #fff | 卡片、输入框、看板卡 |
 | `bg-lane` | #f4f4f2 | 看板列底 |
 | `bg-hover` / `hover:bg-card-hover` | 3% 暖灰 / #fcfcfb | 列表项悬停 / 卡片悬停 |
-| `bg-selected` | rgba(33,27,23,.076) | 视图页签的选中项 |
+| `bg-selected` | rgba(33,27,23,.076) | 选中项：视图页签、`MethodPicker`（收款方式、按日按月等一排单选按钮，选中再加一圈 `border-accented` 细线）、报表快捷范围 |
 | `bg-line` | 9% 暖灰 | 时间轴竖线等画出来的细线 |
 | `bg-notice` | #fbf3db | 需要本人处理的提醒条（如"还没打卡"） |
 | `bg-ai-soft`、`text-ai` | #f1f1ef、#37352f | 只给 AI 标识和指令框的发送按钮。AI 不另起颜色，靠「AI 起草」这几个字标明（见「去掉 AI 套路」） |
 | `text-default` / `text-muted` / `text-dimmed` | #2c2c2b / #7d7a75 / #a19e99 | 正文 / 说明 / 更次要的说明、占位、计数 |
 | `text-ink-red` `text-ink-green` `text-ink-yellow` `text-ink-orange` | Notion 深色字 | 金额涨跌、迟到时长等需要上色的字 |
-| `primary` | #2383e2 | 主按钮、选中项、焦点框 |
+| `primary` | #2383e2 | 主按钮、焦点框。选中项不用蓝，用 `bg-selected` 灰底 |
 | `--chart-1` … `--chart-5`（`:root` 变量） | #2a78d6 #eb6834 #1baf7a #eda100 #e87ba4 | 只给图表的系列：按顺序取、不循环，超过 5 个归进「其他」。标签色太浅画不了线和柱，所以另起一组，已用 dataviz 校验脚本验过色盲区分度；对比度不足 3:1 的几个靠图下的明细表补。`ReportChart` 运行时读这几个变量 |
 | `error` / `warning` / `success` | #d44c47 / #cb912f / #448361 | Nuxt UI 组件的 `color` 属性 |
 
