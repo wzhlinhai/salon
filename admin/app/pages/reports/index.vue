@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 报表入口（DESIGN.md 报表入口，照 report-02）：左边分类，右边报表列表；只列当前员工有权限看的报表。
-definePageMeta({ permission: REPORT_PERMISSIONS, title: '报表', description: '看门店和员工的经营数字，点一张报表进去。' })
+definePageMeta({ permission: REPORT_PERMISSIONS, title: '报表' })
 
 const { can } = useMe()
 const visible = computed(() => reportCatalog.filter(r => can(r.permission)))

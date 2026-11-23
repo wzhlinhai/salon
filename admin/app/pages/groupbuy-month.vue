@@ -86,7 +86,7 @@ async function saveSettlement() {
 
     <EmptyState v-if="!data && !loading" class="box" title="选择平台和结算月查看对账。" hint="平台月底打款后，把结算额录进来，和核销的券对一对" />
     <template v-if="data">
-      <div class="box grid grid-cols-2 gap-y-4 tabular-nums md:grid-cols-4">
+      <div class="stats grid grid-cols-2 gap-y-4 tabular-nums md:grid-cols-4">
         <div>
           <p class="text-xs text-dimmed">已核销券</p>
           <p class="text-2xl leading-[1.3] font-semibold"><span data-testid="redeemed-count">{{ data.redeemed_count }}</span> <span class="text-sm font-normal text-muted">张</span></p>

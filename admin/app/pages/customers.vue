@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components, paths } from '~/utils/api'
 
-definePageMeta({ permission: 'customer.view', title: '顾客', description: '顾客档案、卡和到店记录。' })
+definePageMeta({ permission: 'customer.view', title: '顾客' })
 
 type Overview = paths['/api/ops/list_customer_overview']['post']['responses']['200']['content']['application/json']['items'][number]
 type Segments = paths['/api/ops/get_customer_segments']['post']['responses']['200']['content']['application/json']
@@ -362,7 +362,7 @@ async function handover() {
       >
         <div class="flex min-w-0 gap-3">
           <span v-if="can('customer.assign')" class="relative size-9 shrink-0" @click.stop>
-            <span class="absolute inset-0 grid place-items-center rounded-full font-semibold transition-opacity" :class="[customerTone(row.customer.id), selected.includes(row.customer.id) ? 'opacity-0' : 'group-hover/row:opacity-0 group-focus-within/row:opacity-0 any-pointer-coarse:opacity-0']" aria-hidden="true">{{ displayName(row.customer).slice(0, 1) }}</span>
+            <span class="absolute inset-0 grid place-items-center rounded-full bg-tag-gray font-semibold transition-opacity" :class="[selected.includes(row.customer.id) ? 'opacity-0' : 'group-hover/row:opacity-0 group-focus-within/row:opacity-0 any-pointer-coarse:opacity-0']" aria-hidden="true">{{ displayName(row.customer).slice(0, 1) }}</span>
             <UCheckbox
               class="absolute inset-0 grid place-items-center transition-opacity"
               :class="selected.includes(row.customer.id) ? '' : 'opacity-0 group-hover/row:opacity-100 focus-within:opacity-100 any-pointer-coarse:opacity-100'"
@@ -371,7 +371,7 @@ async function handover() {
               @update:model-value="v => toggle(row.customer.id, v)"
             />
           </span>
-          <span v-else class="grid size-9 shrink-0 place-items-center rounded-full font-semibold" :class="customerTone(row.customer.id)" aria-hidden="true">{{ displayName(row.customer).slice(0, 1) }}</span>
+          <span v-else class="grid size-9 shrink-0 place-items-center rounded-full bg-tag-gray font-semibold" aria-hidden="true">{{ displayName(row.customer).slice(0, 1) }}</span>
           <div class="min-w-0">
             <p class="flex flex-wrap items-center gap-1.5">
               <button type="button" class="font-semibold hover:underline" @click.stop="openDetail(row.customer.id)">{{ displayName(row.customer) }}</button>

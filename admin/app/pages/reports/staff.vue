@@ -159,7 +159,7 @@ function signed(amount: string, reversal: boolean) {
     <template v-if="report">
       <p v-if="self" class="text-meta text-muted">只显示你自己的业绩。</p>
 
-      <div data-testid="report-metrics" class="box grid grid-cols-2 gap-3 tabular-nums md:grid-cols-5" :class="loading && 'opacity-60'">
+      <div data-testid="report-metrics" class="stats grid grid-cols-2 gap-3 tabular-nums md:grid-cols-5" :class="loading && 'opacity-60'">
         <div v-for="(m, i) in metrics" :key="m.label" :data-metric="m.label" :class="i ? 'md:border-l md:border-default md:pl-4' : ''">
           <p class="text-xs text-dimmed">{{ m.label }}</p>
           <p data-testid="metric-value" class="text-2xl leading-[1.3] font-semibold" :class="zeroText(m.value) && 'text-dimmed'">{{ m.value }}</p>

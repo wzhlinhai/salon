@@ -680,7 +680,7 @@ function actorLabel(actor: Actor) {
         </div>
         <div v-for="person in staffColumns" :key="person.id" class="min-w-40 flex-1 border-l border-default" :data-staff-column="person.id">
           <div class="sticky top-0 z-20 flex h-11 items-center gap-2 border-b border-default bg-white px-2" :title="person.name" data-testid="booking-column-head">
-            <StaffAvatar :id="person.id" :name="person.name" size="sm" />
+            <StaffAvatar :name="person.name" size="sm" />
             <span class="min-w-0 truncate text-sm font-medium">{{ person.name }}{{ person.active ? '' : '（已停用）' }}</span>
             <span class="ms-auto shrink-0 text-meta tabular-nums" :class="bookedCount.get(person.id) ? 'text-muted' : 'text-dimmed'">{{ bookedCount.get(person.id) ?? 0 }} 约</span>
           </div>

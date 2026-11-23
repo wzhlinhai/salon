@@ -60,7 +60,8 @@ test('页面骨架：正文顶上统一一个标题，设置类页面居中收�
   const header = page.getByTestId('page-header')
   await expect(header.getByRole('heading', { level: 1, name: '员工', exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
-  await expect(page.getByTestId('page-description')).toHaveText('员工的档案、岗位、角色和登录账号。')
+  // 说明只写标题说不清的事；员工页没有说明，那一行不占位置。
+  await expect(page.getByTestId('page-description')).toBeHidden()
   const wide = await header.evaluate(element => element.parentElement!.getBoundingClientRect().width)
 
   await page.goto('/settings')

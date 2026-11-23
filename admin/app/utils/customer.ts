@@ -1,16 +1,7 @@
 import type { components } from '~/utils/api'
 
-// 顾客列表和顾客详情共用的显示规则：头像底色、到店时间的说法、下次预约的说法。
+// 顾客列表和顾客详情共用的显示规则：到店时间的说法、下次预约的说法。
 export type CustomerOverview = components['schemas']['CustomerOverview']
-
-const TONES = ['bg-tag-blue', 'bg-tag-orange', 'bg-tag-pink', 'bg-tag-green', 'bg-tag-purple', 'bg-tag-yellow', 'bg-tag-brown']
-
-// 按顾客 ID 固定取一种首字头像底色，列表和详情里同一个人颜色一致。
-export function customerTone(id: string) {
-  let h = 0
-  for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0
-  return TONES[h % TONES.length]!
-}
 
 export function sinceText(days: number) {
   if (days === 0) return '今天'
