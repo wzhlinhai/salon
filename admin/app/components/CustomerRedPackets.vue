@@ -103,9 +103,9 @@ onMounted(load)
 </script>
 
 <template>
-  <section id="customer-sec-red-packets" class="scroll-mt-4" data-testid="red-packets">
-    <div class="sec">
-      红包<span class="ms-1 font-normal text-dimmed">{{ packets.length }}</span>
+  <section data-testid="red-packets">
+    <div class="sec mt-0! min-h-8">
+      <span v-if="packets.length" class="font-normal text-dimmed">{{ packets.length }} 个</span>
       <UButton v-if="can('card.sell') && !merged" size="sm" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto" @click="editIssue">发放红包</UButton>
     </div>
     <div class="box overflow-hidden p-0">

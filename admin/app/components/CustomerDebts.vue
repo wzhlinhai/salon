@@ -62,10 +62,9 @@ onMounted(load)
 </script>
 
 <template>
-  <section id="customer-sec-debts" class="scroll-mt-4" data-testid="debts">
-    <div class="sec">
-      欠款
-      <span v-if="totals && Number(totals.outstanding) > 0" class="ms-1 font-normal text-ink-orange tabular-nums">未还 {{ yuanFixed(totals.outstanding) }}</span>
+  <section data-testid="debts">
+    <div v-if="totals && Number(totals.outstanding) > 0" class="sec mt-0!">
+      <span class="font-normal text-ink-orange tabular-nums">未还 {{ yuanFixed(totals.outstanding) }}</span>
     </div>
     <div class="box overflow-hidden p-0">
       <p v-if="loading && !debts.length" class="px-3 py-2.5 text-sm text-muted">正在读取欠款…</p>

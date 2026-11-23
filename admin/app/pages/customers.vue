@@ -255,12 +255,18 @@ async function create() {
 // 顾客详情
 const detailID = computed(() => typeof route.query.id === 'string' ? route.query.id : '')
 
+// 详情右栏的分页也写在网址里（?tab=cards），换顾客时回到概览。
+const detailTab = computed({
+  get: () => typeof route.query.tab === 'string' ? route.query.tab : 'overview',
+  set: tab => router.replace({ query: { ...route.query, tab: tab === 'overview' ? undefined : tab } })
+})
+
 function openDetail(id: string) {
-  router.replace({ query: { ...route.query, id } })
+  router.replace({ query: { ...route.query, id, tab: undefined } })
 }
 
 function closeDetail() {
-  router.replace({ query: { ...route.query, id: undefined } })
+  router.replace({ query: { ...route.query, id: undefined, tab: undefined } })
 }
 
 // 分配负责人
@@ -434,7 +440,7 @@ async function handover() {
       <span class="tabular-nums">第 {{ offset / PAGE + 1 }} 页，共 {{ Math.ceil(total / PAGE) }} 页</span>
       <UButton color="neutral" variant="ghost" trailing-icon="i-lucide-chevron-right" :disabled="offset + PAGE >= total || loading" @click="changePage(1)">下一页</UButton>
     </div>
-    <CustomerDetail v-if="detailID" :id="detailID" :sources="sources" :overview="items.find(row => row.customer.id === detailID)" @close="closeDetail" @open="openDetail" @changed="reload" />
+    <CustomerDetail v-if="detailID" :id="detailID" v-model:tab="detailTab" :sources="sources" :overview="items.find(row => row.customer.id === detailID)" @close="closeDetail" @open="openDetail" @changed="reload" />
     <UModal v-model:open="createOpen" title="新建顾客">
       <template #body>
         <div class="space-y-3">

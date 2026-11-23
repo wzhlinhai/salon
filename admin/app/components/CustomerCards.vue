@@ -367,9 +367,9 @@ onMounted(cardLoad)
 
 <template>
   <div>
-    <section id="customer-sec-cards" class="scroll-mt-4">
-      <div class="sec">
-        卡<span class="ms-1 font-normal text-dimmed">{{ cardCards.length }}</span>
+    <section>
+      <div class="sec mt-0! min-h-8">
+        <span v-if="cardCards.length" class="font-normal text-dimmed">{{ cardCards.length }} 张</span>
         <UButton v-if="can('card.sell') && !props.merged" size="sm" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto" @click="cardEdit(null)">开卡</UButton>
       </div>
       <div class="box overflow-hidden p-0">
