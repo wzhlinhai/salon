@@ -53,9 +53,9 @@ function remove(index: number) {
 
 <template>
   <div class="space-y-2" data-testid="sale-payments">
-    <div class="flex items-center justify-between text-meta text-muted">
-      <p>收款方式</p>
-      <p class="tabular-nums">应收合计 {{ yuanFixed(expected) }}</p>
+    <div class="flex items-baseline justify-between">
+      <p class="text-sm font-semibold text-highlighted">收款方式</p>
+      <p class="text-meta text-muted tabular-nums">应收合计 {{ yuanFixed(expected) }}</p>
     </div>
     <div v-for="(payment, index) in payments" :key="index" class="flex flex-wrap items-center gap-2" :class="index ? 'border-t border-default pt-2' : ''" data-testid="payment-row">
       <MethodPicker v-model="payment.method" :items="methods" @pick="change" />
@@ -64,7 +64,7 @@ function remove(index: number) {
       </UInput>
       <UButton color="neutral" variant="ghost" icon="i-lucide-x" aria-label="删除" @click="remove(index)" />
     </div>
-    <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-plus" @click="add">添加收款方式</UButton>
+    <UButton color="neutral" variant="ghost" icon="i-lucide-plus" class="-ms-2.5" @click="add">添加收款方式</UButton>
     <p v-if="total !== cents(expected)" class="text-meta text-ink-orange">已录入 {{ yuanFixed(money(total)) }}，{{ total < cents(expected) ? '还应录入' : '多录入' }} {{ yuanFixed(money(Math.abs(cents(expected) - total))) }}</p>
   </div>
 </template>

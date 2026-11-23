@@ -436,19 +436,23 @@ async function handover() {
     <CustomerDetail v-if="detailID" :id="detailID" v-model:tab="detailTab" :sources="sources" :overview="items.find(row => row.customer.id === detailID)" @close="closeDetail" @open="openDetail" @changed="reload" />
     <UModal v-model:open="createOpen" title="新建顾客">
       <template #body>
-        <div class="space-y-3">
-          <UFormField label="手机号">
-            <UInput v-model="profile.phone" type="tel" class="w-full" />
-          </UFormField>
-          <UFormField label="姓名">
-            <UInput v-model="profile.name" class="w-full" />
-          </UFormField>
-          <UFormField label="性别">
-            <USelect v-model="profile.gender" :items="genderItems" class="w-full" />
-          </UFormField>
-          <UFormField label="顾客来源">
-            <USelect v-model="profile.source" :items="sourceItems" class="w-full" />
-          </UFormField>
+        <div class="space-y-5">
+          <div class="grid grid-cols-2 gap-4">
+            <UFormField label="手机号">
+              <UInput v-model="profile.phone" type="tel" class="w-full" />
+            </UFormField>
+            <UFormField label="姓名">
+              <UInput v-model="profile.name" class="w-full" />
+            </UFormField>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <UFormField label="性别">
+              <USelect v-model="profile.gender" :items="genderItems" class="w-full" />
+            </UFormField>
+            <UFormField label="顾客来源">
+              <USelect v-model="profile.source" :items="sourceItems" class="w-full" />
+            </UFormField>
+          </div>
           <UFormField label="备注">
             <UTextarea v-model="profile.note" class="w-full" />
           </UFormField>
@@ -460,12 +464,11 @@ async function handover() {
         </ModalActions>
       </template>
     </UModal>
-    <UModal v-if="can('customer.assign')" v-model:open="assignOpen" title="分配负责人">
+    <UModal v-if="can('customer.assign')" v-model:open="assignOpen" title="分配负责人" :description="`为选中的 ${selected.length} 位顾客分配负责人。`">
       <template #body>
         <UFormField label="负责人">
           <USelect v-model="assignStaff" :items="[{ label: '不设负责人', value: NONE }, ...activeStaffItems]" class="w-full" />
         </UFormField>
-        <p class="mt-3">为选中的 {{ selected.length }} 位顾客分配负责人。</p>
       </template>
       <template #footer>
         <ModalActions @cancel="assignOpen = false">
@@ -473,16 +476,17 @@ async function handover() {
         </ModalActions>
       </template>
     </UModal>
-    <UModal v-if="can('customer.assign')" v-model:open="handoverOpen" title="负责人交接">
+    <UModal v-if="can('customer.assign')" v-model:open="handoverOpen" title="负责人交接" description="确认后，将交出员工负责的全部顾客移交给接手员工。">
       <template #body>
-        <div class="space-y-3">
-          <UFormField label="交出的员工">
-            <USelect v-model="fromStaff" :items="staffItems" class="w-full" />
-          </UFormField>
-          <UFormField label="接手的员工">
-            <USelect v-model="toStaff" :items="activeStaffItems" class="w-full" />
-          </UFormField>
-          <p>确认后，将交出员工负责的全部顾客移交给接手员工。</p>
+        <div class="space-y-5">
+          <div class="grid grid-cols-2 gap-4">
+            <UFormField label="交出的员工">
+              <USelect v-model="fromStaff" :items="staffItems" class="w-full" />
+            </UFormField>
+            <UFormField label="接手的员工">
+              <USelect v-model="toStaff" :items="activeStaffItems" class="w-full" />
+            </UFormField>
+          </div>
         </div>
       </template>
       <template #footer>

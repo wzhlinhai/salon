@@ -30,9 +30,6 @@ test('项目完整新建、编辑和停用', async ({ page }) => {
   await createDialog.getByLabel('服务时长（分钟）', { exact: true }).fill('45')
   await createDialog.getByRole('switch', { name: '可以预约' }).click()
   await createDialog.getByRole('switch', { name: '可以打折' }).click()
-  await createDialog.getByRole('combobox', { name: '手工费类型' }).click()
-  await page.getByRole('option', { name: '固定金额', exact: true }).click()
-  await createDialog.getByRole('textbox', { name: '手工费数值' }).fill('0.50')
   for (const [index, position] of [first, second].entries()) {
     await createDialog.getByRole('button', { name: '添加岗位' }).click()
     await createDialog.getByRole('combobox', { name: `岗位${index + 1}`, exact: true }).click()

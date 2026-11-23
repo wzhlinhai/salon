@@ -37,7 +37,7 @@ watch(() => [entries.value.length, sending.value], async () => {
     v-model:open="open"
     side="right"
     :content="{ onOpenAutoFocus: (event: Event) => event.preventDefault() }"
-    :ui="{ content: 'max-w-md', wrapper: 'flex-1 min-w-0', close: 'static', body: 'p-0 sm:p-0 flex flex-col' }"
+    :ui="{ content: 'max-w-md', wrapper: 'flex-1 min-w-0', close: 'static', body: 'p-0 sm:p-0 flex flex-col', footer: 'ai-chat' }"
     data-testid="ai-panel"
     @after:enter="focusInput"
   >

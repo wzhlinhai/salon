@@ -219,10 +219,10 @@ onMounted(loadSources)
       </div>
     </section>
 
-    <UModal :open="!!editing" :title="`修改${editing?.label ?? ''}`" @update:open="v => { if (!v) editing = null }">
+    <UModal :open="!!editing" :title="`修改${editing?.label ?? ''}`" :description="editing ? `系统默认：${show(editing, editing.default)}` : undefined" @update:open="v => { if (!v) editing = null }">
       <template #body>
-        <div v-if="editing" class="space-y-4">
-          <div v-if="editing.kind === 'time_range'" class="flex gap-2">
+        <div v-if="editing" class="space-y-5">
+          <div v-if="editing.kind === 'time_range'" class="grid grid-cols-2 gap-4">
             <UFormField label="开门"><UInput v-model="form.open" type="time" /></UFormField>
             <UFormField label="关门"><UInput v-model="form.close" type="time" /></UFormField>
           </div>
@@ -231,7 +231,6 @@ onMounted(loadSources)
           <UFormField v-else-if="editing.kind === 'text'" :label="editing.label"><UInput v-model="form.text" :maxlength="editing.max" :aria-label="editing.label" /></UFormField>
           <UFormField v-else label="时间"><UInput v-model="form.time" type="time" /></UFormField>
           <UFormField label="生效日期" help="不能早于今天"><DateInput v-model="form.from" :min="today" /></UFormField>
-          <p class="text-xs text-muted">系统默认：{{ show(editing, editing.default) }}</p>
         </div>
       </template>
       <template #footer>
