@@ -262,7 +262,7 @@ function changeSource(o: OverrideForm) {
       <UButton size="sm" icon="i-lucide-pencil" :disabled="!today" @click="edit">修改方案</UButton>
     </PageActions>
     <PageDescriptionTail v-if="today">今天是营业日 {{ today }}。</PageDescriptionTail>
-    <EmptyState v-if="!versions.loading.value && !versions.items.value.length" title="还没有提成方案，没有方案时不计提成。" hint="点右上角修改方案，按项目、耗卡或销售设置提成" />
+    <EmptyState v-if="!versions.loading.value && !versions.items.value.length" art="chart" title="还没有提成方案，没有方案时不计提成。" hint="点右上角修改方案，按项目、耗卡或销售设置提成" />
     <section v-else>
       <div class="sec">方案版本</div>
       <div class="overflow-x-auto">

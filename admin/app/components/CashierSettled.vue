@@ -99,7 +99,7 @@ async function submitVoid() {
     <h2 class="sec">今日结账<span class="ms-1 font-normal text-dimmed">{{ total }}</span></h2>
     <div class="box overflow-hidden p-0">
       <ListSkeleton v-if="loading && !orders.length" :rows="3" />
-      <EmptyState v-else-if="!orders.length" title="今天还没有结账的单" hint="结过账的单会列在这里，结错了可以撤单" />
+      <EmptyState v-else-if="!orders.length" art="receipt" title="今天还没有结账的单" hint="结过账的单会列在这里，结错了可以撤单" />
       <div
         v-for="order in orders"
         :key="order.id"

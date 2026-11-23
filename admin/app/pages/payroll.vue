@@ -191,7 +191,7 @@ onMounted(reloadMonths)
         <template #mode-cell="{ row }"><span class="text-muted">{{ row.original.staff.id === '__total__' ? '' : row.original.mode === 'base' ? '底薪 + 提成' : '保底' }}</span></template>
         <template #applied_amount-cell="{ row }">{{ row.original.staff.id === '__total__' ? '' : row.original.applied_amount }}</template>
         <template #empty>
-          <EmptyState v-if="!loading" title="本月还没有员工工资" hint="点右上角 ··· 设置底薪或保底，开单后的提成会自动算进来" />
+          <EmptyState v-if="!loading" art="calendar" title="本月还没有员工工资" hint="点右上角 ··· 设置底薪或保底，开单后的提成会自动算进来" />
         </template>
         <template #loading>
           <ListSkeleton />

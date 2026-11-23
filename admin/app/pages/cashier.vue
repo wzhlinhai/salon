@@ -1167,7 +1167,7 @@ onMounted(init)
         </h2>
 
         <p v-if="orderLoading" class="box text-sm text-muted">加载中…</p>
-        <EmptyState v-else-if="!selectedOrder" class="box" icon="i-lucide-receipt" title="还没选单" hint="从左侧选一张挂单，或扫码开单" />
+        <EmptyState v-else-if="!selectedOrder" class="box" art="receipt" title="还没选单" hint="从左侧选一张挂单，或扫码开单" />
         <div v-else class="grid items-start gap-4" :class="canCollect ? 'xl:grid-cols-[minmax(0,1fr)_20rem]' : ''">
           <div class="space-y-4">
             <div v-if="canOrderEdit && mergeableOrders.length" class="box flex items-center gap-2 py-2 text-sm" role="status" data-testid="merge-hint">

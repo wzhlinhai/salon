@@ -424,7 +424,7 @@ async function handover() {
         <EmptyState v-if="query || responsible !== NONE" title="没有找到顾客" hint="换个手机号或姓名试试">
           <UButton color="neutral" variant="outline" @click="clearFilters">清除筛选</UButton>
         </EmptyState>
-        <EmptyState v-else v-bind="emptyTexts[segment]" />
+        <EmptyState v-else v-bind="emptyTexts[segment]" art="chair" />
       </template>
       <ListSkeleton v-if="!items.length && loading" />
     </div>

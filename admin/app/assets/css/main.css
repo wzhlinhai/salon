@@ -24,6 +24,8 @@
   /* 看板列底、悬停、细线、提醒条。 */
   --color-lane: #f4f4f2;
   --color-card-hover: #fcfcfb;
+  /* 表格悬停行：不透明，固定首列横向滚动时不透出底下的格子。 */
+  --color-row-hover: #fafaf9;
   --color-line: rgba(42, 28, 0, 0.07);
   --color-hover: rgba(42, 28, 0, 0.03);
   --color-selected: rgba(33, 27, 23, 0.076);
@@ -82,10 +84,16 @@
   --ui-border-inverted: #2c2c2b;
 }
 
+/* 字体只用系统自带的，不打包网页字体（中文字体动辄几 MB）。数字和英文排在前面，中文字体只补汉字。
+   Windows 11 的 Segoe UI Variable 分 Text（小字号）和 Display（大标题）两种光学尺寸：正文用 Text，小字不发虚；
+   大标题用 Display。微软雅黑先取 UI 版，行高为界面收紧过，混排时不把行撑高。 */
 body {
   color: #2c2c2b;
-  font: 14px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  font: 14px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+:is(.text-title, .text-hero, .text-greet) {
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
 }
 
 /* 表单字段的控件铺满一栏（app.config.ts 的 formField）：输入框、下拉、日期都一样宽，不出现长短不齐的框。
@@ -280,4 +288,10 @@ body {
   .side-scroll:hover {
     scrollbar-color: var(--ui-border-accented) transparent;
   }
+}
+
+/* 报表明细的悬停行（DESIGN.md 报表）：整行一层不透明的浅暖灰，横向滚动时固定在左边的首列跟着变。 */
+.row-hover:hover,
+.row-hover:hover > .sticky {
+  background: var(--color-row-hover);
 }

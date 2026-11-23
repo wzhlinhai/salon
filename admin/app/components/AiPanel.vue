@@ -42,7 +42,7 @@ watch(() => [entries.value.length, sending.value], async () => {
     @after:enter="focusInput"
   >
     <template #title>
-      吩咐 AI
+      <span class="flex items-center gap-2"><AiMark class="size-7 shrink-0" />吩咐 AI</span>
     </template>
     <template #description>
       <span class="text-xs text-muted">AI 只起草，确认后才会生效</span>
@@ -61,9 +61,14 @@ watch(() => [entries.value.length, sending.value], async () => {
 
     <template #body>
       <div ref="scroller" class="flex-1 space-y-4 overflow-y-auto p-4" data-testid="ai-messages">
-        <p v-if="!entries.length" class="text-sm text-muted text-pretty">
-          说一句话，例如“给陈女士约明天下午 3 点剪发”“今天实收多少”。要改数据时 AI 会先起草，由你确认。
-        </p>
+        <!-- 还没说话时照 Notion 的 AI 面板：形象和一句招呼落在底部，挨着输入框。 -->
+        <div v-if="!entries.length" class="flex min-h-full flex-col justify-end gap-3 pb-2">
+          <span class="grid size-16 place-items-center rounded-full bg-white shadow-float"><AiMark class="size-11" /></span>
+          <p class="text-lg font-semibold text-highlighted">店里的事，跟我说。</p>
+          <p class="text-sm text-muted text-pretty">
+            说一句话，例如“给陈女士约明天下午 3 点剪发”“今天实收多少”。要改数据时 AI 会先起草，由你确认。
+          </p>
+        </div>
         <div v-for="(entry, index) in entries" :key="index" :data-role="entry.role" data-testid="ai-entry">
           <div v-if="entry.role === 'user'" class="ms-8 rounded-lg bg-elevated px-3 py-2 text-sm whitespace-pre-wrap">
             <p v-if="entry.editing" class="mb-1 text-xs text-muted">修改：{{ entry.editing }}</p>
