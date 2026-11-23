@@ -226,10 +226,13 @@ async function setActive(s: Staff, active: boolean) {
       <UButton size="sm" icon="i-lucide-plus" @click="openProfile(null)">新建员工</UButton>
     </PageActions>
 
+    <!-- 照 Notion 数据库的工具条：左边视图页签，右边无框搜索和人数。 -->
     <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
       <ViewTabs v-model="filterKey" :items="filterTabs" label="筛选员工" />
-      <UInput v-model="search" icon="i-lucide-search" placeholder="搜索姓名或编号" aria-label="搜索姓名或编号" class="w-full sm:w-64" />
-      <span class="ms-auto text-meta text-dimmed tabular-nums" data-testid="staff-count">共 {{ shown.length }} 人</span>
+      <div class="ms-auto flex items-center gap-3">
+        <UInput v-model="search" icon="i-lucide-search" variant="ghost" placeholder="搜索姓名或编号" aria-label="搜索姓名或编号" class="w-48" />
+        <span class="text-meta text-dimmed tabular-nums" data-testid="staff-count">共 {{ shown.length }} 人</span>
+      </div>
     </div>
 
     <div class="overflow-x-auto">

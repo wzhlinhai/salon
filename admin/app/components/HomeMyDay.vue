@@ -53,9 +53,9 @@ const orders = computed(() => {
 </script>
 
 <template>
-  <div v-if="today" data-testid="home-my-day" class="@container">
-    <div class="sec">我今天<span class="ms-auto font-normal text-dimmed">本人数据</span></div>
-    <div class="stats grid grid-cols-2 gap-x-4 gap-y-3 tabular-nums @2xl:grid-cols-4">
+  <HomeWidget v-if="today" title="我今天" icon="i-lucide-chart-line" data-testid="home-my-day" class="@container">
+    <template #aside>本人数据</template>
+    <div class="grid grid-cols-2 gap-x-4 gap-y-3 tabular-nums @2xl:grid-cols-4">
       <div>
         <p class="text-xs text-dimmed">业绩</p>
         <p class="text-2xl leading-[1.3] font-semibold" :class="zeroText(yuan(itemAmount)) && 'text-dimmed'">{{ yuan(itemAmount) }}</p>
@@ -103,5 +103,5 @@ const orders = computed(() => {
         </ul>
       </template>
     </USlideover>
-  </div>
+  </HomeWidget>
 </template>

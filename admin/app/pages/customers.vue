@@ -331,17 +331,21 @@ async function handover() {
       <UButton v-if="can('customer.edit')" size="sm" icon="i-lucide-plus" @click="openCreate">新建顾客</UButton>
     </PageActions>
 
-    <ViewTabs v-model="segment" :items="tiles" label="顾客分组" testid="segment" />
-
-    <div class="flex flex-wrap items-center gap-2">
-      <UInput v-model="query" icon="i-lucide-search" aria-label="搜索顾客" placeholder="手机号、后四位或姓名" class="w-72" @keydown.enter="search" />
-      <USelect v-model="responsible" aria-label="负责人筛选" :items="[{ label: '全部负责人', value: NONE }, ...staffItems]" class="min-w-36" />
-      <USelect v-model="sort" aria-label="排序" :items="sortItems" class="min-w-36" />
-      <div v-if="can('customer.assign') && selected.length" class="flex items-center gap-2">
-        <span class="text-meta text-muted">已选 {{ selected.length }} 位</span>
-        <UButton size="sm" color="neutral" variant="outline" @click="openAssign">分配负责人</UButton>
+    <!-- 照 Notion 数据库的工具条：第一行视图页签和无框搜索，第二行筛选、排序和人数。 -->
+    <div class="space-y-1">
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <ViewTabs v-model="segment" :items="tiles" label="顾客分组" testid="segment" />
+        <UInput v-model="query" icon="i-lucide-search" variant="ghost" aria-label="搜索顾客" placeholder="手机号、后四位或姓名" class="ms-auto w-56" @keydown.enter="search" />
       </div>
-      <span class="ms-auto text-meta text-muted tabular-nums" data-testid="customer-total">共 {{ total }} 位<template v-if="activeHint"> · {{ activeHint }}</template></span>
+      <div class="flex flex-wrap items-center gap-1">
+        <USelect v-model="responsible" variant="ghost" aria-label="负责人筛选" :items="[{ label: '全部负责人', value: NONE }, ...staffItems]" class="min-w-32 text-muted" />
+        <USelect v-model="sort" variant="ghost" aria-label="排序" :items="sortItems" class="min-w-32 text-muted" />
+        <div v-if="can('customer.assign') && selected.length" class="ms-2 flex items-center gap-2">
+          <span class="text-meta text-muted">已选 {{ selected.length }} 位</span>
+          <UButton size="sm" color="neutral" variant="outline" @click="openAssign">分配负责人</UButton>
+        </div>
+        <span class="ms-auto text-meta text-muted tabular-nums" data-testid="customer-total">共 {{ total }} 位<template v-if="activeHint"> · {{ activeHint }}</template></span>
+      </div>
     </div>
 
     <div class="border-b border-default" data-testid="customer-list" :aria-busy="loading">

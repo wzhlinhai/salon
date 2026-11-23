@@ -46,9 +46,9 @@ const myPlace = computed(() => {
 </script>
 
 <template>
-  <div v-if="rotation" data-testid="home-rotation">
-    <div class="sec">轮牌<NuxtLink :to="`/rotation?queue=${rotation.queue.id}`" class="ms-auto font-normal text-dimmed hover:text-muted">{{ rotation.queue.name }}</NuxtLink></div>
-    <div class="box">
+  <HomeWidget v-if="rotation" title="轮牌" icon="i-lucide-list-ordered" data-testid="home-rotation">
+    <template #aside><NuxtLink :to="`/rotation?queue=${rotation.queue.id}`" class="hover:text-muted">{{ rotation.queue.name }}</NuxtLink></template>
+    <div>
       <div class="flex items-center gap-3.5">
         <div v-if="myPlace" class="text-hero leading-none font-bold tabular-nums">
           第 {{ myPlace }} <small class="text-lead font-medium text-dimmed">位</small>
@@ -72,5 +72,5 @@ const myPlace = computed(() => {
         </span>
       </div>
     </div>
-  </div>
+  </HomeWidget>
 </template>

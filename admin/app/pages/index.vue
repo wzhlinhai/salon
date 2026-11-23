@@ -50,6 +50,36 @@ const frontSuggestions = ['陈女士明天下午 3 点约剪发', '今天还有�
 const managerSuggestions = ['本周谁的业绩最高？', '今天实收比上周同日差多少？']
 const personalSuggestions = ['帮我占 5 点到 6 点', '我今天做了几单？']
 
+// 最近访问（照 Notion 首页）：本人最近打开的页面；不够 6 个，用常用页面补上，没去过的不写时间。
+const { read: readRecent } = useRecentPages()
+const fallbackPages = ['/cashier', '/bookings', '/customers', '/closing', '/reports', '/staff']
+const recentPages = ref<{ to: string, label: string, icon: string, when: string }[]>([])
+
+function visitedWhen(at: number) {
+  const date = new Date(at)
+  const minutes = Math.round((Date.now() - at) / 60_000)
+  if (minutes < 1) return '刚刚'
+  if (minutes < 60) return `${minutes} 分钟前`
+  const time = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+  if (date.toDateString() === new Date().toDateString()) return `今天 ${time}`
+  return `${date.getMonth() + 1}月${date.getDate()}日`
+}
+
+function loadRecent() {
+  const allowed = navItems.filter(item => item.to !== '/' && (!item.permission || can(item.permission)))
+  const find = (to: string) => allowed.find(item => item.to === to)
+  const rows: { to: string, label: string, icon: string, when: string }[] = []
+  for (const visit of readRecent()) {
+    const item = find(visit.to)
+    if (item) rows.push({ to: item.to, label: item.label, icon: item.icon, when: visitedWhen(visit.at) })
+  }
+  for (const to of fallbackPages) {
+    const item = find(to)
+    if (item && rows.length < 6 && !rows.some(row => row.to === to)) rows.push({ to, label: item.label, icon: item.icon, when: '' })
+  }
+  recentPages.value = rows
+}
+
 const { pending: pendingDrafts, drafts: allDrafts } = useDrafts()
 const myDrafts = computed(() => allDrafts.value.filter(draft => draft.status === 'pending' && draft.initiator === me.value?.staff.id))
 
@@ -190,114 +220,124 @@ onMounted(async () => {
     nowStamp.value = new Date()
   }, 30_000)
   ready = true
+  loadRecent()
   await loadSettings()
   await Promise.all([loadAttendance(), loadReport()])
 })
 </script>
 
-<!-- 三种首页照原型：店长 J、前台 J 的助理视图、个人 K。 -->
+<!-- 三种首页照 Notion 首页：问候居中，下面是一张张组件卡（卡内灰色小图标加标题），窄的两张并排。 -->
 <template>
-  <div class="mx-auto w-full pb-16" :class="selectedHome === 'personal' ? 'max-w-[1000px]' : 'max-w-[1060px]'">
-    <header class="mt-2 mb-2">
-      <h1 data-testid="home-greeting" class="text-title font-semibold text-balance">
+  <div class="mx-auto w-full max-w-[960px] pb-16">
+    <header class="mt-4 mb-8 text-center">
+      <h1 data-testid="home-greeting" class="text-title font-bold text-balance">
         {{ greeting }}，{{ me?.staff.name }}
       </h1>
       <p class="mt-1 text-muted tabular-nums" data-testid="home-date">{{ dateLine }}</p>
     </header>
 
-    <template v-if="selectedHome === 'personal'">
-      <template v-if="can('attendance.clock')">
-        <div v-if="!todayClockIn" class="flex items-center gap-4 rounded-xl bg-notice px-[18px] py-4">
-          <UIcon name="i-lucide-clock" class="size-7 shrink-0 text-muted" aria-hidden="true" />
-          <p class="text-lead font-semibold">今天还没打卡<small class="block text-meta font-normal text-muted">上班先打卡，迟到、早退按门店的班次算</small></p>
-          <UButton data-testid="home-punch" size="xl" class="ms-auto min-h-12 px-7 text-base" :loading="punching" @click="punch">打卡</UButton>
-        </div>
-        <p v-else class="-mt-2 mb-3.5 flex items-center justify-center gap-2 text-meta text-muted">
-          <span data-testid="home-punch-time" class="tag bg-tag-green tabular-nums">已打卡 {{ clockTime(todayClockIn) }}</span>
-        </p>
-      </template>
-      <AiCommandBox :suggestions="personalSuggestions" />
-      <!-- 不在轮牌队列里时轮牌块不显示，「我今天」占满整行。 -->
-      <div class="flex flex-col gap-3 md:flex-row">
-        <HomeRotation v-if="can('queue.view') && me" :staff-id="me.staff.id" class="md:w-[42%] md:shrink-0" />
-        <HomeMyDay v-if="can('performance.view') && me && businessDate" :date="today" :staff-id="me.staff.id" class="min-w-0 flex-1" />
-      </div>
-      <template v-if="can('booking.manage') && me && businessDate">
-        <div class="sec">我的今天<span class="ms-auto font-normal text-dimmed">时间按门店营业时间排</span></div>
-        <div class="box"><HomeTimeline :date="today" :staff-id="me.staff.id" /></div>
-        <HomeMyCustomers :date="today" :staff-id="me.staff.id" />
-      </template>
-      <template v-if="myDrafts.length">
-        <div class="sec">我起草的<span class="ms-auto font-normal text-dimmed">等有权限的人确认</span></div>
-        <div class="space-y-2">
-          <NuxtLink v-for="draft in myDrafts" :key="draft.id" to="/drafts" class="box flex items-center gap-3">
-            <span class="tag shrink-0 bg-ai-soft text-ai">AI 起草</span>
-            <b class="truncate text-sm font-semibold">{{ draft.summary }}</b>
-            <span class="flex-1 text-meta text-dimmed tabular-nums">{{ formatStamp(draft.created_at) }}</span>
-            <span class="tag shrink-0 bg-tag-yellow">待确认</span>
-          </NuxtLink>
-        </div>
-      </template>
-    </template>
-
-    <template v-else-if="selectedHome === 'front'">
-      <AiCommandBox large :suggestions="frontSuggestions" placeholder="说一句要做的事，例如“陈女士到了，开剪发”" />
-      <div data-testid="home-front-actions" class="mx-auto mt-3 grid w-full max-w-[720px] grid-cols-2 gap-2 sm:grid-cols-4">
-        <NuxtLink v-if="can('order.create')" to="/cashier?open=walkin" class="quick"><UIcon name="i-lucide-receipt" class="size-4 text-muted" aria-hidden="true" />散客开单</NuxtLink>
-        <NuxtLink v-if="can('booking.manage')" to="/bookings" class="quick"><UIcon name="i-lucide-calendar-plus" class="size-4 text-muted" aria-hidden="true" />新预约</NuxtLink>
-        <NuxtLink v-if="can('customer.view')" to="/customers" class="quick"><UIcon name="i-lucide-user-search" class="size-4 text-muted" aria-hidden="true" />找顾客</NuxtLink>
-        <button v-if="can('attendance.clock') && !todayClockIn" type="button" class="quick" :disabled="punching" @click="punch"><UIcon name="i-lucide-clock" class="size-4 text-muted" aria-hidden="true" />打卡</button>
-        <p v-if="todayClockIn" class="quick text-muted tabular-nums">已打卡 {{ clockTime(todayClockIn) }}</p>
-      </div>
-      <template v-if="myDrafts.length">
-        <div class="sec">我起草的<span class="ms-auto font-normal text-dimmed">等店长确认</span></div>
-        <div class="space-y-2">
-          <NuxtLink v-for="draft in myDrafts" :key="draft.id" to="/drafts" class="box flex items-center gap-3">
-            <span class="tag shrink-0 bg-ai-soft text-ai">AI 起草</span>
-            <b class="truncate text-sm font-semibold">{{ draft.summary }}</b>
-            <span class="flex-1 text-meta text-dimmed tabular-nums">{{ formatStamp(draft.created_at) }}</span>
-            <span class="tag shrink-0 bg-tag-yellow">待店长确认</span>
-          </NuxtLink>
-        </div>
-      </template>
-      <template v-if="can('booking.manage') && businessDate">
-        <div class="sec">今日顾客<span class="ms-auto font-normal text-dimmed">预约和散客</span></div>
-        <HomeBoard :date="today" @summary="visits = $event" />
-      </template>
-    </template>
-
-    <template v-else-if="selectedHome === 'manager'">
-      <div class="sec">待你确认<span class="ms-auto font-normal text-dimmed">AI 起草的事，你确认后才生效，当天有效</span></div>
-      <div v-if="pendingDrafts.length" data-testid="home-drafts" class="grid gap-3 md:grid-cols-3">
-        <DraftCard v-for="draft in pendingDrafts.slice(0, 3)" :key="draft.id" :draft="draft" @open="navigateTo('/drafts')" />
-      </div>
-      <p v-else class="box text-meta text-dimmed">没有等你确认的草稿。员工吩咐 AI 做的事会先到这里。</p>
-      <p v-if="pendingDrafts.length > 3" class="mt-2 text-meta">
-        <NuxtLink to="/drafts" class="text-muted underline underline-offset-3">还有 {{ pendingDrafts.length - 3 }} 条，到待确认里看</NuxtLink>
-      </p>
-
-      <AiCommandBox :suggestions="managerSuggestions" />
-
-      <div class="sec">今日经营<span class="ms-auto font-normal text-dimmed">实收口径</span></div>
-      <div data-testid="home-manager-metrics" class="stats grid grid-cols-2 gap-3 tabular-nums md:grid-cols-4">
-        <div v-for="metric in metrics" :key="metric.label" :data-metric="metric.label">
-          <p class="text-xs text-dimmed">{{ metric.label }}</p>
-          <p data-testid="metric-value" class="text-2xl leading-[1.3] font-semibold" :class="zeroText(metric.value) && 'text-dimmed'">{{ metric.value }}</p>
-          <p data-testid="metric-compare" class="text-xs text-muted">
-            <template v-if="metric.change !== null">
-              <span :class="metric.change >= 0 ? 'text-ink-green' : 'text-ink-red'">{{ metric.change >= 0 ? '↑' : '↓' }} {{ Math.abs(metric.change) }}%</span>
-              较上周同日{{ metric.label === '实收' ? '' : ` · ${metric.note}` }}
-            </template>
-            <template v-else>{{ metric.note }}</template>
+    <div class="flex flex-col gap-4">
+      <template v-if="selectedHome === 'personal'">
+        <template v-if="can('attendance.clock')">
+          <div v-if="!todayClockIn" class="flex items-center gap-4 rounded-card bg-notice px-[18px] py-4">
+            <UIcon name="i-lucide-clock" class="size-7 shrink-0 text-muted" aria-hidden="true" />
+            <p class="text-lead font-semibold">今天还没打卡<small class="block text-meta font-normal text-muted">上班先打卡，迟到、早退按门店的班次算</small></p>
+            <UButton data-testid="home-punch" size="xl" class="ms-auto min-h-12 px-7 text-base" :loading="punching" @click="punch">打卡</UButton>
+          </div>
+          <p v-else class="-mt-4 flex items-center justify-center gap-2 text-meta text-muted">
+            <span data-testid="home-punch-time" class="tag bg-tag-green tabular-nums">已打卡 {{ clockTime(todayClockIn) }}</span>
           </p>
+        </template>
+        <AiCommandBox :suggestions="personalSuggestions" />
+        <!-- 不在轮牌队列里时轮牌卡不显示，「我今天」占满整行。 -->
+        <div class="flex flex-col gap-4 md:flex-row">
+          <HomeRotation v-if="can('queue.view') && me" :staff-id="me.staff.id" class="md:w-[40%] md:shrink-0" />
+          <HomeMyDay v-if="can('performance.view') && me && businessDate" :date="today" :staff-id="me.staff.id" class="min-w-0 flex-1" />
         </div>
-      </div>
-
-      <template v-if="can('booking.manage') && businessDate">
-        <div class="sec">今日排班<span class="ms-auto font-normal text-dimmed"><NuxtLink to="/bookings" class="hover:underline">到预约页改约</NuxtLink></span></div>
-        <div class="box"><HomeTimeline :date="today" @summary="visits = $event" /></div>
+        <template v-if="can('booking.manage') && me && businessDate">
+          <HomeWidget title="我的今天" icon="i-lucide-calendar">
+            <template #aside>时间按门店营业时间排</template>
+            <HomeTimeline :date="today" :staff-id="me.staff.id" />
+          </HomeWidget>
+          <HomeMyCustomers :date="today" :staff-id="me.staff.id" />
+        </template>
+        <HomeWidget v-if="myDrafts.length" title="我起草的" icon="i-lucide-pencil">
+          <template #aside>等有权限的人确认</template>
+          <HomeDrafts :drafts="myDrafts" status="待确认" />
+        </HomeWidget>
       </template>
-    </template>
+
+      <template v-else-if="selectedHome === 'front'">
+        <AiCommandBox large :suggestions="frontSuggestions" placeholder="说一句要做的事，例如“陈女士到了，开剪发”" />
+        <div data-testid="home-front-actions" class="mx-auto grid w-full max-w-[720px] grid-cols-2 gap-2 sm:grid-cols-4">
+          <NuxtLink v-if="can('order.create')" to="/cashier?open=walkin" class="quick"><UIcon name="i-lucide-receipt" class="size-4 text-muted" aria-hidden="true" />散客开单</NuxtLink>
+          <NuxtLink v-if="can('booking.manage')" to="/bookings" class="quick"><UIcon name="i-lucide-calendar-plus" class="size-4 text-muted" aria-hidden="true" />新预约</NuxtLink>
+          <NuxtLink v-if="can('customer.view')" to="/customers" class="quick"><UIcon name="i-lucide-user-search" class="size-4 text-muted" aria-hidden="true" />找顾客</NuxtLink>
+          <button v-if="can('attendance.clock') && !todayClockIn" type="button" class="quick" :disabled="punching" @click="punch"><UIcon name="i-lucide-clock" class="size-4 text-muted" aria-hidden="true" />打卡</button>
+          <p v-if="todayClockIn" class="quick text-muted tabular-nums">已打卡 {{ clockTime(todayClockIn) }}</p>
+        </div>
+        <HomeWidget v-if="myDrafts.length" title="我起草的" icon="i-lucide-pencil">
+          <template #aside>等店长确认</template>
+          <HomeDrafts :drafts="myDrafts" status="待店长确认" />
+        </HomeWidget>
+        <HomeWidget v-if="can('booking.manage') && businessDate" title="今日顾客" icon="i-lucide-users">
+          <template #aside>预约和散客</template>
+          <HomeBoard :date="today" @summary="visits = $event" />
+        </HomeWidget>
+      </template>
+
+      <template v-else-if="selectedHome === 'manager'">
+        <AiCommandBox :suggestions="managerSuggestions" />
+
+        <HomeWidget v-if="recentPages.length" title="最近访问" icon="i-lucide-clock">
+          <div class="-mx-1 flex gap-3 overflow-x-auto px-1 pt-1 pb-1" data-testid="home-recent">
+            <NuxtLink
+              v-for="page in recentPages"
+              :key="page.to"
+              :to="page.to"
+              class="flex h-36 w-36 shrink-0 flex-col overflow-hidden rounded-card bg-white shadow-card transition-colors hover:bg-card-hover"
+            >
+              <span class="h-10 shrink-0 bg-side" aria-hidden="true" />
+              <UIcon :name="page.icon" class="-mt-3 ms-3.5 size-6 shrink-0 text-muted" aria-hidden="true" />
+              <span class="px-3.5 pt-2 font-medium">{{ page.label }}</span>
+              <span class="mt-auto px-3.5 pb-3 text-meta text-dimmed tabular-nums">{{ page.when }}</span>
+            </NuxtLink>
+          </div>
+        </HomeWidget>
+
+        <div class="grid gap-4 md:grid-cols-2">
+          <HomeWidget title="待你确认" icon="i-lucide-inbox">
+            <template #aside>AI 起草，确认后生效</template>
+            <div data-testid="home-drafts">
+              <HomeDrafts v-if="pendingDrafts.length" :drafts="pendingDrafts" status="待确认" />
+              <p v-else class="py-1 text-meta text-dimmed">没有等你确认的草稿。员工吩咐 AI 做的事会先到这里。</p>
+            </div>
+          </HomeWidget>
+
+          <HomeWidget title="今日经营" icon="i-lucide-chart-line">
+            <template #aside>实收口径</template>
+            <div data-testid="home-manager-metrics" class="grid grid-cols-2 gap-x-4 gap-y-4 tabular-nums">
+              <div v-for="metric in metrics" :key="metric.label" :data-metric="metric.label">
+                <p class="text-xs text-dimmed">{{ metric.label }}</p>
+                <p data-testid="metric-value" class="text-2xl leading-[1.3] font-semibold" :class="zeroText(metric.value) && 'text-dimmed'">{{ metric.value }}</p>
+                <p data-testid="metric-compare" class="text-xs text-muted">
+                  <template v-if="metric.change !== null">
+                    <span :class="metric.change >= 0 ? 'text-ink-green' : 'text-ink-red'">{{ metric.change >= 0 ? '↑' : '↓' }} {{ Math.abs(metric.change) }}%</span>
+                    较上周同日{{ metric.label === '实收' ? '' : ` · ${metric.note}` }}
+                  </template>
+                  <template v-else>{{ metric.note }}</template>
+                </p>
+              </div>
+            </div>
+          </HomeWidget>
+        </div>
+
+        <HomeWidget v-if="can('booking.manage') && businessDate" title="今日排班" icon="i-lucide-calendar">
+          <template #aside><NuxtLink to="/bookings" class="hover:underline">到预约页改约</NuxtLink></template>
+          <HomeTimeline :date="today" @summary="visits = $event" />
+        </HomeWidget>
+      </template>
+    </div>
   </div>
 </template>
 

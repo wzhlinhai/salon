@@ -52,8 +52,8 @@ function lateMinutes(entry: Appointment) {
 </script>
 
 <template>
-  <div v-if="upcoming.length" data-testid="home-my-customers">
-    <div class="sec">我的顾客<span class="ms-auto font-normal text-dimmed">正在服务和接下来</span></div>
+  <HomeWidget v-if="upcoming.length" title="我的顾客" icon="i-lucide-user" data-testid="home-my-customers">
+    <template #aside>正在服务和接下来</template>
     <div class="grid gap-3 md:grid-cols-3">
       <div
         v-for="entry in upcoming"
@@ -79,5 +79,5 @@ function lateMinutes(entry: Appointment) {
         </div>
       </div>
     </div>
-  </div>
+  </HomeWidget>
 </template>

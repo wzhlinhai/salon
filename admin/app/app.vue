@@ -77,6 +77,12 @@ const pageIcon = computed(() => {
   if (route.path === '/drafts') return DRAFTS_ICON
   return navItems.find(item => isActive(item.to))?.icon ?? ''
 })
+// 首页「最近访问」：打开侧栏里的页面（不含首页）就记一笔；登录信息到了再记，换人不串。
+const { record: recordRecent } = useRecentPages()
+watch([() => route.path, () => me.value?.staff.id], ([path]) => {
+  const item = navItems.find(nav => nav.to !== '/' && isActive(nav.to))
+  if (item && path) recordRecent(item.to)
+}, { immediate: true })
 // 二级页（目前只有各张报表）在顶栏前面放上一级的链接，点了回入口。
 const parentCrumb = computed(() => route.path.startsWith('/reports/') ? { to: '/reports', label: '报表' } : null)
 
