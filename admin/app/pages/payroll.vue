@@ -30,10 +30,10 @@ const amountColumns = [
   ['applied_amount', '底薪/保底'], ['base_pay', '底薪部分'], ['item_commission', '项目'], ['consume_commission', '耗卡'],
   ['labor_commission', '手工费'], ['sale_commission', '销售'], ['commission_total', '提成合计'], ['guarantee_top_up', '保底补差'], ['adjustments_total', '加减项'], ['total', '应发']
 ] as const
-// 手工费本店不用：这个月没有手工费提成时不显示这一列。
+// 手工费本店不用：这个月没有一个人有手工费提成时不显示这一列。
 const columns = computed<TableColumn<Line>[]>(() => [
   { accessorKey: 'staff', header: '员工' }, { accessorKey: 'mode', header: '计薪方式' },
-  ...amountColumns.filter(([key]) => key !== 'labor_commission' || Number(payroll.value?.totals.labor_commission ?? 0) !== 0).map(([accessorKey, header]) => ({ accessorKey, header, meta: { class: { th: 'text-right', td: (cell: { getValue: () => unknown }) => `text-right tabular-nums${Number(cell.getValue()) === 0 ? ' text-dimmed' : ''}` } } }))
+  ...amountColumns.filter(([key]) => key !== 'labor_commission' || (payroll.value?.lines ?? []).some(l => Number(l.labor_commission) !== 0)).map(([accessorKey, header]) => ({ accessorKey, header, meta: { class: { th: 'text-right', td: (cell: { getValue: () => unknown }) => `text-right tabular-nums${Number(cell.getValue()) === 0 ? ' text-dimmed' : ''}` } } }))
 ])
 const rows = computed<Line[]>(() => payroll.value?.lines.length ? [...payroll.value.lines, { ...payroll.value.totals, staff: { id: '__total__', name: '合计' }, active: true, mode: 'base' }] : [])
 

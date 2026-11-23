@@ -53,7 +53,7 @@ const moneyColumns: { key: MoneyKey, label: string }[] = [
   { key: 'labor_performance', label: '手工费' },
   { key: 'sale_performance', label: '销售业绩' }
 ]
-const shownMoneyColumns = computed(() => moneyColumns.filter(c => c.key !== 'labor_performance' || Number(report.value?.totals.labor_performance ?? 0) !== 0))
+const shownMoneyColumns = computed(() => moneyColumns.filter(c => c.key !== 'labor_performance' || rows.value.some(r => Number(r.labor_performance) !== 0)))
 const guestColumns: { key: GuestKey, label: string }[] = [
   { key: 'guest_total', label: '客数' },
   { key: 'guest_designated', label: '指定' },

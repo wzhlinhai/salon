@@ -96,7 +96,8 @@ body {
 
 /* 弹窗和侧滑面板照 Fresha（app.config.ts 的 modal、slideover 给内容区加 .dialog-form、按钮栏加 .dialog-actions）：
    输入框、下拉、文本框 44 高、8 圆角、白底一圈灰框，聚焦时框变成墨色；按钮栏的按钮 44 高、8 圆角、15px 字。
-   只在弹窗里放大，页面上的筛选栏、搜索框仍是 Nuxt UI 的常规尺寸。写成普通样式，盖过组件自带的工具类。 */
+   只在弹窗里放大，页面上的筛选栏、搜索框仍是 Nuxt UI 的常规尺寸。写成普通样式，盖过组件自带的工具类。
+   填错的控件（aria-invalid）框变红。AI 对话面板的底栏带 .ai-chat，发送按钮不放大。 */
 .dialog-form :is(input[data-slot="base"]:not([type="checkbox"], [type="radio"]), button:is([role="combobox"], [aria-haspopup="listbox"])[data-slot="base"]) {
   min-height: 44px;
 }
@@ -110,10 +111,13 @@ body {
 .dialog-form :is(input[data-slot="base"], textarea[data-slot="base"], button:is([role="combobox"], [aria-haspopup="listbox"])[data-slot="base"]):focus-visible {
   box-shadow: inset 0 0 0 1.5px #2c2c2b;
 }
+.dialog-form :is(input[data-slot="base"], textarea[data-slot="base"], button:is([role="combobox"], [aria-haspopup="listbox"])[data-slot="base"])[aria-invalid="true"] {
+  box-shadow: inset 0 0 0 1.5px var(--ui-error);
+}
 .dialog-form :is(input[data-slot="base"], textarea[data-slot="base"], button:is([role="combobox"], [aria-haspopup="listbox"])[data-slot="base"]):disabled {
   background: #f7f7f5;
 }
-.dialog-actions button[data-slot="base"] {
+.dialog-actions:not(.ai-chat) button[data-slot="base"] {
   height: 44px;
   border-radius: 8px;
   padding-inline: 20px;
