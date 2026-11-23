@@ -90,8 +90,8 @@ watch([() => route.path, () => me.value?.staff.id], ([path]) => {
 // 二级页（目前只有各张报表）在顶栏前面放上一级的链接，点了回入口。
 const parentCrumb = computed(() => route.path.startsWith('/reports/') ? { to: '/reports', label: '报表' } : null)
 
-// 侧栏顶上的门店名，第一个字做标志。
-const storeName = ref('')
+// 侧栏顶上的门店名，第一个字做标志；设置页改名后同一份状态跟着变。
+const storeName = useState('store-name', () => '')
 
 async function loadStore() {
   const { data } = await useApi().POST('/api/ops/get_store', { body: {} })

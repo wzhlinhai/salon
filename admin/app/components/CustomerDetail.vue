@@ -514,7 +514,7 @@ onBeforeUnmount(() => {
             </section>
             <CustomerCards v-if="tab === 'cards'" :id="id" :merged="!!customer.merged_into" @changed="emit('changed')" />
             <CustomerRedPackets v-if="tab === 'red-packets'" :id="customer.id" :merged="!!customer.merged_into" />
-            <CustomerDebts v-if="tab === 'debts'" :id="customer.id" />
+            <CustomerDebts v-if="tab === 'debts'" :id="customer.id" :today="today" />
             <section v-if="tab === 'logs'">
               <div class="box overflow-hidden p-0" data-testid="customer-logs">
                 <p v-if="!logs.items.value.length" class="px-3 py-2.5 text-sm text-muted">暂无修改记录</p>
