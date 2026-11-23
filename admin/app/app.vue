@@ -296,7 +296,7 @@ const searchGroups = computed(() => {
         </template>
       </UDashboardSidebar>
 
-      <UDashboardPanel data-testid="main-panel" class="bg-page" :ui="{ body: 'px-4 pt-5 pb-16 sm:px-10 sm:pt-5 sm:pb-16' }">
+      <UDashboardPanel data-testid="main-panel" class="bg-page" :ui="{ body: 'px-4 pt-5 pb-16 sm:px-12 sm:pt-10 sm:pb-24 xl:px-24' }">
         <template #header>
           <UDashboardNavbar :ui="{ root: 'h-[45px] border-b-0 px-3 sm:px-3' }">
             <template #left>
@@ -351,9 +351,9 @@ const searchGroups = computed(() => {
         </template>
         <template #body>
           <div :class="pageWidth">
-            <header v-if="showPageHeader" class="mt-2 mb-[18px]" data-testid="page-header">
-              <h1 class="text-title font-semibold text-balance">{{ pageTitle }}</h1>
-              <p id="page-description" class="mt-1 text-muted text-pretty empty:hidden" data-testid="page-description"><span v-if="pageDescription">{{ pageDescription }}</span></p>
+            <header v-if="showPageHeader" class="mb-5" data-testid="page-header">
+              <h1 class="text-title font-bold text-balance">{{ pageTitle }}</h1>
+              <p id="page-description" class="mt-2 text-muted text-pretty empty:hidden" data-testid="page-description"><span v-if="pageDescription">{{ pageDescription }}</span></p>
             </header>
             <h1 v-else-if="route.meta.workbench" class="sr-only">{{ pageTitle }}</h1>
             <NuxtPage />

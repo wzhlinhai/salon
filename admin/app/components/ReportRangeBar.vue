@@ -42,7 +42,7 @@ function setTo(value: string) {
           v-for="p in presets"
           :key="p.label"
           size="xs"
-          :color="same(p.range, range) ? 'primary' : 'neutral'"
+          color="neutral"
           :variant="same(p.range, range) ? 'soft' : 'ghost'"
           :aria-pressed="same(p.range, range)"
           @click="range = p.range"

@@ -1,10 +1,10 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
-/* 视觉基准是 .dev/design/dashboard-directions 的 J（店长）/K（个人）原型和 notion.css：
-   暖灰字色和细线、Notion 低饱和标签色、蓝色主按钮。AI 不另起颜色（DESIGN.md「去掉 AI 套路」）。 */
+/* 视觉照 Notion 现在的界面（2026-11 实测公开页的计算样式，记录在 DESIGN.md「Notion 实测值」）：
+   内容区纯白、侧栏暖灰、墨色 #2c2c2b、细线 #f0efed、低饱和标签色、蓝色主按钮。AI 不另起颜色。 */
 @theme {
-  --color-page: #fbfbfa;
+  --color-page: #ffffff;
   --color-side: #f7f7f5;
   --color-ai-soft: #f1f1ef;
   --color-tag-gray: #e3e2e0;
@@ -20,13 +20,13 @@
   --color-ink-red: #d44c47;
   --color-ink-yellow: #cb912f;
   --color-ink-orange: #d9730d;
-  --color-ink: #37352f;
+  --color-ink: #2c2c2b;
   /* 看板列底、悬停、细线、提醒条。 */
   --color-lane: #f4f4f2;
   --color-card-hover: #fcfcfb;
-  --color-line: rgba(55, 53, 47, 0.09);
-  --color-hover: rgba(55, 53, 47, 0.06);
-  --color-selected: rgba(55, 53, 47, 0.08);
+  --color-line: rgba(42, 28, 0, 0.07);
+  --color-hover: rgba(42, 28, 0, 0.03);
+  --color-selected: rgba(33, 27, 23, 0.076);
   --color-notice: #fbf3db;
   --color-hatch: #f6f6f4;
 
@@ -35,20 +35,20 @@
   --text-meta: 13px;
   --text-lead: 15px;
   --text-greet: 26px;
-  --text-title: 24px;
-  --text-title--line-height: 1.25;
+  --text-title: 32px;
+  --text-title--line-height: 1.2;
   --text-hero: 40px;
 
-  /* 圆角：标签 3、按钮输入框 6（--ui-radius）、看板列 10、卡片 12、浮起的大输入框 14。 */
-  --radius-tag: 3px;
+  /* 圆角：标签 4、按钮输入框 6（--ui-radius）、看板列 10、卡片 12、浮起的大输入框 14。 */
+  --radius-tag: 4px;
   --radius-lane: 10px;
   --radius-card: 12px;
   --radius-panel: 14px;
 
   /* 投影：卡片用 1px 细线加一点点影子；浮层再深一档。 */
-  --shadow-line: 0 0 0 1px rgba(55, 53, 47, 0.09);
-  --shadow-card: 0 0 0 1px rgba(55, 53, 47, 0.09), 0 1px 2px rgba(15, 15, 15, 0.06);
-  --shadow-float: 0 0 0 1px rgba(55, 53, 47, 0.09), 0 4px 14px rgba(15, 15, 15, 0.06);
+  --shadow-line: 0 0 0 1px rgba(42, 28, 0, 0.07);
+  --shadow-card: rgba(25, 25, 25, 0.027) 0 4px 12px, rgba(25, 25, 25, 0.02) 0 1px 2px, rgba(42, 28, 0, 0.07) 0 0 0 1px;
+  --shadow-float: rgba(25, 25, 25, 0.027) 0 8px 12px, rgba(25, 25, 25, 0.027) 0 2px 6px, rgba(42, 28, 0, 0.07) 0 0 0 1px;
   --shadow-raised: 0 1px 2px rgba(15, 15, 15, 0.1);
 }
 
@@ -60,31 +60,31 @@
   --chart-3: #1baf7a;
   --chart-4: #eda100;
   --chart-5: #e87ba4;
-  --chart-grid: rgba(55, 53, 47, 0.09);
+  --chart-grid: rgba(42, 28, 0, 0.07);
   --ui-radius: 0.375rem;
   --ui-primary: #2383e2;
-  --ui-ai: #37352f;
+  --ui-ai: #2c2c2b;
   --ui-success: #448361;
   --ui-error: #d44c47;
   --ui-warning: #cb912f;
-  --ui-text-highlighted: #37352f;
-  --ui-text: #37352f;
-  --ui-text-toned: rgba(55, 53, 47, 0.8);
-  --ui-text-muted: rgba(55, 53, 47, 0.65);
-  --ui-text-dimmed: rgba(55, 53, 47, 0.52);
+  --ui-text-highlighted: #2c2c2b;
+  --ui-text: #2c2c2b;
+  --ui-text-toned: #5f5e5b;
+  --ui-text-muted: #7d7a75;
+  --ui-text-dimmed: #a19e99;
   --ui-bg-muted: #f7f7f5;
   --ui-bg-elevated: #f1f1ef;
   --ui-bg-accented: #e3e2e0;
-  --ui-bg-inverted: #37352f;
-  --ui-border: rgba(55, 53, 47, 0.09);
-  --ui-border-muted: rgba(55, 53, 47, 0.09);
+  --ui-bg-inverted: #2c2c2b;
+  --ui-border: rgba(42, 28, 0, 0.07);
+  --ui-border-muted: rgba(42, 28, 0, 0.07);
   --ui-border-accented: rgba(15, 15, 15, 0.16);
-  --ui-border-inverted: #37352f;
+  --ui-border-inverted: #2c2c2b;
 }
 
 body {
-  color: #37352f;
-  font: 14px/1.5 ui-sans-serif, -apple-system, "Segoe UI", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  color: #2c2c2b;
+  font: 14px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -120,18 +120,47 @@ body {
   }
 }
 
-/* 区块标题：小号灰字，右边一句说明。 */
+/* 区块标题：照 Notion 页内标题，黑色半粗；右边可跟一句灰色说明（说明自己写 font-normal text-dimmed）。 */
 @utility sec {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
-  color: rgba(55, 53, 47, 0.65);
-  font-weight: 500;
-  margin: 22px 0 8px;
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--color-ink);
+  font-weight: 600;
+  margin: 28px 0 8px;
+  /* 标题后面的灰色说明（写 font-normal）用正文字号。 */
+  & > .font-normal {
+    font-size: 14px;
+  }
 }
 
-/* Notion 标签：20px 高、3px 圆角。 */
+/* 照 Notion 页面属性：左列灰字属性名 160px，右列值，每行 34px，没有分隔线。 */
+@utility props {
+  display: grid;
+  grid-template-columns: minmax(0, 160px) minmax(0, 1fr);
+  column-gap: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  & > dt {
+    display: flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 0 6px;
+    color: var(--ui-text-muted);
+  }
+  & > dd {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    min-height: 34px;
+    padding: 0 6px;
+    color: var(--ui-text);
+  }
+}
+
+/* Notion 标签：20px 高、4px 圆角。 */
 @utility tag {
   display: inline-flex;
   align-items: center;
@@ -140,7 +169,7 @@ body {
   border-radius: var(--radius-tag);
   font-size: 12px;
   white-space: nowrap;
-  color: #37352f;
+  color: #2c2c2b;
 }
 
 /* 私约占位：斜纹表示"这段时间被占着但还没有顾客"。 */

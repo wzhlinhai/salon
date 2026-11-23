@@ -63,7 +63,7 @@ const columns = [
   { id: 'actions', header: '' }
 ]
 
-// 筛选（一排小按钮）：在职（默认）、人数最多的两个岗位、未开通账号、已停用。
+// 视图页签：在职（默认）、人数最多的两个岗位、未开通账号、已停用。
 interface Filter { key: string, label: string, empty: string, test: (s: Staff) => boolean }
 const filterKey = ref('active')
 const search = ref('')
@@ -85,6 +85,7 @@ const filters = computed<Filter[]>(() => {
   ]
 })
 
+const filterTabs = computed(() => filters.value.map(f => ({ key: f.key, label: f.label, count: loading.value && !staff.value.length ? undefined : staff.value.filter(f.test).length })))
 const filter = computed(() => filters.value.find(f => f.key === filterKey.value) ?? filters.value[0]!)
 // 岗位筛选的岗位没人了（例如刚停用最后一个人），回到在职。
 watch(filters, (list) => {
@@ -226,20 +227,7 @@ async function setActive(s: Staff, active: boolean) {
     </PageActions>
 
     <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-      <div class="flex flex-wrap items-center gap-1" role="group" aria-label="筛选员工">
-        <UButton
-          v-for="f in filters"
-          :key="f.key"
-          size="xs"
-          :color="filterKey === f.key ? 'primary' : 'neutral'"
-          :variant="filterKey === f.key ? 'soft' : 'ghost'"
-          :aria-pressed="filterKey === f.key"
-          :data-filter="f.key"
-          @click="filterKey = f.key"
-        >
-          {{ f.label }}<span v-if="!loading || staff.length" class="tabular-nums" :class="filterKey === f.key ? '' : 'text-dimmed'">{{ staff.filter(f.test).length }}</span>
-        </UButton>
-      </div>
+      <ViewTabs v-model="filterKey" :items="filterTabs" label="筛选员工" />
       <UInput v-model="search" icon="i-lucide-search" placeholder="搜索姓名或编号" aria-label="搜索姓名或编号" class="w-full sm:w-64" />
       <span class="ms-auto text-meta text-dimmed tabular-nums" data-testid="staff-count">共 {{ shown.length }} 人</span>
     </div>

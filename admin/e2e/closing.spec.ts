@@ -107,6 +107,8 @@ test('封账到一个月前那天，只有下一天能接着封，老板写原�
   await page.goto('/closing')
   const sealedThrough = page.getByTestId('sealed-through')
   await expect(sealedThrough).toHaveText('还没有封账')
+  // 一个月前那几天不一定营业，默认的「营业日」视图里可能没有，切到「所有日子」。
+  await page.locator('[data-filter=days]').click()
   await dayRow(page, day).click()
 
   await page.getByRole('button', { name: '封账到这天…', exact: true }).click()
