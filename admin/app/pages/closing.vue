@@ -2,7 +2,7 @@
 import type { TableColumn, TableRow } from '@nuxt/ui'
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'closing.daily', title: '日结', description: '每天营业结束后清点现金、核对银联、微信、支付宝的到账，保存一份快照。封账后那天及以前的账不能再改。' })
+definePageMeta({ permission: 'closing.daily', title: '日结' })
 
 type Item = components['schemas']['DayCloseListItem']
 // 列表一行是一个营业日：日结过的带上最新一版快照，没日结的只有日期。
@@ -63,16 +63,19 @@ const days = computed<Day[]>(() => {
   })
 })
 
-// 筛选（一排小按钮）：数字是这一类的天数；「全部」就是最近 31 天，不写数。
+// 视图页签，照 Notion 只列有记录的行：默认「营业日」只列营业过或日结过的日子，
+// 没营业的日子在「所有日子」里（封账要从那里点更早的日子）。数字是这一类的天数。
 interface Filter { key: string, label: string, empty: string, test: (d: Day) => boolean }
 const pending = (d: Day) => d.business && !d.close && !d.sealed
 const filters: Filter[] = [
-  { key: 'all', label: '全部', empty: '', test: () => true },
-  { key: 'open', label: '待日结', empty: '最近营业的日子都日结了', test: pending },
+  { key: 'business', label: '营业日', empty: `最近 ${DAYS} 天没有营业`, test: d => d.business || !!d.close },
+  { key: 'open', label: '待日结', empty: '营业的日子都日结了', test: pending },
   { key: 'closed', label: '已日结', empty: '还没有日结过', test: d => !!d.close && !d.sealed },
-  { key: 'sealed', label: '已封账', empty: '还没有封账', test: d => d.sealed }
+  { key: 'sealed', label: '已封账', empty: '还没有封账', test: d => d.sealed },
+  { key: 'days', label: '所有日子', empty: '', test: () => true }
 ]
-const filterKey = ref('all')
+const filterKey = ref('business')
+const filterTabs = computed(() => filters.map(f => ({ key: f.key, label: f.label, count: f.key === 'days' || (loading.value && !days.value.length) ? undefined : days.value.filter(f.test).length })))
 const filter = computed(() => filters.find(f => f.key === filterKey.value)!)
 const shown = computed(() => days.value.filter(filter.value.test))
 
@@ -206,20 +209,7 @@ function saveUnseal() {
       <UButton v-if="yesterdayOpen" size="sm" icon="i-lucide-calculator" @click="openCloseDate(yesterday)">日结昨天</UButton>
     </PageActions>
 
-    <div class="flex flex-wrap items-center gap-1" role="group" aria-label="筛选营业日">
-      <UButton
-        v-for="f in filters"
-        :key="f.key"
-        size="xs"
-        :color="filterKey === f.key ? 'primary' : 'neutral'"
-        :variant="filterKey === f.key ? 'soft' : 'ghost'"
-        :aria-pressed="filterKey === f.key"
-        :data-filter="f.key"
-        @click="filterKey = f.key"
-      >
-        {{ f.label }}<span v-if="f.key !== 'all' && (!loading || days.length)" class="tabular-nums" :class="filterKey === f.key ? '' : 'text-dimmed'">{{ days.filter(f.test).length }}</span>
-      </UButton>
-    </div>
+    <ViewTabs v-model="filterKey" :items="filterTabs" label="筛选营业日" />
 
     <div class="flex flex-wrap items-center gap-2 text-meta text-muted">
       <UIcon name="i-lucide-lock" class="size-3.5" aria-hidden="true" />
@@ -261,8 +251,8 @@ function saveUnseal() {
           <EmptyState v-if="failed" title="日结列表没加载出来" hint="检查网络后再试一次">
             <UButton color="neutral" variant="outline" size="sm" @click="load">重试</UButton>
           </EmptyState>
-          <EmptyState v-else-if="filterKey !== 'all'" :title="filter.empty">
-            <UButton color="neutral" variant="outline" size="sm" @click="filterKey = 'all'">清除筛选</UButton>
+          <EmptyState v-else-if="filterKey !== 'days'" :title="filter.empty">
+            <UButton color="neutral" variant="outline" size="sm" @click="filterKey = 'days'">看所有日子</UButton>
           </EmptyState>
         </template>
       </UTable>

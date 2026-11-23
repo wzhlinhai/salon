@@ -275,7 +275,7 @@ onMounted(async () => {
 
 <template>
   <div class="space-y-4">
-    <UTabs v-model="tab" :items="tabs" :content="false" variant="link" size="sm" class="w-fit" />
+    <UTabs v-model="tab" :items="tabs" :content="false" variant="link" color="neutral" class="w-fit" />
 
     <section v-if="tab === 'monthly'" class="space-y-4">
       <div class="flex flex-wrap items-center gap-3">
@@ -295,10 +295,11 @@ onMounted(async () => {
           @select="selectSummary"
         >
           <template #staff-cell="{ row }"><span class="font-medium">{{ row.original.staff.name }}</span><span v-if="!row.original.active" class="text-dimmed">（离职）</span></template>
-          <template #late_count-cell="{ row }"><span :class="row.original.late_count ? 'text-ink-red' : 'text-dimmed'">{{ row.original.late_count }} 次 / {{ row.original.late_minutes }} 分钟</span></template>
-          <template #early_count-cell="{ row }"><span :class="row.original.early_count ? 'text-ink-orange' : 'text-dimmed'">{{ row.original.early_count }} 次 / {{ row.original.early_minutes }} 分钟</span></template>
-          <template #missing_count-cell="{ row }"><span :class="row.original.missing_count ? 'text-ink-red' : 'text-dimmed'">{{ row.original.missing_count }} 次</span></template>
-          <template #approved_count-cell="{ row }"><span :class="row.original.approved_count ? '' : 'text-dimmed'">{{ row.original.approved_count }} 次</span></template>
+          <!-- 0 次留空，照 Notion 空属性；外层 span 要一直在，插槽空了表格会改显示原始数字。 -->
+          <template #late_count-cell="{ row }"><span class="text-ink-red"><template v-if="row.original.late_count">{{ row.original.late_count }} 次 / {{ row.original.late_minutes }} 分钟</template></span></template>
+          <template #early_count-cell="{ row }"><span class="text-ink-orange"><template v-if="row.original.early_count">{{ row.original.early_count }} 次 / {{ row.original.early_minutes }} 分钟</template></span></template>
+          <template #missing_count-cell="{ row }"><span class="text-ink-red"><template v-if="row.original.missing_count">{{ row.original.missing_count }} 次</template></span></template>
+          <template #approved_count-cell="{ row }"><span><template v-if="row.original.approved_count">{{ row.original.approved_count }} 次</template></span></template>
           <template #empty><EmptyState v-if="!summaryLoading" title="本月还没有考勤记录" hint="员工在小程序上打卡后，这里按人汇总" /></template>
           <template #loading>
             <ListSkeleton />

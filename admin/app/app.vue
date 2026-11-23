@@ -77,6 +77,12 @@ const pageIcon = computed(() => {
   if (route.path === '/drafts') return DRAFTS_ICON
   return navItems.find(item => isActive(item.to))?.icon ?? ''
 })
+// 首页「最近访问」：打开侧栏里的页面（不含首页）就记一笔；登录信息到了再记，换人不串。
+const { record: recordRecent } = useRecentPages()
+watch([() => route.path, () => me.value?.staff.id], ([path]) => {
+  const item = navItems.find(nav => nav.to !== '/' && isActive(nav.to))
+  if (item && path) recordRecent(item.to)
+}, { immediate: true })
 // 二级页（目前只有各张报表）在顶栏前面放上一级的链接，点了回入口。
 const parentCrumb = computed(() => route.path.startsWith('/reports/') ? { to: '/reports', label: '报表' } : null)
 
@@ -296,7 +302,7 @@ const searchGroups = computed(() => {
         </template>
       </UDashboardSidebar>
 
-      <UDashboardPanel data-testid="main-panel" class="bg-page" :ui="{ body: 'px-4 pt-5 pb-16 sm:px-10 sm:pt-5 sm:pb-16' }">
+      <UDashboardPanel data-testid="main-panel" class="bg-page" :ui="{ body: 'px-4 pt-5 pb-16 sm:px-12 sm:pt-10 sm:pb-24 xl:px-24' }">
         <template #header>
           <UDashboardNavbar :ui="{ root: 'h-[45px] border-b-0 px-3 sm:px-3' }">
             <template #left>
@@ -351,9 +357,9 @@ const searchGroups = computed(() => {
         </template>
         <template #body>
           <div :class="pageWidth">
-            <header v-if="showPageHeader" class="mt-2 mb-[18px]" data-testid="page-header">
-              <h1 class="text-title font-semibold text-balance">{{ pageTitle }}</h1>
-              <p id="page-description" class="mt-1 text-muted text-pretty empty:hidden" data-testid="page-description"><span v-if="pageDescription">{{ pageDescription }}</span></p>
+            <header v-if="showPageHeader" class="mb-5" data-testid="page-header">
+              <h1 class="text-title font-bold text-balance">{{ pageTitle }}</h1>
+              <p id="page-description" class="mt-2 text-muted text-pretty empty:hidden" data-testid="page-description"><span v-if="pageDescription">{{ pageDescription }}</span></p>
             </header>
             <h1 v-else-if="route.meta.workbench" class="sr-only">{{ pageTitle }}</h1>
             <NuxtPage />

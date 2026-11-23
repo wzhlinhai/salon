@@ -64,6 +64,9 @@ const tiles = computed(() => {
     { key: 'sleeping' as const, label: '沉睡', count: s?.sleeping.count, hint: '超过 90 天没来' }
   ]
 })
+// 分组的补充数字（本月到店、余额合计……）跟在「共 N 位」后面。
+const activeHint = computed(() => tiles.value.find(t => t.key === segment.value)?.hint ?? '')
+
 const emptyTexts: Record<SegmentKey, { title: string, hint: string }> = {
   all: { title: '还没有顾客', hint: '顾客第一次到店开单时会自动建档，也可以点右上角新建' },
   today: { title: '今天没有预约的顾客', hint: '' },
@@ -328,35 +331,25 @@ async function handover() {
       <UButton v-if="can('customer.edit')" size="sm" icon="i-lucide-plus" @click="openCreate">新建顾客</UButton>
     </PageActions>
 
-    <div class="grid grid-cols-3 gap-2 xl:grid-cols-6" role="group" aria-label="顾客分组">
-      <button
-        v-for="tile in tiles"
-        :key="tile.key"
-        type="button"
-        :aria-pressed="segment === tile.key"
-        :data-testid="`segment-${tile.key}`"
-        class="tile flex flex-col items-start gap-0.5 text-start"
-        @click="segment = tile.key"
-      >
-        <span class="text-meta" :class="segment === tile.key ? 'text-primary' : 'text-muted'">{{ tile.label }}</span>
-        <span data-testid="segment-count" class="min-h-7 text-xl font-semibold tabular-nums" :class="segment === tile.key ? 'text-primary' : zeroText(tile.count) && 'text-dimmed'">{{ tile.count ?? '' }}</span>
-        <span class="min-h-4 max-w-full truncate text-meta text-dimmed" :title="tile.hint">{{ tile.hint }}</span>
-      </button>
-    </div>
-
-    <div class="flex flex-wrap items-center gap-2">
-      <UInput v-model="query" icon="i-lucide-search" aria-label="搜索顾客" placeholder="手机号、后四位或姓名" class="w-72" @keydown.enter="search" />
-      <USelect v-model="responsible" aria-label="负责人筛选" :items="[{ label: '全部负责人', value: NONE }, ...staffItems]" class="min-w-36" />
-      <USelect v-model="sort" aria-label="排序" :items="sortItems" class="min-w-36" />
-      <div v-if="can('customer.assign') && selected.length" class="flex items-center gap-2">
-        <span class="text-meta text-muted">已选 {{ selected.length }} 位</span>
-        <UButton size="sm" color="neutral" variant="outline" @click="openAssign">分配负责人</UButton>
+    <!-- 照 Notion 数据库的工具条：第一行视图页签和无框搜索，第二行筛选、排序和人数。 -->
+    <div class="space-y-1">
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <ViewTabs v-model="segment" :items="tiles" label="顾客分组" testid="segment" />
+        <UInput v-model="query" icon="i-lucide-search" variant="ghost" aria-label="搜索顾客" placeholder="手机号、后四位或姓名" class="ms-auto w-56" @keydown.enter="search" />
       </div>
-      <span class="ms-auto text-meta text-muted tabular-nums" data-testid="customer-total">共 {{ total }} 位</span>
+      <div class="flex flex-wrap items-center gap-1">
+        <USelect v-model="responsible" variant="ghost" aria-label="负责人筛选" :items="[{ label: '全部负责人', value: NONE }, ...staffItems]" class="min-w-32 text-muted" />
+        <USelect v-model="sort" variant="ghost" aria-label="排序" :items="sortItems" class="min-w-32 text-muted" />
+        <div v-if="can('customer.assign') && selected.length" class="ms-2 flex items-center gap-2">
+          <span class="text-meta text-muted">已选 {{ selected.length }} 位</span>
+          <UButton size="sm" color="neutral" variant="outline" @click="openAssign">分配负责人</UButton>
+        </div>
+        <span class="ms-auto text-meta text-muted tabular-nums" data-testid="customer-total">共 {{ total }} 位<template v-if="activeHint"> · {{ activeHint }}</template></span>
+      </div>
     </div>
 
     <div class="border-b border-default" data-testid="customer-list" :aria-busy="loading">
-      <div class="grid gap-4 grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_8rem_8rem] xl:grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_6rem_8rem_8rem_8rem] border-b border-default px-3 py-2 text-xs text-dimmed">
+      <div class="grid gap-4 grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_8rem_8rem] xl:grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_6rem_8rem_8rem_8rem] border-b border-default px-3 py-2 text-sm text-muted">
         <span>顾客</span><span>上次到店</span><span class="max-xl:hidden">来过</span><span class="text-right max-xl:hidden">累计消费</span><span class="text-right">卡余额</span><span class="ps-4">下次</span>
       </div>
       <div

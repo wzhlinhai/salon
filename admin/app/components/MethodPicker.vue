@@ -1,5 +1,6 @@
 <script setup lang="ts" generic="T extends string">
 // 收款方式一键选（DESIGN.md 表单）：方式不多，平铺成一排按钮，不用下拉。
+// 选中照 Notion 视图页签的灰底，加一圈深一点的细线，不用蓝色。
 // 单选组的键盘约定：整组只占一个 Tab 位，方向键在方式间移动并选中。
 const props = withDefaults(defineProps<{
   items: { label: string, value: T }[]
@@ -34,9 +35,9 @@ function move(event: KeyboardEvent, step: number) {
       :aria-checked="model === m.value"
       :tabindex="model === m.value || !items.some(x => x.value === model) ? 0 : -1"
       size="sm"
-      :color="model === m.value ? 'primary' : 'neutral'"
+      color="neutral"
       :variant="model === m.value ? 'soft' : 'outline'"
-      :class="model === m.value ? 'font-medium ring-1 ring-primary/40 ring-inset' : ''"
+      :class="model === m.value ? 'bg-selected font-medium text-default ring-1 ring-(--ui-border-accented) ring-inset' : ''"
       @click="pick(m.value)"
       @keydown.left.prevent="move($event, -1)"
       @keydown.right.prevent="move($event, 1)"

@@ -53,7 +53,6 @@ test('团购对账显示核销分类并录入结算 @groupbuy-month', async ({ p
   await login(page, owner.account, owner.password)
   await page.goto('/groupbuy-month')
   await page.getByLabel('结算月').fill(month)
-  await page.getByRole('button', { name: '查询', exact: true }).click()
   await expect(page.getByTestId('redeemed-count')).toHaveText(String(expected.redeemed_count))
   await expect(page.getByTestId('purchase-total')).toHaveText(yuan(expected.purchase_total))
   await expect(page.getByTestId('linked-open')).toContainText(`${expected.linked_open.count} 张`)
