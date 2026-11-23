@@ -18,6 +18,11 @@ import (
 // change 按 UUID 锁住全部单并检查状态，再按操作声明的权限限制检查窗口和范围。
 // edit 收到的顺序与 ids 相同；修改后的行状态也在此切片更新，返回全部单的改后视图。
 func change(ctx context.Context, env ops.Env, action, requiredStatus string, ids []uuid.UUID, edit func([]dbgen.Order) error, now time.Time) ([]Order, error) {
+	return changeWithDay(ctx, env, action, requiredStatus, ids, edit, now, nil)
+}
+
+// changeWithDay 与 change 相同，但 guardDay 非空时用它返回的营业日做封账检查，而不是每张单自己的营业日。
+func changeWithDay(ctx context.Context, env ops.Env, action, requiredStatus string, ids []uuid.UUID, edit func([]dbgen.Order) error, now time.Time, guardDay func(context.Context, ops.Env, []dbgen.Order) (time.Time, error)) ([]Order, error) {
 	ordered := slices.Clone(ids)
 	slices.SortFunc(ordered, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
 	locked := make(map[uuid.UUID]dbgen.Order, len(ids))
@@ -34,8 +39,21 @@ func change(ctx context.Context, env ops.Env, action, requiredStatus string, ids
 	rows := make([]dbgen.Order, len(ids))
 	for i, id := range ids {
 		rows[i] = locked[id]
-		if err := checkOrderChange(ctx, env, rows[i], now); err != nil {
-			return nil, err
+		if guardDay == nil {
+			if err := checkOrderChange(ctx, env, rows[i], now); err != nil {
+				return nil, err
+			}
+		} else {
+			day, err := guardDay(ctx, env, rows)
+			if err != nil {
+				return nil, err
+			}
+			if err := closingguard.Guard(ctx, env.Q, env.Caller.StoreID, day); err != nil {
+				return nil, err
+			}
+			if err := checkEdit(ctx, env, rows[i], now); err != nil {
+				return nil, err
+			}
 		}
 	}
 	before, err := views(ctx, env, rows)

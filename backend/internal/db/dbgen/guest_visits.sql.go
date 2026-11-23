@@ -46,6 +46,42 @@ func (q *Queries) AddGuestVisit(ctx context.Context, arg AddGuestVisitParams) er
 	return err
 }
 
+const addStaffChangeGuestVisit = `-- name: AddStaffChangeGuestVisit :exec
+INSERT INTO guest_visits (tenant_id,store_id,business_date,order_id,checkout_id,settings_snapshot_id,staff_id,share,designated,gender,staff_change_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+`
+
+type AddStaffChangeGuestVisitParams struct {
+	TenantID           uuid.UUID
+	StoreID            uuid.UUID
+	BusinessDate       pgtype.Date
+	OrderID            uuid.UUID
+	CheckoutID         uuid.UUID
+	SettingsSnapshotID uuid.UUID
+	StaffID            *uuid.UUID
+	Share              pgtype.Numeric
+	Designated         bool
+	Gender             string
+	StaffChangeID      *uuid.UUID
+}
+
+func (q *Queries) AddStaffChangeGuestVisit(ctx context.Context, arg AddStaffChangeGuestVisitParams) error {
+	_, err := q.db.Exec(ctx, addStaffChangeGuestVisit,
+		arg.TenantID,
+		arg.StoreID,
+		arg.BusinessDate,
+		arg.OrderID,
+		arg.CheckoutID,
+		arg.SettingsSnapshotID,
+		arg.StaffID,
+		arg.Share,
+		arg.Designated,
+		arg.Gender,
+		arg.StaffChangeID,
+	)
+	return err
+}
+
 const guestVisitTotals = `-- name: GuestVisitTotals :one
 SELECT COALESCE(sum(value),0)::numeric(20,4)::text AS total,
 COALESCE(sum(value) FILTER (WHERE designated),0)::numeric(20,4)::text AS designated,
@@ -185,6 +221,31 @@ func (q *Queries) ReverseGuestVisits(ctx context.Context, arg ReverseGuestVisits
 	_, err := q.db.Exec(ctx, reverseGuestVisits,
 		arg.Day,
 		arg.VoidID,
+		arg.StoreID,
+		arg.OrderID,
+	)
+	return err
+}
+
+const reverseStaffChangeGuestVisits = `-- name: ReverseStaffChangeGuestVisits :exec
+INSERT INTO guest_visits (tenant_id,store_id,business_date,order_id,checkout_id,settings_snapshot_id,staff_id,share,designated,gender,reverses_id,staff_change_id)
+SELECT e.tenant_id,e.store_id,$1,e.order_id,e.checkout_id,e.settings_snapshot_id,e.staff_id,e.share,e.designated,e.gender,e.id,$2
+FROM guest_visits e
+WHERE e.store_id=$3 AND e.order_id=$4 AND e.reverses_id IS NULL
+AND NOT EXISTS (SELECT 1 FROM guest_visits r WHERE r.reverses_id=e.id)
+`
+
+type ReverseStaffChangeGuestVisitsParams struct {
+	Day           pgtype.Date
+	StaffChangeID *uuid.UUID
+	StoreID       uuid.UUID
+	OrderID       uuid.UUID
+}
+
+func (q *Queries) ReverseStaffChangeGuestVisits(ctx context.Context, arg ReverseStaffChangeGuestVisitsParams) error {
+	_, err := q.db.Exec(ctx, reverseStaffChangeGuestVisits,
+		arg.Day,
+		arg.StaffChangeID,
 		arg.StoreID,
 		arg.OrderID,
 	)

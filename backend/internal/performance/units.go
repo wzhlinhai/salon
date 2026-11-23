@@ -24,6 +24,7 @@ type Unit struct {
 	CategoryID                                                             *uuid.UUID
 	Slot                                                                   *int16
 	PositionID, CheckoutID, CardLedgerID, RedPacketID, VoidID, AftersaleID *uuid.UUID
+	StaffChangeID                                                          *uuid.UUID
 	Member                                                                 *bool
 	Designated                                                             bool
 	Entries                                                                []UnitEntry
@@ -61,10 +62,11 @@ type lineFact struct {
 	designated bool
 }
 type unitKey struct {
-	kind                       string
-	checkout, void, line, sale uuid.UUID
-	aftersale                  uuid.UUID
-	slot                       int16
+	kind                                  string
+	checkout, void, line, sale, aftersale uuid.UUID
+	staffChange                           uuid.UUID
+	reversal                              bool
+	slot                                  int16
 }
 type unit struct {
 	entries   []dbgen.PerformanceEntry
@@ -90,7 +92,7 @@ func groupEntries(entries []dbgen.PerformanceEntry) []unit {
 		if e.StaffID == nil {
 			continue
 		}
-		k := unitKey{kind: e.Kind, checkout: optional(e.CheckoutID), void: optional(e.VoidID), line: optional(e.OrderItemID), aftersale: optional(e.AftersaleID), slot: optional(e.Slot)}
+		k := unitKey{kind: e.Kind, checkout: optional(e.CheckoutID), void: optional(e.VoidID), line: optional(e.OrderItemID), aftersale: optional(e.AftersaleID), staffChange: optional(e.StaffChangeID), reversal: e.ReversesID != nil, slot: optional(e.Slot)}
 		if e.Kind == "sale" {
 			k.sale = e.ID
 		}
@@ -154,7 +156,7 @@ func compose(u unit, f lineFact) Unit {
 	e := u.first
 	out := Unit{ID: e.ID, Kind: e.Kind, StaffID: *e.StaffID, BusinessDate: e.BusinessDate.Time, CreatedAt: u.createdAt,
 		OrderID: e.OrderID, OrderItemID: e.OrderItemID, ItemID: f.itemID, CategoryID: f.categoryID, Slot: e.Slot, PositionID: e.PositionID,
-		CheckoutID: e.CheckoutID, CardLedgerID: e.CardLedgerID, RedPacketID: e.RedPacketID, VoidID: e.VoidID, AftersaleID: e.AftersaleID,
+		CheckoutID: e.CheckoutID, CardLedgerID: e.CardLedgerID, RedPacketID: e.RedPacketID, VoidID: e.VoidID, AftersaleID: e.AftersaleID, StaffChangeID: e.StaffChangeID,
 		Member: e.Member, Designated: f.designated, Entries: make([]UnitEntry, 0, len(u.entries))}
 	for _, row := range u.entries {
 		out.Entries = append(out.Entries, UnitEntry{ID: row.ID, Method: row.Method, PaidAmount: row.PaidAmount, CommissionPaidAmount: row.CommissionPaidAmount, Ratio: row.Ratio, CategoryRatio: row.CategoryRatio, Amount: row.Amount, CommissionAmount: row.CommissionAmount})

@@ -7,7 +7,23 @@ INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,order_id,
 SELECT e.tenant_id,e.store_id,e.kind,sqlc.arg(day),e.order_id,e.order_item_id,e.checkout_id,e.settings_snapshot_id,e.slot,e.position_id,e.staff_id,e.method,e.paid_amount,e.commission_paid_amount,e.ratio,e.category_ratio,e.amount,e.commission_amount,sqlc.arg(void_id),e.id,e.member
 FROM performance_entries e
 WHERE e.store_id=sqlc.arg(store_id) AND e.order_id=sqlc.arg(order_id) AND e.reverses_id IS NULL
-AND NOT EXISTS (SELECT 1 FROM performance_entries r WHERE r.reverses_id=e.id AND r.void_id IS NOT NULL);
+AND NOT EXISTS (SELECT 1 FROM performance_entries r WHERE r.reverses_id=e.id);
+
+-- name: OrderPerformanceMember :one
+SELECT COALESCE(member,false)::boolean AS member FROM performance_entries
+WHERE store_id=sqlc.arg(store_id) AND order_id=sqlc.arg(order_id) AND kind<>'sale' AND reverses_id IS NULL
+ORDER BY created_at,id LIMIT 1;
+
+-- name: ReversePaidItemPerformance :exec
+INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,commission_paid_amount,ratio,category_ratio,amount,commission_amount,reverses_id,staff_change_id,member)
+SELECT e.tenant_id,e.store_id,e.kind,sqlc.arg(day),e.order_id,e.order_item_id,e.checkout_id,e.settings_snapshot_id,e.slot,e.position_id,e.staff_id,e.method,e.paid_amount,e.commission_paid_amount,e.ratio,e.category_ratio,e.amount,e.commission_amount,e.id,sqlc.arg(staff_change_id),e.member
+FROM performance_entries e
+WHERE e.store_id=sqlc.arg(store_id) AND e.order_item_id=sqlc.arg(order_item_id) AND e.reverses_id IS NULL
+AND NOT EXISTS (SELECT 1 FROM performance_entries r WHERE r.reverses_id=e.id);
+
+-- name: AddStaffChangePerformanceEntry :exec
+INSERT INTO performance_entries (tenant_id,store_id,kind,business_date,order_id,order_item_id,checkout_id,settings_snapshot_id,slot,position_id,staff_id,method,paid_amount,commission_paid_amount,ratio,category_ratio,amount,commission_amount,staff_change_id,member)
+VALUES (sqlc.arg(tenant_id),sqlc.arg(store_id),sqlc.arg(kind),sqlc.arg(business_date),sqlc.arg(order_id),sqlc.arg(order_item_id),sqlc.arg(checkout_id),sqlc.arg(settings_snapshot_id),sqlc.arg(slot),sqlc.arg(position_id),sqlc.arg(staff_id),sqlc.arg(method),sqlc.arg(paid_amount),sqlc.arg(commission_paid_amount),sqlc.arg(ratio),sqlc.arg(category_ratio),sqlc.arg(amount),sqlc.arg(commission_amount),sqlc.arg(staff_change_id),sqlc.arg(member));
 
 -- name: ListPerformance :many
 SELECT e.*, i.item_name, s.name AS staff_name

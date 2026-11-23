@@ -2,6 +2,7 @@ package orders
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"time"
@@ -271,6 +272,10 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 	if err != nil {
 		return nil, err
 	}
+	staffChanges, err := env.Q.ListOrderStaffChanges(ctx, dbgen.ListOrderStaffChangesParams{StoreID: env.Caller.StoreID, OrderIds: ids})
+	if err != nil {
+		return nil, err
+	}
 	redemptions, err := env.Q.ListOrderRedemptions(ctx, dbgen.ListOrderRedemptionsParams{StoreID: env.Caller.StoreID, OrderIds: ids})
 	if err != nil {
 		return nil, err
@@ -278,6 +283,17 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 	byVoid := map[uuid.UUID]*OrderVoid{}
 	for _, v := range voids {
 		byVoid[v.OrderID] = &OrderVoid{ID: v.ID, Reason: v.Reason, BusinessDate: v.BusinessDate.Time.Format(time.DateOnly), VoidedBy: v.VoidedBy, At: v.At.Time}
+	}
+	byStaffChangeOrder := map[uuid.UUID][]OrderStaffChange{}
+	for _, c := range staffChanges {
+		var before, after []OrderItemStaffInput
+		if err := json.Unmarshal(c.BeforeStaff, &before); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(c.AfterStaff, &after); err != nil {
+			return nil, err
+		}
+		byStaffChangeOrder[c.OrderID] = append(byStaffChangeOrder[c.OrderID], OrderStaffChange{ID: c.ID, At: c.CreatedAt.Time, By: c.ChangedBy, OrderItemID: c.OrderItemID, Before: before, After: after})
 	}
 	byPaymentOrder := map[uuid.UUID][]OrderPayment{}
 	groupbuyAmount := map[uuid.UUID]money.Amount{}
@@ -380,7 +396,11 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 		if bc == nil {
 			bc = []BookingConflict{}
 		}
-		out = append(out, Order{Void: byVoid[r.ID], CheckoutID: r.CheckoutID, Payments: ps, Groupbuy: gb, ID: r.ID, CustomerID: r.CustomerID, Gender: r.Gender, Designated: r.Designated, Status: r.Status, MergedInto: r.MergedInto, BusinessDate: r.BusinessDate.Time.Format(time.DateOnly), Backfill: r.Backfill, OpenedBy: r.OpenedBy, OpenedAt: r.OpenedAt.Time, Items: items, BookingConflicts: bc, Receivable: totals[r.ID].Format(), Discount: discounts[r.ID].Format(), Net: nets[r.ID].Format()})
+		changes := byStaffChangeOrder[r.ID]
+		if changes == nil {
+			changes = []OrderStaffChange{}
+		}
+		out = append(out, Order{Void: byVoid[r.ID], CheckoutID: r.CheckoutID, Payments: ps, Groupbuy: gb, ID: r.ID, CustomerID: r.CustomerID, Gender: r.Gender, Designated: r.Designated, Status: r.Status, MergedInto: r.MergedInto, BusinessDate: r.BusinessDate.Time.Format(time.DateOnly), Backfill: r.Backfill, OpenedBy: r.OpenedBy, OpenedAt: r.OpenedAt.Time, Items: items, StaffChanges: changes, BookingConflicts: bc, Receivable: totals[r.ID].Format(), Discount: discounts[r.ID].Format(), Net: nets[r.ID].Format()})
 	}
 	return out, nil
 }

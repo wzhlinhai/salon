@@ -34,7 +34,10 @@ func TestGuestVisitCompositeForeignKeys(t *testing.T) {
 	s := open(t)
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	var ok bool
-	if err := tx.QueryRow(context.Background(), `SELECT count(*)=7 AND bool_and(pg_get_constraintdef(oid) LIKE 'FOREIGN KEY (tenant_id, %REFERENCES %(tenant_id, id)%') FROM pg_constraint WHERE conrelid='guest_visits'::regclass AND contype='f'`).Scan(&ok); err != nil || !ok {
+	if err := tx.QueryRow(context.Background(), `SELECT count(*)=8 AND bool_and(
+  pg_get_constraintdef(oid) LIKE 'FOREIGN KEY (tenant_id, %REFERENCES %(tenant_id, id)%'
+  OR pg_get_constraintdef(oid) LIKE 'FOREIGN KEY (tenant_id, store_id, staff_change_id)%REFERENCES order_staff_changes(tenant_id, store_id, id)%'
+ ) FROM pg_constraint WHERE conrelid='guest_visits'::regclass AND contype='f'`).Scan(&ok); err != nil || !ok {
 		t.Fatal(ok, err)
 	}
 	dbtest.Rollback(t, tx)

@@ -16,6 +16,7 @@ import (
 func registerEdits(r *ops.Registry) {
 	ops.Register(r, ops.Operation[RemoveOrderItemInput, Order]{Name: "remove_order_item", Summary: "去掉项目并保留记录", Kind: ops.Write, Permission: perm.OrderEdit, AI: ops.AIDraft, Handle: removeOrderItem})
 	ops.Register(r, ops.Operation[SetOrderItemStaffInput, Order]{Name: "set_order_item_staff", Summary: "更换项目岗位员工", Kind: ops.Write, Permission: perm.OrderEdit, AI: ops.AIDraft, Handle: setOrderItemStaff})
+	ops.Register(r, ops.Operation[SetPaidItemStaffInput, Order]{Name: "set_paid_item_staff", Summary: "已结账的单更换项目岗位员工，业绩和提成改记给新员工", Kind: ops.Write, Permission: perm.OrderEdit, AI: ops.AIDraft, Handle: setPaidItemStaff})
 	ops.Register(r, ops.Operation[RepriceOrderItemInput, Order]{Name: "reprice_order_item", Summary: "改价并记录原因", Kind: ops.Write, Permission: perm.OrderReprice, AI: ops.AIDraft, Handle: repriceOrderItem})
 }
 

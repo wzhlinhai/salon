@@ -85,8 +85,9 @@ SELECT EXISTS(
 )::boolean AS exists;
 
 -- name: OrderItemPerformanceEntries :many
-SELECT * FROM performance_entries
-WHERE store_id=sqlc.arg(store_id) AND order_id=sqlc.arg(order_id) AND kind='item' AND reverses_id IS NULL
+SELECT e.* FROM performance_entries e
+WHERE e.store_id=sqlc.arg(store_id) AND e.order_id=sqlc.arg(order_id) AND e.kind='item' AND e.reverses_id IS NULL
+AND NOT EXISTS (SELECT 1 FROM performance_entries r WHERE r.reverses_id=e.id AND (r.void_id IS NOT NULL OR r.staff_change_id IS NOT NULL))
 ORDER BY id;
 
 -- name: AddAftersalePerformanceEntry :exec

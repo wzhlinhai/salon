@@ -192,7 +192,7 @@ perf AS (
                   FILTER (WHERE e.method='groupbuy' AND (NOT e.full OR e.slot_rank=1)),0)::text AS groupbuy_paid
   FROM (
     SELECT pe.*, COALESCE(ss.rules->>'performance_split','by_position')='full' AS full,
-           row_number() OVER (PARTITION BY pe.order_item_id, pe.method, pe.checkout_id, pe.void_id, pe.aftersale_id, (pe.reverses_id IS NULL), pe.business_date
+           row_number() OVER (PARTITION BY pe.order_item_id, pe.method, pe.checkout_id, pe.void_id, pe.aftersale_id, pe.staff_change_id, (pe.reverses_id IS NULL), pe.business_date
                               ORDER BY pe.slot NULLS FIRST, pe.id) AS slot_rank
     FROM performance_entries pe
     LEFT JOIN settings_snapshots ss ON ss.tenant_id=pe.tenant_id AND ss.id=pe.settings_snapshot_id
