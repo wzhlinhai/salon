@@ -63,7 +63,7 @@ const days = computed<Day[]>(() => {
   })
 })
 
-// 筛选块照 DESIGN 列表页：数字就是这一类的天数。
+// 筛选（一排小按钮）：数字是这一类的天数；「全部」就是最近 31 天，不写数。
 interface Filter { key: string, label: string, empty: string, test: (d: Day) => boolean }
 const pending = (d: Day) => d.business && !d.close && !d.sealed
 const filters: Filter[] = [
@@ -206,22 +206,19 @@ function saveUnseal() {
       <UButton v-if="yesterdayOpen" size="sm" icon="i-lucide-calculator" @click="openCloseDate(yesterday)">日结昨天</UButton>
     </PageActions>
 
-    <div class="grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label="筛选营业日">
-      <button
+    <div class="flex flex-wrap items-center gap-1" role="group" aria-label="筛选营业日">
+      <UButton
         v-for="f in filters"
         :key="f.key"
-        type="button"
-        class="tile"
+        size="xs"
+        :color="filterKey === f.key ? 'primary' : 'neutral'"
+        :variant="filterKey === f.key ? 'soft' : 'ghost'"
         :aria-pressed="filterKey === f.key"
         :data-filter="f.key"
         @click="filterKey = f.key"
       >
-        <span class="block text-meta" :class="filterKey === f.key ? 'text-primary' : 'text-muted'">{{ f.label }}</span>
-        <span
-          class="text-xl font-semibold tabular-nums"
-          :class="filterKey === f.key ? 'text-primary' : !days.filter(f.test).length ? 'text-dimmed' : ''"
-        >{{ loading && !days.length ? '' : days.filter(f.test).length }}</span>
-      </button>
+        {{ f.label }}<span v-if="f.key !== 'all' && (!loading || days.length)" class="tabular-nums" :class="filterKey === f.key ? '' : 'text-dimmed'">{{ days.filter(f.test).length }}</span>
+      </UButton>
     </div>
 
     <div class="flex flex-wrap items-center gap-2 text-meta text-muted">

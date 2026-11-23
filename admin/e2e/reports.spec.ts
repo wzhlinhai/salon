@@ -126,7 +126,7 @@ test('店长看员工业绩：每人一行、合计等于各行之和，点一�
   await expect(page.getByTestId('range-problem')).toHaveText('最多查 92 天')
 })
 
-test('发型师从报表入口只看得到员工业绩，表里只有自己，营业报表进不去', async ({ page }) => {
+test('发型师从报表入口只看得到员工业绩，表里只有自己，顶栏「报表」点回入口，营业报表进不去', async ({ page }) => {
   const { stylist, itemName } = await seedCheckout()
   await login(page, stylist.account, stylist.password)
   await page.getByTestId('sidebar-nav').getByRole('link', { name: '报表' }).click()
@@ -141,6 +141,9 @@ test('发型师从报表入口只看得到员工业绩，表里只有自己，�
   await expect(page.getByText('只显示你自己的业绩。')).toBeVisible()
   await rows.first().getByRole('button', { name: stylist.name }).click()
   await expect(page.getByTestId('staff-performance-list')).toContainText(itemName)
+  await page.keyboard.press('Escape')
+  await page.getByTestId('parent-crumb').click()
+  await expect(page).toHaveURL('/reports')
 
   await page.goto('/reports/business')
   await expect(page).toHaveURL('/forbidden')

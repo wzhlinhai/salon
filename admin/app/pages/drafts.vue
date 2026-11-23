@@ -12,7 +12,7 @@ const { drafts, pending, load, staffName } = useDrafts()
 
 const tab = ref<'pending' | 'mine' | 'done'>('pending')
 const tabs = computed(() => [
-  { label: `待确认${pending.value.length ? ` ${pending.value.length}` : ''}`, value: 'pending' },
+  { label: `未处理${pending.value.length ? ` ${pending.value.length}` : ''}`, value: 'pending' },
   { label: '我起草的', value: 'mine' },
   { label: '已处理', value: 'done' }
 ])
@@ -28,7 +28,7 @@ const shown = computed(() => {
 })
 
 const emptyText = computed(() => ({
-  pending: '没有待确认的草稿',
+  pending: '没有未处理的草稿',
   mine: '你还没有让 AI 起草过',
   done: '还没有处理过的草稿'
 })[tab.value])

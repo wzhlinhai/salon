@@ -77,6 +77,8 @@ const pageIcon = computed(() => {
   if (route.path === '/drafts') return DRAFTS_ICON
   return navItems.find(item => isActive(item.to))?.icon ?? ''
 })
+// 二级页（目前只有各张报表）在顶栏前面放上一级的链接，点了回入口。
+const parentCrumb = computed(() => route.path.startsWith('/reports/') ? { to: '/reports', label: '报表' } : null)
 
 // 侧栏顶上的门店名，第一个字做标志。
 const storeName = ref('')
@@ -308,6 +310,10 @@ const searchGroups = computed(() => {
               />
               <p class="flex min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-sm text-muted">
                 <UIcon v-if="pageIcon" :name="pageIcon" class="size-4 shrink-0" aria-hidden="true" />
+                <template v-if="parentCrumb">
+                  <NuxtLink :to="parentCrumb.to" class="rounded hover:text-default hover:underline" data-testid="parent-crumb">{{ parentCrumb.label }}</NuxtLink>
+                  <span class="text-dimmed" aria-hidden="true">/</span>
+                </template>
                 <span class="truncate">{{ pageTitle }}</span>
               </p>
             </template>
