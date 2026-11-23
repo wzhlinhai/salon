@@ -182,7 +182,7 @@ onMounted(loadSources)
           <div class="mt-0.5 text-xs text-muted">显示在侧栏顶上和小票上，改了立即生效</div>
         </div>
         <div class="text-sm">{{ storeName }}</div>
-        <UButton v-if="can('settings.manage')" size="sm" color="neutral" variant="ghost" class="justify-self-start md:justify-self-end" aria-label="修改门店名" @click="editName">修改</UButton>
+        <UButton v-if="can('settings.manage') && storeName" size="sm" color="neutral" variant="ghost" class="justify-self-start md:justify-self-end" aria-label="修改门店名" @click="editName">修改</UButton>
       </div>
     </section>
 

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-const props = defineProps<{ id: string }>()
+// today 是营业日（顾客详情从 get_settings 取），后端按它校验欠款日期；没取到前不让登记。
+const props = defineProps<{ id: string, today: string }>()
 const api = useApi()
 const toast = useToast()
 const { can } = useMe()
@@ -61,12 +62,11 @@ async function repay() {
 // 历史欠款：上线前在旧系统或账本上欠下、不关联单的钱，按导入数据的权限登记。
 const historyForm = useModalForm()
 const { open: historyOpen, saving: historySaving } = historyForm
-const today = () => formatDate(new Date().toISOString())
 const history = reactive({ amount: '', incurredOn: '', note: '' })
 
 function editHistory() {
   historyForm.begin(() => {
-    Object.assign(history, { amount: '', incurredOn: today(), note: '' })
+    Object.assign(history, { amount: '', incurredOn: props.today, note: '' })
   })
 }
 
@@ -90,7 +90,7 @@ onMounted(load)
   <section data-testid="debts">
     <div v-if="(totals && Number(totals.outstanding) > 0) || can('data.import_export')" class="sec mt-0! flex items-center">
       <span v-if="totals && Number(totals.outstanding) > 0" class="font-normal text-ink-orange tabular-nums">未还 {{ yuanFixed(totals.outstanding) }}</span>
-      <UButton v-if="can('data.import_export')" size="sm" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto -my-1" @click="editHistory">登记历史欠款</UButton>
+      <UButton v-if="can('data.import_export')" size="sm" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto -my-1" :disabled="!today" @click="editHistory">登记历史欠款</UButton>
     </div>
     <div class="box overflow-hidden p-0">
       <p v-if="loading && !debts.length" class="px-3 py-2.5 text-sm text-muted">正在读取欠款…</p>
@@ -113,7 +113,7 @@ onMounted(load)
     <template #body>
       <div class="space-y-5">
         <UFormField label="欠款金额" required><UInput v-model="history.amount" inputmode="decimal" class="w-full" /></UFormField>
-        <UFormField label="欠款日期" required help="不能晚于今天"><DateInput v-model="history.incurredOn" :max="today()" /></UFormField>
+        <UFormField label="欠款日期" required help="不能晚于今天"><DateInput v-model="history.incurredOn" :max="today" /></UFormField>
         <UFormField label="备注"><UTextarea v-model="history.note" :maxlength="200" class="w-full" placeholder="例如：旧账本第 3 页" /></UFormField>
       </div>
     </template>
