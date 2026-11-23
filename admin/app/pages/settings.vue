@@ -104,6 +104,33 @@ async function save(reset: boolean) {
   }
 }
 
+// 门店名：侧栏顶上显示的就是它（app.vue 读的同一份状态）。
+const storeName = useState('store-name', () => '')
+const renameForm = useModalForm()
+const { open: renameOpen, saving: renaming } = renameForm
+const newName = ref('')
+
+function editName() {
+  renameForm.begin(() => {
+    newName.value = storeName.value
+  })
+}
+
+async function rename() {
+  const name = newName.value.trim()
+  await renameForm.save(async (current) => {
+    const { data, error } = await api.POST('/api/ops/rename_store', { body: { name } })
+    if (!current()) return
+    if (!data) {
+      toast.add({ title: errorText(error), color: 'error' })
+      return
+    }
+    storeName.value = data.name
+    renameOpen.value = false
+    toast.add({ title: '门店名已改', color: 'success' })
+  })
+}
+
 // 顾客来源
 const sources = ref<components['schemas']['CustomerSource'][]>([])
 const sourceName = ref('')
@@ -146,6 +173,18 @@ onMounted(loadSources)
 <template>
   <div class="space-y-4">
     <PageDescriptionTail v-if="today">今天是营业日 {{ today }}。</PageDescriptionTail>
+
+    <section data-setting="store_name">
+      <div class="sec">门店</div>
+      <div class="box grid gap-x-6 gap-y-2 px-4 py-3.5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
+        <div>
+          <div class="text-sm font-medium">门店名</div>
+          <div class="mt-0.5 text-xs text-muted">显示在侧栏顶上和小票上，改了立即生效</div>
+        </div>
+        <div class="text-sm">{{ storeName }}</div>
+        <UButton v-if="can('settings.manage')" size="sm" color="neutral" variant="ghost" class="justify-self-start md:justify-self-end" aria-label="修改门店名" @click="editName">修改</UButton>
+      </div>
+    </section>
 
     <section v-for="group in settingGroups" :key="group.label" :data-setting-group="group.label">
       <div class="sec">{{ group.label }}</div>
@@ -218,6 +257,17 @@ onMounted(loadSources)
         <UButton v-if="changes.hasMore.value" :loading="changes.loading.value" size="sm" color="neutral" variant="ghost" class="mt-2" @click="changes.loadMore">加载更多</UButton>
       </div>
     </section>
+
+    <UModal v-model:open="renameOpen" title="修改门店名">
+      <template #body>
+        <UFormField label="门店名" required><UInput v-model="newName" :maxlength="100" class="w-full" aria-label="门店名" /></UFormField>
+      </template>
+      <template #footer>
+        <ModalActions @cancel="renameOpen = false">
+          <UButton :loading="renaming" :disabled="!newName.trim() || newName.trim() === storeName" @click="rename">保存</UButton>
+        </ModalActions>
+      </template>
+    </UModal>
 
     <UModal :open="!!editing" :title="`修改${editing?.label ?? ''}`" :description="editing ? `系统默认：${show(editing, editing.default)}` : undefined" @update:open="v => { if (!v) editing = null }">
       <template #body>

@@ -58,13 +58,39 @@ async function repay() {
   })
 }
 
+// 历史欠款：上线前在旧系统或账本上欠下、不关联单的钱，按导入数据的权限登记。
+const historyForm = useModalForm()
+const { open: historyOpen, saving: historySaving } = historyForm
+const today = () => formatDate(new Date().toISOString())
+const history = reactive({ amount: '', incurredOn: '', note: '' })
+
+function editHistory() {
+  historyForm.begin(() => {
+    Object.assign(history, { amount: '', incurredOn: today(), note: '' })
+  })
+}
+
+async function registerHistory() {
+  const body = { customer_id: props.id, amount: history.amount.trim(), incurred_on: history.incurredOn, note: history.note.trim() || undefined }
+  await historyForm.save(async (current) => {
+    const { data, error } = await api.POST('/api/ops/register_historical_debt', { body })
+    if (!current()) return
+    if (data) {
+      historyOpen.value = false
+      toast.add({ title: `已登记历史欠款 ${yuanFixed(body.amount)}`, color: 'success' })
+      await load()
+    } else toast.add({ title: errorText(error), color: 'error' })
+  })
+}
+
 onMounted(load)
 </script>
 
 <template>
   <section data-testid="debts">
-    <div v-if="totals && Number(totals.outstanding) > 0" class="sec mt-0!">
-      <span class="font-normal text-ink-orange tabular-nums">未还 {{ yuanFixed(totals.outstanding) }}</span>
+    <div v-if="(totals && Number(totals.outstanding) > 0) || can('data.import_export')" class="sec mt-0! flex items-center">
+      <span v-if="totals && Number(totals.outstanding) > 0" class="font-normal text-ink-orange tabular-nums">未还 {{ yuanFixed(totals.outstanding) }}</span>
+      <UButton v-if="can('data.import_export')" size="sm" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto -my-1" @click="editHistory">登记历史欠款</UButton>
     </div>
     <div class="box overflow-hidden p-0">
       <p v-if="loading && !debts.length" class="px-3 py-2.5 text-sm text-muted">正在读取欠款…</p>
@@ -83,6 +109,20 @@ onMounted(load)
       </div>
     </div>
   </section>
+  <UModal v-model:open="historyOpen" title="登记历史欠款" description="上线前欠下、不关联单的钱。登记后和挂账一样在这里收还款。">
+    <template #body>
+      <div class="space-y-5">
+        <UFormField label="欠款金额" required><UInput v-model="history.amount" inputmode="decimal" class="w-full" /></UFormField>
+        <UFormField label="欠款日期" required help="不能晚于今天"><DateInput v-model="history.incurredOn" :max="today()" /></UFormField>
+        <UFormField label="备注"><UTextarea v-model="history.note" :maxlength="200" class="w-full" placeholder="例如：旧账本第 3 页" /></UFormField>
+      </div>
+    </template>
+    <template #footer>
+      <ModalActions @cancel="historyOpen = false">
+        <UButton :loading="historySaving" :disabled="!history.amount.trim() || !history.incurredOn" @click="registerHistory">登记</UButton>
+      </ModalActions>
+    </template>
+  </UModal>
   <UModal v-model:open="repayOpen" title="收还款" :description="target ? `这笔还欠 ${yuanFixed(target.outstanding)}，可以只还一部分` : undefined">
     <template #body>
       <div class="space-y-5">

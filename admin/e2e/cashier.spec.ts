@@ -700,6 +700,52 @@ test('未识别顾客没有挂账；挂账结账后在顾客详情收还款', as
   await expect(debts).toContainText('还 ¥50.00 · 微信')
 })
 
+test('今日已结的收款记录：现金登记退款要填原因', async ({ page }) => {
+  const { token, staff, item, customer } = await seed()
+  const order = await api<{ id: string }>(token, 'open_order', { customer_id: customer.id, gender: 'female', designated: false, items: [{ item_id: item.id, staff: [{ slot: 1, staff_id: staff.id }] }] })
+  await api(token, 'checkout_orders', { orders: [{ order_id: order.id, payments: [{ method: 'cash', amount: '88.00' }] }] })
+  await login(page, owner.account, owner.password)
+  await page.goto('/cashier')
+  const row = page.getByTestId('settled-orders').locator(`[data-settled-order="${order.id}"]`)
+
+  await row.hover()
+  await row.getByRole('button', { name: /^收款记录/ }).click()
+  const list = page.getByRole('dialog', { name: '收款记录' }).getByTestId('collections')
+  await expect(list).toContainText('现金')
+  await expect(list).toContainText('¥88.00')
+  await expect(list).toContainText('已收')
+  await list.getByRole('button', { name: '登记退款 ¥88.00' }).click()
+  const refund = page.getByRole('dialog', { name: '登记退款' })
+  await expect(refund.getByRole('button', { name: '确认退款' })).toBeDisabled()
+  await refund.getByLabel('退款原因').fill('银联退回')
+  await refund.getByRole('button', { name: '确认退款' }).click()
+  await expect(refund).toHaveCount(0)
+  await expect(list).toContainText('已退款')
+  await expect(list.getByRole('button', { name: /^登记退款/ })).toHaveCount(0)
+
+  const saved = await api<{ items: { status: string }[] }>(token, 'list_collections', { order_id: order.id })
+  expect(saved.items.map(c => c.status)).toEqual(['refunded'])
+})
+
+test('顾客详情登记历史欠款，登记后能收还款', async ({ page }) => {
+  const { customer } = await seed()
+  await login(page, owner.account, owner.password)
+  await page.goto(`/customers?id=${customer.id}&tab=debts`)
+  const debts = page.getByTestId('debts')
+  await expect(debts).toContainText('没有欠款')
+  await debts.getByRole('button', { name: '登记历史欠款' }).click()
+  const dialog = page.getByRole('dialog', { name: '登记历史欠款' })
+  await expect(dialog.getByRole('button', { name: '登记' })).toBeDisabled()
+  await dialog.getByLabel('欠款金额').fill('120.00')
+  await dialog.getByLabel('备注').fill('旧账本')
+  await dialog.getByRole('button', { name: '登记' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(debts).toContainText('历史欠款')
+  await expect(debts).toContainText('未还 ¥120.00')
+  await expect(debts).toContainText('旧账本')
+  await expect(debts.getByRole('button', { name: /^收还款/ })).toHaveCount(1)
+})
+
 test('今日已结里撤单；开了授权窗口要先输登录密码', async ({ page }) => {
   const { token, staff, item, customer } = await seed()
   const opening = { customer_id: customer.id, gender: 'female', designated: false, items: [{ item_id: item.id, staff: [{ slot: 1, staff_id: staff.id }] }] }

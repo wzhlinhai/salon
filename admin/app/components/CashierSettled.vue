@@ -15,6 +15,7 @@ const props = defineProps<{
 const emit = defineEmits<{ voided: [order: Order] }>()
 const api = useApi()
 const toast = useToast()
+const { can } = useMe()
 const orders = ref<Order[]>([])
 const total = ref(0)
 const loading = ref(false)
@@ -119,6 +120,15 @@ async function submitStaff() {
   })
 }
 
+// 收款记录弹窗：结过账、撤过单的都能看。
+const collectionsOpen = ref(false)
+const collectionsOrder = ref<Order | null>(null)
+
+function showCollections(order: Order) {
+  collectionsOrder.value = order
+  collectionsOpen.value = true
+}
+
 const voidForm = useModalForm()
 const { open: voidOpen, saving: voiding } = voidForm
 const target = ref<Order | null>(null)
@@ -189,13 +199,24 @@ async function submitVoid() {
         </div>
         <div class="mt-0.5 flex items-center gap-1.5 text-meta text-muted">
           <span v-if="order.status === 'voided'" class="tag bg-tag-gray">已撤</span>
-          <span class="truncate" :title="itemNames(order)">{{ itemNames(order) }}</span>
+          <span class="me-auto truncate" :title="itemNames(order)">{{ itemNames(order) }}</span>
+          <UButton
+            v-if="can('payment.collect')"
+            size="sm"
+            color="neutral"
+            variant="ghost"
+            class="-my-1.5 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100"
+            :aria-label="`收款记录 ${customerName(order.customer_id)} ${yuanFixed(order.net)}`"
+            @click="showCollections(order)"
+          >
+            收款记录
+          </UButton>
           <UButton
             v-if="order.status === 'paid' && canChangeStaff(order)"
             size="sm"
             color="neutral"
             variant="ghost"
-            class="ms-auto -my-1.5 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100"
+            class="-my-1.5 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100"
             :aria-label="`改做的人 ${customerName(order.customer_id)} ${yuanFixed(order.net)}`"
             @click="editStaff(order)"
           >
@@ -207,7 +228,6 @@ async function submitVoid() {
             color="error"
             variant="ghost"
             class="-my-1.5 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100"
-            :class="order.status === 'paid' && canChangeStaff(order) ? '' : 'ms-auto'"
             :aria-label="`撤单 ${customerName(order.customer_id)} ${yuanFixed(order.net)}`"
             @click="editVoid(order)"
           >
@@ -222,6 +242,11 @@ async function submitVoid() {
       <p v-if="total > orders.length" class="border-t border-default px-3 py-2 text-meta text-dimmed">只显示最近 {{ orders.length }} 张</p>
     </div>
   </section>
+  <CashierCollections
+    v-model:open="collectionsOpen"
+    :order-id="collectionsOrder?.id ?? null"
+    :summary="collectionsOrder ? `${customerName(collectionsOrder.customer_id)} · ${itemNames(collectionsOrder)} · 实收 ${yuanFixed(collectionsOrder.net)}` : ''"
+  />
   <UModal v-model:open="staffOpen" title="改做的人" description="钱不变。原员工这一行的业绩和客数在今天冲回，改记给新员工，提成跟着重算。">
     <template #body>
       <div v-if="staffTarget" class="space-y-5">

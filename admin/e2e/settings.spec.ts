@@ -254,3 +254,31 @@ test('多人分业绩可以选择每人各记全额', async ({ page }) => {
   await dialog.getByRole('button', { name: '保存', exact: true }).click()
   await expect(card).toContainText('每人各记全额')
 })
+
+test('老板改门店名，侧栏跟着变；店长看不到修改', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const original = (await api<{ name: string }>(token, 'get_store', {})).name
+  const renamed = `${original}改`
+  try {
+    await login(page, owner.account, owner.password)
+    await page.goto('/settings')
+    const card = page.locator('[data-setting=store_name]')
+    await expect(card).toContainText(original)
+    await card.getByRole('button', { name: '修改门店名' }).click()
+    const dialog = page.getByRole('dialog', { name: '修改门店名' })
+    await expect(dialog.getByRole('button', { name: '保存' })).toBeDisabled()
+    await dialog.getByLabel('门店名').fill(renamed)
+    await dialog.getByRole('button', { name: '保存' }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect(card).toContainText(renamed)
+    await expect(page.getByTestId('store-name')).toHaveText(renamed)
+  } finally {
+    await api(token, 'rename_store', { name: original })
+  }
+
+  const manager = await hire('店长')
+  await login(page, manager.account, manager.password)
+  await page.goto('/settings')
+  await expect(page.locator('[data-setting=store_name]')).toContainText(original)
+  await expect(page.getByRole('button', { name: '修改门店名' })).toHaveCount(0)
+})
