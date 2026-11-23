@@ -50,11 +50,15 @@ func recordGuestVisits(ctx context.Context, env ops.Env, in CheckoutInput) error
 			TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID,
 			BusinessDate: pgtype.Date{Time: in.BusinessDate, Valid: true}, OrderID: in.OrderID,
 			CheckoutID: in.CheckoutID, SettingsSnapshotID: in.SettingsSnapshotID,
-			StaffID: share.staffID, Share: pgtype.Numeric{Int: big.NewInt(share.units), Exp: -4, Valid: true},
+			StaffID: share.staffID, Share: guestShareNumeric(share.units),
 			Designated: in.Designated, Gender: in.Gender,
 		}); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func guestShareNumeric(units int64) pgtype.Numeric {
+	return pgtype.Numeric{Int: big.NewInt(units), Exp: -4, Valid: true}
 }

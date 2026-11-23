@@ -505,6 +505,34 @@ class SelectionTests(unittest.TestCase):
         self.assertIn('changed tables: alpha;', error)
         self.assertIn('skipped 2 migration/query entries', error)
 
+    def test_referenced_only_tables_need_deletes_or_updates(self):
+        write(self.queries / 'staff.sql',
+              '-- name: GetStaff :many\nSELECT * FROM staff;\n'
+              '-- name: DeleteStaff :exec\nDELETE FROM staff WHERE id=$1;\n'
+              '-- name: UpdateStaff :exec\nUPDATE staff SET name=$1 WHERE id=$2;\n')
+        commit_fixture(self.root)
+        write(self.migrations / '00002_fk.sql',
+              'ALTER TABLE beta ADD COLUMN staff_id int REFERENCES staff (id);\n')
+        entries = self.entries + [
+            query_entry('q-staff-read', 'backend/internal/db/queries/staff.sql', 'SELECT * FROM staff;'),
+            query_entry('q-staff-delete', 'backend/internal/db/queries/staff.sql', 'DELETE FROM staff WHERE id=$1;'),
+            query_entry('q-staff-update', 'backend/internal/db/queries/staff.sql',
+                        'UPDATE staff SET name=$1 WHERE id=$2;'),
+        ]
+        selected, error = self.affected(entries)
+        self.assertEqual(selected, {'m-beta', 'q-beta', 'q-staff-delete', 'q-staff-update'})
+        self.assertIn('changed tables: beta; referenced only: staff;', error)
+
+    def test_referenced_only_table_selects_delete_migrations(self):
+        write(self.migrations / '00003_cleanup.sql', 'DELETE FROM staff WHERE id = 1;\n')
+        commit_fixture(self.root)
+        write(self.migrations / '00002_fk.sql',
+              'ALTER TABLE beta ADD COLUMN staff_id int REFERENCES staff (id);\n')
+        cleanup = migration_entry('m-staff-delete', 'backend/internal/db/migrations/00003_cleanup.sql',
+                                  'DELETE FROM staff WHERE id = 1;')
+        selected, _ = self.affected(self.entries + [cleanup])
+        self.assertIn('m-staff-delete', selected)
+
     def test_own_migration_file_change_selects_all_its_entries(self):
         write(self.migrations / '00001_alpha.sql',
               (self.migrations / '00001_alpha.sql').read_text() + '-- changed\n')
@@ -860,7 +888,6 @@ class TableExtractionTests(unittest.TestCase):
 
     def test_all_tables_fallbacks(self):
         for statement in ('CREATE FUNCTION f() RETURNS int LANGUAGE sql AS $$ SELECT 1 $$',
-                          'DO $$ BEGIN PERFORM 1; END $$',
                           'DROP FUNCTION f(int)',
                           'CREATE VIEW order_summary AS SELECT * FROM orders',
                           'ALTER VIEW order_summary RENAME TO other',
@@ -869,6 +896,58 @@ class TableExtractionTests(unittest.TestCase):
                           'ALTER PUBLICATION p ADD TABLE orders'):
             with self.subTest(statement=statement):
                 self.assertIsNone(mutchecks.statement_tables(statement)[1])
+
+    def test_do_block_reports_the_tables_in_its_body(self):
+        statement = ("DO $$\nBEGIN\n IF EXISTS (SELECT 1 FROM order_staff_changes) THEN\n"
+                     "  RAISE EXCEPTION '无法回滚 00058：存在改人记录，会破坏业绩和客数的追溯';\n"
+                     " END IF;\nEND $$;")
+        self.assertEqual(mutchecks.statement_tables(statement), ('do', {'order_staff_changes'}))
+
+    def test_do_block_collects_writes_and_reads(self):
+        statement = ('DO $$ BEGIN '
+                     'UPDATE orders SET status = 0; '
+                     'INSERT INTO customers (id) VALUES (1); '
+                     'DELETE FROM guest_visits WHERE id = 1; '
+                     'PERFORM 1; END $$;')
+        self.assertEqual(mutchecks.statement_tables(statement),
+                         ('do', {'orders', 'customers', 'guest_visits'}))
+
+    def test_do_block_dynamic_sql_is_unattributable(self):
+        for body in ("EXECUTE 'ALTER TABLE orders ADD COLUMN x int'",
+                     'ALTER TABLE orders ADD COLUMN x int',
+                     'CREATE INDEX orders_idx ON orders (id)',
+                     'GRANT SELECT ON orders TO salon_app',
+                     'PERFORM refresh_totals()'):
+            with self.subTest(body=body):
+                self.assertIsNone(mutchecks.statement_tables(f'DO $$ BEGIN {body}; END $$')[1])
+
+    def test_do_block_parses_tags_and_language_around_the_body(self):
+        for statement in ('DO $$ BEGIN PERFORM 1; END $$',
+                          'DO $body$ BEGIN PERFORM 1; END $body$',
+                          'DO LANGUAGE plpgsql $$ BEGIN PERFORM 1; END $$',
+                          'DO $$ BEGIN PERFORM 1; END $$ LANGUAGE plpgsql'):
+            with self.subTest(statement=statement):
+                self.assertEqual(mutchecks.statement_tables(statement), ('do', set()))
+
+    def test_do_block_rejects_other_languages(self):
+        for statement in ('DO LANGUAGE sql $$ SELECT 1 $$',
+                          'DO $$ SELECT 1 $$ LANGUAGE sql',
+                          'DO BEGIN PERFORM 1; END',
+                          "DO 'BEGIN PERFORM 1; END'"):
+            with self.subTest(statement=statement):
+                self.assertIsNone(mutchecks.statement_tables(statement)[1])
+
+    def test_do_block_string_literal_does_not_look_like_dynamic_sql(self):
+        statement = "DO $$ BEGIN RAISE EXCEPTION 'EXECUTE 00058'; END $$"
+        self.assertEqual(mutchecks.statement_tables(statement), ('do', set()))
+
+    def test_order_staff_changes_migration_is_attributable(self):
+        path = 'backend/internal/db/migrations/00058_order_staff_changes.sql'
+        all_tables, tables, referenced, reason = mutchecks.changed_migration_tables({path}, 'HEAD')
+        self.assertFalse(all_tables)
+        self.assertIsNone(reason)
+        self.assertIn('order_staff_changes', tables)
+        self.assertNotIn('order_staff_changes', referenced)
 
     def test_migration_entry_includes_enclosing_statement_tables(self):
         source = ('ALTER TABLE order_items ADD CONSTRAINT fk FOREIGN KEY (order_id) '
@@ -900,16 +979,17 @@ class ChangedMigrationTests(unittest.TestCase):
 
     def test_old_and_worktree_revisions_are_unioned(self):
         write(self.root / self.path, 'CREATE TABLE customers (id int);\n')
-        self.assertEqual(self.changed({self.path}), (False, {'orders', 'customers'}, None))
+        self.assertEqual(self.changed({self.path}), (False, {'orders', 'customers'}, set(), None))
 
     def test_deleted_migration_uses_the_ref_revision(self):
         (self.root / self.path).unlink()
-        self.assertEqual(self.changed({self.path}), (False, {'orders'}, None))
+        self.assertEqual(self.changed({self.path}), (False, {'orders'}, set(), None))
 
     def test_path_missing_in_both_is_all_tables(self):
-        all_tables, tables, reason = self.changed({'backend/internal/db/migrations/ghost.sql'})
+        all_tables, tables, referenced, reason = self.changed({'backend/internal/db/migrations/ghost.sql'})
         self.assertTrue(all_tables)
         self.assertEqual(tables, set())
+        self.assertEqual(referenced, set())
         self.assertIn('missing', reason)
 
     def test_rename_counts_both_sides(self):
@@ -920,7 +1000,19 @@ class ChangedMigrationTests(unittest.TestCase):
             paths = mutchecks.changed_paths('HEAD')
         self.assertIn(self.path, paths)
         self.assertIn(new_path, paths)
-        self.assertEqual(self.changed({self.path, new_path}), (False, {'orders', 'sales'}, None))
+        self.assertEqual(self.changed({self.path, new_path}), (False, {'orders', 'sales'}, set(), None))
+
+    def test_references_targets_are_referenced_only(self):
+        write(self.root / 'backend/internal/db/migrations/00002_fk.sql',
+              'ALTER TABLE order_items ADD CONSTRAINT fk FOREIGN KEY (staff_id) REFERENCES staff (id);\n')
+        self.assertEqual(self.changed({'backend/internal/db/migrations/00002_fk.sql'}),
+                         (False, {'order_items'}, {'staff'}, None))
+
+    def test_a_table_both_altered_and_referenced_is_direct(self):
+        write(self.root / 'backend/internal/db/migrations/00002_fk.sql',
+              'ALTER TABLE orders ADD CONSTRAINT fk FOREIGN KEY (parent_id) REFERENCES orders (id);\n')
+        self.assertEqual(self.changed({'backend/internal/db/migrations/00002_fk.sql'}),
+                         (False, {'orders'}, set(), None))
 
 
 class PartitionTests(unittest.TestCase):

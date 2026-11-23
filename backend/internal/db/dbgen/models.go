@@ -579,6 +579,7 @@ type GuestVisit struct {
 	VoidID             *uuid.UUID
 	ReversesID         *uuid.UUID
 	CreatedAt          pgtype.Timestamptz
+	StaffChangeID      *uuid.UUID
 }
 
 type ImportBatch struct {
@@ -778,6 +779,19 @@ type OrderPayment struct {
 	CouponRedemptionID *uuid.UUID
 }
 
+type OrderStaffChange struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	ID           uuid.UUID
+	OrderID      uuid.UUID
+	OrderItemID  uuid.UUID
+	BusinessDate pgtype.Date
+	BeforeStaff  []byte
+	AfterStaff   []byte
+	ChangedBy    uuid.UUID
+	CreatedAt    pgtype.Timestamptz
+}
+
 type OrderVoid struct {
 	TenantID     uuid.UUID
 	StoreID      uuid.UUID
@@ -848,6 +862,7 @@ type PerformanceEntry struct {
 	CategoryRatio        int16
 	CommissionPaidAmount money.Amount
 	CommissionAmount     money.Amount
+	StaffChangeID        *uuid.UUID
 }
 
 type Position struct {

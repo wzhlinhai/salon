@@ -38,9 +38,12 @@ go 项只在改动行落在保护原文所在的顶层声明（含直接位于�
 REFERENCES、INSERT INTO、UPDATE、DELETE FROM、DELETE … USING、逗号 FROM、UPDATE … FROM、
 CREATE/DROP TRIGGER … ON、CREATE POLICY … ON（含 USING/WITH CHECK 里的 FROM/JOIN）、GRANT … ON、
 ALTER TABLE … RENAME TO 的前后两个名字读取；带引号的名字按表名解析，解析不了的表位置保守选中。
+REFERENCES 指向、本身没被直接改动的表算“仅被引用”：条目只有删除或更新它时才因它选中，
+读取和插入不受影响。
 改动的迁移同时解析该 ref 的版本和工作树版本（重命名按删除加新增），任何一个来源里含
-CREATE/REPLACE FUNCTION、DO、DROP FUNCTION、CREATE/ALTER/DROP VIEW、CREATE RULE、
-ALTER DEFAULT PRIVILEGES 或无法归属到表的语句时，选中全部迁移和查询项；查询用到迁移里
+CREATE/REPLACE FUNCTION、DROP FUNCTION、CREATE/ALTER/DROP VIEW、CREATE RULE、
+ALTER DEFAULT PRIVILEGES 或无法归属到表的语句时，选中全部迁移和查询项；DO 块按块体归属表，
+块体里有动态 SQL、DDL/权限语句或认不出的函数调用时仍算无法归属。查询用到迁移里
 CREATE VIEW 创建的名字时也保守选中。选中名称逐行输出到 stderr；另输出一行改动表和按表规则
 跳过的迁移/查询项数量，以及一行按声明规则跳过的 go 项数量。
 --whole-file 只能与 --since 一起使用，恢复按整文件选中 go 项，便于诊断。
@@ -349,13 +352,15 @@ def referenced_tables(masked):
     return names
 
 
-def write_tables(masked):
+def write_tables(masked, references=True, inserts=True):
     """Collect tables that a statement writes or defines."""
-    names = referenced_tables(masked)
+    names = referenced_tables(masked) if references else set()
     if names is None:
         return None
-    for pattern in (rf'(?i)\bINSERT\s+INTO\s+(?:ONLY\s+)?({QUALIFIED})',
-                    rf'(?i)\bDELETE\s+FROM\s+(?:ONLY\s+)?({QUALIFIED})'):
+    patterns = [rf'(?i)\bDELETE\s+FROM\s+(?:ONLY\s+)?({QUALIFIED})']
+    if inserts:
+        patterns.append(rf'(?i)\bINSERT\s+INTO\s+(?:ONLY\s+)?({QUALIFIED})')
+    for pattern in patterns:
         for match in re.finditer(pattern, masked):
             name = normalize_table(match.group(1))
             if name is None:
@@ -367,6 +372,29 @@ def write_tables(masked):
             return None
         if name not in NOT_TABLES:
             names.add(name)
+    return names
+
+
+def direct_tables(source):
+    """Return tables a statement changes itself, excluding REFERENCES targets."""
+    masked = mask_sql(source)
+    chars = list(source)
+    for match in re.finditer(rf'(?i)\bREFERENCES\s+({QUALIFIED})', masked):
+        chars[match.start(1):match.end(1)] = ' ' * (match.end(1) - match.start(1))
+    return statement_tables(''.join(chars))[1]
+
+
+def destructive_tables(source):
+    """Return tables a statement deletes from, truncates or updates."""
+    masked = mask_sql(source)
+    names = write_tables(masked, references=False, inserts=False)
+    if names is None:
+        return None
+    for match in re.finditer(rf'(?i)\bTRUNCATE\s+(?:TABLE\s+)?(?:ONLY\s+)?(.*)', masked):
+        listed = table_list(match.group(1))
+        if listed is None:
+            return None
+        names |= listed
     return names
 
 
@@ -382,6 +410,72 @@ def fragment_tables(source):
     return tables
 
 
+# DO 块体里出现这些语句就改由别的对象生效，块体自己查到的表不能代表影响范围。
+DO_UNATTRIBUTABLE = (r'(?i)\bEXECUTE\b', r'(?i)\bCREATE\b', r'(?i)\bALTER\b',
+                     r'(?i)\bDROP\b', r'(?i)\bGRANT\b', r'(?i)\bREVOKE\b',
+                     r'(?i)\bTRUNCATE\b', r'(?i)\bCOMMENT\s+ON\b', r'(?i)\bSECURITY\b',
+                     r'(?i)\bSET\s+ROLE\b', r'(?i)\bCALL\b')
+
+
+def do_body(source):
+    """Return a DO statement's dollar-quoted body, or None when it cannot be read."""
+    text = strip_leading_space(source)
+    match = re.match(r'(?is)DO\b', text)
+    if match is None:
+        return None
+    language = None
+    body = None
+    rest = text[match.end():]
+    while True:
+        rest = strip_leading_space(rest)
+        if not rest or rest[0] == ';':
+            break
+        declared = re.match(r'(?is)LANGUAGE\s+', rest)
+        if declared is not None:
+            rest = strip_leading_space(rest[declared.end():])
+            name = re.match(r'"([^"]+)"|([A-Za-z_][A-Za-z0-9_$]*)', rest)
+            if name is None:
+                return None
+            language = (name.group(1) or name.group(2)).lower()
+            rest = rest[name.end():]
+            continue
+        tag = re.match(r'\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$', rest)
+        if tag is None or body is not None:
+            return None
+        end = rest.find(tag.group(0), tag.end())
+        if end < 0:
+            return None
+        body = rest[tag.end():end]
+        rest = rest[end + len(tag.group(0)):]
+    if body is None or language not in {None, 'plpgsql'}:
+        return None
+    return body
+
+
+def do_calls_function(masked):
+    """Return True when a PERFORM argument is a function call rather than a literal."""
+    for match in re.finditer(r'(?i)\bPERFORM\b', masked):
+        rest = masked[match.end():].split(';', 1)[0].strip()
+        if re.match(rf'\(*\s*{QUALIFIED}\s*\(', rest):
+            return True
+    return False
+
+
+def do_tables(source):
+    """Return the tables a DO block's body names, or None when it is unattributable."""
+    body = do_body(source)
+    if body is None:
+        return None
+    masked = mask_sql(body)
+    if any(re.search(pattern, masked) for pattern in DO_UNATTRIBUTABLE) or do_calls_function(masked):
+        return None
+    written = write_tables(masked)
+    queried = query_tables(masked)
+    if written is None or queried is None:
+        return None
+    return written | queried
+
+
 def statement_tables(source):
     """Classify one statement and return (category, tables); tables None means all."""
     masked = mask_sql(source)
@@ -391,7 +485,7 @@ def statement_tables(source):
     if re.match(r'(?is)CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\b', code):
         return 'all', None
     if re.match(r'(?is)DO\b', code):
-        return 'all', None
+        return 'do', do_tables(source)
     if re.match(r'(?is)ALTER\s+DEFAULT\s+PRIVILEGES\b', code):
         return 'all', None
     if re.match(r'(?is)(?:DROP\s+FUNCTION|(?:CREATE|ALTER|DROP)\s+VIEW|CREATE\s+(?:OR\s+REPLACE\s+)?RULE)\b', code):
@@ -699,6 +793,14 @@ def query_tables(source):
     return tables
 
 
+def enclosing_statement(statements, position):
+    """Return the (start, end, category, tables) statement containing position."""
+    for statement in statements:
+        if statement[0] <= position < statement[1]:
+            return statement
+    return None
+
+
 def migration_entry_tables(entry, source, statements):
     """Return a migration entry's tables, or None when they cannot be determined."""
     position = source.find(entry['original'])
@@ -707,11 +809,11 @@ def migration_entry_tables(entry, source, statements):
     tables = fragment_tables(entry['original'])
     if tables is None:
         return None
-    enclosing = [names for start, end, _, names in statements if start <= position < end]
-    if enclosing:
-        if enclosing[0] is None:
+    enclosing = enclosing_statement(statements, position)
+    if enclosing is not None:
+        if enclosing[3] is None:
             return tables or None
-        tables |= enclosing[0]
+        tables |= enclosing[3]
     else:
         contexts = [(start, names) for start, _, category, names in statements
                     if category in CONTEXT_STATEMENTS and start <= position]
@@ -723,17 +825,33 @@ def migration_entry_tables(entry, source, statements):
     return tables or None
 
 
-def query_entry_tables(entry, source, positions, views=frozenset()):
-    """Return a query entry's tables, or None when they cannot be determined."""
+def migration_entry_destructive(entry, source, statements):
+    """Return tables a migration entry's own statement deletes from or updates."""
+    position = source.find(entry['original'])
+    if position < 0:
+        return None
+    enclosing = enclosing_statement(statements, position)
+    return destructive_tables(source[enclosing[0]:enclosing[1]] if enclosing else entry['original'])
+
+
+def query_entry_source(entry, source, positions):
+    """Return the SQL text of a query entry, or None when it is not found."""
     position = source.find(entry['original'])
     if position < 0:
         return None
     starts = [start for start in positions if start <= position]
     if not starts:
         return None
-    start = max(starts)
     ends = [end for end in positions if end > position]
-    tables = query_tables(source[start:min(ends) if ends else len(source)])
+    return source[max(starts):min(ends) if ends else len(source)]
+
+
+def query_entry_tables(entry, source, positions, views=frozenset()):
+    """Return a query entry's tables, or None when they cannot be determined."""
+    text = query_entry_source(entry, source, positions)
+    if text is None:
+        return None
+    tables = query_tables(text)
     if tables is None or tables & views:
         return None
     return tables or None
@@ -859,8 +977,9 @@ def ref_file(ref, path):
 
 
 def changed_migration_tables(changed, ref):
-    """Return (all_tables, tables, reason) for changed migration files."""
-    tables = set()
+    """Return (all_tables, direct, referenced_only, reason) for changed migrations."""
+    direct = set()
+    referenced = set()
     reason = None
     for path in sorted(changed):
         if not path.startswith('backend/internal/db/migrations/') or not path.endswith('.sql'):
@@ -868,24 +987,31 @@ def changed_migration_tables(changed, ref):
         file = ROOT / path
         ref_state, ref_source = ref_file(ref, path)
         if ref_state == 'error':
-            return True, set(), f'{path} (cannot read {ref})'
+            return True, set(), set(), f'{path} (cannot read {ref})'
         sources = []
         if file.is_file():
             try:
                 sources.append(file.read_text())
             except OSError:
-                return True, set(), f'{path} (cannot read working tree)'
+                return True, set(), set(), f'{path} (cannot read working tree)'
         if ref_state == 'present':
             sources.append(ref_source)
         if not sources:
-            return True, set(), f'{path} (missing in {ref} and working tree)'
+            return True, set(), set(), f'{path} (missing in {ref} and working tree)'
         for source in sources:
-            for start, _, _, names in expanded_statements(source):
+            for start, end, _, names in expanded_statements(source):
                 if names is None:
                     line = source.count('\n', 0, start) + 1
-                    return True, set(), f'{path}:{line}'
-                tables |= names
-    return False, tables, reason
+                    return True, set(), set(), f'{path}:{line}'
+                text = source[start:end]
+                own = direct_tables(text)
+                references = referenced_tables(mask_sql(text))
+                if own is None or references is None:
+                    line = source.count('\n', 0, start) + 1
+                    return True, set(), set(), f'{path}:{line}'
+                direct |= own
+                referenced |= references
+    return False, direct, referenced - direct, reason
 
 
 def load_manifest(path):
@@ -1547,7 +1673,7 @@ def affected_entries(entries, ref, summary=None, whole_file=False):
     changed_sql = any(path.startswith(('backend/internal/db/queries/', 'backend/internal/db/migrations/'))
                       for path in changed)
     migrations_changed = any(path.startswith('backend/internal/db/migrations/') for path in changed)
-    all_tables, changed_tables, reason = changed_migration_tables(changed, ref)
+    all_tables, changed_tables, referenced_only, reason = changed_migration_tables(changed, ref)
     views = migration_view_names()
     old_tests = {}
     for path in changed:
@@ -1610,6 +1736,10 @@ def affected_entries(entries, ref, summary=None, whole_file=False):
                     source, statements = migration_sources[path]
                     tables = None if source is None else migration_entry_tables(entry, source, statements)
                     affected = tables is None or bool(tables & changed_tables)
+                    if not affected and tables and tables & referenced_only:
+                        # 新增外键只改变删除被引用行或改被引用键的行为，读和插入不受影响。
+                        destructive = migration_entry_destructive(entry, source, statements)
+                        affected = destructive is None or bool(destructive & referenced_only)
                 else:
                     if path not in query_sources:
                         try:
@@ -1620,6 +1750,10 @@ def affected_entries(entries, ref, summary=None, whole_file=False):
                     source, positions = query_sources[path]
                     tables = None if source is None else query_entry_tables(entry, source, positions, views)
                     affected = tables is None or bool(tables & changed_tables)
+                    if not affected and tables and tables & referenced_only:
+                        # 同上：只读被引用表、或往一张外键指向它的表里插入，都不会受影响。
+                        destructive = destructive_tables(query_entry_source(entry, source, positions))
+                        affected = destructive is None or bool(destructive & referenced_only)
         if entry['kind'] == 'e2e':
             affected |= 'admin/' + entry['spec'] in changed
         else:
@@ -1641,15 +1775,19 @@ def affected_entries(entries, ref, summary=None, whole_file=False):
     if summary is None:
         if all_tables:
             found = f'all (unattributable statement in {reason})'
+            print(f'--since: changed tables: {found}; skipped {skipped} migration/query entries by table rule',
+                  file=sys.stderr)
         else:
             found = ', '.join(sorted(changed_tables)) or '(none)'
-        print(f'--since: changed tables: {found}; skipped {skipped} migration/query entries by table rule',
-              file=sys.stderr)
+            references = ', '.join(sorted(referenced_only)) or '(none)'
+            print(f'--since: changed tables: {found}; referenced only: {references}; '
+                  f'skipped {skipped} migration/query entries by table rule', file=sys.stderr)
         print(f'--since: skipped {go_skipped} go entries by declaration rule', file=sys.stderr)
     else:
         summary['skipped'] += skipped
         summary['go_skipped'] += go_skipped
         summary['tables'] |= changed_tables
+        summary['referenced'] = summary.get('referenced', set()) | referenced_only
         summary['all'] |= all_tables
         if all_tables and summary['reason'] is None:
             summary['reason'] = reason
@@ -2052,7 +2190,8 @@ def execute(args, parser):
         failed = False
         total_selected = total_passed = total_failed = total_environment = 0
         selections = []
-        summary = {'skipped': 0, 'go_skipped': 0, 'tables': set(), 'all': False, 'reason': None}
+        summary = {'skipped': 0, 'go_skipped': 0, 'tables': set(), 'referenced': set(),
+                   'all': False, 'reason': None}
         for manifest in sorted((ROOT / '.dev/codex').glob('*/manifest.py')):
             try:
                 entries = load_manifest(manifest)['ENTRIES']
@@ -2069,10 +2208,13 @@ def execute(args, parser):
         if args.since is not None:
             if summary['all']:
                 found = f"all (unattributable statement in {summary['reason']})"
+                print(f"--since: changed tables: {found}; skipped {summary['skipped']} migration/query entries by table rule",
+                      file=sys.stderr)
             else:
                 found = ', '.join(sorted(summary['tables'])) or '(none)'
-            print(f"--since: changed tables: {found}; skipped {summary['skipped']} migration/query entries by table rule",
-                  file=sys.stderr)
+                references = ', '.join(sorted(summary['referenced'])) or '(none)'
+                print(f"--since: changed tables: {found}; referenced only: {references}; "
+                      f"skipped {summary['skipped']} migration/query entries by table rule", file=sys.stderr)
             print(f"--since: skipped {summary['go_skipped']} go entries by declaration rule", file=sys.stderr)
         if not args.locate:
             counts, code = run_manifests(selections, args)

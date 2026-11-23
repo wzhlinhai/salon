@@ -242,6 +242,49 @@ func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams
 	return i, err
 }
 
+const createOrderStaffChange = `-- name: CreateOrderStaffChange :one
+INSERT INTO order_staff_changes (tenant_id,store_id,order_id,order_item_id,business_date,before_staff,after_staff,changed_by)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING tenant_id, store_id, id, order_id, order_item_id, business_date, before_staff, after_staff, changed_by, created_at
+`
+
+type CreateOrderStaffChangeParams struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	OrderID      uuid.UUID
+	OrderItemID  uuid.UUID
+	BusinessDate pgtype.Date
+	BeforeStaff  []byte
+	AfterStaff   []byte
+	ChangedBy    uuid.UUID
+}
+
+func (q *Queries) CreateOrderStaffChange(ctx context.Context, arg CreateOrderStaffChangeParams) (OrderStaffChange, error) {
+	row := q.db.QueryRow(ctx, createOrderStaffChange,
+		arg.TenantID,
+		arg.StoreID,
+		arg.OrderID,
+		arg.OrderItemID,
+		arg.BusinessDate,
+		arg.BeforeStaff,
+		arg.AfterStaff,
+		arg.ChangedBy,
+	)
+	var i OrderStaffChange
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.OrderID,
+		&i.OrderItemID,
+		&i.BusinessDate,
+		&i.BeforeStaff,
+		&i.AfterStaff,
+		&i.ChangedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createOrderVoid = `-- name: CreateOrderVoid :one
 INSERT INTO order_voids (tenant_id,store_id,order_id,reason,business_date,voided_by)
 VALUES ($1,$2,$3,$4,$5,$6) RETURNING tenant_id, store_id, id, order_id, reason, business_date, voided_by, at
@@ -370,6 +413,24 @@ func (q *Queries) GetOrderItem(ctx context.Context, arg GetOrderItemParams) (Ord
 		&i.CategoryRatio,
 	)
 	return i, err
+}
+
+const hasBlockingAftersale = `-- name: HasBlockingAftersale :one
+SELECT EXISTS(
+ SELECT 1 FROM aftersales WHERE store_id=$1 AND order_id=$2 AND status IN ('pending','approved')
+)::boolean AS exists
+`
+
+type HasBlockingAftersaleParams struct {
+	StoreID uuid.UUID
+	OrderID uuid.UUID
+}
+
+func (q *Queries) HasBlockingAftersale(ctx context.Context, arg HasBlockingAftersaleParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasBlockingAftersale, arg.StoreID, arg.OrderID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const listCheckoutCardBalances = `-- name: ListCheckoutCardBalances :many
@@ -772,6 +833,46 @@ func (q *Queries) ListOrderPayments(ctx context.Context, arg ListOrderPaymentsPa
 			&i.Gift,
 			&i.CountUnitPrice,
 			&i.CardName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOrderStaffChanges = `-- name: ListOrderStaffChanges :many
+SELECT tenant_id, store_id, id, order_id, order_item_id, business_date, before_staff, after_staff, changed_by, created_at FROM order_staff_changes WHERE store_id=$1 AND order_id=ANY($2::uuid[]) ORDER BY created_at,id
+`
+
+type ListOrderStaffChangesParams struct {
+	StoreID  uuid.UUID
+	OrderIds []uuid.UUID
+}
+
+func (q *Queries) ListOrderStaffChanges(ctx context.Context, arg ListOrderStaffChangesParams) ([]OrderStaffChange, error) {
+	rows, err := q.db.Query(ctx, listOrderStaffChanges, arg.StoreID, arg.OrderIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OrderStaffChange
+	for rows.Next() {
+		var i OrderStaffChange
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ID,
+			&i.OrderID,
+			&i.OrderItemID,
+			&i.BusinessDate,
+			&i.BeforeStaff,
+			&i.AfterStaff,
+			&i.ChangedBy,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

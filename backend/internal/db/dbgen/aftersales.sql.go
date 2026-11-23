@@ -599,8 +599,9 @@ func (q *Queries) OrderCardPrincipalPaid(ctx context.Context, arg OrderCardPrinc
 }
 
 const orderItemPerformanceEntries = `-- name: OrderItemPerformanceEntries :many
-SELECT tenant_id, store_id, id, kind, business_date, order_id, order_item_id, checkout_id, settings_snapshot_id, slot, position_id, staff_id, method, paid_amount, ratio, amount, void_id, reverses_id, created_at, card_ledger_id, red_packet_id, purchase, member, aftersale_id, category_ratio, commission_paid_amount, commission_amount FROM performance_entries
-WHERE store_id=$1 AND order_id=$2 AND kind='item' AND reverses_id IS NULL
+SELECT e.tenant_id, e.store_id, e.id, e.kind, e.business_date, e.order_id, e.order_item_id, e.checkout_id, e.settings_snapshot_id, e.slot, e.position_id, e.staff_id, e.method, e.paid_amount, e.ratio, e.amount, e.void_id, e.reverses_id, e.created_at, e.card_ledger_id, e.red_packet_id, e.purchase, e.member, e.aftersale_id, e.category_ratio, e.commission_paid_amount, e.commission_amount, e.staff_change_id FROM performance_entries e
+WHERE e.store_id=$1 AND e.order_id=$2 AND e.kind='item' AND e.reverses_id IS NULL
+AND NOT EXISTS (SELECT 1 FROM performance_entries r WHERE r.reverses_id=e.id AND (r.void_id IS NOT NULL OR r.staff_change_id IS NOT NULL))
 ORDER BY id
 `
 
@@ -646,6 +647,7 @@ func (q *Queries) OrderItemPerformanceEntries(ctx context.Context, arg OrderItem
 			&i.CategoryRatio,
 			&i.CommissionPaidAmount,
 			&i.CommissionAmount,
+			&i.StaffChangeID,
 		); err != nil {
 			return nil, err
 		}

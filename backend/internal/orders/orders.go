@@ -2,6 +2,7 @@ package orders
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/payrollmonth"
+	"github.com/wzhlinhai/salon/backend/internal/performance"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
@@ -271,6 +273,10 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 	if err != nil {
 		return nil, err
 	}
+	staffChanges, err := env.Q.ListOrderStaffChanges(ctx, dbgen.ListOrderStaffChangesParams{StoreID: env.Caller.StoreID, OrderIds: ids})
+	if err != nil {
+		return nil, err
+	}
 	redemptions, err := env.Q.ListOrderRedemptions(ctx, dbgen.ListOrderRedemptionsParams{StoreID: env.Caller.StoreID, OrderIds: ids})
 	if err != nil {
 		return nil, err
@@ -278,6 +284,17 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 	byVoid := map[uuid.UUID]*OrderVoid{}
 	for _, v := range voids {
 		byVoid[v.OrderID] = &OrderVoid{ID: v.ID, Reason: v.Reason, BusinessDate: v.BusinessDate.Time.Format(time.DateOnly), VoidedBy: v.VoidedBy, At: v.At.Time}
+	}
+	byStaffChangeOrder := map[uuid.UUID][]OrderStaffChange{}
+	for _, c := range staffChanges {
+		var before, after []OrderStaffChangeSlot
+		if err := json.Unmarshal(c.BeforeStaff, &before); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(c.AfterStaff, &after); err != nil {
+			return nil, err
+		}
+		byStaffChangeOrder[c.OrderID] = append(byStaffChangeOrder[c.OrderID], OrderStaffChange{ID: c.ID, At: c.CreatedAt.Time, By: c.ChangedBy, OrderItemID: c.OrderItemID, Before: before, After: after})
 	}
 	byPaymentOrder := map[uuid.UUID][]OrderPayment{}
 	groupbuyAmount := map[uuid.UUID]money.Amount{}
@@ -309,19 +326,16 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 	if err != nil {
 		return nil, err
 	}
-	byItem := map[uuid.UUID][]OrderItemPosition{}
+	byItem := map[uuid.UUID][]dbgen.OrderItemPosition{}
 	for _, p := range positions {
-		byItem[p.OrderItemID] = append(byItem[p.OrderItemID], OrderItemPosition{Slot: p.Slot, PositionID: p.PositionID, Required: p.Required, StaffID: p.StaffID, SharePercent: p.SharePercent})
+		byItem[p.OrderItemID] = append(byItem[p.OrderItemID], p)
 	}
 	byOrder := map[uuid.UUID][]OrderItem{}
 	totals := map[uuid.UUID]money.Total{}
 	discounts := map[uuid.UUID]money.Total{}
 	nets := map[uuid.UUID]money.Total{}
 	for _, i := range items {
-		p := byItem[i.ID]
-		if p == nil {
-			p = []OrderItemPosition{}
-		}
+		p := positionViews(byItem[i.ID])
 		byOrder[i.OrderID] = append(byOrder[i.OrderID], OrderItem{ID: i.ID, ItemID: i.ItemID, ItemName: i.ItemName, ItemKind: i.ItemKind, LaborFeeAmount: i.LaborFeeAmount, LaborFeePercent: i.LaborFeePercent, Price: i.Price, PriceSource: i.PriceSource, CardTypeID: i.CardTypeID, Discount: i.Discount, LevelID: i.LevelID, AddedAt: i.AddedAt.Time, RemovedAt: removedTime(i.RemovedAt), RemovedBy: i.RemovedBy, RepriceReason: i.RepriceReason, CategoryRatio: i.CategoryRatio, Positions: p})
 		if !i.RemovedAt.Valid {
 			totals[i.OrderID] = totals[i.OrderID].AddProduct(i.Price, 1)
@@ -380,9 +394,40 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Order) ([]Order, error
 		if bc == nil {
 			bc = []BookingConflict{}
 		}
-		out = append(out, Order{Void: byVoid[r.ID], CheckoutID: r.CheckoutID, Payments: ps, Groupbuy: gb, ID: r.ID, CustomerID: r.CustomerID, Gender: r.Gender, Designated: r.Designated, Status: r.Status, MergedInto: r.MergedInto, BusinessDate: r.BusinessDate.Time.Format(time.DateOnly), Backfill: r.Backfill, OpenedBy: r.OpenedBy, OpenedAt: r.OpenedAt.Time, Items: items, BookingConflicts: bc, Receivable: totals[r.ID].Format(), Discount: discounts[r.ID].Format(), Net: nets[r.ID].Format()})
+		changes := byStaffChangeOrder[r.ID]
+		if changes == nil {
+			changes = []OrderStaffChange{}
+		}
+		out = append(out, Order{Void: byVoid[r.ID], CheckoutID: r.CheckoutID, Payments: ps, Groupbuy: gb, ID: r.ID, CustomerID: r.CustomerID, Gender: r.Gender, Designated: r.Designated, Status: r.Status, MergedInto: r.MergedInto, BusinessDate: r.BusinessDate.Time.Format(time.DateOnly), Backfill: r.Backfill, OpenedBy: r.OpenedBy, OpenedAt: r.OpenedAt.Time, Items: items, StaffChanges: changes, BookingConflicts: bc, Receivable: totals[r.ID].Format(), Discount: discounts[r.ID].Format(), Net: nets[r.ID].Format()})
 	}
 	return out, nil
+}
+
+// performanceLines 按有效项目行组装结账和改人重算共用的业绩输入。
+func performanceLines(order Order) []performance.Line {
+	out := []performance.Line{}
+	for _, line := range order.Items {
+		if line.RemovedAt != nil {
+			continue
+		}
+		net, _ := line.Price.Apply(money.Amount{}.Sub(line.Discount))
+		slots := make([]performance.Slot, 0, len(line.Positions))
+		for _, p := range line.Positions {
+			slots = append(slots, performance.Slot{Slot: p.Slot, PositionID: p.PositionID, StaffID: p.StaffID, SharePercent: p.SharePercent})
+		}
+		categoryRatio := line.CategoryRatio
+		out = append(out, performance.Line{OrderItemID: line.ID, Net: net, Price: line.Price, LaborFeeAmount: line.LaborFeeAmount, LaborFeePercent: line.LaborFeePercent, CategoryRatio: &categoryRatio, Slots: slots})
+	}
+	return out
+}
+
+// positionViews 把数据库里的岗位行转换成单据视图里的岗位。
+func positionViews(positions []dbgen.OrderItemPosition) []OrderItemPosition {
+	out := make([]OrderItemPosition, len(positions))
+	for i, p := range positions {
+		out[i] = OrderItemPosition{Slot: p.Slot, PositionID: p.PositionID, Required: p.Required, StaffID: p.StaffID, SharePercent: p.SharePercent}
+	}
+	return out
 }
 
 func lineStaff(in []OrderItemStaffInput) []catalog.LineStaff {

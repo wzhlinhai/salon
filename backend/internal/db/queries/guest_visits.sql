@@ -9,6 +9,17 @@ FROM guest_visits e
 WHERE e.store_id=sqlc.arg(store_id) AND e.order_id=sqlc.arg(order_id) AND e.reverses_id IS NULL
 AND NOT EXISTS (SELECT 1 FROM guest_visits r WHERE r.reverses_id=e.id);
 
+-- name: ReverseStaffChangeGuestVisits :exec
+INSERT INTO guest_visits (tenant_id,store_id,business_date,order_id,checkout_id,settings_snapshot_id,staff_id,share,designated,gender,reverses_id,staff_change_id)
+SELECT e.tenant_id,e.store_id,sqlc.arg(day),e.order_id,e.checkout_id,e.settings_snapshot_id,e.staff_id,e.share,e.designated,e.gender,e.id,sqlc.arg(staff_change_id)
+FROM guest_visits e
+WHERE e.store_id=sqlc.arg(store_id) AND e.order_id=sqlc.arg(order_id) AND e.reverses_id IS NULL
+AND NOT EXISTS (SELECT 1 FROM guest_visits r WHERE r.reverses_id=e.id);
+
+-- name: AddStaffChangeGuestVisit :exec
+INSERT INTO guest_visits (tenant_id,store_id,business_date,order_id,checkout_id,settings_snapshot_id,staff_id,share,designated,gender,staff_change_id)
+VALUES (sqlc.arg(tenant_id),sqlc.arg(store_id),sqlc.arg(business_date),sqlc.arg(order_id),sqlc.arg(checkout_id),sqlc.arg(settings_snapshot_id),sqlc.arg(staff_id),sqlc.arg(share),sqlc.arg(designated),sqlc.arg(gender),sqlc.arg(staff_change_id));
+
 -- name: ListGuestVisits :many
 SELECT e.id,e.business_date,e.order_id,e.checkout_id,e.settings_snapshot_id,e.staff_id,e.share::text AS share,e.designated,e.gender,e.reverses_id,s.name AS staff_name
 FROM guest_visits e LEFT JOIN staff s ON s.id=e.staff_id

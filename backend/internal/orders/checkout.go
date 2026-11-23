@@ -203,24 +203,11 @@ func checkoutOrders(ctx context.Context, env ops.Env, in *CheckoutOrdersInput) (
 			if err := pay.Record(ctx, checkout.ID, rows[i], items, rules[i], paymentInputs(plan.payments)); err != nil {
 				return err
 			}
-			performanceLines := []performance.Line{}
-			for _, line := range plan.order.Items {
-				if line.RemovedAt != nil {
-					continue
-				}
-				net, _ := line.Price.Apply(money.Amount{}.Sub(line.Discount))
-				slots := make([]performance.Slot, 0, len(line.Positions))
-				for _, p := range line.Positions {
-					slots = append(slots, performance.Slot{Slot: p.Slot, PositionID: p.PositionID, StaffID: p.StaffID, SharePercent: p.SharePercent})
-				}
-				categoryRatio := line.CategoryRatio
-				performanceLines = append(performanceLines, performance.Line{OrderItemID: line.ID, Net: net, Price: line.Price, LaborFeeAmount: line.LaborFeeAmount, LaborFeePercent: line.LaborFeePercent, CategoryRatio: &categoryRatio, Slots: slots})
-			}
 			member, err := cards.HasValidCard(ctx, env.Q, env.Caller.StoreID, rows[i].CustomerID, day)
 			if err != nil {
 				return err
 			}
-			if err := performance.RecordCheckout(ctx, env, performance.CheckoutInput{Member: member, CheckoutID: checkout.ID, BusinessDate: day, OrderID: rows[i].ID, SettingsSnapshotID: rows[i].SettingsSnapshotID, Rules: rules[i], Lines: performanceLines, Designated: rows[i].Designated, Gender: rows[i].Gender}); err != nil {
+			if err := performance.RecordCheckout(ctx, env, performance.CheckoutInput{Member: member, CheckoutID: checkout.ID, BusinessDate: day, OrderID: rows[i].ID, SettingsSnapshotID: rows[i].SettingsSnapshotID, Rules: rules[i], Lines: performanceLines(plan.order), Designated: rows[i].Designated, Gender: rows[i].Gender}); err != nil {
 				return err
 			}
 

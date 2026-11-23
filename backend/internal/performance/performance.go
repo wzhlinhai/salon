@@ -26,9 +26,31 @@ type CheckoutInput struct {
 
 // RecordCheckout 在结账已持有单锁的事务内追加项目业绩、耗卡业绩和手工费。
 func RecordCheckout(ctx context.Context, env ops.Env, in CheckoutInput) error {
-	recordedPayments, err := env.Q.ListOrderPayments(ctx, dbgen.ListOrderPaymentsParams{StoreID: env.Caller.StoreID, OrderIds: []uuid.UUID{in.OrderID}})
+	entries, err := checkoutEntries(ctx, env, in.OrderID, in.Lines, in.Rules)
 	if err != nil {
 		return err
+	}
+	for _, e := range entries {
+		err := env.Q.AddPerformanceEntry(ctx, dbgen.AddPerformanceEntryParams{
+			TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID,
+			BusinessDate: pgtype.Date{Time: in.BusinessDate, Valid: true},
+			OrderID:      &in.OrderID, OrderItemID: &e.orderItemID, CheckoutID: &in.CheckoutID, SettingsSnapshotID: &in.SettingsSnapshotID,
+			Slot: e.slot, PositionID: e.positionID, StaffID: e.staffID,
+			Member: &in.Member, Kind: e.kind, Method: e.method, PaidAmount: e.paidAmount, CommissionPaidAmount: e.commissionPaidAmount,
+			Ratio: e.ratio, CategoryRatio: e.categoryRatio, Amount: e.amount, CommissionAmount: e.commissionAmount,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return recordGuestVisits(ctx, env, in)
+}
+
+// checkoutEntries 按结账单已登记的支付和规则快照计算项目业绩、耗卡业绩和手工费。
+func checkoutEntries(ctx context.Context, env ops.Env, orderID uuid.UUID, lines []Line, rules settings.Rules) ([]allocation, error) {
+	recordedPayments, err := env.Q.ListOrderPayments(ctx, dbgen.ListOrderPaymentsParams{StoreID: env.Caller.StoreID, OrderIds: []uuid.UUID{orderID}})
+	if err != nil {
+		return nil, err
 	}
 	consumptions := map[uuid.UUID]*consumption{}
 	categories := []category{}
@@ -46,31 +68,17 @@ func RecordCheckout(ctx context.Context, env ops.Env, in CheckoutInput) error {
 			categories = append(categories, category{Method: p.Method, Amount: p.Amount})
 		}
 	}
-	lines := make([]allocationLine, 0, len(in.Lines))
-	for _, line := range in.Lines {
-		lines = append(lines, allocationLine{Line: line, Count: consumptions[line.OrderItemID]})
+	allocationLines := make([]allocationLine, 0, len(lines))
+	for _, line := range lines {
+		allocationLines = append(allocationLines, allocationLine{Line: line, Count: consumptions[line.OrderItemID]})
 	}
 	ratios := map[string]int{}
 	for _, method := range paymentMethods {
-		ratios[method.name] = in.Rules.PerformanceRatio(method.ratioKey)
+		ratios[method.name] = rules.PerformanceRatio(method.ratioKey)
 	}
-	split, commissionSplit := in.Rules.PerformanceSplit(), in.Rules.CommissionSplit()
-	entries := allocate(lines, categories, split, commissionSplit, ratios)
-	entries = append(entries, consumeAndLabor(lines, split, commissionSplit, ratios)...)
-	for _, e := range entries {
-		err := env.Q.AddPerformanceEntry(ctx, dbgen.AddPerformanceEntryParams{
-			TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID,
-			BusinessDate: pgtype.Date{Time: in.BusinessDate, Valid: true},
-			OrderID:      &in.OrderID, OrderItemID: &e.orderItemID, CheckoutID: &in.CheckoutID, SettingsSnapshotID: &in.SettingsSnapshotID,
-			Slot: e.slot, PositionID: e.positionID, StaffID: e.staffID,
-			Member: &in.Member, Kind: e.kind, Method: e.method, PaidAmount: e.paidAmount, CommissionPaidAmount: e.commissionPaidAmount,
-			Ratio: e.ratio, CategoryRatio: e.categoryRatio, Amount: e.amount, CommissionAmount: e.commissionAmount,
-		})
-		if err != nil {
-			return err
-		}
-	}
-	return recordGuestVisits(ctx, env, in)
+	split, commissionSplit := rules.PerformanceSplit(), rules.CommissionSplit()
+	entries := allocate(allocationLines, categories, split, commissionSplit, ratios)
+	return append(entries, consumeAndLabor(allocationLines, split, commissionSplit, ratios)...), nil
 }
 
 // ReverseOrder 在撤单已持有单锁的事务内追加尚未冲回的原业绩的反向记录。

@@ -18,6 +18,11 @@ import (
 // change 按 UUID 锁住全部单并检查状态，再按操作声明的权限限制检查窗口和范围。
 // edit 收到的顺序与 ids 相同；修改后的行状态也在此切片更新，返回全部单的改后视图。
 func change(ctx context.Context, env ops.Env, action, requiredStatus string, ids []uuid.UUID, edit func([]dbgen.Order) error, now time.Time) ([]Order, error) {
+	return changeWithDay(ctx, env, action, requiredStatus, ids, edit, now, nil)
+}
+
+// changeWithDay 与 change 相同，但 guardDay 非空时用它返回的营业日做封账检查，而不是每张单自己的营业日。
+func changeWithDay(ctx context.Context, env ops.Env, action, requiredStatus string, ids []uuid.UUID, edit func([]dbgen.Order) error, now time.Time, guardDay func(context.Context, ops.Env, []dbgen.Order) (time.Time, error)) ([]Order, error) {
 	ordered := slices.Clone(ids)
 	slices.SortFunc(ordered, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
 	locked := make(map[uuid.UUID]dbgen.Order, len(ids))
@@ -34,8 +39,27 @@ func change(ctx context.Context, env ops.Env, action, requiredStatus string, ids
 	rows := make([]dbgen.Order, len(ids))
 	for i, id := range ids {
 		rows[i] = locked[id]
-		if err := checkOrderChange(ctx, env, rows[i], now); err != nil {
+	}
+	var guardDate time.Time
+	if guardDay != nil {
+		day, err := guardDay(ctx, env, rows)
+		if err != nil {
 			return nil, err
+		}
+		guardDate = day
+	}
+	for i := range ids {
+		if guardDay == nil {
+			if err := checkOrderChange(ctx, env, rows[i], now); err != nil {
+				return nil, err
+			}
+		} else {
+			if err := closingguard.Guard(ctx, env.Q, env.Caller.StoreID, guardDate); err != nil {
+				return nil, err
+			}
+			if err := checkEditAt(ctx, env, rows[i], guardDate); err != nil {
+				return nil, err
+			}
 		}
 	}
 	before, err := views(ctx, env, rows)
@@ -85,15 +109,25 @@ func checkOrderChange(ctx context.Context, env ops.Env, order dbgen.Order, now t
 }
 
 func checkEdit(ctx context.Context, env ops.Env, order dbgen.Order, now time.Time) error {
-	if env.Grant.WindowDays != nil {
-		today, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, now)
-		if err != nil {
-			return err
-		}
-		if order.BusinessDate.Time.Before(today.AddDate(0, 0, -*env.Grant.WindowDays)) {
-			return ops.ErrForbidden
-		}
+	if env.Grant.WindowDays == nil {
+		return checkEditScope(ctx, env, order)
 	}
+	today, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, now)
+	if err != nil {
+		return err
+	}
+	return checkEditAt(ctx, env, order, today)
+}
+
+// checkEditAt 用调用方已算出的营业日检查改单时间窗口和本人范围。
+func checkEditAt(ctx context.Context, env ops.Env, order dbgen.Order, today time.Time) error {
+	if env.Grant.WindowDays != nil && order.BusinessDate.Time.Before(today.AddDate(0, 0, -*env.Grant.WindowDays)) {
+		return ops.ErrForbidden
+	}
+	return checkEditScope(ctx, env, order)
+}
+
+func checkEditScope(ctx context.Context, env ops.Env, order dbgen.Order) error {
 	if env.Grant.Scope == ops.ScopeSelf {
 		involved, err := env.Q.OrderInvolvesStaff(ctx, dbgen.OrderInvolvesStaffParams{StoreID: env.Caller.StoreID, ID: order.ID, StaffID: env.Caller.StaffID})
 		if err != nil {

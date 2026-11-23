@@ -13,25 +13,42 @@ import (
 
 // Order 是单据视图，只引用顾客 ID，不包含顾客姓名或手机号。
 type Order struct {
-	Void             *OrderVoid        `json:"void"`
-	CheckoutID       *uuid.UUID        `json:"checkout_id" nullable:"true"`
-	Payments         []OrderPayment    `json:"payments"`
-	Groupbuy         []OrderGroupbuy   `json:"groupbuy"`
-	ID               uuid.UUID         `json:"id"`
-	CustomerID       uuid.UUID         `json:"customer_id"`
-	Gender           string            `json:"gender" enum:"male,female"`
-	Designated       bool              `json:"designated"`
-	Status           string            `json:"status" enum:"open,merged,paid,voided"`
-	MergedInto       *uuid.UUID        `json:"merged_into" nullable:"true"`
-	BusinessDate     string            `json:"business_date" format:"date"`
-	Backfill         bool              `json:"backfill" doc:"断网后用纸单补录的单，营业日是纸单上的日期"`
-	OpenedBy         uuid.UUID         `json:"opened_by"`
-	OpenedAt         time.Time         `json:"opened_at"`
-	Items            []OrderItem       `json:"items"`
-	BookingConflicts []BookingConflict `json:"booking_conflicts"`
-	Discount         string            `json:"discount"`
-	Net              string            `json:"net"`
-	Receivable       string            `json:"receivable"`
+	Void             *OrderVoid         `json:"void"`
+	CheckoutID       *uuid.UUID         `json:"checkout_id" nullable:"true"`
+	Payments         []OrderPayment     `json:"payments"`
+	Groupbuy         []OrderGroupbuy    `json:"groupbuy"`
+	ID               uuid.UUID          `json:"id"`
+	CustomerID       uuid.UUID          `json:"customer_id"`
+	Gender           string             `json:"gender" enum:"male,female"`
+	Designated       bool               `json:"designated"`
+	Status           string             `json:"status" enum:"open,merged,paid,voided"`
+	MergedInto       *uuid.UUID         `json:"merged_into" nullable:"true"`
+	BusinessDate     string             `json:"business_date" format:"date"`
+	Backfill         bool               `json:"backfill" doc:"断网后用纸单补录的单，营业日是纸单上的日期"`
+	OpenedBy         uuid.UUID          `json:"opened_by"`
+	OpenedAt         time.Time          `json:"opened_at"`
+	Items            []OrderItem        `json:"items"`
+	StaffChanges     []OrderStaffChange `json:"staff_changes" doc:"已结账单的改人历史"`
+	BookingConflicts []BookingConflict  `json:"booking_conflicts"`
+	Discount         string             `json:"discount"`
+	Net              string             `json:"net"`
+	Receivable       string             `json:"receivable"`
+}
+
+// OrderStaffChange 是一次已结账单改人，保留项目行和改前改后的岗位员工。
+type OrderStaffChange struct {
+	ID          uuid.UUID              `json:"id"`
+	At          time.Time              `json:"at"`
+	By          uuid.UUID              `json:"by" doc:"操作人"`
+	OrderItemID uuid.UUID              `json:"order_item_id"`
+	Before      []OrderStaffChangeSlot `json:"before" doc:"改前各岗位员工，空岗位的员工为 null"`
+	After       []OrderStaffChangeSlot `json:"after" doc:"改后各岗位员工，空岗位的员工为 null"`
+}
+
+// OrderStaffChangeSlot 是改人历史里一个岗位的员工，空岗位的 StaffID 为 null。
+type OrderStaffChangeSlot struct {
+	Slot    int16      `json:"slot"`
+	StaffID *uuid.UUID `json:"staff_id" nullable:"true"`
 }
 
 // BookingConflict 是挂单占用与已有预约或私约占位的冲突，供前台改约或换人。
@@ -150,6 +167,13 @@ type SetOrderItemStaffInput struct {
 	OrderID     uuid.UUID             `json:"order_id"`
 	OrderItemID uuid.UUID             `json:"order_item_id"`
 	Staff       []OrderItemStaffInput `json:"staff" maxItems:"20" doc:"这个项目全部岗位的员工，整体替换：不改的岗位也要照原样填上，没填的岗位会被清空；第一个岗位换人或没填时，未手工改价的项目重新计价"`
+}
+
+// SetPaidItemStaffInput 是已结账的单替换项目行全部岗位员工的参数。
+type SetPaidItemStaffInput struct {
+	OrderID     uuid.UUID             `json:"order_id"`
+	OrderItemID uuid.UUID             `json:"order_item_id"`
+	Staff       []OrderItemStaffInput `json:"staff" maxItems:"20" doc:"这个项目全部岗位的员工，整体替换：不改的岗位也要照原样填上，没填的岗位会被清空；已结账的单不重新计价"`
 }
 
 // RepriceOrderItemInput 是项目行改价的金额和原因。

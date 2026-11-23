@@ -116,6 +116,18 @@ VALUES ($1,$2,$3,$4,$5,$6) RETURNING *;
 -- name: MarkOrderVoided :exec
 UPDATE orders SET status='voided' WHERE store_id=$1 AND id=$2;
 
+-- name: CreateOrderStaffChange :one
+INSERT INTO order_staff_changes (tenant_id,store_id,order_id,order_item_id,business_date,before_staff,after_staff,changed_by)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *;
+
+-- name: ListOrderStaffChanges :many
+SELECT * FROM order_staff_changes WHERE store_id=$1 AND order_id=ANY(sqlc.arg(order_ids)::uuid[]) ORDER BY created_at,id;
+
+-- name: HasBlockingAftersale :one
+SELECT EXISTS(
+ SELECT 1 FROM aftersales WHERE store_id=sqlc.arg(store_id) AND order_id=sqlc.arg(order_id) AND status IN ('pending','approved')
+)::boolean AS exists;
+
 -- name: ListOrderVoids :many
 SELECT * FROM order_voids WHERE store_id=$1 AND order_id=ANY(sqlc.arg(order_ids)::uuid[]);
 

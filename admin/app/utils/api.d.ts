@@ -3013,6 +3013,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/set_paid_item_staff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 已结账的单更换项目岗位员工，业绩和提成改记给新员工 */
+        post: operations["set_paid_item_staff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/set_queue_members": {
         parameters: {
             query?: never;
@@ -5783,6 +5800,8 @@ export interface components {
             opened_by: string;
             payments: components["schemas"]["OrderPayment"][];
             receivable: string;
+            /** @description 已结账单的改人历史 */
+            staff_changes: components["schemas"]["OrderStaffChange"][];
             /** @enum {string} */
             status: "open" | "merged" | "paid" | "voided";
             void: components["schemas"]["OrderVoid"] | null;
@@ -5874,6 +5893,23 @@ export interface components {
             order_item_id: string;
             /** Format: int32 */
             paid: number;
+        };
+        OrderStaffChange: {
+            /** @description 改后各岗位员工，空岗位的员工为 null */
+            after: components["schemas"]["OrderStaffChangeSlot"][];
+            /** Format: date-time */
+            at: string;
+            /** @description 改前各岗位员工，空岗位的员工为 null */
+            before: components["schemas"]["OrderStaffChangeSlot"][];
+            /** @description 操作人 */
+            by: string;
+            id: string;
+            order_item_id: string;
+        };
+        OrderStaffChangeSlot: {
+            /** Format: int32 */
+            slot: number;
+            staff_id: string | null;
         };
         OrderVoid: {
             /** Format: date-time */
@@ -6089,6 +6125,8 @@ export interface components {
             payments: components["schemas"]["OrderPayment"][];
             pricing_card_id: string | null;
             receivable: string;
+            /** @description 已结账单的改人历史 */
+            staff_changes: components["schemas"]["OrderStaffChange"][];
             /** @enum {string} */
             status: "open" | "merged" | "paid" | "voided";
             void: components["schemas"]["OrderVoid"] | null;
@@ -6547,6 +6585,12 @@ export interface components {
             order_id: string;
             order_item_id: string;
             /** @description 这个项目全部岗位的员工，整体替换：不改的岗位也要照原样填上，没填的岗位会被清空；第一个岗位换人或没填时，未手工改价的项目重新计价 */
+            staff: components["schemas"]["OrderItemStaffInput"][];
+        };
+        SetPaidItemStaffInput: {
+            order_id: string;
+            order_item_id: string;
+            /** @description 这个项目全部岗位的员工，整体替换：不改的岗位也要照原样填上，没填的岗位会被清空；已结账的单不重新计价 */
             staff: components["schemas"]["OrderItemStaffInput"][];
         };
         SetQueueMembersInput: {
@@ -12834,6 +12878,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["SetOrderItemStaffInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    set_paid_item_staff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetPaidItemStaffInput"];
             };
         };
         responses: {
