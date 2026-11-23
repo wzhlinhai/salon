@@ -39,19 +39,25 @@ func changeWithDay(ctx context.Context, env ops.Env, action, requiredStatus stri
 	rows := make([]dbgen.Order, len(ids))
 	for i, id := range ids {
 		rows[i] = locked[id]
+	}
+	var guardDate time.Time
+	if guardDay != nil {
+		day, err := guardDay(ctx, env, rows)
+		if err != nil {
+			return nil, err
+		}
+		guardDate = day
+	}
+	for i := range ids {
 		if guardDay == nil {
 			if err := checkOrderChange(ctx, env, rows[i], now); err != nil {
 				return nil, err
 			}
 		} else {
-			day, err := guardDay(ctx, env, rows)
-			if err != nil {
+			if err := closingguard.Guard(ctx, env.Q, env.Caller.StoreID, guardDate); err != nil {
 				return nil, err
 			}
-			if err := closingguard.Guard(ctx, env.Q, env.Caller.StoreID, day); err != nil {
-				return nil, err
-			}
-			if err := checkEdit(ctx, env, rows[i], now); err != nil {
+			if err := checkEditAt(ctx, env, rows[i], guardDate); err != nil {
 				return nil, err
 			}
 		}
@@ -103,15 +109,25 @@ func checkOrderChange(ctx context.Context, env ops.Env, order dbgen.Order, now t
 }
 
 func checkEdit(ctx context.Context, env ops.Env, order dbgen.Order, now time.Time) error {
-	if env.Grant.WindowDays != nil {
-		today, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, now)
-		if err != nil {
-			return err
-		}
-		if order.BusinessDate.Time.Before(today.AddDate(0, 0, -*env.Grant.WindowDays)) {
-			return ops.ErrForbidden
-		}
+	if env.Grant.WindowDays == nil {
+		return checkEditScope(ctx, env, order)
 	}
+	today, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, now)
+	if err != nil {
+		return err
+	}
+	return checkEditAt(ctx, env, order, today)
+}
+
+// checkEditAt 用调用方已算出的营业日检查改单时间窗口和本人范围。
+func checkEditAt(ctx context.Context, env ops.Env, order dbgen.Order, today time.Time) error {
+	if env.Grant.WindowDays != nil && order.BusinessDate.Time.Before(today.AddDate(0, 0, -*env.Grant.WindowDays)) {
+		return ops.ErrForbidden
+	}
+	return checkEditScope(ctx, env, order)
+}
+
+func checkEditScope(ctx context.Context, env ops.Env, order dbgen.Order) error {
 	if env.Grant.Scope == ops.ScopeSelf {
 		involved, err := env.Q.OrderInvolvesStaff(ctx, dbgen.OrderInvolvesStaffParams{StoreID: env.Caller.StoreID, ID: order.ID, StaffID: env.Caller.StaffID})
 		if err != nil {

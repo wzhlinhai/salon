@@ -5895,16 +5895,21 @@ export interface components {
             paid: number;
         };
         OrderStaffChange: {
-            /** @description 改后各岗位员工 */
-            after: components["schemas"]["OrderItemStaffInput"][];
+            /** @description 改后各岗位员工，空岗位的员工为 null */
+            after: components["schemas"]["OrderStaffChangeSlot"][];
             /** Format: date-time */
             at: string;
-            /** @description 改前各岗位员工 */
-            before: components["schemas"]["OrderItemStaffInput"][];
+            /** @description 改前各岗位员工，空岗位的员工为 null */
+            before: components["schemas"]["OrderStaffChangeSlot"][];
             /** @description 操作人 */
             by: string;
             id: string;
             order_item_id: string;
+        };
+        OrderStaffChangeSlot: {
+            /** Format: int32 */
+            slot: number;
+            staff_id: string | null;
         };
         OrderVoid: {
             /** Format: date-time */

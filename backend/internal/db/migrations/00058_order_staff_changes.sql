@@ -1,5 +1,5 @@
 -- +goose Up
-ALTER TABLE order_items ADD CONSTRAINT order_items_tenant_store_id_key UNIQUE (tenant_id,store_id,id);
+ALTER TABLE order_items ADD CONSTRAINT order_items_tenant_store_order_key UNIQUE (tenant_id,store_id,order_id,id);
 
 CREATE TABLE order_staff_changes (
  tenant_id uuid NOT NULL,
@@ -16,7 +16,7 @@ CREATE TABLE order_staff_changes (
  UNIQUE (tenant_id, store_id, id),
  FOREIGN KEY (tenant_id, store_id) REFERENCES stores (tenant_id, id),
  FOREIGN KEY (tenant_id, store_id, order_id) REFERENCES orders (tenant_id, store_id, id),
- FOREIGN KEY (tenant_id, store_id, order_item_id) REFERENCES order_items (tenant_id, store_id, id),
+ FOREIGN KEY (tenant_id, store_id, order_id, order_item_id) REFERENCES order_items (tenant_id, store_id, order_id, id),
  FOREIGN KEY (tenant_id, changed_by) REFERENCES staff (tenant_id, id)
 );
 CREATE INDEX order_staff_changes_order ON order_staff_changes (store_id, order_id, created_at, id);
@@ -76,4 +76,4 @@ ALTER TABLE performance_entries
  ADD CONSTRAINT performance_entries_reversal_source_check CHECK (((void_id IS NULL AND aftersale_id IS NULL) = (reverses_id IS NULL)) AND (void_id IS NULL OR aftersale_id IS NULL));
 
 DROP TABLE order_staff_changes;
-ALTER TABLE order_items DROP CONSTRAINT order_items_tenant_store_id_key;
+ALTER TABLE order_items DROP CONSTRAINT order_items_tenant_store_order_key;

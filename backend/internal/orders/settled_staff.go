@@ -10,7 +10,6 @@ import (
 
 	"github.com/wzhlinhai/salon/backend/internal/catalog"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
-	"github.com/wzhlinhai/salon/backend/internal/money"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/performance"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
@@ -39,27 +38,17 @@ func setPaidItemStaff(ctx context.Context, env ops.Env, in *SetPaidItemStaffInpu
 		if item.RemovedAt.Valid {
 			return ops.Rule("项目已去掉")
 		}
-		positions, err := env.Q.ListOrderItemPositions(ctx, dbgen.ListOrderItemPositionsParams{StoreID: env.Caller.StoreID, ItemIds: []uuid.UUID{item.ID}})
-		if err != nil {
-			return err
-		}
-		slots := map[int16]bool{}
-		previousStaff := map[int16]*uuid.UUID{}
-		for _, p := range positions {
-			slots[p.Slot] = true
-			previousStaff[p.Slot] = p.StaffID
-		}
-		rules, err := settings.LoadSnapshot(ctx, env.Q, env.Caller.StoreID, row.SettingsSnapshotID)
+		staffing, err := loadLineStaffing(ctx, env, *row, item)
 		if err != nil {
 			return err
 		}
 		// 已结账的单不重新计价：把改前价来源当作手工价，只做岗位和员工校验。
-		assigned, _, err := catalog.QuoteLine(ctx, env, item.ItemID, slots, lineStaff(in.Staff), &catalog.PreviousLinePrice{Source: "manual", Staff: previousStaff}, rules)
+		assigned, _, err := catalog.QuoteLine(ctx, env, item.ItemID, staffing.slots, lineStaff(in.Staff), &catalog.PreviousLinePrice{Source: "manual", Staff: staffing.previous}, staffing.rules)
 		if err != nil {
 			return err
 		}
 		changed := false
-		for _, p := range positions {
+		for _, p := range staffing.positions {
 			if p.Required && assigned[p.Slot] == nil {
 				return ops.Rule("必填岗位还没填人")
 			}
@@ -70,8 +59,8 @@ func setPaidItemStaff(ctx context.Context, env ops.Env, in *SetPaidItemStaffInpu
 		if !changed {
 			return ops.Rule("做的人没有变化")
 		}
-		before := staffList(positions)
-		after := assignedStaffList(positions, assigned)
+		before := staffSlots(staffing.positions, staffing.previous)
+		after := staffSlots(staffing.positions, assigned)
 		beforeJSON, err := json.Marshal(before)
 		if err != nil {
 			return err
@@ -87,7 +76,7 @@ func setPaidItemStaff(ctx context.Context, env ops.Env, in *SetPaidItemStaffInpu
 		if err != nil {
 			return err
 		}
-		for _, p := range positions {
+		for _, p := range staffing.positions {
 			if !sameStaff(p.StaffID, assigned[p.Slot]) {
 				if err := env.Q.SetOrderItemStaff(ctx, dbgen.SetOrderItemStaffParams{OrderItemID: item.ID, Slot: p.Slot, StaffID: assigned[p.Slot]}); err != nil {
 					return err
@@ -98,12 +87,12 @@ func setPaidItemStaff(ctx context.Context, env ops.Env, in *SetPaidItemStaffInpu
 		if err != nil {
 			return err
 		}
-		afterLines := orderPerformanceLines(*current)
+		afterLines := performanceLines(*current)
 		beforeOrder := *current
 		beforeOrder.Items = append([]OrderItem(nil), current.Items...)
 		for i := range beforeOrder.Items {
 			if beforeOrder.Items[i].ID == item.ID {
-				beforeOrder.Items[i].Positions = positionViews(positions)
+				beforeOrder.Items[i].Positions = positionViews(staffing.positions)
 			}
 		}
 		checkoutID := uuid.UUID{}
@@ -112,8 +101,8 @@ func setPaidItemStaff(ctx context.Context, env ops.Env, in *SetPaidItemStaffInpu
 		}
 		return performance.RecordPaidItemStaffChange(ctx, env, performance.PaidItemStaffChangeInput{
 			OrderID: row.ID, OrderItemID: item.ID, StaffChangeID: change.ID, CheckoutID: checkoutID,
-			SettingsSnapshotID: row.SettingsSnapshotID, BusinessDate: today, Rules: rules,
-			BeforeLines: orderPerformanceLines(beforeOrder), AfterLines: afterLines,
+			SettingsSnapshotID: row.SettingsSnapshotID, BusinessDate: today, Rules: staffing.rules,
+			BeforeLines: performanceLines(beforeOrder), AfterLines: afterLines,
 			Designated: row.Designated, Gender: row.Gender,
 		})
 	}, env.Now, guardToday)
@@ -123,47 +112,11 @@ func setPaidItemStaff(ctx context.Context, env ops.Env, in *SetPaidItemStaffInpu
 	return &after[0], nil
 }
 
-func staffList(positions []dbgen.OrderItemPosition) []OrderItemStaffInput {
-	out := []OrderItemStaffInput{}
+// staffSlots 按项目行的全部岗位输出员工，空岗位的 StaffID 为 null。
+func staffSlots(positions []dbgen.OrderItemPosition, assigned map[int16]*uuid.UUID) []OrderStaffChangeSlot {
+	out := make([]OrderStaffChangeSlot, 0, len(positions))
 	for _, p := range positions {
-		if p.StaffID != nil {
-			out = append(out, OrderItemStaffInput{Slot: p.Slot, StaffID: *p.StaffID})
-		}
-	}
-	return out
-}
-
-func assignedStaffList(positions []dbgen.OrderItemPosition, assigned map[int16]*uuid.UUID) []OrderItemStaffInput {
-	out := []OrderItemStaffInput{}
-	for _, p := range positions {
-		if assigned[p.Slot] != nil {
-			out = append(out, OrderItemStaffInput{Slot: p.Slot, StaffID: *assigned[p.Slot]})
-		}
-	}
-	return out
-}
-
-func positionViews(positions []dbgen.OrderItemPosition) []OrderItemPosition {
-	out := make([]OrderItemPosition, len(positions))
-	for i, p := range positions {
-		out[i] = OrderItemPosition{Slot: p.Slot, PositionID: p.PositionID, Required: p.Required, StaffID: p.StaffID, SharePercent: p.SharePercent}
-	}
-	return out
-}
-
-func orderPerformanceLines(order Order) []performance.Line {
-	out := []performance.Line{}
-	for _, line := range order.Items {
-		if line.RemovedAt != nil {
-			continue
-		}
-		net, _ := line.Price.Apply(money.Amount{}.Sub(line.Discount))
-		slots := make([]performance.Slot, 0, len(line.Positions))
-		for _, p := range line.Positions {
-			slots = append(slots, performance.Slot{Slot: p.Slot, PositionID: p.PositionID, StaffID: p.StaffID, SharePercent: p.SharePercent})
-		}
-		categoryRatio := line.CategoryRatio
-		out = append(out, performance.Line{OrderItemID: line.ID, Net: net, Price: line.Price, LaborFeeAmount: line.LaborFeeAmount, LaborFeePercent: line.LaborFeePercent, CategoryRatio: &categoryRatio, Slots: slots})
+		out = append(out, OrderStaffChangeSlot{Slot: p.Slot, StaffID: assigned[p.Slot]})
 	}
 	return out
 }

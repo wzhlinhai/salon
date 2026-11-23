@@ -37,12 +37,18 @@ type Order struct {
 
 // OrderStaffChange 是一次已结账单改人，保留项目行和改前改后的岗位员工。
 type OrderStaffChange struct {
-	ID          uuid.UUID             `json:"id"`
-	At          time.Time             `json:"at"`
-	By          uuid.UUID             `json:"by" doc:"操作人"`
-	OrderItemID uuid.UUID             `json:"order_item_id"`
-	Before      []OrderItemStaffInput `json:"before" doc:"改前各岗位员工"`
-	After       []OrderItemStaffInput `json:"after" doc:"改后各岗位员工"`
+	ID          uuid.UUID              `json:"id"`
+	At          time.Time              `json:"at"`
+	By          uuid.UUID              `json:"by" doc:"操作人"`
+	OrderItemID uuid.UUID              `json:"order_item_id"`
+	Before      []OrderStaffChangeSlot `json:"before" doc:"改前各岗位员工，空岗位的员工为 null"`
+	After       []OrderStaffChangeSlot `json:"after" doc:"改后各岗位员工，空岗位的员工为 null"`
+}
+
+// OrderStaffChangeSlot 是改人历史里一个岗位的员工，空岗位的 StaffID 为 null。
+type OrderStaffChangeSlot struct {
+	Slot    int16      `json:"slot"`
+	StaffID *uuid.UUID `json:"staff_id" nullable:"true"`
 }
 
 // BookingConflict 是挂单占用与已有预约或私约占位的冲突，供前台改约或换人。
