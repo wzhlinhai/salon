@@ -2,11 +2,11 @@
 @import "@nuxt/ui";
 
 /* 视觉基准是 .dev/design/dashboard-directions 的 J（店长）/K（个人）原型和 notion.css：
-   暖灰字色和细线、Notion 低饱和标签色、蓝色主按钮、紫色 AI。 */
+   暖灰字色和细线、Notion 低饱和标签色、蓝色主按钮。AI 不另起颜色（DESIGN.md「去掉 AI 套路」）。 */
 @theme {
   --color-page: #fbfbfa;
   --color-side: #f7f7f5;
-  --color-ai-soft: #f3effb;
+  --color-ai-soft: #f1f1ef;
   --color-tag-gray: #e3e2e0;
   --color-tag-brown: #eee0da;
   --color-tag-orange: #fadec9;
@@ -35,7 +35,7 @@
   --text-meta: 13px;
   --text-lead: 15px;
   --text-greet: 26px;
-  --text-title: 30px;
+  --text-title: 24px;
   --text-title--line-height: 1.25;
   --text-hero: 40px;
 
@@ -63,7 +63,7 @@
   --chart-grid: rgba(55, 53, 47, 0.09);
   --ui-radius: 0.375rem;
   --ui-primary: #2383e2;
-  --ui-ai: #7b55c7;
+  --ui-ai: #37352f;
   --ui-success: #448361;
   --ui-error: #d44c47;
   --ui-warning: #cb912f;
@@ -94,6 +94,12 @@ body {
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
   padding: 14px 16px;
+}
+
+/* 指标条：不包卡片，上下各一条细线，数字直接放在页面上。 */
+@utility stats {
+  border-block: 1px solid var(--color-line);
+  padding: 14px 0;
 }
 
 /* 列表页顶上的筛选块（照 Stripe）：白底细线，选中的描蓝边。 */

@@ -2,7 +2,7 @@
 import type { DropdownMenuItem, TableRow } from '@nuxt/ui'
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'staff.manage', title: '员工', description: '员工的档案、岗位、角色和登录账号。' })
+definePageMeta({ permission: 'staff.manage', title: '员工' })
 
 type Staff = components['schemas']['Staff']
 const api = useApi()
@@ -252,7 +252,7 @@ async function setActive(s: Staff, active: boolean) {
       <UTable :data="shown" :columns="columns" :loading="loading" :aria-busy="loading" :ui="{ tr: 'group/row' }" @select="selectRow">
         <template #who-cell="{ row }">
           <div class="flex items-center gap-2.5" :class="row.original.active ? '' : 'opacity-60'">
-            <StaffAvatar :id="row.original.id" :name="row.original.name" />
+            <StaffAvatar :name="row.original.name" />
             <div class="min-w-0">
               <div class="flex items-center gap-1.5">
                 <span class="font-medium" data-staff-name>{{ row.original.name }}</span>

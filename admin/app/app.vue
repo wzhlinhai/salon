@@ -176,8 +176,7 @@ const searchGroups = computed(() => {
       ignoreFilter: true,
       items: [{
         label: `吩咐 AI：${said}`,
-        icon: 'i-lucide-sparkles',
-        ui: { itemLeadingIcon: 'text-ai!' },
+        icon: 'i-lucide-corner-down-left',
         onSelect: () => {
           searchOpen.value = false
           searchTerm.value = ''
@@ -221,7 +220,7 @@ const searchGroups = computed(() => {
             data-testid="search-button"
             @click="searchOpen = true"
           >
-            <UIcon name="i-lucide-sparkles" class="side-icon" aria-hidden="true" />
+            <UIcon name="i-lucide-search" class="side-icon" aria-hidden="true" />
             <template v-if="!collapsed">
               <span class="truncate">搜索或吩咐 AI</span>
               <kbd class="ms-auto font-mono text-2xs text-dimmed">Ctrl K</kbd>
@@ -347,10 +346,7 @@ const searchGroups = computed(() => {
         <template #body>
           <div :class="pageWidth">
             <header v-if="showPageHeader" class="mt-2 mb-[18px]" data-testid="page-header">
-              <div class="flex items-center gap-2.5">
-                <UIcon v-if="pageIcon" :name="pageIcon" class="size-[26px] shrink-0 text-muted" aria-hidden="true" />
-                <h1 class="text-title font-bold tracking-tight text-balance">{{ pageTitle }}</h1>
-              </div>
+              <h1 class="text-title font-semibold text-balance">{{ pageTitle }}</h1>
               <p id="page-description" class="mt-1 text-muted text-pretty empty:hidden" data-testid="page-description"><span v-if="pageDescription">{{ pageDescription }}</span></p>
             </header>
             <h1 v-else-if="route.meta.workbench" class="sr-only">{{ pageTitle }}</h1>

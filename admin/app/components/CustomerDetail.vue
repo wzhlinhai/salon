@@ -416,7 +416,7 @@ onBeforeUnmount(() => {
       <div v-if="customer" class="sm:grid sm:h-full sm:grid-cols-[15rem_minmax(0,1fr)]">
         <aside class="side-scroll border-b border-default p-5 sm:overflow-y-auto sm:border-e sm:border-b-0" data-testid="customer-rail">
           <div class="flex flex-col items-center text-center">
-            <span class="grid size-16 place-items-center rounded-full text-2xl font-semibold" :class="customerTone(customer.id)" aria-hidden="true">{{ customerName(customer).slice(0, 1) }}</span>
+            <span class="grid size-16 place-items-center rounded-full bg-tag-gray text-2xl font-semibold" aria-hidden="true">{{ customerName(customer).slice(0, 1) }}</span>
             <h2 class="mt-3 text-lg font-semibold">{{ customerName(customer) }}</h2>
             <p class="text-sm text-muted tabular-nums">{{ customer.phone || '没留手机号' }}</p>
             <div v-if="!customer.merged_into && (can('customer.edit') || moreItems.length)" class="mt-4 flex gap-2">

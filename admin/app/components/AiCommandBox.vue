@@ -27,7 +27,7 @@ function submit(event: KeyboardEvent) {
     class="mx-auto w-full max-w-[720px] rounded-panel bg-white py-3 pr-3 pl-4 shadow-float focus-within:ring-2 focus-within:ring-primary"
   >
     <div class="flex min-h-10 items-center gap-2.5">
-      <span class="text-lg text-ai" aria-hidden="true">✦</span>
+      <UIcon name="i-lucide-search" class="size-5 shrink-0 text-dimmed" aria-hidden="true" />
       <input
         v-model="text"
         :maxlength="MAX_MESSAGE"
@@ -64,7 +64,7 @@ function submit(event: KeyboardEvent) {
     v-else
     class="mt-3.5 flex items-center gap-2 rounded-lane bg-white py-1.5 pr-1.5 pl-3.5 shadow-line focus-within:ring-2 focus-within:ring-primary"
   >
-    <span class="text-ai" aria-hidden="true">✦</span>
+    <UIcon name="i-lucide-search" class="size-4 shrink-0 text-dimmed" aria-hidden="true" />
     <input
       v-model="text"
       :maxlength="MAX_MESSAGE"

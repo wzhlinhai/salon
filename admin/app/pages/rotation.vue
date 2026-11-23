@@ -501,7 +501,7 @@ function statusText(t: Turn) {
 
       <template v-else-if="rotation">
         <section>
-          <div class="sec"><UIcon name="i-lucide-list-ordered" class="size-4 shrink-0" aria-hidden="true" /> 在岗 <span class="font-normal text-dimmed">{{ onDuty.length }}</span></div>
+          <div class="sec">在岗 <span class="font-normal text-dimmed">{{ onDuty.length }}</span></div>
           <ol v-if="onDuty.length" class="border-y border-default divide-y divide-default" data-testid="on-duty">
             <li
               v-for="(t, i) in onDuty"
@@ -511,7 +511,7 @@ function statusText(t: Turn) {
               :data-status="t.status"
             >
               <span class="w-6 text-end text-meta text-dimmed tabular-nums">{{ i + 1 }}</span>
-              <StaffAvatar :id="t.staff.id" :name="t.staff.name" />
+              <StaffAvatar :name="t.staff.name" />
               <div class="min-w-0 flex-1">
                 <span class="font-medium">{{ who(t.staff) }}</span>
                 <span v-if="t === nextUp" class="tag ms-2 bg-tag-blue">下一位</span>
@@ -543,11 +543,11 @@ function statusText(t: Turn) {
         </section>
 
         <section v-if="offDuty.length">
-          <div class="sec"><UIcon name="i-lucide-moon" class="size-4 shrink-0" aria-hidden="true" /> 未到岗 <span class="font-normal text-dimmed">{{ offDuty.length }}</span></div>
+          <div class="sec">未到岗 <span class="font-normal text-dimmed">{{ offDuty.length }}</span></div>
           <ul class="border-y border-default divide-y divide-default" data-testid="off-duty">
             <li v-for="s in offDuty" :key="s.id" class="flex items-center gap-3 px-3 py-2 hover:bg-hover" :data-staff="s.name">
               <span class="w-6" aria-hidden="true" />
-              <StaffAvatar :id="s.id" :name="s.name" />
+              <StaffAvatar :name="s.name" />
               <span class="min-w-0 flex-1 text-muted">{{ who(s) }}</span>
               <UButton v-if="canOperate" size="sm" color="neutral" variant="outline" :disabled="busy" @click="join(s)">到岗</UButton>
               <span v-if="canOperate" class="w-8 shrink-0" aria-hidden="true" />
@@ -560,7 +560,7 @@ function statusText(t: Turn) {
         </EmptyState>
 
         <section>
-          <div class="sec"><UIcon name="i-lucide-history" class="size-4 shrink-0" aria-hidden="true" /> 今日记录</div>
+          <div class="sec">今日记录</div>
           <ul v-if="events.length" class="space-y-1.5" data-testid="rotation-events">
             <li v-for="e in shownEvents" :key="e.id" class="flex gap-3 text-meta">
               <span class="w-11 shrink-0 text-dimmed tabular-nums">{{ formatAttendanceTime(e.created_at) }}</span>

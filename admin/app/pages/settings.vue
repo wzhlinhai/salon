@@ -44,19 +44,19 @@ function show(setting: Setting | undefined, value: unknown): string {
 const settingOf = (key: string) => settings.value.find(s => s.key === key)
 
 // 设置页分组（DESIGN.md 设置页）：按键名归到几组，组内保持后端目录的顺序；认不出的放最后"其他"。
-const SETTING_GROUPS: { label: string, icon: string, match: (key: string) => boolean }[] = [
-  { label: '营业', icon: 'i-lucide-store', match: k => ['business_hours', 'business_day_end', 'backfill_max_days', 'attendance_grace_minutes', 'draft_dual_confirm'].includes(k) },
-  { label: '预约', icon: 'i-lucide-calendar', match: k => k.startsWith('booking_') },
-  { label: '轮牌', icon: 'i-lucide-list-ordered', match: k => k.startsWith('rotation_') },
-  { label: '收银与卡', icon: 'i-lucide-receipt', match: k => k.startsWith('card_') || k.startsWith('collection_channel_') || ['member_price_rule', 'others_card_payment', 'points_per_recharge_yuan', 'void_window_minutes'].includes(k) },
-  { label: '售后', icon: 'i-lucide-undo-2', match: k => k.startsWith('aftersale_') },
-  { label: '业绩与提成', icon: 'i-lucide-trending-up', match: k => k.startsWith('performance_') || ['guest_count_split', 'commission_split'].includes(k) },
-  { label: '小票', icon: 'i-lucide-printer', match: k => k.startsWith('receipt_') }
+const SETTING_GROUPS: { label: string, match: (key: string) => boolean }[] = [
+  { label: '营业', match: k => ['business_hours', 'business_day_end', 'backfill_max_days', 'attendance_grace_minutes', 'draft_dual_confirm'].includes(k) },
+  { label: '预约', match: k => k.startsWith('booking_') },
+  { label: '轮牌', match: k => k.startsWith('rotation_') },
+  { label: '收银与卡', match: k => k.startsWith('card_') || k.startsWith('collection_channel_') || ['member_price_rule', 'others_card_payment', 'points_per_recharge_yuan', 'void_window_minutes'].includes(k) },
+  { label: '售后', match: k => k.startsWith('aftersale_') },
+  { label: '业绩与提成', match: k => k.startsWith('performance_') || ['guest_count_split', 'commission_split'].includes(k) },
+  { label: '小票', match: k => k.startsWith('receipt_') }
 ]
 
 const settingGroups = computed(() => {
-  const groups = [...SETTING_GROUPS, { label: '其他', icon: 'i-lucide-ellipsis', match: () => true }]
-    .map(g => ({ label: g.label, icon: g.icon, match: g.match, items: [] as Setting[] }))
+  const groups = [...SETTING_GROUPS, { label: '其他', match: () => true }]
+    .map(g => ({ label: g.label, match: g.match, items: [] as Setting[] }))
   for (const setting of settings.value) groups.find(g => g.match(setting.key))!.items.push(setting)
   return groups.filter(g => g.items.length)
 })
@@ -148,7 +148,7 @@ onMounted(loadSources)
     <PageDescriptionTail v-if="today">今天是营业日 {{ today }}。</PageDescriptionTail>
 
     <section v-for="group in settingGroups" :key="group.label" :data-setting-group="group.label">
-      <div class="sec"><UIcon :name="group.icon" class="size-4" aria-hidden="true" />{{ group.label }}</div>
+      <div class="sec">{{ group.label }}</div>
       <div class="box overflow-hidden p-0">
         <div
           v-for="s in group.items"

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'role.manage', title: '角色与权限', description: '每个角色能看什么、能做什么。一个员工可以有几个角色。' })
+definePageMeta({ permission: 'role.manage', title: '角色与权限', description: '一个员工可以有几个角色，能做的事是这几个角色的合并。' })
 
 type Role = components['schemas']['Role']
 type Def = components['schemas']['Def']

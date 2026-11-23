@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'settings.manage', title: '卡类型', description: '储值卡、次卡的面额、赠送和折扣。' })
+definePageMeta({ permission: 'settings.manage', title: '卡类型' })
 type CardType = components['schemas']['CardType']
 const api = useApi()
 const toast = useToast()

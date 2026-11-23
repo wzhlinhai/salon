@@ -42,10 +42,7 @@ watch(() => [entries.value.length, sending.value], async () => {
     @after:enter="focusInput"
   >
     <template #title>
-      <span class="flex items-center gap-1.5">
-        <UIcon name="i-lucide-sparkles" class="size-4 text-ai" />
-        吩咐 AI
-      </span>
+      吩咐 AI
     </template>
     <template #description>
       <span class="text-xs text-muted">AI 只起草，确认后才会生效</span>

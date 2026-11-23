@@ -89,7 +89,7 @@ async function saveReject() {
 <template>
   <article data-testid="draft-card" :data-draft-id="current.id" class="box flex flex-col gap-1.5">
     <header class="flex items-center gap-1.5 text-xs text-dimmed">
-      <span class="tag shrink-0 gap-[3px] bg-ai-soft text-ai">✦ AI 起草</span>
+      <span class="tag shrink-0 bg-ai-soft text-ai">AI 起草</span>
       <span class="min-w-0 truncate"><span data-testid="draft-initiator">{{ staffName(current.initiator) }}</span>说 · <span class="tabular-nums">{{ formatStamp(props.draft.created_at) }}</span></span>
       <span v-if="!isPending" class="tag ms-auto shrink-0" :class="statusBadge.tone">{{ statusBadge.label }}</span>
     </header>

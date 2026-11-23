@@ -75,7 +75,7 @@ const menuItems = computed(() => {
       :class="collapsed ? 'justify-center px-0' : ''"
       :aria-label="me?.staff.name || '个人菜单'"
     >
-      <span class="grid size-[26px] shrink-0 place-items-center rounded-full bg-tag-orange text-xs font-semibold" aria-hidden="true">{{ me?.staff.name.slice(0, 1) }}</span>
+      <span class="grid size-[26px] shrink-0 place-items-center rounded-full bg-tag-gray text-xs font-semibold" aria-hidden="true">{{ me?.staff.name.slice(0, 1) }}</span>
       <span v-if="!collapsed" class="min-w-0 leading-tight">
         <span class="block truncate">{{ me?.staff.name }}</span>
         <small v-if="roleLine" class="block truncate text-xs text-dimmed">{{ roleLine }}</small>
