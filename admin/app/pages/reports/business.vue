@@ -179,24 +179,24 @@ function cell(value: string | number) {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in rows" :key="row.period" class="border-t border-default" :data-period="row.period">
+              <tr v-for="row in rows" :key="row.period" class="row-hover border-t border-default" :data-period="row.period">
                 <th scope="row" class="sticky left-0 bg-page px-3 py-2 text-left font-normal whitespace-nowrap">
                   {{ row.period }}<span v-if="report.granularity === 'day'" class="ms-1.5 text-xs text-dimmed">{{ weekdayOf(row.period) }}</span>
                 </th>
-                <td class="px-3 text-right font-medium whitespace-nowrap" :class="cell(row.service_revenue)" data-col="service_revenue">{{ yuanFixed(row.service_revenue) }}</td>
-                <td class="px-3 text-right whitespace-nowrap" :class="cell(row.sales_revenue)" data-col="sales_revenue">{{ yuanFixed(row.sales_revenue) }}</td>
-                <td v-for="(c, i) in onSiteColumns" :key="c.method" class="px-3 text-right whitespace-nowrap" :class="[cell(methodAmount(row.on_site, c.method)), !i && 'border-l border-default']" :data-col="c.method">{{ yuanFixed(methodAmount(row.on_site, c.method)) }}</td>
-                <td v-for="(c, i) in nonSiteColumns" :key="c.method" class="px-3 text-right whitespace-nowrap" :class="[cell(methodAmount(row.non_site, c.method)), !i && 'border-l border-default']" :data-col="c.method">{{ yuanFixed(methodAmount(row.non_site, c.method)) }}</td>
-                <td class="border-l border-default px-3 text-right whitespace-nowrap" :class="cell(row.debt_repayment)" data-col="debt_repayment">{{ yuanFixed(row.debt_repayment) }}</td>
-                <td class="px-3 text-right whitespace-nowrap" :class="cell(row.aftersale_refund)" data-col="aftersale_refund">{{ yuanFixed(row.aftersale_refund) }}</td>
-                <td class="px-3 text-right" :class="cell(row.guest_total)" data-col="guest_total">{{ formatGuest(row.guest_total) }}</td>
-                <td class="px-3 text-right" :class="cell(row.checkout_count)" data-col="checkout_count">{{ row.checkout_count }}</td>
-                <td class="px-3 text-right" :class="cell(row.void_count)" data-col="void_count">{{ row.void_count }}</td>
+                <td class="px-3 text-right font-medium whitespace-nowrap" :class="cell(row.service_revenue)" data-col="service_revenue">{{ yuanCell(row.service_revenue) }}</td>
+                <td class="px-3 text-right whitespace-nowrap" :class="cell(row.sales_revenue)" data-col="sales_revenue">{{ yuanCell(row.sales_revenue) }}</td>
+                <td v-for="(c, i) in onSiteColumns" :key="c.method" class="px-3 text-right whitespace-nowrap" :class="[cell(methodAmount(row.on_site, c.method)), !i && 'border-l border-default']" :data-col="c.method">{{ yuanCell(methodAmount(row.on_site, c.method)) }}</td>
+                <td v-for="(c, i) in nonSiteColumns" :key="c.method" class="px-3 text-right whitespace-nowrap" :class="[cell(methodAmount(row.non_site, c.method)), !i && 'border-l border-default']" :data-col="c.method">{{ yuanCell(methodAmount(row.non_site, c.method)) }}</td>
+                <td class="border-l border-default px-3 text-right whitespace-nowrap" :class="cell(row.debt_repayment)" data-col="debt_repayment">{{ yuanCell(row.debt_repayment) }}</td>
+                <td class="px-3 text-right whitespace-nowrap" :class="cell(row.aftersale_refund)" data-col="aftersale_refund">{{ yuanCell(row.aftersale_refund) }}</td>
+                <td class="px-3 text-right" :class="cell(row.guest_total)" data-col="guest_total">{{ zeroText(row.guest_total) ? '–' : formatGuest(row.guest_total) }}</td>
+                <td class="px-3 text-right" :class="cell(row.checkout_count)" data-col="checkout_count">{{ row.checkout_count || '–' }}</td>
+                <td class="px-3 text-right" :class="cell(row.void_count)" data-col="void_count">{{ row.void_count || '–' }}</td>
               </tr>
             </tbody>
             <tfoot class="font-semibold">
-              <tr class="border-y border-default" data-testid="business-totals">
-                <th scope="row" class="sticky left-0 bg-page px-3 py-2 text-left">合计</th>
+              <tr class="border-y border-default bg-side" data-testid="business-totals">
+                <th scope="row" class="sticky left-0 bg-side px-3 py-2 text-left">合计</th>
                 <td class="px-3 text-right whitespace-nowrap" data-col="service_revenue">{{ yuanFixed(report.totals.service_revenue) }}</td>
                 <td class="px-3 text-right whitespace-nowrap" data-col="sales_revenue">{{ yuanFixed(report.totals.sales_revenue) }}</td>
                 <td v-for="(c, i) in onSiteColumns" :key="c.method" class="px-3 text-right whitespace-nowrap" :class="!i && 'border-l border-default'" :data-col="c.method">{{ yuanFixed(methodAmount(report.totals.on_site, c.method)) }}</td>

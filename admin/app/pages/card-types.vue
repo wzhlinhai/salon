@@ -140,7 +140,7 @@ async function saveRule() {
       <div v-if="items.length" class="sec mt-0!"><span class="font-normal text-dimmed">{{ items.length }} 种</span></div>
       <div class="overflow-x-auto">
         <ListSkeleton v-if="loading && !items.length" :rows="3" />
-        <EmptyState v-else-if="!items.length" title="还没有卡类型" hint="点右上角新建储值卡、次卡或套餐" />
+        <EmptyState v-else-if="!items.length" art="card" title="还没有卡类型" hint="点右上角新建储值卡、次卡或套餐" />
         <div
           v-for="item in items"
           :key="item.id"

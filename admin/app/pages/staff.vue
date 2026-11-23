@@ -285,7 +285,7 @@ async function setActive(s: Staff, active: boolean) {
           <ListSkeleton />
         </template>
         <template #empty>
-          <EmptyState v-if="!staff.length" title="还没有员工" hint="点右上角新建员工，再开登录账号和角色" />
+          <EmptyState v-if="!staff.length" art="chair" title="还没有员工" hint="点右上角新建员工，再开登录账号和角色" />
           <EmptyState v-else :title="search.trim() ? '没有找到这位员工' : filter.empty" :hint="search.trim() ? '换个姓名或编号试试' : undefined" />
         </template>
       </UTable>

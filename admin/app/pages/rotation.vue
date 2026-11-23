@@ -471,7 +471,7 @@ function statusText(t: Turn) {
       <UButton color="neutral" variant="outline" icon="i-lucide-refresh-cw" @click="loadQueues">重试</UButton>
     </EmptyState>
 
-    <EmptyState v-else-if="!activeQueues.length" icon="i-lucide-list-ordered" title="还没有轮牌队列" hint="先建一个队列，例如「剪发牌」，再选参加的员工和默认顺序">
+    <EmptyState v-else-if="!activeQueues.length" art="chair" title="还没有轮牌队列" hint="先建一个队列，例如「剪发牌」，再选参加的员工和默认顺序">
       <UButton v-if="canOperate" icon="i-lucide-plus" @click="askName(null)">新建队列</UButton>
     </EmptyState>
 
@@ -555,7 +555,7 @@ function statusText(t: Turn) {
           </ul>
         </section>
 
-        <EmptyState v-if="!onDuty.length && !offDuty.length" icon="i-lucide-users" title="这个队列还没有成员" hint="选好参加的员工和默认顺序后，员工到店就能上牌">
+        <EmptyState v-if="!onDuty.length && !offDuty.length" art="chair" title="这个队列还没有成员" hint="选好参加的员工和默认顺序后，员工到店就能上牌">
           <UButton v-if="canOperate && queue" icon="i-lucide-users" @click="members?.start(queue)">选成员</UButton>
         </EmptyState>
 

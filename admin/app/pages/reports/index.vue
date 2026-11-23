@@ -56,6 +56,6 @@ onMounted(() => {
         <span class="mt-auto text-meta text-muted text-pretty">{{ r.description }}</span>
       </NuxtLink>
     </div>
-    <EmptyState v-else title="没有可看的报表" hint="看报表要相应的权限，找老板开通" />
+    <EmptyState v-else art="chart" title="没有可看的报表" hint="看报表要相应的权限，找老板开通" />
   </div>
 </template>

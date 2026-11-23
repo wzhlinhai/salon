@@ -143,7 +143,7 @@ const groups = computed(() => {
       <UButton size="sm" icon="i-lucide-plus" @click="openEditor(null)">新建项目</UButton>
     </PageActions>
     <ListSkeleton v-if="loading && !items.length" />
-    <EmptyState v-else-if="!items.length" title="还没有项目" hint="点右上角新建项目，填上价格和服务时长，开单和预约就能选它" />
+    <EmptyState v-else-if="!items.length" art="scissors" title="还没有项目" hint="点右上角新建项目，填上价格和服务时长，开单和预约就能选它" />
     <section v-for="group in groups" :key="group.key" :data-category="group.name">
       <div class="sec"><span class="size-2.5 rounded-sm" :class="group.items[0] ? toneOf(group.items[0].id) : 'bg-tag-gray'" aria-hidden="true" />{{ group.name }}<span class="ms-2 font-normal text-dimmed">{{ group.items.length }}</span></div>
       <div class="overflow-x-auto">

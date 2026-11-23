@@ -300,7 +300,7 @@ onMounted(async () => {
           <template #early_count-cell="{ row }"><span class="text-ink-orange"><template v-if="row.original.early_count">{{ row.original.early_count }} 次 / {{ row.original.early_minutes }} 分钟</template></span></template>
           <template #missing_count-cell="{ row }"><span class="text-ink-red"><template v-if="row.original.missing_count">{{ row.original.missing_count }} 次</template></span></template>
           <template #approved_count-cell="{ row }"><span><template v-if="row.original.approved_count">{{ row.original.approved_count }} 次</template></span></template>
-          <template #empty><EmptyState v-if="!summaryLoading" title="本月还没有考勤记录" hint="员工在小程序上打卡后，这里按人汇总" /></template>
+          <template #empty><EmptyState v-if="!summaryLoading" art="calendar" title="本月还没有考勤记录" hint="员工在小程序上打卡后，这里按人汇总" /></template>
           <template #loading>
             <ListSkeleton />
           </template>

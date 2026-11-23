@@ -84,7 +84,7 @@ async function save() {
     <p class="text-sm text-muted">平台购买价用于和平台月结账对账；门店标价取所对应项目的标准价。平台创建后不能修改。</p>
     <div class="overflow-x-auto">
       <ListSkeleton v-if="loading && !deals.length" :rows="3" />
-      <EmptyState v-else-if="!deals.length" title="还没有团购商品" hint="把美团、抖音上卖的团购商品录进来，核销和月底对账才对得上" />
+      <EmptyState v-else-if="!deals.length" art="receipt" title="还没有团购商品" hint="把美团、抖音上卖的团购商品录进来，核销和月底对账才对得上" />
       <div
         v-for="deal in deals"
         :key="deal.id"
