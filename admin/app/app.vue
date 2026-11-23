@@ -12,7 +12,7 @@ const sidebarCollapsed = ref(false)
 const pageTitle = computed(() => String(route.meta.title || '首页'))
 
 const { pending: pendingDrafts, load: loadDrafts, reset: resetDrafts } = useDrafts()
-const { ask: askAi, reset: resetAi } = useAiChat()
+const { ask: askAi, reset: resetAi, open: aiOpen } = useAiChat()
 
 const visibleNav = computed(() => navItems.filter(item => !item.permission || can(item.permission)))
 
@@ -70,7 +70,11 @@ function isActive(to: string) {
 
 // 页面骨架（DESIGN.md）：首页有自己的问候，其余页面正文顶上统一一个大标题；宽度按页面元数据分两档。
 const showPageHeader = computed(() => route.path !== '/' && !route.meta.workbench)
-const pageWidth = computed(() => route.meta.width === 'narrow' ? 'mx-auto w-full max-w-[800px]' : 'w-full')
+// 底部留出右下角 AI 按钮的位置，页面滚到底时最后一行不被压住；工作台页（预约）自己管高度，不留。
+const pageWidth = computed(() => [
+  route.meta.width === 'narrow' ? 'mx-auto w-full max-w-[800px]' : 'w-full',
+  route.meta.workbench ? '' : 'pb-16'
+])
 const pageDescription = computed(() => String(route.meta.description || ''))
 
 const pageIcon = computed(() => {
@@ -200,7 +204,7 @@ const searchGroups = computed(() => {
 <template>
   <UApp :locale="zh_cn" :toaster="{ position: 'bottom-right' }">
     <NuxtPage v-if="isLogin" />
-    <!-- 外壳照原型 J：暖灰侧栏（门店名、搜索或吩咐 AI、待确认、分组导航、本人），一行顶栏（面包屑、首页切换）。 -->
+    <!-- 外壳照原型 J：暖灰侧栏（门店名、搜索、待确认、分组导航、本人），一行顶栏（面包屑、首页切换）。 -->
     <UDashboardGroup v-else unit="rem" storage-key="salon-dashboard">
       <UDashboardSidebar
         v-model:collapsed="sidebarCollapsed"
@@ -224,13 +228,13 @@ const searchGroups = computed(() => {
             type="button"
             class="side-item text-default"
             :class="collapsed ? 'justify-center' : ''"
-            :aria-label="collapsed ? '搜索或吩咐 AI' : undefined"
+            :aria-label="collapsed ? '搜索' : undefined"
             data-testid="search-button"
             @click="searchOpen = true"
           >
             <UIcon name="i-lucide-search" class="side-icon" aria-hidden="true" />
             <template v-if="!collapsed">
-              <span class="truncate">搜索或吩咐 AI</span>
+              <span class="truncate">搜索</span>
               <kbd class="ms-auto font-mono text-2xs text-dimmed">Ctrl K</kbd>
             </template>
           </button>
@@ -372,12 +376,24 @@ const searchGroups = computed(() => {
         v-model:search-term="searchTerm"
         :groups="searchGroups"
         :color-mode="false"
-        title="搜索或吩咐 AI"
-        placeholder="说一句要做的事，或搜索顾客、页面…"
+        title="搜索"
+        placeholder="搜索顾客、页面，或说一句话交给 AI…"
         :ui="{ label: 'font-medium text-muted' }"
       />
 
       <AiPanel />
+      <!-- 吩咐 AI 的常驻入口（照 Notion 右下角的 AI 按钮）：每一页都在，面板打开时收起。 -->
+      <button
+        v-if="!aiOpen"
+        type="button"
+        aria-label="吩咐 AI"
+        title="吩咐 AI"
+        data-testid="ai-fab"
+        class="fixed right-5 bottom-5 z-40 grid size-12 place-items-center rounded-full bg-white text-sm font-semibold text-default shadow-float transition-colors hover:bg-side"
+        @click="aiOpen = true"
+      >
+        AI
+      </button>
     </UDashboardGroup>
   </UApp>
 </template>

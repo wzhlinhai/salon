@@ -9,9 +9,9 @@ const shown = computed(() => props.drafts.slice(0, 5))
 <template>
   <ul class="-mx-1">
     <li v-for="draft in shown" :key="draft.id">
-      <NuxtLink to="/drafts" class="flex min-h-8 items-center gap-2 rounded-md px-1 text-sm hover:bg-hover">
+      <NuxtLink to="/drafts" class="flex min-h-9 items-center gap-2.5 rounded-md px-1 hover:bg-hover">
         <UIcon name="i-lucide-pencil" class="size-4 shrink-0 text-dimmed" aria-hidden="true" />
-        <span class="min-w-0 flex-1 truncate">{{ draft.summary }}</span>
+        <span class="min-w-0 flex-1 truncate text-lead font-medium">{{ draft.summary }}</span>
         <span class="shrink-0 text-meta text-dimmed tabular-nums">{{ formatStamp(draft.created_at) }}</span>
         <span class="tag shrink-0 bg-tag-yellow">{{ status }}</span>
       </NuxtLink>

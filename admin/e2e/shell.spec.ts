@@ -14,9 +14,9 @@ test('侧栏每项都有图标、不请求 Iconify，折叠后仍可用', async 
   await expect(navLinks.first().locator('.side-icon')).toBeVisible()
   await expect.poll(() => navLinks.evaluateAll(links => links.every(link => !!link.querySelector('svg.side-icon :is(path, circle, rect, line, polyline)')))).toBe(true)
 
-  const search = page.getByRole('button', { name: /搜索/ })
-  await expect(search).toContainText('搜索或吩咐 AI')
-  const label = search.getByText('搜索或吩咐 AI', { exact: true })
+  const search = page.getByTestId('search-button')
+  await expect(search).toContainText('搜索')
+  const label = search.getByText('搜索', { exact: true })
   expect(await label.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
 
   await page.getByTestId('sidebar-collapse').click()
