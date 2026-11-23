@@ -13,7 +13,7 @@ async function seed() {
 test('发放卖和送的红包、两名业绩归属人、撤回原因', async ({ page }) => {
   const { customer, staff, second } = await seed()
   await login(page, owner.account, owner.password)
-  await page.goto(`/customers?id=${customer.id}`)
+  await page.goto(`/customers?id=${customer.id}&tab=red-packets`)
   const section = page.getByTestId('red-packets')
   await section.getByRole('button', { name: '发放红包', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '发放红包', exact: true })
@@ -55,7 +55,7 @@ test('无红包发放和撤回权限隐藏按钮', async ({ page }) => {
   await api(token, 'issue_red_packet', { customer_id: customer.id, kind: 'gift', face_value: '25.00', expires_on: '2999-01-01', payments: [] })
   const stylist = await hire('发型师')
   await login(page, stylist.account, stylist.password)
-  await page.goto(`/customers?id=${customer.id}`)
+  await page.goto(`/customers?id=${customer.id}&tab=red-packets`)
   const section = page.getByTestId('red-packets')
   await expect(section).toContainText('面额 ¥25.00')
   await expect(section.getByRole('button', { name: '发放红包', exact: true })).toHaveCount(0)
@@ -86,17 +86,17 @@ test('切换顾客丢弃迟到的红包列表并支持切回同一顾客', async
   })
   try {
     await login(page, owner.account, owner.password)
-    await page.goto(`/customers?id=${a.id}`)
+    await page.goto(`/customers?id=${a.id}&tab=red-packets`)
     await pending
     await page.evaluate((id) => {
-      window.history.pushState({}, '', `/customers?id=${id}`)
+      window.history.pushState({}, '', `/customers?id=${id}&tab=red-packets`)
       window.dispatchEvent(new PopStateEvent('popstate'))
     }, b.id)
     const section = page.getByTestId('red-packets')
     await expect(section).toContainText('暂无红包')
     await api(token, 'revoke_red_packet', { red_packet_id: packet.id, reason: '切回前撤回' })
     await page.evaluate((id) => {
-      window.history.pushState({}, '', `/customers?id=${id}`)
+      window.history.pushState({}, '', `/customers?id=${id}&tab=red-packets`)
       window.dispatchEvent(new PopStateEvent('popstate'))
     }, a.id)
     await expect(section).toContainText('切回前撤回')
@@ -134,7 +134,7 @@ test('同一顾客发放刷新丢弃首次迟到的红包列表', async ({ page 
   })
   try {
     await login(page, owner.account, owner.password)
-    await page.goto(`/customers?id=${customer.id}`)
+    await page.goto(`/customers?id=${customer.id}&tab=red-packets`)
     await pending
     const section = page.getByTestId('red-packets')
     await section.getByRole('button', { name: '发放红包', exact: true }).click()
@@ -179,7 +179,7 @@ for (const action of ['issue', 'revoke'] as const) {
     })
     try {
       await login(page, owner.account, owner.password)
-      await page.goto(`/customers?id=${customer.id}`)
+      await page.goto(`/customers?id=${customer.id}&tab=red-packets`)
       const section = page.getByTestId('red-packets')
       const dialog = page.getByRole('dialog', { name: action === 'issue' ? '发放红包' : '撤回红包', exact: true })
       if (action === 'issue') {
@@ -227,7 +227,7 @@ for (const action of ['issue', 'revoke'] as const) {
       } else await route.continue()
     })
     await login(page, owner.account, owner.password)
-    await page.goto(`/customers?id=${customer.id}`)
+    await page.goto(`/customers?id=${customer.id}&tab=red-packets`)
     const section = page.getByTestId('red-packets')
     const dialog = page.getByRole('dialog', { name: action === 'issue' ? '发放红包' : '撤回红包', exact: true })
     if (action === 'issue') {

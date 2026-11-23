@@ -681,7 +681,7 @@ test('未识别顾客没有挂账；挂账结账后在顾客详情收还款', as
   await page.getByRole('button', { name: '结账', exact: true }).click()
   await expect(page.locator(`[data-order-id="${order.id}"]`)).toHaveCount(0)
 
-  await page.goto(`/customers?id=${customer.id}`)
+  await page.goto(`/customers?id=${customer.id}&tab=debts`)
   const debts = page.getByTestId('debts')
   await expect(debts).toContainText('未还 ¥88.00')
   await debts.getByRole('button', { name: '收还款' }).click()

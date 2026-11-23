@@ -34,7 +34,7 @@ test('充值成功后即使弹窗已关闭也刷新余额', async ({ page }) => 
   const type = await api(token, 'create_card_type', { name: `刷新卡${suffix}`, kind: 'stored_value', validity_kind: 'none' })
   const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: type.id, principal: '100.00', bonus: '0.00', sales_staff_ids: [staff.id], payments: cash('100.00') })
   await login(page, owner.account, owner.password)
-  await page.goto(`/customers?id=${customer.id}`)
+  await page.goto(`/customers?id=${customer.id}&tab=cards`)
   const shown = page.locator(`[data-card="${card.id}"]`)
   await expect(shown).toContainText('本金 ¥100.00')
   let release!: () => void
@@ -70,7 +70,7 @@ test('调整成功后即使弹窗已关闭也刷新余额', async ({ page }) => 
   const type = await api(token, 'create_card_type', { name: `调整刷新卡${suffix}`, kind: 'stored_value', validity_kind: 'none' })
   const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: type.id, principal: '100.00', bonus: '0.00', sales_staff_ids: [staff.id], payments: cash('100.00') })
   await login(page, owner.account, owner.password)
-  await page.goto(`/customers?id=${customer.id}`)
+  await page.goto(`/customers?id=${customer.id}&tab=cards`)
   const shown = page.locator(`[data-card="${card.id}"]`)
   await expect(shown).toContainText('本金 ¥100.00')
   const blocked = await blockRoute(page, '**/api/ops/adjust_card')
@@ -92,7 +92,7 @@ test('升级成功后即使弹窗已关闭也刷新卡类型', async ({ page }) 
   const target = await api(token, 'create_card_type', { name: `升级目标${suffix}`, kind: 'stored_value', validity_kind: 'none' })
   const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: source.id, principal: '100.00', bonus: '0.00', sales_staff_ids: [staff.id], payments: cash('100.00') })
   await login(page, owner.account, owner.password)
-  await page.goto(`/customers?id=${customer.id}`)
+  await page.goto(`/customers?id=${customer.id}&tab=cards`)
   const shown = page.locator(`[data-card="${card.id}"]`)
   await expect(shown).toContainText(source.name)
   const blocked = await blockRoute(page, '**/api/ops/upgrade_card')
@@ -119,7 +119,7 @@ test('转余额成功后即使弹窗已关闭也刷新两张卡', async ({ page 
   const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: type.id, principal: '100.00', bonus: '0.00', sales_staff_ids: [staff.id], payments: cash('100.00') })
   const second = await api(token, 'open_card', { customer_id: customer.id, card_type_id: type.id, principal: '50.00', bonus: '0.00', sales_staff_ids: [staff.id], payments: cash('50.00') })
   await login(page, owner.account, owner.password)
-  await page.goto(`/customers?id=${customer.id}`)
+  await page.goto(`/customers?id=${customer.id}&tab=cards`)
   const shown = page.locator(`[data-card="${card.id}"]`)
   await expect(shown).toContainText('本金 ¥100.00')
   const blocked = await blockRoute(page, '**/api/ops/transfer_card_balance')
@@ -142,7 +142,7 @@ test('退卡成功后即使弹窗已关闭也刷新卡状态', async ({ page }) 
   const type = await api(token, 'create_card_type', { name: `退卡刷新${suffix}`, kind: 'stored_value', validity_kind: 'none' })
   const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: type.id, principal: '100.00', bonus: '0.00', sales_staff_ids: [staff.id], payments: cash('100.00') })
   await login(page, owner.account, owner.password)
-  await page.goto(`/customers?id=${customer.id}`)
+  await page.goto(`/customers?id=${customer.id}&tab=cards`)
   const shown = page.locator(`[data-card="${card.id}"]`)
   await expect(shown).toContainText('本金 ¥100.00')
   const blocked = await blockRoute(page, '**/api/ops/refund_card')
@@ -172,7 +172,7 @@ test('卡类型有效期、两名业绩归属人开卡、充值及流水', async
   await typeDialog.getByRole('button', { name: '保存', exact: true }).click()
   await expect(typeDialog).not.toBeVisible()
   await expect(page.locator(`[data-card-type="${name}"]`)).toContainText('开卡后 30 天')
-  await page.goto(`/customers?id=${customer.id}`)
+  await page.goto(`/customers?id=${customer.id}&tab=cards`)
   const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
   await detail.getByRole('button', { name: '开卡', exact: true }).click()
   const opening = page.getByRole('dialog', { name: '开卡', exact: true })
@@ -229,10 +229,10 @@ test('切换顾客后丢弃迟到的卡列表', async ({ page }) => {
     await route.fulfill({ response })
   })
   await login(page, owner.account, owner.password)
-  await page.goto(`/customers?id=${a.id}`)
+  await page.goto(`/customers?id=${a.id}&tab=cards`)
   await pending
   await page.evaluate((id) => {
-    window.history.pushState({}, '', `/customers?id=${id}`)
+    window.history.pushState({}, '', `/customers?id=${id}&tab=cards`)
     window.dispatchEvent(new PopStateEvent('popstate'))
   }, b.id)
   const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
@@ -254,7 +254,7 @@ test('无开卡权限不显示开卡和充值按钮', async ({ page }) => {
   await api(token, 'open_card', { customer_id: customer.id, card_type_id: ct.id, principal: '1.00', bonus: '0.00', sales_staff_ids: [me.staff.id], payments: cash('1.00') })
   const stylist = await hire('发型师')
   await login(page, stylist.account, stylist.password)
-  await page.goto(`/customers?id=${customer.id}`)
+  await page.goto(`/customers?id=${customer.id}&tab=cards`)
   const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
   await expect(detail).toContainText(ct.name)
   await expect(detail.getByRole('button', { name: '开卡', exact: true })).toHaveCount(0)
@@ -294,10 +294,10 @@ test('切回同一顾客后丢弃第一次卡列表，保留第二次响应', as
   })
   try {
     await login(page, owner.account, owner.password)
-    await page.goto(`/customers?id=${a.id}`)
+    await page.goto(`/customers?id=${a.id}&tab=cards`)
     await pending
     await page.evaluate((id) => {
-      window.history.pushState({}, '', `/customers?id=${id}`)
+      window.history.pushState({}, '', `/customers?id=${id}&tab=cards`)
       window.dispatchEvent(new PopStateEvent('popstate'))
     }, b.id)
     const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
@@ -305,7 +305,7 @@ test('切回同一顾客后丢弃第一次卡列表，保留第二次响应', as
     await expect(detail).toContainText('暂无卡')
     await api(token, 'recharge_card', { card_id: card.id, principal: '24.56', bonus: '0.50', sales_staff_ids: [me.staff.id], payments: cash('24.56') })
     await page.evaluate((id) => {
-      window.history.pushState({}, '', `/customers?id=${id}`)
+      window.history.pushState({}, '', `/customers?id=${id}&tab=cards`)
       window.dispatchEvent(new PopStateEvent('popstate'))
     }, a.id)
     await expect(detail.getByRole('heading', { name: a.name, exact: true })).toBeVisible()
@@ -349,7 +349,7 @@ test('同一顾客开卡刷新后丢弃迟到的首次卡列表', async ({ page 
   })
   try {
     await login(page, owner.account, owner.password)
-    await page.goto(`/customers?id=${customer.id}`)
+    await page.goto(`/customers?id=${customer.id}&tab=cards`)
     await pending
     const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
     await detail.getByRole('button', { name: '开卡', exact: true }).click()
@@ -382,7 +382,7 @@ test('调整余额、记录原因并清除有效期', async ({ page }) => {
   const me = await api(token, 'get_me', {})
   const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: ct.id, principal: '100.00', bonus: '0.50', sales_staff_ids: [me.staff.id], payments: cash('100.00') })
   await login(page, owner.account, owner.password)
-  await page.goto(`/customers?id=${customer.id}`)
+  await page.goto(`/customers?id=${customer.id}&tab=cards`)
   const shown = page.locator(`[data-card="${card.id}"]`)
   await cardAction(page, shown, '调整')
   const modal = page.getByRole('dialog', { name: '调整', exact: true })
@@ -438,7 +438,7 @@ test('调整记录切走再切回同一卡丢弃旧响应', async ({ page }) => 
   })
   try {
     await login(page, owner.account, owner.password)
-    await page.goto(`/customers?id=${a.id}`)
+    await page.goto(`/customers?id=${a.id}&tab=cards`)
     const shown = page.locator(`[data-card="${card.id}"]`)
     await cardAction(page, shown, '调整记录')
     await pending
@@ -488,7 +488,7 @@ test('次卡和套餐：两个项目、开卡、调整赠送次数及记录', as
     await expect(modal).toContainText('次数售价 246.80')
     await modal.getByRole('button', { name: '保存', exact: true }).click()
     await expect(modal).not.toBeVisible()
-    await page.goto(`/customers?id=${customer.id}`)
+    await page.goto(`/customers?id=${customer.id}&tab=cards`)
     const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
     await detail.getByRole('button', { name: '开卡', exact: true }).click()
     const opening = page.getByRole('dialog', { name: '开卡', exact: true })
@@ -550,7 +550,7 @@ test('次数流水 A→B→A 丢弃旧响应', async ({ page }) => {
   })
   try {
     await login(page, owner.account, owner.password)
-    await page.goto(`/customers?id=${a.id}`)
+    await page.goto(`/customers?id=${a.id}&tab=cards`)
     const shown = page.locator(`[data-card="${card.id}"]`)
     await cardAction(page, shown, '次数流水')
     await pending
@@ -596,7 +596,7 @@ test('升级规则累计充值、自动升级、补差价升级及转余额流�
   await rule.getByRole('button', { name: '保存', exact: true }).click()
   await expect(rule).not.toBeVisible()
   await expect(page.getByTestId('upgrade-rule').filter({ hasText: types[0].name })).toContainText('累计充值本金 ≥ 150.00')
-  await page.goto(`/customers?id=${customer.id}`)
+  await page.goto(`/customers?id=${customer.id}&tab=cards`)
   const shown = page.locator(`[data-card="${card.id}"]`)
   await shown.getByRole('button', { name: '充值', exact: true }).click()
   const recharge = page.getByRole('dialog', { name: '充值', exact: true })
@@ -678,7 +678,7 @@ test('升级记录 A→B→A 丢弃旧响应', async ({ page }) => {
   })
   try {
     await login(page, owner.account, owner.password)
-    await page.goto(`/customers?id=${a.id}`)
+    await page.goto(`/customers?id=${a.id}&tab=cards`)
     const shown = page.locator(`[data-card="${card.id}"]`)
     await cardAction(page, shown, '升级记录')
     await pending
@@ -731,7 +731,7 @@ test('积分流水 A→B→A 丢弃旧响应', async ({ page }) => {
   })
   try {
     await login(page, owner.account, owner.password)
-    await page.goto(`/customers?id=${a.id}`)
+    await page.goto(`/customers?id=${a.id}&tab=cards`)
     const shown = page.locator(`[data-card="${card.id}"]`)
     await cardAction(page, shown, '积分流水')
     await pending
@@ -765,7 +765,7 @@ test('充值积分、积分流水和调整积分', async ({ page }) => {
     const ct = await api(token, 'create_card_type', { name: `积分卡${suffix}`, kind: 'stored_value', validity_kind: 'none' })
     const card = await api(token, 'open_card', { customer_id: customer.id, card_type_id: ct.id, principal: '100.00', bonus: '999.00', sales_staff_ids: [staff.id], payments: cash('100.00') })
     await login(page, owner.account, owner.password)
-    await page.goto(`/customers?id=${customer.id}`)
+    await page.goto(`/customers?id=${customer.id}&tab=cards`)
     const shown = page.locator(`[data-card="${card.id}"]`)
     await expect(shown).toContainText('积分 10')
     await shown.getByRole('button', { name: '充值', exact: true }).click()
@@ -834,7 +834,7 @@ test('顾客详情退储值卡和次卡，金额由规则计算并隐藏已退�
     cards.push(await api(token, 'open_card', { customer_id: customer.id, card_type_id: ct.id, principal: kind === 'count' ? '0' : '100.05', bonus: kind === 'count' ? '0' : '20', sales_staff_ids: [staff.id], payments: kind === 'count' ? cash('37.02') : cash('100.05') }))
   }
   await login(page, owner.account, owner.password)
-  await page.goto(`/customers?id=${customer.id}`)
+  await page.goto(`/customers?id=${customer.id}&tab=cards`)
   const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
   for (const [index, card] of cards.entries()) {
     const shown = detail.locator(`[data-card="${card.id}"]`)
