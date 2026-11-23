@@ -89,14 +89,14 @@ test('切换顾客丢弃迟到的红包列表并支持切回同一顾客', async
     await page.goto(`/customers?id=${a.id}&tab=red-packets`)
     await pending
     await page.evaluate((id) => {
-      window.history.pushState({}, '', `/customers?id=${id}`)
+      window.history.pushState({}, '', `/customers?id=${id}&tab=red-packets`)
       window.dispatchEvent(new PopStateEvent('popstate'))
     }, b.id)
     const section = page.getByTestId('red-packets')
     await expect(section).toContainText('暂无红包')
     await api(token, 'revoke_red_packet', { red_packet_id: packet.id, reason: '切回前撤回' })
     await page.evaluate((id) => {
-      window.history.pushState({}, '', `/customers?id=${id}`)
+      window.history.pushState({}, '', `/customers?id=${id}&tab=red-packets`)
       window.dispatchEvent(new PopStateEvent('popstate'))
     }, a.id)
     await expect(section).toContainText('切回前撤回')

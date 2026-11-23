@@ -232,7 +232,7 @@ test('切换顾客后丢弃迟到的卡列表', async ({ page }) => {
   await page.goto(`/customers?id=${a.id}&tab=cards`)
   await pending
   await page.evaluate((id) => {
-    window.history.pushState({}, '', `/customers?id=${id}`)
+    window.history.pushState({}, '', `/customers?id=${id}&tab=cards`)
     window.dispatchEvent(new PopStateEvent('popstate'))
   }, b.id)
   const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
@@ -297,7 +297,7 @@ test('切回同一顾客后丢弃第一次卡列表，保留第二次响应', as
     await page.goto(`/customers?id=${a.id}&tab=cards`)
     await pending
     await page.evaluate((id) => {
-      window.history.pushState({}, '', `/customers?id=${id}`)
+      window.history.pushState({}, '', `/customers?id=${id}&tab=cards`)
       window.dispatchEvent(new PopStateEvent('popstate'))
     }, b.id)
     const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
@@ -305,7 +305,7 @@ test('切回同一顾客后丢弃第一次卡列表，保留第二次响应', as
     await expect(detail).toContainText('暂无卡')
     await api(token, 'recharge_card', { card_id: card.id, principal: '24.56', bonus: '0.50', sales_staff_ids: [me.staff.id], payments: cash('24.56') })
     await page.evaluate((id) => {
-      window.history.pushState({}, '', `/customers?id=${id}`)
+      window.history.pushState({}, '', `/customers?id=${id}&tab=cards`)
       window.dispatchEvent(new PopStateEvent('popstate'))
     }, a.id)
     await expect(detail.getByRole('heading', { name: a.name, exact: true })).toBeVisible()
