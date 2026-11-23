@@ -447,16 +447,19 @@ onMounted(cardLoad)
   </div>
   <UModal v-model:open="refundOpen" title="退卡">
     <template #body>
-      <div class="space-y-3">
-        <p v-if="refundLoading">正在计算退款…</p>
-        <p v-if="refundError" role="alert">{{ refundError }}</p>
+      <div class="space-y-5">
+        <p v-if="refundLoading" class="text-sm text-muted">正在计算退款…</p>
+        <p v-if="refundError" role="alert" class="text-sm text-error">{{ refundError }}</p>
         <template v-if="refundQuote">
-          <p>剩余本金 {{ refundQuote.principal }}</p>
-          <p>作废的赠送金 {{ refundQuote.bonus }}</p>
-          <p v-for="item in refundQuote.items" :key="item.item.id">{{ item.item.name }} · 购买次数 {{ item.paid_remaining }} × 单次金额 {{ item.unit_price }} = {{ item.amount }}</p>
-          <p v-if="refundQuote.bonus_policy === 'deduct_used'">扣回赠送金 {{ refundQuote.bonus_deducted }}</p>
-          <p>手续费 {{ refundQuote.fee_percent }}% · {{ refundQuote.fee }}</p>
-          <p data-testid="refund-amount">退款金额 {{ refundQuote.amount }}</p>
+          <!-- 退款明细照 Fresha 的金额汇总：左名目右金额，最后一行合计加粗、上方一道线。 -->
+          <div class="space-y-2 text-sm tabular-nums">
+            <p class="flex justify-between gap-4"><span class="text-muted">剩余本金</span>{{ ' ' }}<span>{{ refundQuote.principal }}</span></p>
+            <p class="flex justify-between gap-4"><span class="text-muted">作废的赠送金</span>{{ ' ' }}<span>{{ refundQuote.bonus }}</span></p>
+            <p v-for="item in refundQuote.items" :key="item.item.id" class="flex justify-between gap-4"><span class="text-muted">{{ item.item.name }} · 购买次数 {{ item.paid_remaining }} × 单次金额 {{ item.unit_price }}</span>{{ ' ' }}<span>{{ item.amount }}</span></p>
+            <p v-if="refundQuote.bonus_policy === 'deduct_used'" class="flex justify-between gap-4"><span class="text-muted">扣回赠送金</span>{{ ' ' }}<span>{{ refundQuote.bonus_deducted }}</span></p>
+            <p class="flex justify-between gap-4"><span class="text-muted">手续费 {{ refundQuote.fee_percent }}%</span>{{ ' ' }}<span>{{ refundQuote.fee }}</span></p>
+            <p data-testid="refund-amount" class="flex justify-between gap-4 border-t border-default pt-3 text-[15px] font-semibold text-highlighted"><span>退款金额</span>{{ ' ' }}<span>{{ refundQuote.amount }}</span></p>
+          </div>
           <UFormField label="退款方式" required><MethodPicker v-model="refundMethod" :items="refundMethods" label="退款方式" /></UFormField>
         </template>
       </div>
@@ -469,14 +472,15 @@ onMounted(cardLoad)
   </UModal>
   <UModal v-model:open="balanceOpen" :title="balanceMode === 'upgrade' ? '升级' : '转余额'">
     <template #body>
-      <div class="space-y-3">
+      <div class="space-y-5">
         <template v-if="balanceMode === 'upgrade'">
-          <UFormField label="目标卡类型"><USelect v-model="balanceTo" :items="balanceTypes.map(t => ({ label: t.name, value: t.id }))" class="w-full" /></UFormField>
-          <p>补差价（可为零），有效期不变。</p>
+          <UFormField label="目标卡类型" help="补差价（可为零），有效期不变。"><USelect v-model="balanceTo" :items="balanceTypes.map(t => ({ label: t.name, value: t.id }))" class="w-full" /></UFormField>
         </template>
         <UFormField v-else label="目标卡"><USelect v-model="balanceTo" :items="transferTargets.map(c => ({ label: `${c.card_type_name} · ${c.id}`, value: c.id }))" class="w-full" /></UFormField>
-        <UFormField label="本金"><UInput v-model="balancePrincipal" inputmode="decimal" class="w-full" /></UFormField>
-        <UFormField label="赠送金"><UInput v-model="balanceBonus" inputmode="decimal" class="w-full" /></UFormField>
+        <div class="grid grid-cols-2 gap-4">
+          <UFormField label="本金"><UInput v-model="balancePrincipal" inputmode="decimal" class="w-full" /></UFormField>
+          <UFormField label="赠送金"><UInput v-model="balanceBonus" inputmode="decimal" class="w-full" /></UFormField>
+        </div>
         <UFormField v-if="balanceMode === 'upgrade' && hasDifference" label="业绩归属人"><USelect v-model="balanceSales" multiple :items="balanceStaff.map(s => ({ label: s.name, value: s.id }))" class="w-full" /></UFormField>
         <PaymentEditor v-if="balanceMode === 'upgrade'" v-model="balancePayments" v-model:touched="balancePaymentsTouched" :expected="balancePrincipal" />
         <UFormField v-if="balanceMode === 'transfer'" label="原因" required><UTextarea v-model="balanceReason" :maxlength="200" class="w-full" /></UFormField>
@@ -490,12 +494,13 @@ onMounted(cardLoad)
   </UModal>
   <UModal v-model:open="adjustModal" title="调整">
     <template #body>
-      <div class="space-y-3">
+      <div class="space-y-5">
         <UFormField label="积分"><UInput v-model="adjustPoints" type="number" :min="0" :max="99999999" :step="1" /></UFormField>
-        <UFormField label="本金"><UInput v-model="adjustPrincipal" inputmode="decimal" class="w-full" /></UFormField>
-        <UFormField label="赠送金"><UInput v-model="adjustBonus" inputmode="decimal" class="w-full" /></UFormField>
-        <div v-for="row in adjustCounts" :key="row.item_id" data-testid="adjust-count-item">
-          <p>{{ row.name }}</p>
+        <div class="grid grid-cols-2 gap-4">
+          <UFormField label="本金"><UInput v-model="adjustPrincipal" inputmode="decimal" class="w-full" /></UFormField>
+          <UFormField label="赠送金"><UInput v-model="adjustBonus" inputmode="decimal" class="w-full" /></UFormField>
+        </div>
+        <div v-for="row in adjustCounts" :key="row.item_id" class="grid grid-cols-2 gap-4" data-testid="adjust-count-item">
           <UFormField :label="`${row.name}购买次数`"><UInput v-model="row.paid" type="number" :min="0" /></UFormField>
           <UFormField :label="`${row.name}赠送次数`"><UInput v-model="row.gift" type="number" :min="0" /></UFormField>
         </div>
@@ -513,11 +518,13 @@ onMounted(cardLoad)
   </UModal>
   <UModal v-model:open="cardModal" :title="cardTarget ? '充值' : '开卡'">
     <template #body>
-      <div class="space-y-3">
+      <div class="space-y-5">
         <UFormField v-if="!cardTarget" label="卡类型"><USelect v-model="cardCardType" :items="cardTypes.map(t => ({ label: t.name, value: t.id }))" class="w-full" /></UFormField>
-        <UFormField v-if="cardTarget || openingType?.kind !== 'count'" label="本金"><UInput v-model="cardPrincipal" inputmode="decimal" class="w-full" /></UFormField>
-        <UFormField v-if="cardTarget || openingType?.kind !== 'count'" label="赠送金"><UInput v-model="cardBonus" inputmode="decimal" class="w-full" /></UFormField>
-        <p v-for="item in openingType?.items ?? []" :key="item.item_id">{{ item.item_name }} · 购买 {{ item.paid_count }} · 赠送 {{ item.gift_count }} · 单次金额 {{ item.unit_price }}</p>
+        <div v-if="cardTarget || openingType?.kind !== 'count'" class="grid grid-cols-2 gap-4">
+          <UFormField label="本金"><UInput v-model="cardPrincipal" inputmode="decimal" class="w-full" /></UFormField>
+          <UFormField label="赠送金"><UInput v-model="cardBonus" inputmode="decimal" class="w-full" /></UFormField>
+        </div>
+        <p v-for="item in openingType?.items ?? []" :key="item.item_id" class="text-sm">{{ item.item_name }} · 购买 {{ item.paid_count }} · 赠送 {{ item.gift_count }} · 单次金额 {{ item.unit_price }}</p>
         <UFormField label="业绩归属人"><USelect v-model="cardSales" multiple :items="cardStaff.map(s => ({ label: s.name, value: s.id }))" class="w-full" /></UFormField>
         <PaymentEditor v-model="cardPayments" v-model:touched="cardPaymentsTouched" :expected="openingExpected" />
       </div>

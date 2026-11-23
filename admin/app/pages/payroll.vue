@@ -30,10 +30,11 @@ const amountColumns = [
   ['applied_amount', '底薪/保底'], ['base_pay', '底薪部分'], ['item_commission', '项目'], ['consume_commission', '耗卡'],
   ['labor_commission', '手工费'], ['sale_commission', '销售'], ['commission_total', '提成合计'], ['guarantee_top_up', '保底补差'], ['adjustments_total', '加减项'], ['total', '应发']
 ] as const
-const columns: TableColumn<Line>[] = [
+// 手工费本店不用：这个月没有手工费提成时不显示这一列。
+const columns = computed<TableColumn<Line>[]>(() => [
   { accessorKey: 'staff', header: '员工' }, { accessorKey: 'mode', header: '计薪方式' },
-  ...amountColumns.map(([accessorKey, header]) => ({ accessorKey, header, meta: { class: { th: 'text-right', td: (cell: { getValue: () => unknown }) => `text-right tabular-nums${Number(cell.getValue()) === 0 ? ' text-dimmed' : ''}` } } }))
-]
+  ...amountColumns.filter(([key]) => key !== 'labor_commission' || Number(payroll.value?.totals.labor_commission ?? 0) !== 0).map(([accessorKey, header]) => ({ accessorKey, header, meta: { class: { th: 'text-right', td: (cell: { getValue: () => unknown }) => `text-right tabular-nums${Number(cell.getValue()) === 0 ? ' text-dimmed' : ''}` } } }))
+])
 const rows = computed<Line[]>(() => payroll.value?.lines.length ? [...payroll.value.lines, { ...payroll.value.totals, staff: { id: '__total__', name: '合计' }, active: true, mode: 'base' }] : [])
 
 function selectRow(_event: Event, row: TableRow<Line>) {
@@ -202,19 +203,16 @@ onMounted(reloadMonths)
         <PayrollDetail v-if="selected && payroll" :key="`${month}:${selected.id}`" ref="detail" :month="month" :staff-id="selected.id" :locked="payroll.locked" @changed="reload" />
       </template>
     </USlideover>
-    <UModal v-model:open="open" :title="kind === 'salary' ? '设置底薪' : '添加加减项'">
+    <UModal v-model:open="open" :title="kind === 'salary' ? '设置底薪' : '添加加减项'" :description="kind === 'salary' ? `从 ${monthLabel(formMonth)} 起执行` : undefined">
       <template #body>
-        <div class="space-y-3">
-          <UFormField label="员工"><USelect v-model="form.staff_id" :items="staffItems" class="w-full" /></UFormField>
-          <template v-if="kind === 'salary'">
-            <p v-if="inForce">当前：{{ inForce.mode === 'base' ? '底薪 + 提成' : '保底' }} {{ inForce.amount }}，自 {{ monthLabel(inForce.effective_month) }}起</p>
-            <p v-else>当前：未设置</p>
-            <UFormField label="计薪方式"><URadioGroup v-model="form.mode" :items="[{ value: 'base', label: '底薪 + 提成' }, { value: 'guarantee', label: '保底' }]" /></UFormField>
-          </template>
+        <div class="space-y-5">
+          <UFormField label="员工" :help="kind === 'salary' ? (inForce ? `当前：${inForce.mode === 'base' ? '底薪 + 提成' : '保底'} ${inForce.amount}，自 ${monthLabel(inForce.effective_month)}起` : '当前：未设置') : undefined">
+            <USelect v-model="form.staff_id" :items="staffItems" class="w-full" />
+          </UFormField>
+          <UFormField v-if="kind === 'salary'" label="计薪方式"><URadioGroup v-model="form.mode" orientation="horizontal" :ui="{ fieldset: 'gap-x-6' }" :items="[{ value: 'base', label: '底薪 + 提成' }, { value: 'guarantee', label: '保底' }]" /></UFormField>
           <UFormField v-else label="名称"><UInput v-model="form.name" :maxlength="20" class="w-full" /></UFormField>
-          <UFormField label="金额" :hint="kind === 'adjustment' ? '正数为加，负数为减' : undefined"><UInput v-model="form.amount" type="number" step="0.01" class="w-full" /></UFormField>
-          <p v-if="kind === 'salary'">从 {{ monthLabel(formMonth) }} 起执行</p>
-          <UFormField v-else label="备注"><UTextarea v-model="form.note" :maxlength="100" class="w-full" /></UFormField>
+          <UFormField label="金额" :help="kind === 'adjustment' ? '正数为加，负数为减' : undefined"><UInput v-model="form.amount" type="number" step="0.01" class="w-full" /></UFormField>
+          <UFormField v-if="kind === 'adjustment'" label="备注"><UTextarea v-model="form.note" :maxlength="100" class="w-full" /></UFormField>
         </div>
       </template>
       <template #footer>

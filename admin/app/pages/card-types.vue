@@ -182,11 +182,15 @@ async function saveRule() {
     </section>
     <UModal v-model:open="ruleOpen" :title="ruleEditing ? '编辑升级规则' : '新建升级规则'">
       <template #body>
-        <div class="space-y-3">
-          <UFormField label="原卡类型"><USelect v-model="ruleFrom" :disabled="!!ruleEditing" :items="storedTypes.map(t => ({ label: t.name, value: t.id }))" class="w-full" /></UFormField>
-          <UFormField label="目标卡类型"><USelect v-model="ruleTo" :disabled="!!ruleEditing" :items="storedTypes.filter(t => t.active && t.id !== ruleFrom).map(t => ({ label: t.name, value: t.id }))" class="w-full" /></UFormField>
-          <UFormField label="条件"><USelect v-model="ruleCondition" :disabled="!!ruleEditing" :items="ruleConditions" class="w-full" /></UFormField>
-          <UFormField label="门槛"><UInput v-model="ruleThreshold" inputmode="decimal" class="w-full" /></UFormField>
+        <div class="space-y-5">
+          <div class="grid grid-cols-2 gap-4">
+            <UFormField label="原卡类型"><USelect v-model="ruleFrom" :disabled="!!ruleEditing" :items="storedTypes.map(t => ({ label: t.name, value: t.id }))" class="w-full" /></UFormField>
+            <UFormField label="目标卡类型"><USelect v-model="ruleTo" :disabled="!!ruleEditing" :items="storedTypes.filter(t => t.active && t.id !== ruleFrom).map(t => ({ label: t.name, value: t.id }))" class="w-full" /></UFormField>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <UFormField label="条件"><USelect v-model="ruleCondition" :disabled="!!ruleEditing" :items="ruleConditions" class="w-full" /></UFormField>
+            <UFormField label="门槛"><UInput v-model="ruleThreshold" inputmode="decimal" class="w-full" /></UFormField>
+          </div>
           <USwitch v-if="ruleEditing" v-model="ruleActive" label="启用升级规则" />
         </div>
       </template>
@@ -198,25 +202,30 @@ async function saveRule() {
     </UModal>
     <UModal v-model:open="open" :title="editing ? '编辑卡类型' : '新建卡类型'">
       <template #body>
-        <div class="space-y-3">
+        <div class="space-y-5">
           <UFormField label="卡类型名称"><UInput v-model="name" class="w-full" /></UFormField>
-          <UFormField label="种类"><USelect v-model="kind" :items="kindItems" class="w-full" /></UFormField>
-          <UFormField v-if="kind !== 'count'" label="折扣率" hint="以折填写，留空为不打折"><UInput v-model="discount" type="number" :min="0.1" :max="9.9" :step="0.1" placeholder="不打折" class="w-full" /></UFormField>
-          <div v-if="kind !== 'stored_value'" class="space-y-3">
-            <div v-for="(row, index) in definition" :key="index" data-testid="card-type-item" class="space-y-2">
-              <UFormField label="项目"><USelect v-model="row.item_id" :items="catalog.filter(i => i.active || definition.some(x => x.item_id === i.id)).map(i => ({ label: i.name, value: i.id }))" class="w-full" /></UFormField>
-              <UFormField label="购买次数"><UInput v-model="row.paid_count" type="number" :min="1" /></UFormField>
-              <UFormField label="赠送次数"><UInput v-model="row.gift_count" type="number" :min="0" /></UFormField>
-              <UFormField label="单次金额"><UInput v-model="row.unit_price" inputmode="decimal" /></UFormField>
-              <UButton variant="outline" @click="definition.splice(index, 1)">移除项目</UButton>
-            </div>
-            <UButton :disabled="definition.length >= 20" variant="outline" @click="definition.push({ item_id: '', paid_count: 1, gift_count: 0, unit_price: '0.00' })">添加项目</UButton>
-            <p>次数售价 {{ countsPrice.toFixed(2) }}</p>
-            <p>编辑项目只影响以后开卡，已开卡保留原次数和单次金额。</p>
+          <div class="grid grid-cols-2 gap-4">
+            <UFormField label="种类"><USelect v-model="kind" :items="kindItems" class="w-full" /></UFormField>
+            <UFormField v-if="kind !== 'count'" label="折扣率" help="以折填写，留空为不打折"><UInput v-model="discount" type="number" :min="0.1" :max="9.9" :step="0.1" placeholder="不打折" class="w-full" /></UFormField>
           </div>
-          <UFormField label="有效期"><USelect v-model="validity" :items="validityItems" class="w-full" /></UFormField>
-          <UFormField v-if="validity === 'fixed_date'" label="固定日期"><DateInput v-model="date" /></UFormField>
-          <UFormField v-if="validity === 'days_after_open'" label="天数"><UInput v-model="days" type="number" :min="1" /></UFormField>
+          <div v-if="kind !== 'stored_value'" class="space-y-3">
+            <div v-for="(row, index) in definition" :key="index" data-testid="card-type-item" class="space-y-2 rounded-lg bg-side p-3">
+              <UFormField label="项目"><USelect v-model="row.item_id" :items="catalog.filter(i => i.active || definition.some(x => x.item_id === i.id)).map(i => ({ label: i.name, value: i.id }))" class="w-full" /></UFormField>
+              <div class="grid grid-cols-3 gap-3">
+                <UFormField label="购买次数"><UInput v-model="row.paid_count" type="number" :min="1" /></UFormField>
+                <UFormField label="赠送次数"><UInput v-model="row.gift_count" type="number" :min="0" /></UFormField>
+                <UFormField label="单次金额"><UInput v-model="row.unit_price" inputmode="decimal" /></UFormField>
+              </div>
+              <UButton color="error" variant="ghost" class="-ms-2.5" @click="definition.splice(index, 1)">移除项目</UButton>
+            </div>
+            <UButton color="neutral" icon="i-lucide-plus" class="-ms-2.5 self-start" :disabled="definition.length >= 20" variant="ghost" @click="definition.push({ item_id: '', paid_count: 1, gift_count: 0, unit_price: '0.00' })">添加项目</UButton>
+            <p class="text-meta text-muted">次数售价 {{ countsPrice.toFixed(2) }}。编辑项目只影响以后开卡，已开卡保留原次数和单次金额。</p>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <UFormField label="有效期"><USelect v-model="validity" :items="validityItems" class="w-full" /></UFormField>
+            <UFormField v-if="validity === 'fixed_date'" label="固定日期"><DateInput v-model="date" /></UFormField>
+            <UFormField v-if="validity === 'days_after_open'" label="天数"><UInput v-model="days" type="number" :min="1" /></UFormField>
+          </div>
           <USwitch v-if="editing" v-model="active" label="启用卡类型" />
         </div>
       </template>

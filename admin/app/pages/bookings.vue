@@ -722,23 +722,41 @@ function actorLabel(actor: Actor) {
       </div>
     </div>
 
-    <UModal v-model:open="chooserOpen" title="新增预约">
+    <UModal v-model:open="chooserOpen" title="新增预约" :description="`${chooserStaffName} · ${day} ${chooser.time}`">
       <template #body>
-        <p class="mb-4 text-sm text-muted">{{ chooserStaffName }} · {{ day }} {{ chooser.time }}</p>
-        <div class="flex gap-2">
-          <UButton @click="chooseBooking">代约</UButton>
-          <UButton variant="outline" @click="chooseBlock">私约占位</UButton>
+        <!-- 两个去向做成整行选项（照 Fresha 的新增菜单）：图标、名称、一句说明。 -->
+        <div class="-my-2 space-y-2">
+          <button
+            v-for="choice in [
+              { label: '代约', hint: '替顾客约这个时段，到店后开单', icon: 'i-lucide-calendar-plus', pick: chooseBooking },
+              { label: '私约占位', hint: '员工自己约的客或私事，先占住时段', icon: 'i-lucide-lock', pick: chooseBlock }
+            ]"
+            :key="choice.label"
+            type="button"
+            :aria-label="choice.label"
+            :aria-describedby="`chooser-${choice.label}`"
+            class="flex w-full items-center gap-4 rounded-lg px-4 py-3.5 text-left ring-1 ring-[#d6d3d1] ring-inset hover:bg-hover focus-visible:outline-0 focus-visible:ring-[#2c2c2b]"
+            @click="choice.pick"
+          >
+            <UIcon :name="choice.icon" class="size-5 shrink-0 text-muted" aria-hidden="true" />
+            <span class="min-w-0 flex-1">
+              <span class="block text-[15px] font-semibold text-highlighted">{{ choice.label }}</span>
+              <span :id="`chooser-${choice.label}`" class="mt-0.5 block text-sm text-muted">{{ choice.hint }}</span>
+            </span>
+            <UIcon name="i-lucide-chevron-right" class="size-4 shrink-0 text-dimmed" aria-hidden="true" />
+          </button>
         </div>
       </template>
     </UModal>
 
-    <UModal v-model:open="bookingOpen" title="代约">
+    <UModal v-model:open="bookingOpen" title="代约" :description="`日期 ${bookingDay}`">
       <template #body>
-        <div class="space-y-3">
-          <p class="text-sm text-muted">日期 {{ bookingDay }}</p>
+        <div class="space-y-5">
           <UFormField label="发型师"><USelect v-model="booking.staff_id" :items="activeStaffItems" aria-label="发型师" class="w-full" /></UFormField>
-          <UFormField label="开始时间"><UInput v-model="booking.start_time" type="time" aria-label="开始时间" class="w-full" /></UFormField>
-          <UFormField label="结束时间" help="不填按项目时长或门店默认时长"><UInput v-model="booking.end_time" type="time" aria-label="结束时间" class="w-full" /></UFormField>
+          <div class="grid grid-cols-2 gap-4">
+            <UFormField label="开始时间"><UInput v-model="booking.start_time" type="time" aria-label="开始时间" class="w-full" /></UFormField>
+            <UFormField label="结束时间" help="不填按项目时长或门店默认时长"><UInput v-model="booking.end_time" type="time" aria-label="结束时间" class="w-full" /></UFormField>
+          </div>
           <UFormField label="项目">
             <div v-if="bookableItems.length" class="space-y-1">
               <UCheckbox
@@ -753,7 +771,7 @@ function actorLabel(actor: Actor) {
             <p v-else class="text-sm text-muted">没有可预约的服务项目</p>
           </UFormField>
           <UFormField label="顾客">
-            <div v-if="selectedCustomer" class="flex items-center gap-2 rounded border border-default p-2">
+            <div v-if="selectedCustomer" class="flex items-center gap-2 rounded-lg bg-side p-2">
               <span class="flex-1 text-sm">已选顾客：{{ selectedCustomer.name ?? '未识别顾客' }}{{ selectedCustomer.phone ? ` · ${selectedCustomer.phone}` : '' }}</span>
               <UButton size="xs" variant="ghost" @click="clearCustomer">更换</UButton>
             </div>
@@ -762,7 +780,7 @@ function actorLabel(actor: Actor) {
                 <UInput v-model="customerQuery" aria-label="搜索顾客" placeholder="姓名或手机号" class="flex-1" @keyup.enter="searchCustomers" />
                 <UButton :loading="customerSearching" variant="outline" @click="searchCustomers">搜索</UButton>
               </div>
-              <div v-if="customerResults.length" class="space-y-1 rounded border border-default p-2" data-customer-results>
+              <div v-if="customerResults.length" class="space-y-1 rounded-lg bg-side p-2" data-customer-results>
                 <UButton v-for="customer in customerResults" :key="customer.id" size="xs" variant="ghost" class="w-full justify-start" @click="pickCustomer(customer)">
                   {{ customer.name ?? '未识别顾客' }}{{ customer.phone ? ` · ${customer.phone}` : '' }}
                 </UButton>
@@ -783,13 +801,14 @@ function actorLabel(actor: Actor) {
       </template>
     </UModal>
 
-    <UModal v-model:open="blockOpen" title="私约占位">
+    <UModal v-model:open="blockOpen" title="私约占位" :description="`日期 ${blockDay}`">
       <template #body>
-        <div class="space-y-3">
-          <p class="text-sm text-muted">日期 {{ blockDay }}</p>
+        <div class="space-y-5">
           <UFormField label="员工"><USelect v-model="blockForm.staff_id" :items="activeStaffItems" aria-label="员工" class="w-full" /></UFormField>
-          <UFormField label="开始时间"><UInput v-model="blockForm.start_time" type="time" aria-label="开始时间" class="w-full" /></UFormField>
-          <UFormField label="结束时间"><UInput v-model="blockForm.end_time" type="time" aria-label="结束时间" class="w-full" /></UFormField>
+          <div class="grid grid-cols-2 gap-4">
+            <UFormField label="开始时间"><UInput v-model="blockForm.start_time" type="time" aria-label="开始时间" class="w-full" /></UFormField>
+            <UFormField label="结束时间"><UInput v-model="blockForm.end_time" type="time" aria-label="结束时间" class="w-full" /></UFormField>
+          </div>
           <UFormField label="备注"><UInput v-model="blockForm.note" :maxlength="200" aria-label="备注" class="w-full" /></UFormField>
         </div>
       </template>
@@ -833,7 +852,7 @@ function actorLabel(actor: Actor) {
 
           <div class="space-y-2">
             <h2 class="font-medium">状态变化</h2>
-            <div v-for="event in detail.events" :key="event.id" class="rounded border border-default p-2 text-sm" data-event-row :data-event-kind="event.kind">
+            <div v-for="event in detail.events" :key="event.id" class="rounded-lg bg-side p-2 text-sm" data-event-row :data-event-kind="event.kind">
               <p class="font-medium" data-event-actor :data-actor-kind="event.actor.kind">{{ eventLabels[event.kind] }} · {{ dateTimeText(event.created_at) }} · {{ actorLabel(event.actor) }}</p>
               <p v-if="event.from_starts_at" class="text-muted">时间：{{ eventRange(event) }} → {{ eventToRange(event) }}</p>
               <p v-else class="text-muted">时间：{{ eventToRange(event) }}</p>
@@ -848,10 +867,12 @@ function actorLabel(actor: Actor) {
 
     <UModal v-model:open="rescheduleOpen" title="改约预约">
       <template #body>
-        <div class="space-y-3">
+        <div class="space-y-5">
           <UFormField label="开始日期"><DateInput v-model="reschedule.date" aria-label="改约日期" class="w-full" /></UFormField>
-          <UFormField label="开始时间"><UInput v-model="reschedule.start_time" type="time" aria-label="开始时间" class="w-full" /></UFormField>
-          <UFormField label="结束时间" help="不填保持原时长"><UInput v-model="reschedule.end_time" type="time" aria-label="结束时间" class="w-full" /></UFormField>
+          <div class="grid grid-cols-2 gap-4">
+            <UFormField label="开始时间"><UInput v-model="reschedule.start_time" type="time" aria-label="开始时间" class="w-full" /></UFormField>
+            <UFormField label="结束时间" help="不填保持原时长"><UInput v-model="reschedule.end_time" type="time" aria-label="结束时间" class="w-full" /></UFormField>
+          </div>
           <UFormField label="发型师" help="不填保持原发型师"><USelect v-model="reschedule.staff_id" :items="activeStaffItems" placeholder="保持原发型师" aria-label="发型师" class="w-full" /></UFormField>
           <UFormField label="改约说明"><UInput v-model="reschedule.reason" :maxlength="200" aria-label="改约说明" class="w-full" /></UFormField>
         </div>
@@ -865,7 +886,7 @@ function actorLabel(actor: Actor) {
 
     <UModal v-model:open="cancelOpen" title="取消预约">
       <template #body>
-        <div class="space-y-3">
+        <div class="space-y-5">
           <UFormField label="取消原因"><USelect v-model="cancel.reason" :items="cancelReasonItems" aria-label="取消原因" class="w-full" /></UFormField>
           <UFormField label="说明" :help="cancel.reason === '其他' ? '原因选其他时必须填写' : ''"><UInput v-model="cancel.note" :maxlength="200" aria-label="说明" class="w-full" /></UFormField>
         </div>

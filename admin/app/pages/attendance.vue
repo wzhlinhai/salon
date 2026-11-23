@@ -364,14 +364,15 @@ onMounted(async () => {
       </div>
     </section>
 
-    <UModal v-model:open="addPunchOpen" title="补卡">
+    <UModal v-model:open="addPunchOpen" title="补卡" description="在营业日结束时间前补卡，会算到前一个营业日。">
       <template #body>
-        <div class="space-y-3">
+        <div class="space-y-5">
           <UFormField label="员工"><USelect v-model="punchForm.staff_id" :items="addPunchStaffItems" :disabled="!!addPunchTarget" aria-label="员工" class="w-full" /></UFormField>
-          <UFormField label="日期" help="按门店时间填写，不能晚于现在"><DateInput v-model="punchForm.date" :max="calendarToday" class="w-full" /></UFormField>
-          <UFormField label="时间"><UInput v-model="punchForm.time" type="time" class="w-full" /></UFormField>
+          <div class="grid grid-cols-2 gap-4">
+            <UFormField label="日期" help="按门店时间填写，不能晚于现在"><DateInput v-model="punchForm.date" :max="calendarToday" class="w-full" /></UFormField>
+            <UFormField label="时间"><UInput v-model="punchForm.time" type="time" class="w-full" /></UFormField>
+          </div>
           <UFormField label="原因"><UInput v-model="punchForm.reason" :maxlength="100" class="w-full" /></UFormField>
-          <p class="text-sm text-muted">在营业日结束时间前补卡，会算到前一个营业日。</p>
         </div>
       </template>
       <template #footer>
@@ -381,13 +382,14 @@ onMounted(async () => {
       </template>
     </UModal>
 
-    <UModal v-model:open="createShiftOpen" title="新建班次">
+    <UModal v-model:open="createShiftOpen" title="新建班次" description="上班时间要早于下班时间，不跨午夜。班次建好后不能改时间，要改就新建一个再改指定。">
       <template #body>
-        <div class="space-y-3">
+        <div class="space-y-5">
           <UFormField label="名称"><UInput v-model="newShift.name" :maxlength="20" class="w-full" /></UFormField>
-          <UFormField label="上班时间"><UInput v-model="newShift.start_time" type="time" class="w-full" /></UFormField>
-          <UFormField label="下班时间"><UInput v-model="newShift.end_time" type="time" class="w-full" /></UFormField>
-          <p class="text-sm text-muted">上班时间要早于下班时间，不跨午夜。班次建好后不能改时间，要改就新建一个再改指定。</p>
+          <div class="grid grid-cols-2 gap-4">
+            <UFormField label="上班时间"><UInput v-model="newShift.start_time" type="time" class="w-full" /></UFormField>
+            <UFormField label="下班时间"><UInput v-model="newShift.end_time" type="time" class="w-full" /></UFormField>
+          </div>
         </div>
       </template>
       <template #footer>
@@ -408,13 +410,11 @@ onMounted(async () => {
       </template>
     </UModal>
 
-    <UModal v-model:open="assignOpen" :title="`指定班次：${assignTarget?.staff.name ?? ''}`">
+    <UModal v-model:open="assignOpen" :title="`指定班次：${assignTarget?.staff.name ?? ''}`" :description="`当前班次：${currentShiftText}`">
       <template #body>
-        <div class="space-y-3">
-          <p>当前班次：{{ currentShiftText }}</p>
+        <div class="space-y-5">
           <UFormField label="班次"><USelect v-model="assign.shift_id" :items="activeShiftItems" placeholder="选择班次" aria-label="班次" class="w-full" /></UFormField>
-          <UFormField label="生效日期" :help="`不能早于今天（${today}）`"><DateInput v-model="assign.effective_from" :min="today" class="w-full" /></UFormField>
-          <p class="text-sm text-muted">从这一天起执行，之前的日子仍按原来的班次计算</p>
+          <UFormField label="生效日期" :help="`不能早于今天（${today}）。从这一天起执行，之前的日子仍按原来的班次计算`"><DateInput v-model="assign.effective_from" :min="today" class="w-full" /></UFormField>
         </div>
       </template>
       <template #footer>

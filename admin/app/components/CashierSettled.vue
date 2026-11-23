@@ -131,13 +131,13 @@ async function submitVoid() {
       <p v-if="total > orders.length" class="border-t border-default px-3 py-2 text-meta text-dimmed">只显示最近 {{ orders.length }} 张</p>
     </div>
   </section>
-  <UModal v-model:open="voidOpen" title="撤单">
+  <UModal v-model:open="voidOpen" title="撤单" description="撤单后这张单的收款、业绩全部作废，卡余额、次数和红包退回。">
     <template #body>
-      <div v-if="target" class="space-y-4">
-        <p class="text-sm text-muted">
-          {{ customerName(target.customer_id) }} · {{ itemNames(target) }} · 实收 {{ yuanFixed(target.net) }}。撤单后这张单的收款、业绩全部作废，卡余额、次数和红包退回。
+      <div v-if="target" class="space-y-5">
+        <p class="rounded-lg bg-side px-3 py-2.5 text-sm">
+          {{ customerName(target.customer_id) }} · {{ itemNames(target) }} · 实收 {{ yuanFixed(target.net) }}
         </p>
-        <UFormField label="撤单原因" required><UTextarea v-model="reason" :maxlength="200" class="w-full" /></UFormField>
+        <UFormField label="撤单原因" required><UTextarea v-model="reason" :maxlength="200" placeholder="例如：项目开错了" /></UFormField>
         <UFormField v-if="needPassword" label="登录密码" required help="撤单要先用你的登录密码开启授权，授权期间再撤单不用重复输入。输错次数和登录共用，错太多会暂时锁定登录">
           <UInput v-model="password" type="password" autocomplete="current-password" class="w-full" />
         </UFormField>

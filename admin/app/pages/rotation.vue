@@ -612,7 +612,7 @@ function statusText(t: Turn) {
 
     <UModal v-model:open="moveOpen" :title="`调整 ${moveTarget?.staff.name ?? ''} 的顺序`" description="调整会留下记录，写明原因。">
       <template #body>
-        <div class="space-y-4">
+        <div class="space-y-5">
           <UFormField label="移到">
             <USelect v-model="moveForm.to" :items="moveOptions" class="w-full" />
           </UFormField>

@@ -105,13 +105,15 @@ async function save() {
 
     <UModal v-model:open="open" :title="editing ? '编辑团购商品' : '新建团购商品'">
       <template #body>
-        <div class="space-y-4">
-          <UFormField label="平台">
-            <USelect v-if="!editing" v-model="platform" :items="platformItems" class="w-full" aria-label="平台" />
-            <p v-else>{{ platformItems.find(p => p.value === editing?.platform)?.label ?? editing.platform }}</p>
-          </UFormField>
+        <div class="space-y-5">
+          <div class="grid grid-cols-2 gap-4">
+            <UFormField label="平台">
+              <USelect v-if="!editing" v-model="platform" :items="platformItems" class="w-full" aria-label="平台" />
+              <p v-else class="flex min-h-11 items-center">{{ platformItems.find(p => p.value === editing?.platform)?.label ?? editing.platform }}</p>
+            </UFormField>
+            <UFormField label="平台购买价"><UInput v-model="purchasePrice" inputmode="decimal" aria-label="平台购买价" /></UFormField>
+          </div>
           <UFormField label="商品名称"><UInput v-model="name" :maxlength="200" aria-label="商品名称" /></UFormField>
-          <UFormField label="平台购买价"><UInput v-model="purchasePrice" inputmode="decimal" aria-label="平台购买价" /></UFormField>
           <UFormField label="对应门店项目"><USelect v-model="itemID" :items="itemItems" class="w-full" aria-label="对应门店项目" placeholder="选择项目" /></UFormField>
           <USwitch v-if="editing" v-model="active" label="启用" />
         </div>
