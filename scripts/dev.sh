@@ -6,7 +6,7 @@
 #   scripts/dev.sh reset   删除数据库后重新 up（全新数据）
 #   scripts/dev.sh status  显示各部分是否在运行
 #
-# 环境变量：DEV_DB_PORT、DEV_BACKEND_ADDR、DEV_ADMIN_PORT、DEV_WAIT_SECONDS（每一步最多等多少秒，默认 60）。
+# 环境变量：DEV_DB_PORT、DEV_BACKEND_ADDR、DEV_ADMIN_PORT、DEV_WAIT_SECONDS（每一步最多等多少秒，默认 60）、DEV_AI_KEY_FILE（见下）。
 # 数据库容器名为 salon-dev-db-$DB_PORT，随 DEV_DB_PORT 变化。
 #
 # 进程的 pid 和日志在 .dev/ 下。停止进程只按 pid 文件里的进程组，不按名字匹配。
@@ -28,6 +28,18 @@ if ! command -v go >/dev/null && [ -x "$HOME/.local/go/bin/go" ]; then
   export PATH="$HOME/.local/go/bin:$PATH"
 fi
 WAIT_SECONDS="${DEV_WAIT_SECONDS:-60}"
+
+# AI 对话：没设 AI_API_KEY 时，本机有 OpenCode Go 的 key 文件（DEV_AI_KEY_FILE，默认 ~/.codex/opencode-go.key）就读它，
+# 接口地址、模型、扩展头用 OpenCode Go 的默认值（已设的不覆盖）。两者都没有时后端不启用 AI（CI 即如此）。
+AI_KEY_FILE="${DEV_AI_KEY_FILE:-$HOME/.codex/opencode-go.key}"
+if [ -z "${AI_API_KEY:-}" ] && [ -s "$AI_KEY_FILE" ]; then
+  AI_API_KEY="$(tr -d '\r\n' < "$AI_KEY_FILE")"
+  export AI_API_KEY
+  export AI_BASE_URL="${AI_BASE_URL:-https://opencode.ai/inference/go/openai/v1}"
+  export AI_MODEL="${AI_MODEL:-deepseek-v4.1-flash}"
+  opencode_headers='{"x-opencode-session":"salon"}'
+  export AI_EXTRA_HEADERS="${AI_EXTRA_HEADERS:-$opencode_headers}"
+fi
 
 mkdir -p "$STATE"
 

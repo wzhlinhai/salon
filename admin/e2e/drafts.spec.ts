@@ -29,6 +29,14 @@ function aiPanel(page: Page) {
   return page.getByRole('dialog', { name: '吩咐 AI' })
 }
 
+// 从右下角的 AI 按钮打开面板（已打开就直接说），在面板里说一句。
+async function sayToAi(page: Page, text: string) {
+  const panel = aiPanel(page)
+  if (!await panel.isVisible()) await page.getByTestId('ai-fab').click()
+  await panel.getByTestId('ai-input').fill(text)
+  await panel.getByTestId('ai-input').press('Enter')
+}
+
 test('待确认：卡片写清发起人、原话和 AI 理解的结果，确认后计数减一并真正执行', async ({ page }) => {
   const { token, name, draft } = await draftCategory('加一个烫染护理的分类')
   await login(page, owner.account, owner.password)
@@ -87,8 +95,7 @@ test('首页指令框把话交给 AI，回复里的草稿可在面板里直接�
   })
   await login(page, owner.account, owner.password)
 
-  await page.getByTestId('ai-command').fill('加个造型分类')
-  await page.getByTestId('ai-command').press('Enter')
+  await sayToAi(page, '加个造型分类')
   const panel = aiPanel(page)
   await expect(panel.getByText('好的，已起草，请确认。')).toBeVisible()
   // 首页"待你确认"里也有同一张卡，这里只点面板里的。
@@ -144,7 +151,7 @@ test('修改：在面板里说怎么改，发给 AI 的话带上草稿编号；�
 test('Ctrl K：输入页面名回车仍打开页面，说一句话回车交给 AI', async ({ page }) => {
   await page.route('**/api/ai/chat', route => route.fulfill({ json: { reply: '收到。', sources: [], drafts: [] } }))
   await login(page, owner.account, owner.password)
-  const input = page.getByPlaceholder('说一句要做的事，或搜索顾客、页面…')
+  const input = page.getByPlaceholder('搜索顾客、页面，或说一句话交给 AI…')
 
   await page.keyboard.press('Control+k')
   await input.fill('收银')
@@ -168,8 +175,7 @@ test('换人登录后看不到上一个人的 AI 对话', async ({ page }) => {
   await page.route('**/api/ai/chat', route => route.fulfill({ json: { reply: '上一个人的回复', sources: [], drafts: [] } }))
   const stylist = await hire('发型师')
   await login(page, owner.account, owner.password)
-  await page.getByTestId('ai-command').fill('老板的问题')
-  await page.getByTestId('ai-command').press('Enter')
+  await sayToAi(page, '老板的问题')
   await expect(aiPanel(page).getByText('上一个人的回复')).toBeVisible()
   await page.keyboard.press('Escape')
 
@@ -181,8 +187,7 @@ test('换人登录后看不到上一个人的 AI 对话', async ({ page }) => {
   await page.getByLabel('密码').fill(stylist.password)
   await page.getByRole('button', { name: '登录' }).click()
   await page.getByTestId('home-greeting').waitFor()
-  await page.getByTestId('ai-command').fill('你好')
-  await page.getByTestId('ai-command').press('Enter')
+  await sayToAi(page, '你好')
   await expect(aiPanel(page).getByTestId('ai-entry')).toHaveCount(2)
   await expect(aiPanel(page).getByText('老板的问题')).toHaveCount(0)
 })
@@ -193,8 +198,7 @@ test('对话里的草稿卡片是旧版本时不能确认，要去看最新内�
   await api(token, 'update_draft_params', { id: draft.id, params: { name: `分类${uniqueSuffix()}` } })
   await page.route('**/api/ai/chat', route => route.fulfill({ json: { reply: '已起草。', sources: [], drafts: [{ ...draft, preview_error: '' }] } }))
   await login(page, owner.account, owner.password)
-  await page.getByTestId('ai-command').fill('加一个分类')
-  await page.getByTestId('ai-command').press('Enter')
+  await sayToAi(page, '加一个分类')
   const row = aiPanel(page).locator(`[data-testid="draft-card"][data-draft-id="${draft.id}"]`)
   await expect(row.getByTestId('draft-stale')).toBeVisible()
   await expect(row.getByTestId('draft-confirm')).toHaveCount(0)
@@ -207,8 +211,7 @@ test('AI 回了空话，后面的对话照常发，空话不进历史', async ({
     await route.fulfill({ json: { reply: bodies.length === 1 ? '' : '好的。', sources: [], drafts: [] } })
   })
   await login(page, owner.account, owner.password)
-  await page.getByTestId('ai-command').fill('第一句')
-  await page.getByTestId('ai-command').press('Enter')
+  await sayToAi(page, '第一句')
   const panel = aiPanel(page)
   await expect(panel.getByTestId('ai-entry')).toHaveCount(2)
   await panel.getByTestId('ai-input').fill('第二句')
@@ -235,16 +238,20 @@ test('AI 还在回上一句时说的话放进输入框；清空对话后迟到�
     await route.fulfill({ json: { reply: '新回复', sources: [], drafts: [] } })
   })
   await login(page, owner.account, owner.password)
-  await page.getByTestId('ai-command').fill('第一句')
-  await page.getByTestId('ai-command').press('Enter')
+  await sayToAi(page, '第一句')
   const panel = aiPanel(page)
   await expect(panel.getByTestId('ai-thinking')).toBeVisible()
 
-  // 关掉面板，在首页又说一句：不丢，放进面板输入框。
+  // 关掉面板，从 Ctrl K 又交给 AI 一句：上一句还没回完，这句放进面板输入框，不丢。
   await page.keyboard.press('Escape')
-  await page.getByTestId('ai-command').fill('第二句')
-  await page.getByTestId('ai-command').press('Enter')
-  await expect(panel.getByTestId('ai-input')).toHaveValue('第二句')
+  await page.keyboard.press('Control+k')
+  const search = page.getByPlaceholder('搜索顾客、页面，或说一句话交给 AI…')
+  await search.fill('第二句')
+  await expect(page.locator('[role=option][data-highlighted]')).toHaveText('吩咐 AI：第二句')
+  await expect(async () => {
+    if (await search.isVisible()) await search.press('Enter')
+    await expect(panel.getByTestId('ai-input')).toHaveValue('第二句', { timeout: 1000 })
+  }).toPass()
 
   // 清空对话，再放出上一句的回复：不能出现在新对话里。
   await panel.getByRole('button', { name: '清空对话' }).click()

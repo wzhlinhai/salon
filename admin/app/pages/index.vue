@@ -45,10 +45,19 @@ watch(selectedHome, (value) => {
   if (value === 'manager') void loadReport()
 })
 
-// 指令框里的推荐说法，点一下直接交给 AI。
+// 前台首页指令框里的推荐说法，点一下直接交给 AI。店长和个人首页不放指令框，用右下角的 AI 按钮。
 const frontSuggestions = ['陈女士明天下午 3 点约剪发', '今天还有谁没到店', '张师傅下午几点有空']
-const managerSuggestions = ['本周谁的业绩最高？', '今天实收比上周同日差多少？']
-const personalSuggestions = ['帮我占 5 点到 6 点', '我今天做了几单？']
+
+// 店长首页的「常用」（照 Notion 首页 Suggested for you）：有权限的前 4 个。
+const shortcutCatalog = [
+  { to: '/cashier?open=walkin', label: '散客开单', icon: 'i-lucide-receipt', permission: 'order.create' },
+  { to: '/bookings', label: '新建预约', icon: 'i-lucide-calendar-plus', permission: 'booking.manage' },
+  { to: '/closing', label: '做今天的日结', icon: 'i-lucide-calculator', permission: 'closing.daily' },
+  { to: '/reports/business', label: '看营业报表', icon: 'i-lucide-chart-column', permission: 'report.view' },
+  { to: '/payroll', label: '工资表', icon: 'i-lucide-wallet', permission: 'payroll.manage' },
+  { to: '/groupbuy-month', label: '团购对账', icon: 'i-lucide-file-check', permission: 'report.view' }
+]
+const shortcuts = computed(() => shortcutCatalog.filter(item => can(item.permission)).slice(0, 4))
 
 // 最近访问（照 Notion 首页）：本人最近打开的页面；不够 6 个，用常用页面补上，没去过的不写时间。
 const { read: readRecent } = useRecentPages()
@@ -228,7 +237,7 @@ onMounted(async () => {
 
 <!-- 三种首页照 Notion 首页：问候居中，下面是一张张组件卡（卡内灰色小图标加标题），窄的两张并排。 -->
 <template>
-  <div class="mx-auto w-full max-w-[960px] pb-16">
+  <div class="mx-auto w-full max-w-[960px]">
     <header class="mt-4 mb-8 text-center">
       <h1 data-testid="home-greeting" class="text-title font-bold text-balance">
         {{ greeting }}，{{ me?.staff.name }}
@@ -248,7 +257,6 @@ onMounted(async () => {
             <span data-testid="home-punch-time" class="tag bg-tag-green tabular-nums">已打卡 {{ clockTime(todayClockIn) }}</span>
           </p>
         </template>
-        <AiCommandBox :suggestions="personalSuggestions" />
         <!-- 不在轮牌队列里时轮牌卡不显示，「我今天」占满整行。 -->
         <div class="flex flex-col gap-4 md:flex-row">
           <HomeRotation v-if="can('queue.view') && me" :staff-id="me.staff.id" class="md:w-[40%] md:shrink-0" />
@@ -268,7 +276,7 @@ onMounted(async () => {
       </template>
 
       <template v-else-if="selectedHome === 'front'">
-        <AiCommandBox large :suggestions="frontSuggestions" placeholder="说一句要做的事，例如“陈女士到了，开剪发”" />
+        <AiCommandBox :suggestions="frontSuggestions" placeholder="说一句要做的事，例如“陈女士到了，开剪发”" />
         <div data-testid="home-front-actions" class="mx-auto grid w-full max-w-[720px] grid-cols-2 gap-2 sm:grid-cols-4">
           <NuxtLink v-if="can('order.create')" to="/cashier?open=walkin" class="quick"><UIcon name="i-lucide-receipt" class="size-4 text-muted" aria-hidden="true" />散客开单</NuxtLink>
           <NuxtLink v-if="can('booking.manage')" to="/bookings" class="quick"><UIcon name="i-lucide-calendar-plus" class="size-4 text-muted" aria-hidden="true" />新预约</NuxtLink>
@@ -287,48 +295,63 @@ onMounted(async () => {
       </template>
 
       <template v-else-if="selectedHome === 'manager'">
-        <AiCommandBox :suggestions="managerSuggestions" />
-
         <HomeWidget v-if="recentPages.length" title="最近访问" icon="i-lucide-clock">
           <div class="-mx-1 flex gap-3 overflow-x-auto px-1 pt-1 pb-1" data-testid="home-recent">
             <NuxtLink
               v-for="page in recentPages"
               :key="page.to"
               :to="page.to"
-              class="flex h-36 w-36 shrink-0 flex-col overflow-hidden rounded-card bg-white shadow-card transition-colors hover:bg-card-hover"
+              class="flex h-[150px] w-[150px] shrink-0 flex-col overflow-hidden rounded-card bg-white shadow-card transition-colors hover:bg-card-hover"
             >
-              <span class="h-10 shrink-0 bg-side" aria-hidden="true" />
-              <UIcon :name="page.icon" class="-mt-3 ms-3.5 size-6 shrink-0 text-muted" aria-hidden="true" />
-              <span class="px-3.5 pt-2 font-medium">{{ page.label }}</span>
-              <span class="mt-auto px-3.5 pb-3 text-meta text-dimmed tabular-nums">{{ page.when }}</span>
+              <span class="h-11 shrink-0 bg-side" aria-hidden="true" />
+              <UIcon :name="page.icon" class="-mt-4 ms-4 size-7 shrink-0 text-toned" aria-hidden="true" />
+              <span class="px-4 pt-2.5 text-lead font-medium">{{ page.label }}</span>
+              <span class="mt-auto flex items-center gap-1.5 px-4 pb-3.5 text-meta text-dimmed tabular-nums">
+                <UIcon :name="page.when ? 'i-lucide-clock' : 'i-lucide-star'" class="size-3.5 shrink-0" aria-hidden="true" />
+                {{ page.when || '常用' }}
+              </span>
             </NuxtLink>
           </div>
         </HomeWidget>
 
-        <div class="grid gap-4 md:grid-cols-2">
-          <HomeWidget title="待你确认" icon="i-lucide-inbox">
-            <template #aside>AI 起草，确认后生效</template>
-            <div data-testid="home-drafts">
-              <HomeDrafts v-if="pendingDrafts.length" :drafts="pendingDrafts" status="待确认" />
-              <p v-else class="py-1 text-meta text-dimmed">没有等你确认的草稿。员工吩咐 AI 做的事会先到这里。</p>
-            </div>
-          </HomeWidget>
+        <HomeWidget title="待你确认" icon="i-lucide-inbox">
+          <template #aside>AI 起草，确认后生效</template>
+          <div data-testid="home-drafts">
+            <HomeDrafts v-if="pendingDrafts.length" :drafts="pendingDrafts" status="待确认" />
+            <p v-else class="flex min-h-9 items-center gap-2 text-dimmed">
+              <UIcon name="i-lucide-check" class="size-4 shrink-0" aria-hidden="true" />
+              没有等你确认的草稿。员工吩咐 AI 做的事会先到这里。
+            </p>
+          </div>
+        </HomeWidget>
 
+        <div class="grid gap-4 md:grid-cols-2">
           <HomeWidget title="今日经营" icon="i-lucide-chart-line">
             <template #aside>实收口径</template>
-            <div data-testid="home-manager-metrics" class="grid grid-cols-2 gap-x-4 gap-y-4 tabular-nums">
-              <div v-for="metric in metrics" :key="metric.label" :data-metric="metric.label">
-                <p class="text-xs text-dimmed">{{ metric.label }}</p>
-                <p data-testid="metric-value" class="text-2xl leading-[1.3] font-semibold" :class="zeroText(metric.value) && 'text-dimmed'">{{ metric.value }}</p>
-                <p data-testid="metric-compare" class="text-xs text-muted">
+            <ul data-testid="home-manager-metrics" class="tabular-nums">
+              <li v-for="metric in metrics" :key="metric.label" :data-metric="metric.label" class="flex min-h-9 items-center gap-3">
+                <span class="w-16 shrink-0 text-lead font-medium">{{ metric.label }}</span>
+                <span data-testid="metric-compare" class="min-w-0 flex-1 truncate text-meta text-muted">
                   <template v-if="metric.change !== null">
                     <span :class="metric.change >= 0 ? 'text-ink-green' : 'text-ink-red'">{{ metric.change >= 0 ? '↑' : '↓' }} {{ Math.abs(metric.change) }}%</span>
                     较上周同日{{ metric.label === '实收' ? '' : ` · ${metric.note}` }}
                   </template>
                   <template v-else>{{ metric.note }}</template>
-                </p>
-              </div>
-            </div>
+                </span>
+                <span data-testid="metric-value" class="shrink-0 text-lead font-semibold" :class="zeroText(metric.value) && 'text-dimmed'">{{ metric.value }}</span>
+              </li>
+            </ul>
+          </HomeWidget>
+
+          <HomeWidget v-if="shortcuts.length" title="常用" icon="i-lucide-zap">
+            <ul class="-mx-1" data-testid="home-shortcuts">
+              <li v-for="item in shortcuts" :key="item.to">
+                <NuxtLink :to="item.to" class="flex min-h-9 items-center gap-2.5 rounded-md px-1 text-lead font-medium hover:bg-hover">
+                  <UIcon :name="item.icon" class="size-4 shrink-0 text-muted" aria-hidden="true" />
+                  {{ item.label }}
+                </NuxtLink>
+              </li>
+            </ul>
           </HomeWidget>
         </div>
 
