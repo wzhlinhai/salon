@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'settings.manage', title: '卡类型' })
+definePageMeta({ permission: 'settings.manage', title: '卡类型', art: 'card' })
 type CardType = components['schemas']['CardType']
 const api = useApi()
 const toast = useToast()

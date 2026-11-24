@@ -236,7 +236,7 @@ onMounted(async () => {
 <template>
   <div class="mx-auto w-full max-w-[960px]">
     <header class="mt-4 mb-8 text-center">
-      <h1 data-testid="home-greeting" class="text-title font-semibold text-balance">
+      <h1 data-testid="home-greeting" class="font-kai text-title text-balance">
         {{ greeting }}，{{ me?.staff.name }}
       </h1>
       <p class="mt-1 text-muted tabular-nums" data-testid="home-date">{{ dateLine }}</p>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'settings.manage', title: '项目与价格', description: '店里做的项目，各级别的价格和服务时长。开单和预约都从这里选。' })
+definePageMeta({ permission: 'settings.manage', title: '项目与价格', description: '店里做的项目，各级别的价格和服务时长。开单和预约都从这里选。', art: 'scissors' })
 type Item = components['schemas']['Item']
 type Level = components['schemas']['Level']
 type Position = components['schemas']['Position']

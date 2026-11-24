@@ -21,6 +21,12 @@
   --color-ink-yellow: #cb912f;
   --color-ink-orange: #d9730d;
   --color-ink: #2c2c2b;
+  /* 染发色卡色（DESIGN.md 颜色、简报）：栗棕、亚麻、雾蓝、橄榄、玫瑰灰。画构成条和排名条，按顺序取。 */
+  --color-dye-1: #8a5a44;
+  --color-dye-2: #c9a66b;
+  --color-dye-3: #7d93a8;
+  --color-dye-4: #8b9a6b;
+  --color-dye-5: #b48a92;
   /* 看板列底、悬停、细线、提醒条。 */
   --color-lane: #f4f4f2;
   --color-card-hover: #fcfcfb;
@@ -94,6 +100,12 @@ body {
 }
 :is(.text-title, .text-hero, .text-greet) {
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+}
+/* 楷体点缀（DESIGN.md 字）：只用在首页问候和登录标题，像手写的一句招呼。用系统自带的楷体（Windows 楷体、macOS 楷体-简），
+   不打包字体；楷体没有粗体，字重保持常规。写在上一条后面，同为普通样式，才盖得过标题的字体。 */
+.font-kai {
+  font-family: KaiTi, STKaiti, "Kaiti SC", "AR PL UKai CN", serif;
+  font-weight: 400;
 }
 
 /* 表单字段的控件铺满一栏（app.config.ts 的 formField）：输入框、下拉、日期都一样宽，不出现长短不齐的框。

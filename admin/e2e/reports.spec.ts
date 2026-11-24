@@ -59,6 +59,9 @@ test('店长从报表入口进营业报表：合计等于各行之和，切按�
   await login(page, manager.account, manager.password)
   await page.getByTestId('sidebar-nav').getByRole('link', { name: '报表' }).click()
   await expect(page).toHaveURL('/reports')
+  // 报表首页先用一段话说本月：刚结的账让实收不是零，走势和构成条随之出现。
+  await expect(page.getByTestId('report-brief')).toContainText(/这个月到今天实收 ¥[1-9]/)
+  await expect(page.getByTestId('report-spark').or(page.getByTestId('report-mix')).first()).toBeVisible()
   await page.getByTestId('report-list').getByRole('link', { name: /营业报表/ }).click()
   await expect(page).toHaveURL(/\/reports\/business\?g=day/)
 

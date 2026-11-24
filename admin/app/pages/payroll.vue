@@ -2,7 +2,7 @@
 import type { TableColumn, TableRow } from '@nuxt/ui'
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'payroll.manage', title: '工资表', description: '按月算出每人的底薪、提成和扣款，核对无误后锁定。' })
+definePageMeta({ permission: 'payroll.manage', title: '工资表', description: '按月算出每人的底薪、提成和扣款，核对无误后锁定。', art: 'receipt' })
 type Schema = components['schemas']
 type Line = Schema['PayrollLine']
 const api = useApi()
