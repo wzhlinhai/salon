@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
+import type { OrderItemRow } from '~/components/OrderItemRows.vue'
 
 // 收银开单弹窗：普通开单（可补录纸单），或核销团购券后立即开单（开单和关联券同一事务）。
 type Order = components['schemas']['Order']
@@ -7,8 +8,6 @@ type Customer = components['schemas']['Customer']
 type Item = components['schemas']['Item']
 type Deal = components['schemas']['Deal']
 type Redemption = components['schemas']['Redemption']
-
-interface OrderItemRow { item_id: string, staff: Record<number, string> }
 
 const props = defineProps<{
   items: Item[]
@@ -30,12 +29,6 @@ const paperDate = ref('')
 const rows = ref<OrderItemRow[]>([])
 const pendingRedemption = ref<Redemption | null>(null)
 const pendingDeal = ref<Deal | null>(null)
-const itemOptions = computed(() => props.items.map(i => ({ label: `${i.name}（${i.price}）`, value: i.id })))
-
-function positionsOf(itemID: string) {
-  const item = props.items.find(i => i.id === itemID)
-  return [...(item?.positions ?? [])].sort((a, b) => a.slot - b.slot)
-}
 
 function begin(who: Customer | null, deal: Deal | null = null, redemption: Redemption | null = null) {
   form.begin(() => {
@@ -51,17 +44,11 @@ function begin(who: Customer | null, deal: Deal | null = null, redemption: Redem
 }
 
 async function save() {
-  const picked = rows.value.filter(r => r.item_id)
-  if (!picked.length) {
+  const inputItems = orderItemsInput(rows.value, props.items)
+  if (!inputItems.length) {
     toast.add({ title: '请选择项目', color: 'warning' })
     return
   }
-  const inputItems = picked.map(row => ({
-    item_id: row.item_id,
-    staff: positionsOf(row.item_id)
-      .filter(p => row.staff[p.slot])
-      .map(p => ({ slot: p.slot, staff_id: row.staff[p.slot]! }))
-  }))
   await form.save(async (current) => {
     const redemption = pendingRedemption.value
     const deal = pendingDeal.value
@@ -131,20 +118,7 @@ defineExpose({ begin })
             <DateInput v-model="paperDate" :max="businessDate" :aria-label="'纸单营业日'" />
           </UFormField>
         </div>
-        <FieldGroup label="项目">
-          <div v-for="(row, index) in rows" :key="index" class="space-y-2" data-testid="order-item-row">
-            <div class="flex items-center gap-2">
-              <USelect v-model="row.item_id" :items="itemOptions" class="min-w-0 flex-1" :aria-label="`项目${index + 1}`" placeholder="选择项目" @update:model-value="row.staff = {}" />
-              <UButton variant="ghost" color="error" icon="i-lucide-x" aria-label="去掉" :disabled="rows.length === 1" @click="rows.splice(index, 1)" />
-            </div>
-            <div v-for="position in positionsOf(row.item_id)" :key="position.slot" class="flex items-center gap-2 ps-3">
-              <span class="w-14 shrink-0 text-meta text-muted">岗位 {{ position.slot }}</span>
-              <USelect v-model="row.staff[position.slot]" :items="staffItems" class="min-w-0 flex-1" :aria-label="`项目${index + 1}岗位${position.slot}员工`" placeholder="选择员工" />
-              <span v-if="position.required" class="tag shrink-0 bg-tag-yellow">必填</span>
-            </div>
-          </div>
-          <UButton color="neutral" icon="i-lucide-plus" class="-ms-2.5 self-start" variant="ghost" @click="rows.push({ item_id: '', staff: {} })">添加项目</UButton>
-        </FieldGroup>
+        <OrderItemRows v-model="rows" :items="items" :staff-items="staffItems" />
       </div>
     </template>
     <template #footer>
