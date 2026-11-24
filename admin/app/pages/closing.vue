@@ -2,7 +2,7 @@
 import type { TableColumn, TableRow } from '@nuxt/ui'
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'closing.daily', title: '日结' })
+definePageMeta({ permission: 'closing.daily', title: '日结', art: 'receipt' })
 
 type Item = components['schemas']['DayCloseListItem']
 // 列表一行是一个营业日：日结过的带上最新一版快照，没日结的只有日期。

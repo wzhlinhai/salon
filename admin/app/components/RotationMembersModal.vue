@@ -95,7 +95,7 @@ function save() {
             <ol v-if="order.length" class="divide-y divide-default border-y border-default" data-testid="member-order">
               <li v-for="(m, i) in order" :key="m.id" class="flex items-center gap-2 py-1.5">
                 <span class="w-5 text-end text-meta text-dimmed tabular-nums">{{ i + 1 }}</span>
-                <StaffAvatar :name="m.name" />
+                <PersonAvatar :name="m.name" />
                 <span class="min-w-0 flex-1 truncate">{{ m.name }}</span>
                 <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-arrow-up" :aria-label="`${m.name} 上移`" :disabled="i === 0" @click="move(i, -1)" />
                 <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-arrow-down" :aria-label="`${m.name} 下移`" :disabled="i === order.length - 1" @click="move(i, 1)" />

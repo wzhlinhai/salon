@@ -3,7 +3,7 @@ import type { TableColumn, TableRow } from '@nuxt/ui'
 import type { components } from '~/utils/api'
 import { attendanceCalendarDate, attendancePunchAt } from '~/utils/attendance'
 
-definePageMeta({ permission: 'attendance.manage', title: '考勤' })
+definePageMeta({ permission: 'attendance.manage', title: '考勤', art: 'calendar' })
 type Schema = components['schemas']
 
 const api = useApi()
