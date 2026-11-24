@@ -79,7 +79,7 @@ function cell(value: string | number) {
         <EmptyState v-else-if="idle" class="box" art="card" title="这段时间没有卡的进出" hint="开卡、充值、耗卡后这里会有数" />
         <div v-else class="overflow-x-auto">
           <table class="w-full text-sm tabular-nums" data-testid="card-table">
-            <thead class="border-b border-default text-xs text-dimmed">
+            <thead class="border-b border-default text-sm text-muted">
               <tr>
                 <th rowspan="2" scope="col" class="sticky left-0 bg-page px-3 py-1.5 text-left font-normal">卡类型</th>
                 <th v-for="g in groups" :key="g.label" :colspan="g.columns.length" scope="colgroup" class="border-l border-default px-3 pt-1.5 text-center font-normal">{{ g.label }}</th>

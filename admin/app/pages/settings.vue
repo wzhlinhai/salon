@@ -237,20 +237,20 @@ onMounted(loadSources)
 
     <section v-if="can('audit_log.view')">
       <div class="sec">修改记录</div>
-      <div class="box">
-        <div v-if="!changes.items.value.length" class="text-sm text-muted">还没有修改过设置</div>
-        <table v-else class="w-full text-sm">
-          <thead class="text-left text-xs text-dimmed">
-            <tr><th class="py-1.5 font-normal">时间</th><th class="font-normal">修改人</th><th class="font-normal">设置</th><th class="font-normal">改前</th><th class="font-normal">改后</th><th class="font-normal">生效日期</th></tr>
+      <div class="overflow-x-auto">
+        <p v-if="!changes.items.value.length" class="text-sm text-muted">还没有修改过设置</p>
+        <table v-else class="data-table">
+          <thead class="text-left">
+            <tr><th>时间</th><th>修改人</th><th>设置</th><th>改前</th><th>改后</th><th>生效日期</th></tr>
           </thead>
           <tbody>
-            <tr v-for="c in changes.items.value" :key="c.id" class="border-t border-default">
-              <td class="py-2 tabular-nums">{{ new Date(c.changed_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</td>
+            <tr v-for="c in changes.items.value" :key="c.id">
+              <td class="tabular-nums whitespace-nowrap">{{ new Date(c.changed_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</td>
               <td>{{ c.changed_by.name }}</td>
               <td>{{ c.label }}</td>
               <td>{{ show(settingOf(c.key), c.old_value) }}{{ c.old_is_default ? '（默认）' : '' }}</td>
               <td>{{ show(settingOf(c.key), c.value) }}{{ c.is_default ? '（恢复默认）' : '' }}</td>
-              <td>{{ c.effective_from }}</td>
+              <td class="tabular-nums whitespace-nowrap">{{ c.effective_from }}</td>
             </tr>
           </tbody>
         </table>

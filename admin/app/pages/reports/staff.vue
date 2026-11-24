@@ -180,7 +180,7 @@ function signed(amount: string, reversal: boolean) {
         <EmptyState v-if="!rows.length" class="box" art="chart" title="这段时间没有业绩" hint="结账、开卡充值后这里会有数" />
         <div v-else class="overflow-x-auto">
           <table class="w-full text-sm tabular-nums" data-testid="staff-table">
-            <thead class="border-b border-default text-xs text-dimmed">
+            <thead class="border-b border-default text-sm text-muted">
               <tr>
                 <th scope="col" class="sticky left-0 bg-page px-3 py-1.5 text-left font-normal">员工</th>
                 <th v-for="c in shownMoneyColumns" :key="c.key" scope="col" class="px-3 text-right font-normal whitespace-nowrap">{{ c.label }}</th>

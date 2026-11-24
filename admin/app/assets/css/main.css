@@ -207,6 +207,34 @@ body {
   }
 }
 
+/* 手写的 <table> 和 UTable 长一个样（app.config.ts 的 table）：表头 14px 常规灰字、高 36，单元格行高 37，
+   左右 8px；横线竖线同一种细线，表头上方不画线。对齐不在这里定（会盖过单元格上的 text-right），
+   表头写 text-left（Chrome 的 th 只继承 left，不继承 start），数字列照旧写 text-right。用不了 UTable 的（多级表头、固定首列、可选中行）加这个类。
+   内边距、表头字色写在嵌套选择器上，比单元格上的 px-*、py-*、text-* 工具类优先；要例外的格子改这里或别用这个类。 */
+@utility data-table {
+  width: 100%;
+  font-size: var(--text-sm);
+  & :is(th, td) {
+    padding: 6px 8px;
+    border-color: var(--ui-border);
+  }
+  & :is(th, td):not(:last-child) {
+    border-inline-end-width: 1px;
+  }
+  & th {
+    height: 36px;
+    padding-block: 0;
+    font-weight: 400;
+    color: var(--ui-text-muted);
+  }
+  & td {
+    height: 37px;
+  }
+  & thead tr:last-child, & tbody tr {
+    border-bottom: 1px solid var(--ui-border);
+  }
+}
+
 /* Notion 标签：20px 高、4px 圆角。 */
 @utility tag {
   display: inline-flex;

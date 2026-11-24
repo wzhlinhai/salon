@@ -69,7 +69,7 @@ function cell(value: string) {
         <div class="sec">明细</div>
         <div class="overflow-x-auto">
           <table class="w-full text-sm tabular-nums" data-testid="debt-table">
-            <thead class="border-b border-default text-xs text-dimmed">
+            <thead class="border-b border-default text-sm text-muted">
               <tr>
                 <th scope="col" class="px-3 py-1.5 text-left font-normal">来源</th>
                 <th scope="col" class="px-3 text-right font-normal">欠款</th>
