@@ -109,12 +109,7 @@ onMounted(() => {
 
 <template>
   <div>
-    <p v-if="ready && brief.length" class="text-base leading-[1.9] text-pretty" data-testid="report-brief">
-      <template v-for="(part, i) in brief" :key="i">
-        <b v-if="part.strong" class="font-semibold tabular-nums" :class="{ 'text-ink-green': part.tone === 'up', 'text-ink-red': part.tone === 'down' }">{{ part.text }}</b>
-        <template v-else>{{ part.text }}</template>
-      </template>
-    </p>
+    <ReportBrief v-if="ready" :parts="brief" />
 
     <ReportSpark
       v-if="ready && days.length > 1"

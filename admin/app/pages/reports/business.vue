@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 营业报表（DESIGN.md 报表，照 report-01）：指标卡和上一段同长时间比，折线看走势，明细表一天或一月一行，末行合计。
+// 营业报表（DESIGN.md 报表页）：先一段话说结论（和上一段同长时间比），折线看走势，明细表一天或一月一行，末行合计。
 // 合计行直接用接口的 totals，不在前端再加一遍。
 import type { components } from '~/utils/api'
 import type { Granularity, ReportRange } from '~/utils/report'
@@ -90,20 +90,35 @@ const hasPrevious = computed(() => {
   return !!t && [t.service_revenue, t.sales_revenue, t.guest_total, t.card_principal, t.card_bonus, t.groupbuy_deduct].some(v => Number(v) !== 0)
 })
 
-const metrics = computed(() => {
+// 顶上一段话（DESIGN.md 报表页）：实收和办卡充值各和上一段比，再说客数、单数，卡扣、团购、扣次有数才说。
+const brief = computed(() => {
   const t = report.value?.totals
   if (!t) return []
   const p = hasPrevious.value ? previous.value!.totals : undefined
+  const label = previousLabel(range.value)
+  const { parts, say, bold, change } = briefWriter()
   const cardUse = (row: Row) => Number(row.card_principal) + Number(row.card_bonus)
-  return [
-    { label: '实收', value: yuan(t.service_revenue), change: percentChange(t.service_revenue, p?.service_revenue), note: '不含办卡充值' },
-    { label: '办卡充值', value: yuan(t.sales_revenue), change: percentChange(t.sales_revenue, p?.sales_revenue), note: '开卡充值、补差价、红包' },
-    { label: '客数', value: formatGuest(t.guest_total), change: percentChange(t.guest_total, p?.guest_total), note: `共 ${t.checkout_count} 单` },
-    { label: '卡扣', value: yuan(cardUse(t)), change: percentChange(cardUse(t), p && cardUse(p)), note: `本金 ${yuan(t.card_principal)}` },
-    { label: '团购核销', value: yuan(t.groupbuy_deduct), change: percentChange(t.groupbuy_deduct, p?.groupbuy_deduct), note: `扣次 ${yuan(t.count_amount)}` }
-  ]
+  say('这段时间实收 ')
+  bold(yuan(t.service_revenue), undefined, 'service_revenue')
+  change(t.service_revenue, p?.service_revenue, label)
+  say('；办卡充值 ')
+  bold(yuan(t.sales_revenue), undefined, 'sales_revenue')
+  change(t.sales_revenue, p?.sales_revenue, label)
+  say('。来了 ')
+  bold(formatGuest(t.guest_total), undefined, 'guest_total')
+  say(' 位顾客，结账 ')
+  bold(String(t.checkout_count))
+  say(' 单')
+  if (t.void_count) say(`，撤单 ${t.void_count} 单`)
+  say('。')
+  const paidBy = [
+    cardUse(t) ? `卡扣 ${yuan(cardUse(t))}（本金 ${yuan(t.card_principal)}）` : '',
+    Number(t.groupbuy_deduct) ? `团购核销 ${yuan(t.groupbuy_deduct)}` : '',
+    Number(t.count_amount) ? `扣次 ${yuan(t.count_amount)}` : ''
+  ].filter(Boolean)
+  if (paidBy.length) say(`其中${paidBy.join('，')}。`)
+  return parts
 })
-const compareLabel = computed(() => report.value ? previousLabel(range.value) : '')
 
 const rows = computed(() => report.value?.rows ?? [])
 const onSiteColumns = computed(() => (report.value?.totals.on_site ?? []).map(m => ({ method: m.method, label: m.label })))
@@ -135,25 +150,11 @@ function cell(value: string | number) {
     </EmptyState>
 
     <template v-if="report">
-      <div data-testid="report-metrics" class="stats grid grid-cols-2 gap-3 tabular-nums md:grid-cols-5" :class="loading && 'opacity-60'">
-        <div v-for="(m, i) in metrics" :key="m.label" :data-metric="m.label" :class="i ? 'md:border-l md:border-default md:pl-4' : ''">
-          <p class="text-xs text-dimmed">{{ m.label }}</p>
-          <p data-testid="metric-value" class="text-2xl leading-[1.3] font-semibold" :class="zeroText(m.value) && 'text-dimmed'">{{ m.value }}</p>
-          <p data-testid="metric-compare" class="text-xs text-muted">
-            <template v-if="m.change !== null">
-              <span :class="m.change >= 0 ? 'text-ink-green' : 'text-ink-red'">{{ m.change >= 0 ? '↑' : '↓' }} {{ Math.abs(m.change) }}%</span>
-              {{ compareLabel }}
-            </template>
-            <template v-else>{{ m.note }}</template>
-          </p>
-        </div>
-      </div>
+      <ReportBrief :parts="brief" :class="loading && 'opacity-60'" />
 
       <section v-if="rows.length > 1">
         <div class="sec">走势</div>
-        <div class="box">
-          <ReportChart :label="`${range.from} 至 ${range.to} 的实收和办卡充值走势，数字见下方明细表`" :categories="chart.categories" :series="chart.series" />
-        </div>
+        <ReportChart :label="`${range.from} 至 ${range.to} 的实收和办卡充值走势，数字见下方明细表`" :categories="chart.categories" :series="chart.series" />
       </section>
 
       <section>

@@ -141,8 +141,30 @@ export function samePeriodLastMonth(today: string) {
   return { from: `${month}-01`, to: day > last ? last : day }
 }
 
-// 简报的一段话（DESIGN.md 简报）：每句只在拿到它的数时出现；数字加粗，涨跌带颜色。
-export interface BriefPart { text: string, strong?: boolean, tone?: 'up' | 'down' }
+// 简报的一段话（DESIGN.md 简报、报表页）：报表首页和每张报表顶上都先用一段话说结论，由 ReportBrief 画。
+// 每句只在拿到它的数时出现；数字加粗，涨跌带颜色；figure 给要核对的数起个名字（画成 data-figure）。
+export interface BriefPart { text: string, strong?: boolean, tone?: 'up' | 'down', figure?: string }
+
+// 写一段简报：say 写普通字，bold 写加粗的数，change 写「，比前 7 天多 12%」这类涨跌（上一段是 0 时什么也不写）。
+export function briefWriter() {
+  const parts: BriefPart[] = []
+  return {
+    parts,
+    say(text: string) {
+      parts.push({ text })
+    },
+    bold(text: string, tone?: 'up' | 'down', figure?: string) {
+      parts.push({ text, strong: true, tone, figure })
+    },
+    change(current: string | number, previous: string | number | undefined, label: string) {
+      const pct = percentChange(current, previous)
+      if (pct === null) return
+      if (pct === 0) return void parts.push({ text: `，和${label.replace(/^比/, '')}持平` })
+      parts.push({ text: `，${label}${pct > 0 ? '多' : '少'} ` })
+      parts.push({ text: `${Math.abs(pct)}%`, strong: true, tone: pct > 0 ? 'up' : 'down' })
+    }
+  }
+}
 export interface MonthFigures {
   revenue?: string
   lastRevenue?: string
@@ -155,17 +177,11 @@ export interface MonthFigures {
 }
 
 export function monthBrief(f: MonthFigures): BriefPart[] {
-  const out: BriefPart[] = []
-  const say = (text: string) => out.push({ text })
-  const bold = (text: string, tone?: 'up' | 'down') => out.push({ text, strong: true, tone })
+  const { parts, say, bold, change } = briefWriter()
   if (f.revenue !== undefined) {
     say('这个月到今天实收 ')
     bold(yuan(f.revenue))
-    const pct = percentChange(f.revenue, f.lastRevenue)
-    if (pct !== null && pct !== 0) {
-      say(`，比上月同期${pct > 0 ? '多' : '少'} `)
-      bold(`${Math.abs(pct)}%`, pct > 0 ? 'up' : 'down')
-    } else if (pct === 0) say('，和上月同期持平')
+    change(f.revenue, f.lastRevenue, '比上月同期')
     say('。')
   }
   if (f.guests !== undefined) {
@@ -196,5 +212,5 @@ export function monthBrief(f: MonthFigures): BriefPart[] {
     bold(yuan(f.debtAmount), 'down')
     say(' 没收回来。')
   }
-  return out
+  return parts
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 项目报表（DESIGN.md 报表）：一段营业日里每个服务、卖品一行，按实收从高到低；撤单在撤单那天冲回。
+// 项目报表（DESIGN.md 报表页）：先一段话说结论，构成条看钱从哪来；一段营业日里每个服务、卖品一行，按实收从高到低；撤单在撤单那天冲回。
 // 可以只看服务或只看卖品。看全部时合计行用接口的 totals；只看一类时合计是这一类各行相加（按分算）。
 import type { components } from '~/utils/api'
 
@@ -45,21 +45,34 @@ const totals = computed(() => {
   }
 })
 
-const metrics = computed(() => {
+// 顶上一段话（DESIGN.md 报表页）：实收、原价和折扣，做了几次，业绩，实收最多的项目。
+const brief = computed(() => {
   const t = totals.value
   if (!t) return []
+  const { parts, say, bold } = briefWriter()
+  const what = { all: '', service: '服务', goods: '卖品' }[kind.value]
+  say(`这段时间${what}实收 `)
+  bold(yuan(t.paid), undefined, 'paid')
   const discount = cents(t.line_price) - cents(t.paid)
-  return [
-    { label: '实收', value: yuan(t.paid), note: `原价 ${yuan(t.line_price)}` },
-    { label: '折扣', value: yuan(discount / 100), note: '原价减实收' },
-    { label: '次数', value: String(t.times), note: `指定 ${t.designated} 次` },
-    { label: '业绩', value: yuan(t.performance), note: '项目业绩' }
-  ]
+  say(`（原价 ${yuan(t.line_price)}${discount ? `，折扣 ${yuan(discount / 100)}` : ''}），做了 `)
+  bold(String(t.times))
+  say(`${t.designated ? ` 次，其中指定 ${t.designated} 次` : ' 次'}；业绩 `)
+  bold(yuan(t.performance))
+  say('。')
+  const top = rows.value.find(r => Number(r.paid) > 0)
+  if (top) say(`实收最多的是「${top.item_name}」。`)
+  return parts
 })
 
-// 柱状图只比实收前 10 名（接口已按实收从高到低排），全部的数以下面的表为准。
-const CHART_TOP = 10
-const ranked = computed(() => rows.value.filter(r => Number(r.paid) > 0).slice(0, CHART_TOP))
+// 构成条（DESIGN.md 报表页）：实收前四的项目各一段，其余合成「其他」（接口已按实收从高到低排）。全部的数以下面的表为准。
+const MIX_TOP = 4
+const mix = computed(() => {
+  const paid = rows.value.filter(r => Number(r.paid) > 0)
+  const parts = paid.slice(0, MIX_TOP).map(r => ({ label: r.item_name, value: Number(r.paid) }))
+  const rest = paid.slice(MIX_TOP).reduce((s, r) => s + Number(r.paid), 0)
+  if (rest > 0) parts.push({ label: '其他', value: rest })
+  return parts
+})
 
 function cell(value: string | number) {
   return Number(value) === 0 ? 'text-dimmed' : ''
@@ -78,25 +91,11 @@ function cell(value: string | number) {
     </EmptyState>
 
     <template v-if="report && totals">
-      <div data-testid="report-metrics" class="stats grid grid-cols-2 gap-3 tabular-nums md:grid-cols-4" :class="loading && 'opacity-60'">
-        <div v-for="(m, i) in metrics" :key="m.label" :data-metric="m.label" :class="i ? 'md:border-l md:border-default md:pl-4' : ''">
-          <p class="text-xs text-dimmed">{{ m.label }}</p>
-          <p data-testid="metric-value" class="text-2xl leading-[1.3] font-semibold" :class="zeroText(m.value) && 'text-dimmed'">{{ m.value }}</p>
-          <p class="text-xs text-muted">{{ m.note }}</p>
-        </div>
-      </div>
+      <ReportBrief :parts="brief" :class="loading && 'opacity-60'" />
 
-      <section v-if="ranked.length > 1">
-        <div class="sec">实收前 {{ CHART_TOP }} 名</div>
-        <div class="box">
-          <ReportChart
-            type="bar"
-            horizontal
-            :label="`${range.from} 至 ${range.to} 实收最高的项目，数字见下方明细表`"
-            :categories="ranked.map(r => r.item_name)"
-            :series="[{ name: '实收', values: ranked.map(r => Number(r.paid)) }]"
-          />
-        </div>
+      <section v-if="mix.length > 1">
+        <div class="sec">钱从哪来<span class="font-normal text-dimmed">实收前 {{ MIX_TOP }} 的项目</span></div>
+        <ReportMix :parts="mix" />
       </section>
 
       <section>
