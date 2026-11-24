@@ -476,20 +476,13 @@ function statusText(t: Turn) {
     </EmptyState>
 
     <template v-else>
-      <div v-if="activeQueues.length > 1" class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5" role="group" aria-label="轮牌队列">
-        <button
-          v-for="q in activeQueues"
-          :key="q.id"
-          type="button"
-          class="tile"
-          :aria-pressed="q.id === queueId"
-          :data-queue="q.name"
-          @click="pickQueue(q.id)"
-        >
-          <span class="block text-meta" :class="q.id === queueId ? 'text-primary' : 'text-muted'">{{ q.name }}</span>
-          <span class="block text-xl font-semibold tabular-nums" :class="q.id === queueId ? 'text-primary' : ''">{{ q.members.length }} <small class="text-meta font-normal">人</small></span>
-        </button>
-      </div>
+      <ViewTabs
+        v-if="activeQueues.length > 1"
+        :model-value="queueId"
+        :items="activeQueues.map(q => ({ key: q.id, label: q.name, count: q.members.length }))"
+        label="轮牌队列"
+        @update:model-value="pickQueue"
+      />
 
       <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1" data-testid="rotation-summary">
         <p v-if="nextUp" class="text-lead">下一位：<b data-testid="next-up">{{ who(nextUp.staff) }}</b></p>
