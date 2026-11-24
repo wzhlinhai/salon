@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/wzhlinhai/salon/backend/internal/ai"
 )
@@ -46,5 +47,26 @@ func TestOpenAIConfigFromEnv(t *testing.T) {
 	}
 	if request["model"] != "deepseek-v4.1-flash" {
 		t.Fatalf("model = %v", request["model"])
+	}
+}
+
+func TestOpenAIConfigHTTPClient(t *testing.T) {
+	t.Setenv("AI_EXTRA_HEADERS", "")
+	cfg, err := ai.OpenAIConfigFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport, ok := cfg.HTTPClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("transport = %T", cfg.HTTPClient.Transport)
+	}
+	if transport.IdleConnTimeout <= 0 || transport.IdleConnTimeout > 60*time.Second {
+		t.Fatalf("IdleConnTimeout = %v", transport.IdleConnTimeout)
+	}
+	if transport.Proxy == nil {
+		t.Fatal("Proxy is nil")
+	}
+	if transport.HTTP2 == nil || transport.HTTP2.SendPingTimeout <= 0 {
+		t.Fatalf("HTTP2 = %+v", transport.HTTP2)
 	}
 }
