@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'settings.manage', title: '团购商品', description: '美团、抖音上卖的团购，以及核销后对应店里哪个项目。' })
+definePageMeta({ permission: 'settings.manage', title: '团购商品', description: '美团、抖音上卖的团购，以及核销后对应店里哪个项目。', art: 'phone' })
 
 type Deal = components['schemas']['Deal']
 type Item = components['schemas']['Item']

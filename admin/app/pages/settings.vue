@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ title: '门店设置', width: 'narrow', description: '修改从选定的日期开始执行，之前的业务和已经下的单不受影响。' })
+definePageMeta({ title: '门店设置', width: 'narrow', description: '修改从选定的日期开始执行，之前的业务和已经下的单不受影响。', art: 'sign' })
 
 // 所有员工都能查看设置和系统默认做法；修改需要门店设置权限，以后端检查为准。
 type Setting = components['schemas']['Setting']

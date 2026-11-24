@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'staff.manage', title: '级别与岗位', description: '级别用来按人定价，岗位用来算提成。' })
+definePageMeta({ permission: 'staff.manage', title: '级别与岗位', description: '级别用来按人定价，岗位用来算提成。', art: 'dryer' })
 
 type LevelOrPosition = components['schemas']['Level'] | components['schemas']['Position']
 type ItemCategory = components['schemas']['ItemCategory']

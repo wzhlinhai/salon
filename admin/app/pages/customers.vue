@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components, paths } from '~/utils/api'
 
-definePageMeta({ permission: 'customer.view', title: '顾客' })
+definePageMeta({ permission: 'customer.view', title: '顾客', art: 'mirror' })
 
 type Overview = paths['/api/ops/list_customer_overview']['post']['responses']['200']['content']['application/json']['items'][number]
 type Segments = paths['/api/ops/get_customer_segments']['post']['responses']['200']['content']['application/json']

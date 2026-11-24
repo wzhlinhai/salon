@@ -32,7 +32,7 @@ async function submit() {
   <main class="flex min-h-dvh flex-col bg-white px-6 py-10">
     <div class="m-auto w-full max-w-sm">
       <SpotArt name="scissors" class="mx-auto mb-4 w-28" />
-      <h1 class="text-center text-greet font-semibold">员工登录</h1>
+      <h1 class="text-center font-kai text-greet">员工登录</h1>
       <p class="mt-2 mb-8 text-center text-pretty text-muted">用店里给你开的账号登录。忘了密码，请找店长重置。</p>
       <form class="space-y-4" @submit.prevent="submit">
         <UFormField label="账号">

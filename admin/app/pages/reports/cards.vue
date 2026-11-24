@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 卡项报表（DESIGN.md 报表）：一段营业日里每种卡一行：开卡、充值、补差价收进来多少，耗卡、扣次用掉多少，退卡退了多少，
+// 卡项报表（DESIGN.md 报表页）：先一段话说结论，再是明细表。一段营业日里每种卡一行：开卡、充值、补差价收进来多少，耗卡、扣次用掉多少，退卡退了多少，
 // 以及结束那天全部卡的余额和剩余次数。升级过的卡按升级后的卡类型算。合计行用接口的 totals。
 import type { components } from '~/utils/api'
 
@@ -36,19 +36,30 @@ function cents(value: string) {
   return Math.round(Number(value) * 100)
 }
 
-const metrics = computed(() => {
+// 顶上一段话（DESIGN.md 报表页）：收进来多少、用掉多少、退了多少，结束那天卡里还剩多少。
+const brief = computed(() => {
   const t = report.value?.totals
   if (!t) return []
+  const { parts, say, bold } = briefWriter()
   // 次卡开卡的流水本金是 0（卖价记在次数上），所以这里只算得到储值部分的进账。
   const sold = (cents(t.open_principal) + cents(t.recharge_principal) + cents(t.upgrade)) / 100
   const used = (cents(t.consumed_principal) + cents(t.consumed_bonus)) / 100
-  return [
-    { label: '本金进账', value: yuan(sold), note: `开卡 ${t.open_count} 张 · 次卡卖价不在内` },
-    { label: '耗卡', value: yuan(used), note: `本金 ${yuan(t.consumed_principal)}` },
-    { label: '扣次', value: `${t.count_used} 次`, note: `折 ${yuan(t.count_amount)}` },
-    { label: '退卡', value: yuan(t.refund_amount), note: `${t.refund_count} 张` },
-    { label: '卡内余额', value: yuan(t.ending_balance), note: `剩 ${t.ending_counts} 次 · ${range.value.to}` }
-  ]
+  // 每句只在有数时说，不写「扣次 0 次折 ¥0」这种零。
+  if (sold || t.open_count) {
+    say('这段时间储值本金进账 ')
+    bold(yuan(sold))
+    say(`${t.open_count ? `，开卡 ${t.open_count} 张` : ''}（次卡卖价不在内）。`)
+  } else say('这段时间没有开卡、充值。')
+  const out = [
+    used ? `耗卡 ${yuan(used)}（本金 ${yuan(t.consumed_principal)}）` : '',
+    t.count_used ? `扣次 ${t.count_used} 次折 ${yuan(t.count_amount)}` : '',
+    t.refund_count ? `退卡 ${t.refund_count} 张共 ${yuan(t.refund_amount)}` : ''
+  ].filter(Boolean)
+  if (out.length) say(`这段时间${out.join('，')}。`)
+  say(`到 ${range.value.to} 营业结束，卡内余额 `)
+  bold(yuan(t.ending_balance), undefined, 'ending_balance')
+  say(t.ending_counts ? `，另有 ${t.ending_counts} 次没用。` : '。')
+  return parts
 })
 
 function cell(value: string | number) {
@@ -65,13 +76,7 @@ function cell(value: string | number) {
     </EmptyState>
 
     <template v-if="report">
-      <div data-testid="report-metrics" class="stats grid grid-cols-2 gap-3 tabular-nums md:grid-cols-5" :class="loading && 'opacity-60'">
-        <div v-for="(m, i) in metrics" :key="m.label" :data-metric="m.label" :class="i ? 'md:border-l md:border-default md:pl-4' : ''">
-          <p class="text-xs text-dimmed">{{ m.label }}</p>
-          <p data-testid="metric-value" class="text-2xl leading-[1.3] font-semibold" :class="zeroText(m.value) && 'text-dimmed'">{{ m.value }}</p>
-          <p class="text-xs text-muted">{{ m.note }}</p>
-        </div>
-      </div>
+      <ReportBrief :parts="brief" :class="loading && 'opacity-60'" />
 
       <section>
         <div class="sec">明细</div>

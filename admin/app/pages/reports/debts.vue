@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 欠款对账（DESIGN.md 报表）：本店到现在为止全部欠款的合计，分单上的挂账和登记的历史欠款两行，各自欠了多少、还了多少、还剩多少。
+// 欠款对账（DESIGN.md 报表页）：先一段话说还有多少没收回来，再是明细表。本店到现在为止全部欠款的合计，分单上的挂账和登记的历史欠款两行，各自欠了多少、还了多少、还剩多少。
 // 不分时间段：欠款是一直挂着直到还清的。撤单作废的挂账不计。合计行用接口的数。
 import type { components } from '~/utils/api'
 
@@ -28,14 +28,24 @@ async function load() {
 
 onMounted(load)
 
-const metrics = computed(() => {
+// 顶上一段话（DESIGN.md 报表页）：还有几笔、多少没收回来，一共欠过多少、还了多少。
+const brief = computed(() => {
   const s = summary.value
   if (!s) return []
-  return [
-    { label: '未还', value: yuan(s.outstanding), note: `${s.outstanding_count} 笔还没还清` },
-    { label: '已还', value: yuan(s.repaid), note: '挂账和历史欠款的还款' },
-    { label: '欠款合计', value: yuan(s.amount), note: '单上挂账 + 历史欠款' }
-  ]
+  const { parts, say, bold } = briefWriter()
+  if (!Number(s.amount)) {
+    say('还没有过欠款。')
+    return parts
+  }
+  if (s.outstanding_count) {
+    say('还有 ')
+    bold(String(s.outstanding_count))
+    say(' 笔欠款没还清，共 ')
+    bold(yuan(s.outstanding), 'down', 'outstanding')
+    say('。')
+  } else say('欠款都还清了。')
+  say(`到现在一共欠过 ${yuan(s.amount)}，已还 ${yuan(s.repaid)}。`)
+  return parts
 })
 
 const rows = computed(() => summary.value
@@ -57,13 +67,7 @@ function cell(value: string) {
     </EmptyState>
 
     <template v-if="summary">
-      <div data-testid="report-metrics" class="stats grid grid-cols-2 gap-3 tabular-nums md:grid-cols-3">
-        <div v-for="(m, i) in metrics" :key="m.label" :data-metric="m.label" :class="i ? 'md:border-l md:border-default md:pl-4' : ''">
-          <p class="text-xs text-dimmed">{{ m.label }}</p>
-          <p data-testid="metric-value" class="text-2xl leading-[1.3] font-semibold" :class="zeroText(m.value) && 'text-dimmed'">{{ m.value }}</p>
-          <p class="text-xs text-muted">{{ m.note }}</p>
-        </div>
-      </div>
+      <ReportBrief :parts="brief" />
 
       <section>
         <div class="sec">明细</div>

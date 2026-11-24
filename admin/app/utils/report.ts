@@ -1,11 +1,12 @@
 // 报表共用：报表目录、日期范围（快捷范围、上一段、范围上限）和数字显示。
 import type { components } from '~/utils/api'
 import { addDays } from './datetime'
+import { yuan } from './money'
 
 export type Granularity = 'day' | 'month'
 export interface ReportRange { granularity: Granularity, from: string, to: string }
 
-// 报表入口的目录（DESIGN.md 报表入口）：一张平铺的清单。只列做好了的报表。
+// 报表入口的目录（DESIGN.md 简报）：报表首页「细看」下的子页面链接。只列做好了的报表。
 export const reportCatalog: { key: string, label: string, description: string, icon: string, permission: string }[] = [
   { key: 'business', label: '营业报表', description: '每天或每月的实收、办卡充值、客数，按收款方式分列', icon: 'i-lucide-chart-line', permission: 'report.view' },
   { key: 'debts', label: '欠款对账', description: '到现在为止的挂账和历史欠款，已还多少、还剩多少', icon: 'i-lucide-hand-coins', permission: 'report.view' },
@@ -120,14 +121,96 @@ export function switchGranularity(range: ReportRange, granularity: Granularity, 
   return { granularity, from: `${range.from}-01`, to: end > today ? today : end }
 }
 
-// 涨跌百分比；上一段是 0 时不比。
+// 涨跌百分比；上一段是 0 或负数（只有退款）时不比，负数做分母会把变好说成变差。
 export function percentChange(current: string | number, previous: string | number | undefined) {
   const before = Number(previous ?? 0)
-  if (!before) return null
+  if (before <= 0) return null
   return Math.round(((Number(current) - before) / before) * 100)
 }
 
 // 客数后端给四位小数（一单多人分摊），显示最多一位。
 export function formatGuest(value: string | number) {
   return Number(value || '0').toLocaleString('zh-CN', { maximumFractionDigits: 1 })
+}
+
+// 上月同期：上个月 1 号到上个月的同一天；上个月没有这一天（例如 3 月 31 日对 2 月）就到上个月最后一天。
+export function samePeriodLastMonth(today: string) {
+  const month = addMonths(today.slice(0, 7), -1)
+  const last = addDays(`${addMonths(month, 1)}-01`, -1)
+  const day = `${month}-${today.slice(8, 10)}`
+  return { from: `${month}-01`, to: day > last ? last : day }
+}
+
+// 简报的一段话（DESIGN.md 简报、报表页）：报表首页和每张报表顶上都先用一段话说结论，由 ReportBrief 画。
+// 每句只在拿到它的数时出现；数字加粗，涨跌带颜色；figure 给要核对的数起个名字（画成 data-figure）。
+export interface BriefPart { text: string, strong?: boolean, tone?: 'up' | 'down', figure?: string }
+
+// 写一段简报：say 写普通字，bold 写加粗的数，change 写「，比前 7 天多 12%」这类涨跌（上一段是 0 时什么也不写）。
+export function briefWriter() {
+  const parts: BriefPart[] = []
+  return {
+    parts,
+    say(text: string) {
+      parts.push({ text })
+    },
+    bold(text: string, tone?: 'up' | 'down', figure?: string) {
+      parts.push({ text, strong: true, tone, figure })
+    },
+    change(current: string | number, previous: string | number | undefined, label: string) {
+      const pct = percentChange(current, previous)
+      if (pct === null) return
+      if (pct === 0) return void parts.push({ text: `，和${label.replace(/^比/, '')}持平` })
+      parts.push({ text: `，${label}${pct > 0 ? '多' : '少'} ` })
+      parts.push({ text: `${Math.abs(pct)}%`, strong: true, tone: pct > 0 ? 'up' : 'down' })
+    }
+  }
+}
+export interface MonthFigures {
+  revenue?: string
+  lastRevenue?: string
+  guests?: string
+  newCustomers?: number
+  topSource?: string | null
+  cardsOpened?: number
+  debtCount?: number
+  debtAmount?: string
+}
+
+export function monthBrief(f: MonthFigures): BriefPart[] {
+  const { parts, say, bold, change } = briefWriter()
+  if (f.revenue !== undefined) {
+    say('这个月到今天实收 ')
+    bold(yuan(f.revenue))
+    change(f.revenue, f.lastRevenue, '比上月同期')
+    say('。')
+  }
+  if (f.guests !== undefined) {
+    say('来了 ')
+    bold(formatGuest(f.guests))
+    say(' 位顾客')
+    if (f.newCustomers !== undefined) {
+      say('，其中新客 ')
+      bold(String(f.newCustomers))
+      say(' 位')
+    }
+    say('。')
+  } else if (f.newCustomers !== undefined) {
+    say('新客 ')
+    bold(String(f.newCustomers))
+    say(' 位。')
+  }
+  if (f.newCustomers && f.topSource) say(`新客最多从「${f.topSource}」来。`)
+  if (f.cardsOpened) {
+    say('开卡 ')
+    bold(String(f.cardsOpened))
+    say(' 张。')
+  }
+  if (f.debtCount) {
+    say('还有 ')
+    bold(String(f.debtCount))
+    say(' 笔挂账共 ')
+    bold(yuan(f.debtAmount), 'down')
+    say(' 没收回来。')
+  }
+  return parts
 }
