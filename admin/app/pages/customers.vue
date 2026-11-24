@@ -373,7 +373,7 @@ async function handover() {
           <span v-else class="grid size-9 shrink-0 place-items-center rounded-full bg-tag-gray font-semibold" aria-hidden="true">{{ displayName(row.customer).slice(0, 1) }}</span>
           <div class="min-w-0">
             <p class="flex flex-wrap items-center gap-1.5">
-              <button type="button" class="font-semibold hover:underline" @click.stop="openDetail(row.customer.id)">{{ displayName(row.customer) }}</button>
+              <button type="button" class="min-w-0 text-start font-semibold break-all hover:underline" @click.stop="openDetail(row.customer.id)">{{ displayName(row.customer) }}</button>
               <span v-for="label in row.customer.active_safety_labels" :key="label.id" class="tag bg-tag-red">{{ labelNames[label.kind] || '安全标签' }}</span>
             </p>
             <p class="truncate text-meta text-muted" :title="row.customer.responsible ? `负责人 ${row.customer.responsible.name}` : undefined">

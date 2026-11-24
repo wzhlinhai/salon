@@ -266,24 +266,24 @@ function changeSource(o: OverrideForm) {
     <section v-else>
       <div class="sec">方案版本</div>
       <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead class="text-left text-xs text-dimmed">
-            <tr><th class="px-3 py-2 font-normal">版本</th><th class="px-3 font-normal">生效日期</th><th class="px-3 font-normal">修改人</th><th class="px-3 font-normal">保存时间</th><th class="px-3 font-normal">状态</th></tr>
+        <table class="data-table">
+          <thead class="text-left">
+            <tr><th>版本</th><th>生效日期</th><th>修改人</th><th>保存时间</th><th>状态</th></tr>
           </thead>
           <tbody>
             <tr
               v-for="v in versions.items.value"
               :key="v.version"
               :data-version="v.version"
-              class="cursor-pointer border-t border-default hover:bg-hover"
-              :class="selected === v.version ? 'bg-selected' : ''"
+              class="cursor-pointer"
+              :class="selected === v.version ? 'bg-selected' : 'hover:bg-hover'"
               @click="selectVersion(v.version)"
             >
-              <td class="px-3 py-2"><button type="button" class="font-medium hover:underline" @click.stop="selectVersion(v.version)">版本 {{ v.version }}</button></td>
-              <td class="px-3 tabular-nums">{{ v.effective_from }}</td>
-              <td class="px-3">{{ v.saved_by.name }}</td>
-              <td class="px-3 text-muted tabular-nums">{{ new Date(v.saved_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</td>
-              <td class="px-3"><span v-if="inForce === v.version" class="tag bg-tag-green">执行中</span><span v-else-if="v.effective_from > today" class="tag bg-tag-yellow">已安排</span></td>
+              <td><button type="button" class="text-start font-medium hover:underline" @click.stop="selectVersion(v.version)">版本 {{ v.version }}</button></td>
+              <td class="tabular-nums">{{ v.effective_from }}</td>
+              <td>{{ v.saved_by.name }}</td>
+              <td class="text-muted tabular-nums">{{ new Date(v.saved_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</td>
+              <td><span v-if="inForce === v.version" class="tag bg-tag-green">执行中</span><span v-else-if="v.effective_from > today" class="tag bg-tag-yellow">已安排</span></td>
             </tr>
           </tbody>
         </table>
@@ -300,7 +300,7 @@ function changeSource(o: OverrideForm) {
             <template v-for="rule in detail.scheme.rules.filter(r => r.source === source.value)" :key="rule.source">
               <p class="text-muted">计提基数：{{ bases.find(b => b.value === rule.base)?.label }} · 区分：{{ [rule.by_position ? '岗位' : '', rule.by_designated ? '指定或非指定' : '', rule.by_member ? '会员或散客' : ''].filter(Boolean).join('、') || '不区分' }}</p>
               <table class="mt-1.5 w-full max-w-xl">
-                <thead class="text-left text-xs text-dimmed"><tr><th v-if="rule.by_position" class="py-1 font-normal">岗位</th><th v-if="rule.by_designated" class="font-normal">指定或非指定</th><th v-if="rule.by_member" class="font-normal">会员或散客</th><th class="font-normal">提成规则</th></tr></thead>
+                <thead class="text-left text-sm text-muted"><tr><th v-if="rule.by_position" class="py-1 font-normal">岗位</th><th v-if="rule.by_designated" class="font-normal">指定或非指定</th><th v-if="rule.by_member" class="font-normal">会员或散客</th><th class="font-normal">提成规则</th></tr></thead>
                 <tbody><tr v-for="(cell, index) in rule.cells" :key="index" class="border-t border-default"><td v-if="rule.by_position" class="py-1.5">{{ cell.position?.name }}</td><td v-if="rule.by_designated">{{ cell.designated ? '指定' : '非指定' }}</td><td v-if="rule.by_member">{{ cell.member ? '会员' : '散客' }}</td><td class="py-1.5 font-medium tabular-nums">{{ valueText(cell) }}</td></tr></tbody>
               </table>
               <p class="mt-1 text-xs text-dimmed">未填的格子不计提成。</p>

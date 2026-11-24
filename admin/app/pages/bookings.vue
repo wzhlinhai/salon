@@ -652,7 +652,7 @@ function actorLabel(actor: Actor) {
         <UButton icon="i-lucide-chevron-right" color="neutral" variant="ghost" aria-label="后一天" @click="moveDay(1)" />
       </div>
       <h2 class="text-lg font-semibold" data-testid="booking-day-title">{{ dayTitle }}</h2>
-      <span v-if="day && day === businessDate" class="tag bg-tag-blue">今天</span>
+      <span v-if="day && day === businessDate" class="tag bg-tag-gray">今天</span>
       <UButton v-else color="neutral" variant="outline" size="sm" @click="goToday">今天</UButton>
       <DateInput v-model="day" size="sm" aria-label="营业日" class="ms-2 w-36" />
       <USwitch v-model="showCancelled" size="sm" label="显示已取消" class="ms-auto" />

@@ -160,7 +160,7 @@ function cell(value: string | number) {
         <div class="sec">明细</div>
         <div class="overflow-x-auto">
           <table class="w-full text-sm tabular-nums" data-testid="business-table">
-            <thead class="border-b border-default text-xs text-dimmed">
+            <thead class="border-b border-default text-sm text-muted">
               <tr>
                 <th rowspan="2" scope="col" class="sticky left-0 bg-page px-3 py-1.5 text-left font-normal">{{ report.granularity === 'day' ? '日期' : '月份' }}</th>
                 <th rowspan="2" scope="col" class="px-3 text-right font-normal whitespace-nowrap">实收</th>

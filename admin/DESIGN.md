@@ -131,6 +131,7 @@ Notion 的九种浅底标签，类名 `bg-tag-*`，配合 `tag` 工具类（20px
 - `props`：照 Notion 页面属性的两列清单（`<dl class="props">`，`dt` 灰字属性名、`dd` 值）。几个数字讲同一件事、不值得画表时用（团购对账）。
 - `tile`：大筛选块，现在只剩轮牌的队列切换在用；新页面用 `ViewTabs`（白底细线、10px 圆角，`aria-pressed="true"` 时描 1.5px 主色（墨色）outline，强制配色模式下也看得见）。里面上一行 `text-meta` 名称，下一行 `text-xl font-semibold` 数量；选中时两行都 `text-primary`，数量是 0 或是「已停用」这类不常看的用 `text-dimmed`。
 - `sec`：区块标题，16px 半粗墨色。只写名字，不加图标；右边 `ms-auto font-normal text-dimmed` 写一句说明或一个链接，`font-normal` 的子元素自动用 14px。
+- `data-table`：手写 `<table>` 用，长得和 `UTable` 一样（表头 14px 常规灰字高 36、单元格高 37、左右 8px、横竖同色细线、表头上方无线）。只在 `UTable` 做不到时用（可选中的行、多级表头）；表头写 `text-left`，数字列写 `text-right`。内边距和表头字色由它定，单元格上的 `px-*`、`text-*` 盖不过它。报表明细表按组画竖线，不用它，只把表头写成 `text-sm text-muted`。
 - `stats`：指标条。不包卡片，上下各一条细线，数字直接放在页面上。
 - `hatch`：斜纹底，表示"被占着但还没有顾客"（私约占位、歇业时段）。
 - `ring-serving` / `ring-alert`：时间轴块的状态描边，深色是服务中，红色是迟到、爽约。块里同时写出状态文字。

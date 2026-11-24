@@ -341,61 +341,65 @@ onMounted(init)
       />
     </section>
 
-    <div class="grid items-start gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
-      <div class="space-y-4">
-        <section>
-          <h2 class="sec">挂单<span class="ms-1 font-normal text-dimmed">{{ openOrders.length }}</span></h2>
-          <div class="box overflow-hidden p-0" data-testid="open-orders">
-            <ListSkeleton v-if="ordersLoading && !openOrders.length" :rows="3" />
-            <EmptyState v-else-if="!openOrders.length" title="暂无挂单" hint="顾客到店开单后会挂在这里，做完再结账" />
-            <button
-              v-for="order in openOrders"
-              :key="order.id"
-              type="button"
-              class="block w-full border-t border-default px-3 py-2.5 text-left first:border-t-0"
-              :class="order.id === selectedOrderID ? 'bg-selected shadow-[inset_2px_0_0_var(--ui-primary)]' : 'hover:bg-hover'"
-              :aria-current="order.id === selectedOrderID ? 'true' : undefined"
-              :data-order-id="order.id"
-              data-testid="open-order"
-              :disabled="checkoutSaving"
-              @click="selectOrder(order)"
-            >
-              <div class="flex items-center justify-between gap-2 text-sm">
-                <span class="truncate font-medium" :title="customerName(order.customer_id)">{{ customerName(order.customer_id) }}</span>
-                <span class="font-medium tabular-nums">{{ yuanFixed(order.receivable) }}</span>
-              </div>
-              <div class="mt-0.5 flex items-center gap-1.5 text-meta text-muted">
-                <span v-if="order.backfill" data-testid="backfill-badge" class="tag bg-tag-yellow">补录 {{ order.business_date }}</span>
-                <span class="truncate" :title="orderItemNames(order)">{{ orderItemNames(order) }}</span>
-              </div>
-            </button>
-          </div>
-          <div v-if="canCollect && lastReceipt" class="mt-2 flex items-center gap-2 px-1 text-meta text-muted" data-testid="last-receipt">
-            <span>最近一次结账 {{ yuanFixed(lastReceipt.total) }}</span>
-            <UButton size="xs" color="neutral" variant="ghost" class="ms-auto" @click="receipt = lastReceipt">补打小票</UButton>
-          </div>
-        </section>
+    <!-- 源码顺序就是窄屏一栏时的顺序（也是键盘顺序）：挂单 → 当前单 → 今日结账，先选挂单、紧接着就是这张单。
+         宽屏时挂单、今日结账叠在左栏，当前单占右栏两行；第二行 1fr 吃掉当前单多出的高度，左栏两块之间不留空。 -->
+    <div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-[20rem_minmax(0,1fr)] lg:grid-rows-[auto_1fr]">
+      <section class="min-w-0 lg:col-start-1 lg:row-start-1">
+        <h2 class="sec">挂单<span class="ms-1 font-normal text-dimmed">{{ openOrders.length }}</span></h2>
+        <div class="box overflow-hidden p-0" data-testid="open-orders">
+          <ListSkeleton v-if="ordersLoading && !openOrders.length" :rows="3" />
+          <EmptyState v-else-if="!openOrders.length" title="暂无挂单" hint="顾客到店开单后会挂在这里，做完再结账" />
+          <button
+            v-for="order in openOrders"
+            :key="order.id"
+            type="button"
+            class="block w-full border-t border-default px-3 py-2.5 text-left first:border-t-0"
+            :class="order.id === selectedOrderID ? 'bg-selected shadow-[inset_2px_0_0_var(--ui-primary)]' : 'hover:bg-hover'"
+            :aria-current="order.id === selectedOrderID ? 'true' : undefined"
+            :data-order-id="order.id"
+            data-testid="open-order"
+            :disabled="checkoutSaving"
+            @click="selectOrder(order)"
+          >
+            <div class="flex items-center justify-between gap-2 text-sm">
+              <span class="truncate font-medium" :title="customerName(order.customer_id)">{{ customerName(order.customer_id) }}</span>
+              <span class="font-medium tabular-nums">{{ yuanFixed(order.receivable) }}</span>
+            </div>
+            <div class="mt-0.5 flex items-center gap-1.5 text-meta text-muted">
+              <span v-if="order.backfill" data-testid="backfill-badge" class="tag bg-tag-yellow">补录 {{ order.business_date }}</span>
+              <span class="truncate" :title="orderItemNames(order)">{{ orderItemNames(order) }}</span>
+            </div>
+          </button>
+        </div>
+        <div v-if="canCollect && lastReceipt" class="mt-2 flex items-center gap-2 px-1 text-meta text-muted" data-testid="last-receipt">
+          <span>最近一次结账 {{ yuanFixed(lastReceipt.total) }}</span>
+          <UButton size="xs" color="neutral" variant="ghost" class="ms-auto" @click="receipt = lastReceipt">补打小票</UButton>
+        </div>
+      </section>
 
-        <CashierSettled :refresh-key="settledKey" :customer-name="customerName" :resolve-names="resolveNames" :can-void="o => mayChange('order.void', o)" :can-change-staff="o => mayChange('order.edit', o)" :staff-items="staffItems" :staff-name="staffName" @voided="onVoided" />
+      <div class="min-w-0 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+        <CashierOrderPanel
+          ref="panel"
+          v-model:order-id="selectedOrderID"
+          v-model:busy="checkoutSaving"
+          :open-orders="openOrders"
+          :items="activeItems"
+          :staff-items="staffItems"
+          :business-date="businessDate"
+          :identified-customers="identifiedCustomers"
+          :customer-name="customerName"
+          :staff-name="staffName"
+          :resolve-names="resolveNames"
+          :may-change="mayChange"
+          @changed="loadOrders"
+          @coupons-changed="loadUnlinked"
+          @checked-out="onCheckedOut"
+        />
       </div>
 
-      <CashierOrderPanel
-        ref="panel"
-        v-model:order-id="selectedOrderID"
-        v-model:busy="checkoutSaving"
-        :open-orders="openOrders"
-        :items="activeItems"
-        :staff-items="staffItems"
-        :business-date="businessDate"
-        :identified-customers="identifiedCustomers"
-        :customer-name="customerName"
-        :staff-name="staffName"
-        :resolve-names="resolveNames"
-        :may-change="mayChange"
-        @changed="loadOrders"
-        @coupons-changed="loadUnlinked"
-        @checked-out="onCheckedOut"
-      />
+      <div class="min-w-0 lg:col-start-1 lg:row-start-2">
+        <CashierSettled :refresh-key="settledKey" :customer-name="customerName" :resolve-names="resolveNames" :can-void="o => mayChange('order.void', o)" :can-change-staff="o => mayChange('order.edit', o)" :staff-items="staffItems" :staff-name="staffName" @voided="onVoided" />
+      </div>
     </div>
 
     <CashierUnlinkedCoupons
