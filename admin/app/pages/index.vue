@@ -59,9 +59,8 @@ const shortcutCatalog = [
 ]
 const shortcuts = computed(() => shortcutCatalog.filter(item => can(item.permission)).slice(0, 4))
 
-// 最近访问（照 Notion 首页）：本人最近打开的页面；不够 6 个，用常用页面补上，没去过的不写时间。
+// 最近访问（照 Notion 首页）：本人最近真正看过的顾客、报表、日结等；一条都没有就不显示这块。
 const { read: readRecent } = useRecentPages()
-const fallbackPages = ['/cashier', '/bookings', '/customers', '/closing', '/reports', '/staff']
 const recentPages = ref<{ to: string, label: string, icon: string, when: string }[]>([])
 
 function visitedWhen(at: number) {
@@ -74,19 +73,17 @@ function visitedWhen(at: number) {
   return `${date.getMonth() + 1}月${date.getDate()}日`
 }
 
+// 权限变了（换了角色）就不再列看不了的页面；按路径前缀找侧栏里对应的那一项。
+function allowed(to: string) {
+  const path = to.split('?')[0]!
+  const item = navItems.find(nav => nav.to !== '/' && path.startsWith(nav.to))
+  return !!item && (!item.permission || can(item.permission))
+}
+
 function loadRecent() {
-  const allowed = navItems.filter(item => item.to !== '/' && (!item.permission || can(item.permission)))
-  const find = (to: string) => allowed.find(item => item.to === to)
-  const rows: { to: string, label: string, icon: string, when: string }[] = []
-  for (const visit of readRecent()) {
-    const item = find(visit.to)
-    if (item) rows.push({ to: item.to, label: item.label, icon: item.icon, when: visitedWhen(visit.at) })
-  }
-  for (const to of fallbackPages) {
-    const item = find(to)
-    if (item && rows.length < 6 && !rows.some(row => row.to === to)) rows.push({ to, label: item.label, icon: item.icon, when: '' })
-  }
-  recentPages.value = rows
+  recentPages.value = readRecent()
+    .filter(visit => allowed(visit.to))
+    .map(visit => ({ to: visit.to, label: visit.label, icon: visit.icon, when: visitedWhen(visit.at) }))
 }
 
 const { pending: pendingDrafts, drafts: allDrafts } = useDrafts()
@@ -296,20 +293,18 @@ onMounted(async () => {
 
       <template v-else-if="selectedHome === 'manager'">
         <HomeWidget v-if="recentPages.length" title="最近访问" icon="i-lucide-clock">
-          <div class="-mx-1 flex gap-3 overflow-x-auto px-1 pt-1 pb-1" data-testid="home-recent">
+          <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6" data-testid="home-recent">
             <NuxtLink
               v-for="page in recentPages"
               :key="page.to"
               :to="page.to"
-              class="flex h-[150px] w-[150px] shrink-0 flex-col overflow-hidden rounded-card bg-white shadow-card transition-colors hover:bg-card-hover"
+              class="flex min-w-0 flex-col gap-1.5 rounded-card bg-white px-3 py-2.5 shadow-card transition-colors hover:bg-card-hover"
             >
-              <span class="h-11 shrink-0 bg-side" aria-hidden="true" />
-              <UIcon :name="page.icon" class="-mt-4 ms-4 size-7 shrink-0 text-toned" aria-hidden="true" />
-              <span class="px-4 pt-2.5 text-lead font-medium">{{ page.label }}</span>
-              <span class="mt-auto flex items-center gap-1.5 px-4 pb-3.5 text-meta text-dimmed tabular-nums">
-                <UIcon :name="page.when ? 'i-lucide-clock' : 'i-lucide-star'" class="size-3.5 shrink-0" aria-hidden="true" />
-                {{ page.when || '常用' }}
+              <span class="flex min-w-0 items-center gap-2 text-sm font-medium">
+                <UIcon :name="page.icon" class="size-4 shrink-0 text-toned" aria-hidden="true" />
+                <span class="truncate" :title="page.label">{{ page.label }}</span>
               </span>
+              <span class="text-meta text-dimmed tabular-nums">{{ page.when }}</span>
             </NuxtLink>
           </div>
         </HomeWidget>
@@ -356,7 +351,7 @@ onMounted(async () => {
         </div>
 
         <HomeWidget v-if="can('booking.manage') && businessDate" title="今日排班" icon="i-lucide-calendar">
-          <template #aside><NuxtLink to="/bookings" class="hover:underline">到预约页改约</NuxtLink></template>
+          <template #aside><NuxtLink to="/bookings" class="inline-flex items-center gap-0.5 hover:text-default">到预约页改约<UIcon name="i-lucide-chevron-right" class="size-3.5" aria-hidden="true" /></NuxtLink></template>
           <HomeTimeline :date="today" @summary="visits = $event" />
         </HomeWidget>
       </template>

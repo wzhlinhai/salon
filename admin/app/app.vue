@@ -75,17 +75,21 @@ const pageWidth = computed(() => [
   route.meta.width === 'narrow' ? 'mx-auto w-full max-w-[800px]' : 'w-full',
   route.meta.workbench ? '' : 'pb-16'
 ])
+// 大屏两侧留白：宽表和工作台（预约日历、收银）只留 48px，把宽度让给列。
+const panelBody = computed(() => `px-4 pt-5 pb-16 sm:px-12 sm:pt-10 sm:pb-24 ${route.meta.workbench || route.meta.width === 'wide' ? '' : 'xl:px-24'}`)
 const pageDescription = computed(() => String(route.meta.description || ''))
 
 const pageIcon = computed(() => {
   if (route.path === '/drafts') return DRAFTS_ICON
   return navItems.find(item => isActive(item.to))?.icon ?? ''
 })
-// 首页「最近访问」：打开侧栏里的页面（不含首页）就记一笔；登录信息到了再记，换人不串。
+// 首页「最近访问」：打开侧栏里的页面或某张报表就记一笔（顾客详情由 CustomerDetail 记）；登录信息到了再记，换人不串。
 const { record: recordRecent } = useRecentPages()
 watch([() => route.path, () => me.value?.staff.id], ([path]) => {
   const item = navItems.find(nav => nav.to !== '/' && isActive(nav.to))
-  if (item && path) recordRecent(item.to)
+  if (!item || !path) return
+  const label = path === item.to ? item.label : String(route.meta.title || '')
+  recordRecent({ to: path, label, icon: item.icon })
 }, { immediate: true })
 // 二级页（目前只有各张报表）在顶栏前面放上一级的链接，点了回入口。
 const parentCrumb = computed(() => route.path.startsWith('/reports/') ? { to: '/reports', label: '报表' } : null)
@@ -232,7 +236,7 @@ const searchGroups = computed(() => {
             data-testid="search-button"
             @click="searchOpen = true"
           >
-            <span class="side-glyph" style="--tone: var(--color-tag-gray)"><UIcon name="i-lucide-search" class="side-icon" aria-hidden="true" /></span>
+            <UIcon name="i-lucide-search" class="side-icon" aria-hidden="true" />
             <template v-if="!collapsed">
               <span class="truncate">搜索</span>
               <kbd class="ms-auto font-mono text-2xs text-dimmed">Ctrl K</kbd>
@@ -245,7 +249,7 @@ const searchGroups = computed(() => {
             :class="[isActive('/drafts') ? 'side-on' : '', collapsed ? 'justify-center' : '']"
             :aria-label="collapsed ? '待确认' : undefined"
           >
-            <span class="side-glyph" style="--tone: var(--color-tag-red)"><UIcon :name="DRAFTS_ICON" class="side-icon" aria-hidden="true" /></span>
+            <UIcon :name="DRAFTS_ICON" class="side-icon" aria-hidden="true" />
             <template v-if="!collapsed">
               <span>待确认</span>
               <span v-if="pendingDrafts.length" class="ms-auto text-xs text-dimmed tabular-nums">{{ pendingDrafts.length }}</span>
@@ -294,7 +298,7 @@ const searchGroups = computed(() => {
                 :aria-label="collapsed ? item.label : undefined"
                 :title="collapsed ? item.label : undefined"
               >
-                <span class="side-glyph" :style="{ '--tone': `var(--color-tag-${item.tone})` }"><UIcon :name="item.icon" class="side-icon" aria-hidden="true" /></span>
+                <UIcon :name="item.icon" class="side-icon" aria-hidden="true" />
                 <span v-if="!collapsed" data-nav-label>{{ item.label }}</span>
               </NuxtLink>
             </template>
@@ -306,7 +310,7 @@ const searchGroups = computed(() => {
         </template>
       </UDashboardSidebar>
 
-      <UDashboardPanel data-testid="main-panel" class="bg-page" :ui="{ body: 'px-4 pt-5 pb-16 sm:px-12 sm:pt-10 sm:pb-24 xl:px-24' }">
+      <UDashboardPanel data-testid="main-panel" class="bg-page" :ui="{ body: panelBody }">
         <template #header>
           <UDashboardNavbar :ui="{ root: 'h-[45px] border-b-0 px-3 sm:px-3' }">
             <template #left>
@@ -425,31 +429,6 @@ const searchGroups = computed(() => {
   color: var(--ui-text-muted);
 }
 .side-on .side-icon {
-  color: var(--ui-text);
-}
-/* 图标后面垫一块错开的低饱和圆（照空状态插画 SpotArt 的画法）：线条用墨色，色块偏右下，露出一半。 */
-.side-glyph {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  flex: none;
-}
-.side-glyph::before {
-  content: "";
-  position: absolute;
-  right: -4px;
-  bottom: -3px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--tone);
-  /* 标签色是给白底调的，放在暖灰侧栏上太淡，加深一档。 */
-  filter: saturate(1.8) brightness(0.96);
-}
-.side-glyph > .side-icon {
-  position: relative;
   color: var(--ui-text);
 }
 @media (pointer: coarse) {

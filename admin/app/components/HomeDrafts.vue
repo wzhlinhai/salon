@@ -18,6 +18,6 @@ const shown = computed(() => props.drafts.slice(0, 5))
     </li>
   </ul>
   <p v-if="drafts.length > shown.length" class="mt-2 text-meta">
-    <NuxtLink to="/drafts" class="text-muted hover:underline">还有 {{ drafts.length - shown.length }} 条，到待确认里看</NuxtLink>
+    <NuxtLink to="/drafts" class="inline-flex items-center gap-0.5 hover:text-default text-muted">还有 {{ drafts.length - shown.length }} 条，到待确认里看<UIcon name="i-lucide-chevron-right" class="size-3.5" aria-hidden="true" /></NuxtLink>
   </p>
 </template>

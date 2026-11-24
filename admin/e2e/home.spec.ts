@@ -114,6 +114,27 @@ test('店长默认是店长首页，显示今日经营指标', async ({ page }) 
   await expect(guests.getByTestId('metric-compare')).toHaveText(/^\s*([↑↓] \d+%\s+较上周同日 · )?共 \d+ 单\s*$/)
 })
 
+test('店长首页的最近访问只记看过的顾客和报表，新账号不显示', async ({ page }) => {
+  const manager = await hire('店长')
+  const token = await apiLogin(owner.account, owner.password)
+  const suffix = uniqueSuffix()
+  const created = await api<{ customer: { id: string } }>(token, 'create_customer', { name: `最近顾客${suffix}`, phone: `139${String(Math.floor(Math.random() * 100_000_000)).padStart(8, '0')}` })
+  await login(page, manager.account, manager.password)
+  await expect(page.getByTestId('home-manager-metrics')).toBeVisible()
+  await expect(page.getByTestId('home-recent')).toHaveCount(0)
+
+  await page.goto('/cashier')
+  await page.goto(`/customers?id=${created.customer.id}`)
+  await expect(page.getByRole('heading', { name: `最近顾客${suffix}` })).toBeVisible()
+  await page.goto('/reports/business')
+  await expect(page.getByRole('heading', { name: '营业报表' })).toBeVisible()
+  await page.goto('/')
+  const recent = page.getByTestId('home-recent')
+  await expect(recent.getByRole('link')).toHaveText([/营业报表/, new RegExp(`最近顾客${suffix}`)])
+  await recent.getByRole('link', { name: new RegExp(`最近顾客${suffix}`) }).click()
+  await expect(page).toHaveURL(new RegExp(`/customers\\?id=${created.customer.id}`))
+})
+
 test('老板有多个首页，选择前台首页后刷新仍保留', async ({ page }) => {
   await login(page, owner.account, owner.password)
   await expect(page.getByTestId('home-manager-metrics')).toBeVisible()

@@ -47,7 +47,7 @@ const myPlace = computed(() => {
 
 <template>
   <HomeWidget v-if="rotation" title="轮牌" icon="i-lucide-list-ordered" data-testid="home-rotation">
-    <template #aside><NuxtLink :to="`/rotation?queue=${rotation.queue.id}`" class="hover:text-muted">{{ rotation.queue.name }}</NuxtLink></template>
+    <template #aside><NuxtLink :to="`/rotation?queue=${rotation.queue.id}`" class="inline-flex items-center gap-0.5 hover:text-default">{{ rotation.queue.name }}<UIcon name="i-lucide-chevron-right" class="size-3.5" aria-hidden="true" /></NuxtLink></template>
     <div>
       <div class="flex items-center gap-3.5">
         <div v-if="myPlace" class="text-hero leading-none font-bold tabular-nums">
