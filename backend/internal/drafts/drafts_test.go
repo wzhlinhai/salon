@@ -484,6 +484,68 @@ func TestDraftPrivacy(t *testing.T) {
 	}
 }
 
+func TestDraftUpdateRestoresMaskedPhone(t *testing.T) {
+	s := optest.OpenShop(t)
+	_, token := s.Hire("发型师", "002", "phone-restore", s.Role("发型师"))
+	d := call(t, s, token, "create_draft", map[string]any{
+		"operation": "create_customer",
+		"params":    map[string]any{"name": "原名", "phone": "13812345678"},
+		"summary":   "建档",
+		"utterance": "建档",
+	}).Body
+	c := s.MustCaller(token)
+	for _, ch := range s.Channels() {
+		got := ch.Call(t, c, "get_draft", id(d))
+		if got.Status != 200 || got.Body["params"].(map[string]any)["phone"] != "138****5678" {
+			t.Fatal(ch.Name, got)
+		}
+		list := ch.Call(t, c, "list_drafts", map[string]any{})
+		entries := list.Body["drafts"].([]any)
+		if list.Status != 200 || len(entries) != 1 || entries[0].(map[string]any)["params"].(map[string]any)["phone"] != "138****5678" {
+			t.Fatal(ch.Name, list)
+		}
+	}
+	updated := call(t, s, token, "update_draft_params", map[string]any{
+		"id":      d["id"],
+		"params":  map[string]any{"name": "改后", "phone": "138****5678"},
+		"summary": "改名字",
+	})
+	if updated.Body["params"].(map[string]any)["phone"] != "138****5678" {
+		t.Fatal(updated)
+	}
+	owner := call(t, s, s.Owner, "get_draft", id(d)).Body
+	params := owner["params"].(map[string]any)
+	if params["name"] != "改后" || params["phone"] != "13812345678" {
+		t.Fatal(owner)
+	}
+	rejected(t, s.HTTPWithToken(t, token, "update_draft_params", map[string]any{
+		"id":      d["id"],
+		"params":  map[string]any{"name": "不能存", "phone": "139****5678"},
+		"summary": "改另一个打码号码",
+	}), 409, "手机号不完整，请填写完整号码或保持原样")
+	if got := call(t, s, s.Owner, "get_draft", id(d)).Body["params"].(map[string]any); got["name"] != "改后" || got["phone"] != "13812345678" {
+		t.Fatal(got)
+	}
+	call(t, s, token, "update_draft_params", map[string]any{
+		"id":      d["id"],
+		"params":  map[string]any{"name": "换号", "phone": "13912345678"},
+		"summary": "换完整号码",
+	})
+	owner = call(t, s, s.Owner, "get_draft", id(d)).Body
+	params = owner["params"].(map[string]any)
+	if params["name"] != "换号" || params["phone"] != "13912345678" {
+		t.Fatal(owner)
+	}
+	ownerUpdated := call(t, s, s.Owner, "update_draft_params", map[string]any{
+		"id":      d["id"],
+		"params":  map[string]any{"name": "老板改", "phone": "13712345678"},
+		"summary": "老板改",
+	})
+	if ownerUpdated.Body["params"].(map[string]any)["phone"] != "13712345678" {
+		t.Fatal(ownerUpdated)
+	}
+}
+
 func TestDraftCreateAppointmentPhoneMask(t *testing.T) {
 	s := optest.OpenShop(t)
 	staff, token := s.Hire("发型师", "002", "stylist", s.Role("发型师"))

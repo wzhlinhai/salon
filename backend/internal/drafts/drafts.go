@@ -17,6 +17,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
+	"github.com/wzhlinhai/salon/backend/internal/privacy"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
@@ -348,6 +349,15 @@ func (s service) update(ctx context.Context, env ops.Env, in *UpdateInput) (*Dra
 	if err != nil {
 		return nil, err
 	}
+	if !env.Caller.Has(perm.CustomerFullPhone) {
+		masked, err := restoreMaskedPhones(d.Params, in.Params)
+		if err != nil {
+			return nil, err
+		}
+		if masked {
+			return nil, ops.Rule("手机号不完整，请填写完整号码或保持原样")
+		}
+	}
 	params, err := json.Marshal(in.Params)
 	if err != nil {
 		return nil, err
@@ -368,6 +378,51 @@ func (s service) update(ctx context.Context, env ops.Env, in *UpdateInput) (*Dra
 		return nil, err
 	}
 	return view(env, d)
+}
+
+// restoreMaskedPhones 把新参数里原样回传的打码手机号换回已存储的完整号码，
+// 并报告是否仍有无法还原的打码手机号。
+func restoreMaskedPhones(stored json.RawMessage, current any) (bool, error) {
+	var previous any
+	if len(stored) > 0 {
+		if err := json.Unmarshal(stored, &previous); err != nil {
+			return false, err
+		}
+	}
+	var walk func(stored, current any) bool
+	walk = func(stored, current any) bool {
+		masked := false
+		switch v := current.(type) {
+		case map[string]any:
+			old, _ := stored.(map[string]any)
+			for key, child := range v {
+				if text, ok := child.(string); ok && privacy.PhoneKey(key) {
+					if original, ok := old[key].(string); ok && text == privacy.MaskPhone(original) {
+						v[key] = original
+					} else if strings.Contains(text, "*") {
+						masked = true
+					}
+					continue
+				}
+				if walk(old[key], child) {
+					masked = true
+				}
+			}
+		case []any:
+			old, _ := stored.([]any)
+			for i, child := range v {
+				var before any
+				if i < len(old) {
+					before = old[i]
+				}
+				if walk(before, child) {
+					masked = true
+				}
+			}
+		}
+		return masked
+	}
+	return walk(previous, current), nil
 }
 
 // 金额类白名单统一在这里声明。
