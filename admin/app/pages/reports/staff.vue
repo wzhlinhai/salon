@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 员工业绩（DESIGN.md 报表）：一段营业日里每人一行，项目、耗卡、销售业绩（手工费本店不用，有数时才显示），客数和提成，末行合计。
+// 员工业绩（DESIGN.md 报表页）：先一段话说结论，排名条看谁做得多；一段营业日里每人一行，项目、耗卡、销售业绩（手工费本店不用，有数时才显示），客数和提成，末行合计。
 // 店长看全店（没记到人的业绩单列「未分配」）；发型师、助理只看自己，后端按本人范围过滤。
 // 点一个人从右侧滑出这段时间的每笔业绩和每笔提成。合计行直接用接口的 totals。
 import type { components } from '~/utils/api'
@@ -20,28 +20,33 @@ const self = computed(() => grant('performance.view')?.scope === 'self')
 const rows = computed(() => report.value?.rows ?? [])
 const nameOf = (row: Row) => row.staff?.name ?? '未分配'
 
-const metrics = computed(() => {
+// 顶上一段话（DESIGN.md 报表页）：三种业绩、客数、提成，店长看全店时再说谁最高。本人范围的员工句子从「你」说起。
+const brief = computed(() => {
   const t = report.value?.totals
   if (!t) return []
-  return [
-    { label: '项目业绩', value: yuan(t.item_performance), note: `现金 ${yuan(t.cash_performance)} · 卡金 ${yuan(t.card_performance)}` },
-    { label: '耗卡业绩', value: yuan(t.consume_performance), note: '扣次付的项目' },
-    { label: '销售业绩', value: yuan(t.sale_performance), note: '开卡、充值、补差价、卖红包' },
-    { label: '客数', value: formatGuest(t.guest_total), note: `指定 ${formatGuest(t.guest_designated)} · 非指定 ${formatGuest(t.guest_not_designated)}` },
-    { label: '提成', value: yuan(t.commission_total), note: '阶梯提成月底才定' }
-  ]
+  const { parts, say, bold } = briefWriter()
+  say(self.value ? '你这段时间项目业绩 ' : '这段时间项目业绩 ')
+  bold(yuan(t.item_performance), undefined, 'item_performance')
+  // 每句只在有数时说，不写「耗卡业绩 ¥0」这种零。
+  if (Number(t.card_performance)) say(`（现金 ${yuan(t.cash_performance)}，卡金 ${yuan(t.card_performance)}）`)
+  if (Number(t.consume_performance)) say(`，耗卡业绩 ${yuan(t.consume_performance)}`)
+  if (Number(t.sale_performance)) say(`，销售业绩 ${yuan(t.sale_performance)}`)
+  say('。客数 ')
+  bold(formatGuest(t.guest_total))
+  if (Number(t.guest_designated)) say(`，其中指定 ${formatGuest(t.guest_designated)}`)
+  say('。提成 ')
+  bold(yuan(t.commission_total))
+  say('（阶梯提成月底才定）。')
+  if (!self.value && ranked.value.length > 1) say(`员工里项目业绩最高的是${nameOf(ranked.value[0]!)}。`)
+  return parts
 })
 
-// 柱状图只比项目业绩前 10 名，从高到低；没有项目业绩的不进图。不到两个人没有可比的，不画。全部人的数以明细表为准。
-const CHART_TOP = 10
+// 排名条只比项目业绩前 10 名，从高到低；没有项目业绩的、没记到人的不进。不到两个人没有可比的，不画。全部人的数以明细表为准。
+const RANK_TOP = 10
 const ranked = computed(() => rows.value
-  .filter(r => Number(r.item_performance) > 0)
+  .filter(r => r.staff && Number(r.item_performance) > 0)
   .sort((a, b) => Number(b.item_performance) - Number(a.item_performance))
-  .slice(0, CHART_TOP))
-const chart = computed(() => ({
-  categories: ranked.value.map(nameOf),
-  series: [{ name: '项目业绩', values: ranked.value.map(r => Number(r.item_performance)) }]
-}))
+  .slice(0, RANK_TOP))
 
 type MoneyKey = 'item_performance' | 'cash_performance' | 'card_performance' | 'consume_performance' | 'labor_performance' | 'sale_performance'
 type GuestKey = 'guest_total' | 'guest_designated' | 'guest_not_designated' | 'guest_male' | 'guest_female'
@@ -160,19 +165,11 @@ function signed(amount: string, reversal: boolean) {
     <template v-if="report">
       <p v-if="self" class="text-meta text-muted">只显示你自己的业绩。</p>
 
-      <div data-testid="report-metrics" class="stats grid grid-cols-2 gap-3 tabular-nums md:grid-cols-5" :class="loading && 'opacity-60'">
-        <div v-for="(m, i) in metrics" :key="m.label" :data-metric="m.label" :class="i ? 'md:border-l md:border-default md:pl-4' : ''">
-          <p class="text-xs text-dimmed">{{ m.label }}</p>
-          <p data-testid="metric-value" class="text-2xl leading-[1.3] font-semibold" :class="zeroText(m.value) && 'text-dimmed'">{{ m.value }}</p>
-          <p class="text-xs text-muted">{{ m.note }}</p>
-        </div>
-      </div>
+      <ReportBrief :parts="brief" :class="loading && 'opacity-60'" />
 
       <section v-if="ranked.length > 1">
-        <div class="sec">项目业绩前 {{ CHART_TOP }} 名</div>
-        <div class="box">
-          <ReportChart type="bar" horizontal :label="`${range.from} 至 ${range.to} 项目业绩最高的几个人，数字见下方明细表`" :categories="chart.categories" :series="chart.series" />
-        </div>
+        <div class="sec">谁做得多<span class="font-normal text-dimmed">项目业绩前 {{ RANK_TOP }} 名</span></div>
+        <ReportRank :rows="ranked.map(r => ({ key: r.staff!.id, name: r.staff!.name, value: Number(r.item_performance), display: yuan(r.item_performance) }))" />
       </section>
 
       <section>

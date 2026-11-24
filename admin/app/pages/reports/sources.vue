@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 新客来源（DESIGN.md 报表）：一段营业日里第一次来结账的新客按来源分行，几个后来又来了（回头客），这段时间一共花了多少。
+// 新客来源（DESIGN.md 报表页）：先一段话说结论，排名条看新客从哪来；一段营业日里第一次来结账的新客按来源分行，几个后来又来了（回头客），这段时间一共花了多少。
 // 只有人数和金额，不列顾客。未识别顾客认不出是不是新客，单独写一句有几单。合计行用接口的 totals。
 import type { components } from '~/utils/api'
 
@@ -18,17 +18,33 @@ function percent(part: number, whole: number) {
   return whole ? `${Math.round((part / whole) * 100)}%` : '—'
 }
 
-const metrics = computed(() => {
+const ranked = computed(() => [...rows.value].filter(r => r.new_customers > 0).sort((a, b) => b.new_customers - a.new_customers))
+
+// 顶上一段话（DESIGN.md 报表页）：几位新客、最多从哪来、几个回头、花了多少。
+const brief = computed(() => {
   const t = report.value?.totals
   if (!t) return []
-  return [
-    { label: '新客', value: `${t.new_customers} 人`, note: `来源 ${rows.value.filter(r => r.source_id && r.new_customers).length} 个` },
-    { label: '回头客', value: `${t.returning} 人`, note: `回头率 ${percent(t.returning, t.new_customers)}` },
-    { label: '新客消费', value: yuan(t.revenue), note: t.new_customers ? `人均 ${yuan(Number(t.revenue) / t.new_customers)}` : '这段时间的结账' }
-  ]
+  const { parts, say, bold } = briefWriter()
+  say('这段时间来了 ')
+  bold(String(t.new_customers), undefined, 'new_customers')
+  say(' 位新客')
+  // 人数最多的来源没填时不说「最多从哪来」，免得把第二名说成第一。
+  const top = ranked.value[0]?.source_name
+  if (top) say(`，最多从「${top}」来`)
+  if (!t.new_customers) {
+    say('。')
+    return parts
+  }
+  if (t.returning) {
+    say('；其中 ')
+    bold(String(t.returning))
+    say(` 位后来又来了（回头率 ${percent(t.returning, t.new_customers)}）`)
+  } else say('，还没有人回头')
+  say('。新客一共花了 ')
+  bold(yuan(t.revenue))
+  say(`，人均 ${yuan(Number(t.revenue) / t.new_customers)}。`)
+  return parts
 })
-
-const ranked = computed(() => [...rows.value].filter(r => r.new_customers > 0).sort((a, b) => b.new_customers - a.new_customers))
 
 function cell(value: string | number) {
   return Number(value) === 0 ? 'text-dimmed' : ''
@@ -44,29 +60,14 @@ function cell(value: string | number) {
     </EmptyState>
 
     <template v-if="report">
-      <div data-testid="report-metrics" class="stats grid grid-cols-2 gap-3 tabular-nums md:grid-cols-3" :class="loading && 'opacity-60'">
-        <div v-for="(m, i) in metrics" :key="m.label" :data-metric="m.label" :class="i ? 'md:border-l md:border-default md:pl-4' : ''">
-          <p class="text-xs text-dimmed">{{ m.label }}</p>
-          <p data-testid="metric-value" class="text-2xl leading-[1.3] font-semibold" :class="zeroText(m.value) && 'text-dimmed'">{{ m.value }}</p>
-          <p class="text-xs text-muted">{{ m.note }}</p>
-        </div>
-      </div>
+      <ReportBrief :parts="brief" :class="loading && 'opacity-60'" />
       <p v-if="report.unidentified_orders" class="text-meta text-muted" data-testid="unidentified-orders">
         另有 {{ report.unidentified_orders }} 单是未识别顾客（档案里没有手机号），认不出是不是新客，不在上面。
       </p>
 
       <section v-if="ranked.length > 1">
         <div class="sec">新客从哪来</div>
-        <div class="box">
-          <ReportChart
-            type="bar"
-            horizontal
-            :money="false"
-            :label="`${range.from} 至 ${range.to} 各来源的新客人数，数字见下方明细表`"
-            :categories="ranked.map(nameOf)"
-            :series="[{ name: '新客', values: ranked.map(r => r.new_customers) }]"
-          />
-        </div>
+        <ReportRank :avatar="false" :rows="ranked.map(r => ({ key: r.source_id ?? '', name: nameOf(r), value: r.new_customers, display: `${r.new_customers} 人` }))" />
       </section>
 
       <section>

@@ -21,12 +21,14 @@
   --color-ink-yellow: #cb912f;
   --color-ink-orange: #d9730d;
   --color-ink: #2c2c2b;
-  /* 染发色卡色（DESIGN.md 颜色、简报）：栗棕、亚麻、雾蓝、橄榄、玫瑰灰。画构成条和排名条，按顺序取。 */
-  --color-dye-1: #8a5a44;
-  --color-dye-2: #c9a66b;
-  --color-dye-3: #7d93a8;
-  --color-dye-4: #8b9a6b;
-  --color-dye-5: #b48a92;
+  /* 染发色卡色（DESIGN.md 颜色、图表）：栗棕、亚麻金、靛蓝、橄榄、玫瑰。报表里所有的线、柱、构成条、排名条都用它，按顺序取、不循环。
+     2026-11-24 用 dataviz 校验脚本验过（白底，相邻色）：明度、饱和度、色盲区分度、正常视力区分度都过；亚麻金对白底只有 2.5:1，
+     靠旁边写出的数和明细表补。 */
+  --color-dye-1: #9a4a22;
+  --color-dye-2: #c99a3c;
+  --color-dye-3: #3a78b8;
+  --color-dye-4: #5f8a2e;
+  --color-dye-5: #c0607e;
   /* 看板列底、悬停、细线、提醒条。 */
   --color-lane: #f4f4f2;
   --color-card-hover: #fcfcfb;
@@ -61,13 +63,7 @@
 }
 
 :root {
-  /* 图表系列色（DESIGN.md 图表）：按顺序取，不循环；ReportChart 运行时读这几个变量。
-     标签色太浅画不了线和柱，所以另起一组，已用 dataviz 校验脚本验过色盲区分度。 */
-  --chart-1: #2a78d6;
-  --chart-2: #eb6834;
-  --chart-3: #1baf7a;
-  --chart-4: #eda100;
-  --chart-5: #e87ba4;
+  /* 图表网格线（DESIGN.md 图表）；系列色用 --color-dye-*，ReportChart 运行时读。 */
   --chart-grid: rgba(42, 28, 0, 0.07);
   --ui-radius: 0.375rem;
   --ui-primary: #2c2c2b;
