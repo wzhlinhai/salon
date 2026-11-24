@@ -62,7 +62,7 @@ func Run(ctx context.Context, t testing.TB, suite *Suite, cfg RunConfig, factory
 		counted := &countingModel{inner: model}
 		chat := ai.NewChat(fixture.Shop.Registry, func() ai.Model { return counted }, fixture.Shop.Now, businessDate(fixture.Shop.Pool))
 		started := cfg.Now()
-		answer, askErr := chat.Ask(ctx, caller, aiMessages(resolved.Messages))
+		answer, askErr := chat.Ask(ctx, caller, nil, aiMessages(resolved.Messages))
 		latency := cfg.Now().Sub(started)
 		if askErr == nil {
 			if finisher, ok := model.(interface{ Finish() error }); ok {

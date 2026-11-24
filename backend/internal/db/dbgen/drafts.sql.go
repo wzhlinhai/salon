@@ -13,19 +13,20 @@ import (
 )
 
 const addDraftEvent = `-- name: AddDraftEvent :exec
-INSERT INTO ai_draft_events (tenant_id,store_id,draft_id,kind,before_params,after_params,actor_id,at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+INSERT INTO ai_draft_events (tenant_id,store_id,draft_id,kind,before_params,before_summary,after_params,actor_id,at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 `
 
 type AddDraftEventParams struct {
-	TenantID     uuid.UUID
-	StoreID      uuid.UUID
-	DraftID      uuid.UUID
-	Kind         string
-	BeforeParams []byte
-	AfterParams  []byte
-	ActorID      uuid.UUID
-	At           pgtype.Timestamptz
+	TenantID      uuid.UUID
+	StoreID       uuid.UUID
+	DraftID       uuid.UUID
+	Kind          string
+	BeforeParams  []byte
+	BeforeSummary *string
+	AfterParams   []byte
+	ActorID       uuid.UUID
+	At            pgtype.Timestamptz
 }
 
 func (q *Queries) AddDraftEvent(ctx context.Context, arg AddDraftEventParams) error {
@@ -35,6 +36,7 @@ func (q *Queries) AddDraftEvent(ctx context.Context, arg AddDraftEventParams) er
 		arg.DraftID,
 		arg.Kind,
 		arg.BeforeParams,
+		arg.BeforeSummary,
 		arg.AfterParams,
 		arg.ActorID,
 		arg.At,
@@ -126,7 +128,7 @@ func (q *Queries) DraftAuditIDs(ctx context.Context, arg DraftAuditIDsParams) ([
 }
 
 const draftEvents = `-- name: DraftEvents :many
-SELECT id, tenant_id, store_id, draft_id, ordinal, kind, before_params, after_params, actor_id, at FROM ai_draft_events WHERE store_id=$1 AND draft_id=$2 ORDER BY ordinal
+SELECT id, tenant_id, store_id, draft_id, ordinal, kind, before_params, after_params, actor_id, at, before_summary FROM ai_draft_events WHERE store_id=$1 AND draft_id=$2 ORDER BY ordinal
 `
 
 type DraftEventsParams struct {
@@ -154,6 +156,7 @@ func (q *Queries) DraftEvents(ctx context.Context, arg DraftEventsParams) ([]AiD
 			&i.AfterParams,
 			&i.ActorID,
 			&i.At,
+			&i.BeforeSummary,
 		); err != nil {
 			return nil, err
 		}
@@ -300,7 +303,7 @@ func (q *Queries) LockDraft(ctx context.Context, arg LockDraftParams) (AiDraft, 
 }
 
 const saveDraft = `-- name: SaveDraft :one
-UPDATE ai_drafts SET params=$3,status=$4,decided_at=$5,decided_by=$6,reject_reason=$7,version=version+1
+UPDATE ai_drafts SET params=$3,summary=$4,status=$5,decided_at=$6,decided_by=$7,reject_reason=$8,version=version+1
 WHERE store_id=$1 AND id=$2 RETURNING id, tenant_id, store_id, initiator, operation, utterance, params, original_params, summary, status, business_date, expires_at, created_at, decided_at, decided_by, reject_reason, version
 `
 
@@ -308,6 +311,7 @@ type SaveDraftParams struct {
 	StoreID      uuid.UUID
 	ID           uuid.UUID
 	Params       []byte
+	Summary      string
 	Status       string
 	DecidedAt    pgtype.Timestamptz
 	DecidedBy    *uuid.UUID
@@ -319,6 +323,7 @@ func (q *Queries) SaveDraft(ctx context.Context, arg SaveDraftParams) (AiDraft, 
 		arg.StoreID,
 		arg.ID,
 		arg.Params,
+		arg.Summary,
 		arg.Status,
 		arg.DecidedAt,
 		arg.DecidedBy,

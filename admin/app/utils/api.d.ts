@@ -3277,7 +3277,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 修改待确认草稿参数 */
+        /** 修改待确认草稿参数和摘要 */
         post: operations["update_draft_params"];
         delete?: never;
         options?: never;
@@ -4141,6 +4141,8 @@ export interface components {
             };
         };
         ChatInputBody: {
+            /** @description 人点了「修改」的那张草稿；本次对话只允许改这张和本次新起草的 */
+            draft_id?: string;
             /** @description 对话历史，最多 20 条 */
             messages: components["schemas"]["ChatMessage"][];
         };
@@ -4489,6 +4491,7 @@ export interface components {
             params: {
                 [key: string]: unknown;
             };
+            /** @description 面向人的草稿摘要 */
             summary: string;
             utterance: string;
         };
@@ -4993,6 +4996,7 @@ export interface components {
             /** Format: date-time */
             at: string;
             before_params: unknown;
+            before_summary: string | null;
             id: string;
             kind: string;
         };
@@ -6950,6 +6954,8 @@ export interface components {
             params: {
                 [key: string]: unknown;
             };
+            /** @description 改写后的面向人的草稿摘要 */
+            summary: string;
         };
         UpdateItemCategoryInput: {
             active: boolean;

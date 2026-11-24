@@ -11,6 +11,14 @@ const api = useApi()
 const toast = useToast()
 const { drafts, load, staffName } = useDrafts()
 const { editDraft } = useAiChat()
+// 开单、新建顾客直接弹表单改；其余草稿在 AI 面板里说怎么改。
+const formEditable = computed(() => ['open_order', 'create_customer'].includes(props.draft.operation))
+const editModal = useTemplateRef('editModal')
+
+function modify() {
+  if (formEditable.value) editModal.value?.begin(current.value)
+  else editDraft(props.draft)
+}
 
 const current = computed<Draft>(() => drafts.value.find(row => row.id === props.draft.id) ?? props.draft)
 const isPending = computed(() => current.value.status === 'pending')
@@ -118,9 +126,11 @@ async function saveReject() {
     </p>
     <footer v-else-if="isPending" class="mt-auto flex items-center gap-1.5 pt-1">
       <UButton color="neutral" :loading="confirming" data-testid="draft-confirm" class="min-h-8 px-3" @click="confirm">确认</UButton>
-      <UButton color="neutral" variant="outline" data-testid="draft-modify" class="min-h-8 px-3" @click="editDraft(props.draft)">修改</UButton>
+      <UButton color="neutral" variant="outline" data-testid="draft-modify" class="min-h-8 px-3" @click="modify">修改</UButton>
       <UButton color="neutral" variant="outline" data-testid="draft-reject" class="min-h-8 px-3" @click="beginReject">拒绝</UButton>
     </footer>
+
+    <DraftEditModal v-if="formEditable" ref="editModal" @saved="load()" />
 
     <UModal v-model:open="rejectOpen" title="拒绝草稿" :description="props.draft.summary">
       <template #body>

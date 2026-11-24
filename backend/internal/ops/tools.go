@@ -90,7 +90,7 @@ func (r *Registry) ChatTools(caller Caller) []Tool {
 		}
 	}
 	if e, ok := r.ops["update_draft_params"]; ok && caller.Has(e.permission) {
-		tools = append(tools, Tool{Name: e.name, Description: e.summary, Parameters: r.toolSchema(e)})
+		tools = append(tools, Tool{Name: e.name, Description: e.summary + "（必须同时给出改写后的 summary）", Parameters: r.toolSchema(e)})
 	}
 	sort.Slice(tools, func(i, j int) bool { return tools[i].Name < tools[j].Name })
 	return tools

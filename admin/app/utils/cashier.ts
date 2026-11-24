@@ -27,3 +27,14 @@ export function openOrderOption(order: Order, customerName: (id: string) => stri
 export function focusScan() {
   document.querySelector<HTMLInputElement>('input[aria-label="扫码或输入手机号、券码"]')?.focus()
 }
+
+// 开单表单的项目行转成 open_order 的 items：只带选了人的岗位。
+export function orderItemsInput(rows: { item_id: string, staff: Record<number, string> }[], items: { id: string, positions: { slot: number }[] }[]) {
+  return rows.filter(r => r.item_id).map(row => ({
+    item_id: row.item_id,
+    staff: [...(items.find(i => i.id === row.item_id)?.positions ?? [])]
+      .sort((a, b) => a.slot - b.slot)
+      .filter(p => row.staff[p.slot])
+      .map(p => ({ slot: p.slot, staff_id: row.staff[p.slot]! }))
+  }))
+}

@@ -72,7 +72,16 @@ func lastToolResult(messages []ai.Message) string {
 
 func chatCall(t *testing.T, s *optest.Shop, token string, messages []map[string]any) optest.Result {
 	t.Helper()
-	body, err := json.Marshal(map[string]any{"messages": messages})
+	return chatCallWithDraft(t, s, token, "", messages)
+}
+
+func chatCallWithDraft(t *testing.T, s *optest.Shop, token, draftID string, messages []map[string]any) optest.Result {
+	t.Helper()
+	payload := map[string]any{"messages": messages}
+	if draftID != "" {
+		payload["draft_id"] = draftID
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,6 +3,10 @@ package ops
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/wzhlinhai/salon/backend/internal/db"
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
@@ -11,6 +15,32 @@ import (
 // SetDraftCreator 接入草稿存储，避免操作层依赖业务包。
 func (r *Registry) SetDraftCreator(create func(context.Context, Env, string, json.RawMessage, string, string) (any, error)) {
 	r.draftCreator = create
+}
+
+// SetDraftEditor 接入草稿修改前检查，避免操作层依赖业务包。
+func (r *Registry) SetDraftEditor(check func(context.Context, Env, uuid.UUID) error) {
+	r.draftEditor = check
+}
+
+// CheckDraftEdit 在调用者租户的写事务里按修改草稿的锁、可见性和状态规则检查草稿；错误与修改接口一致。
+func (r *Registry) CheckDraftEdit(ctx context.Context, caller Caller, now time.Time, id uuid.UUID) error {
+	if r.draftEditor == nil {
+		return ErrDraftRequired
+	}
+	var committed error
+	err := db.InTenant(ctx, r.pool, caller.TenantID, func(q *dbgen.Queries) error {
+		err := r.draftEditor(ctx, Env{Now: now, Caller: caller, Q: q}, id)
+		var rule *RuleError
+		if errors.As(err, &rule) && rule.commit {
+			committed = err
+			return nil
+		}
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	return committed
 }
 
 // SetDraftPreview 为可起草操作接入只读预览，避免草稿层依赖业务包。

@@ -60,7 +60,8 @@ export function useAiChat() {
     const current = generation.value
     sending.value = true
     try {
-      const { data, error } = await api.POST('/api/ai/chat', { body: { messages: history() } })
+      // draft_id 让后端允许这次对话改这张（之前起草的）草稿；不带时 AI 只能改本次对话起草的。
+      const { data, error } = await api.POST('/api/ai/chat', { body: { messages: history(), draft_id: target?.id } })
       if (current !== generation.value) return
       if (!data) {
         entries.value.push({ role: 'assistant', content: errorText(error), failed: true })
@@ -72,7 +73,7 @@ export function useAiChat() {
         return
       }
       entries.value.push({ role: 'assistant', content: data.reply, drafts: data.drafts })
-      if (data.drafts.length) void loadDrafts()
+      if (data.drafts.length || target) void loadDrafts()
     } finally {
       if (current === generation.value) sending.value = false
     }

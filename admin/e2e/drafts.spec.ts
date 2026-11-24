@@ -121,9 +121,12 @@ test('首页指令框把话交给 AI，回复里的草稿可在面板里直接�
 test('修改：在面板里说怎么改，发给 AI 的话带上草稿编号；没发成时重说仍带编号', async ({ page }) => {
   const { draft } = await draftCategory()
   let sent = ''
+  let draftID = ''
   let calls = 0
   await page.route('**/api/ai/chat', async (route) => {
-    sent = route.request().postDataJSON().messages.at(-1).content
+    const body = route.request().postDataJSON()
+    sent = body.messages.at(-1).content
+    draftID = body.draft_id
     if (++calls === 1) {
       await route.fulfill({ status: 502, json: { detail: 'AI 响应超时，请重试' } })
       return
@@ -145,7 +148,80 @@ test('修改：在面板里说怎么改，发给 AI 的话带上草稿编号；�
   expect(calls).toBe(2)
   expect(sent).toContain(draft.id)
   expect(sent).toContain('业绩算八成')
+  // 草稿是之前起草的，后端凭 draft_id 才允许这次对话改它。
+  expect(draftID).toBe(draft.id)
   await expect(panel.getByTestId('ai-editing')).toHaveCount(0)
+})
+
+test('修改新建顾客草稿：直接弹表单改，卡片标题跟着改，确认后按改后的内容建档', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const before = `顾客${uniqueSuffix()}`
+  const after = `顾客${uniqueSuffix()}`
+  const phone = `15${String(Date.now()).slice(-8)}${Math.floor(Math.random() * 10)}`
+  const draft = await api<Draft>(token, 'create_draft', {
+    operation: 'create_customer',
+    params: { name: before, phone, gender: 'female' },
+    utterance: `新建顾客${before}`,
+    summary: `新建顾客：${before}，女`
+  })
+  await login(page, owner.account, owner.password)
+  await page.goto('/drafts')
+  await card(page, draft.id).getByTestId('draft-modify').click()
+  await expect(aiPanel(page)).toHaveCount(0)
+  const modal = page.getByRole('dialog', { name: '修改新建顾客草稿' })
+  await expect(modal.getByLabel('姓名')).toHaveValue(before)
+  await modal.getByLabel('姓名').fill(after)
+  await modal.getByRole('radio', { name: '男客' }).click()
+  await modal.getByTestId('draft-edit-save').click()
+  await expect(modal).toHaveCount(0)
+  await expect(card(page, draft.id).getByTestId('draft-summary')).toHaveText(`新建顾客：${after}，男`)
+  await card(page, draft.id).getByTestId('draft-confirm').click()
+  // 待确认页默认只列未处理的，确认后卡片离开列表；状态用接口核对。
+  await expect(card(page, draft.id)).toHaveCount(0)
+  const { drafts } = await api<{ drafts: (Draft & { params: { name: string, phone: string, gender: string } })[] }>(token, 'list_drafts', {})
+  const done = drafts.find(d => d.id === draft.id)!
+  expect(done.status).toBe('confirmed_modified')
+  expect(done.params).toMatchObject({ name: after, phone, gender: 'male' })
+})
+
+test('修改开单草稿：表单带出顾客、项目和各岗位的人，只改「指定」保存后其余参数原样', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const suffix = uniqueSuffix()
+  const first = await api<{ id: string }>(token, 'create_position', { name: `草稿岗位甲${suffix}` })
+  const second = await api<{ id: string }>(token, 'create_position', { name: `草稿岗位乙${suffix}` })
+  const [stylist, assistant] = [await hire('发型师'), await hire('发型师')]
+  const itemName = `草稿项目${suffix}`
+  const item = await api<{ id: string }>(token, 'create_item', {
+    name: itemName,
+    price: '66.00',
+    discountable: true,
+    labor_fee_amount: null,
+    labor_fee_percent: null,
+    positions: [{ position_id: first.id, required: true }, { position_id: second.id, required: false }],
+    level_prices: []
+  })
+  const customerName = `草稿顾客${suffix}`
+  const { customer } = await api<{ customer: { id: string } }>(token, 'create_customer', { name: customerName, phone: `137${String(Date.now()).slice(-8)}` })
+  const items = [{ item_id: item.id, staff: [{ slot: 1, staff_id: stylist.id }, { slot: 2, staff_id: assistant.id }] }]
+  const draft = await api<Draft>(token, 'create_draft', {
+    operation: 'open_order',
+    params: { customer_id: customer.id, gender: 'female', designated: false, items },
+    utterance: `${customerName}做${itemName}`,
+    summary: `开单：${customerName}，${itemName}`
+  })
+  await login(page, owner.account, owner.password)
+  await page.goto('/drafts')
+  await card(page, draft.id).getByTestId('draft-modify').click()
+  const modal = page.getByRole('dialog', { name: '修改开单草稿' })
+  await expect(modal.getByTestId('draft-edit-customer')).toHaveText(customerName)
+  await expect(modal.getByLabel('项目1岗位1员工')).toContainText(stylist.name)
+  await expect(modal.getByLabel('项目1岗位2员工')).toContainText(assistant.name)
+  await modal.getByRole('switch', { name: '指定' }).click()
+  await modal.getByTestId('draft-edit-save').click()
+  await expect(modal).toHaveCount(0)
+  await expect(card(page, draft.id).getByTestId('draft-summary')).toHaveText(`开单：${customerName}，${itemName}，指定`)
+  const { drafts } = await api<{ drafts: (Draft & { params: object })[] }>(token, 'list_drafts', {})
+  expect(drafts.find(d => d.id === draft.id)!.params).toEqual({ customer_id: customer.id, gender: 'female', designated: true, items })
 })
 
 test('Ctrl K：输入页面名回车仍打开页面，说一句话回车交给 AI', async ({ page }) => {
@@ -195,7 +271,7 @@ test('换人登录后看不到上一个人的 AI 对话', async ({ page }) => {
 test('对话里的草稿卡片是旧版本时不能确认，要去看最新内容', async ({ page }) => {
   const { token, draft } = await draftCategory()
   // 回复之后草稿又被改过：对话里的卡片还是旧内容。
-  await api(token, 'update_draft_params', { id: draft.id, params: { name: `分类${uniqueSuffix()}` } })
+  await api(token, 'update_draft_params', { id: draft.id, params: { name: `分类${uniqueSuffix()}` }, summary: '改了分类名' })
   await page.route('**/api/ai/chat', route => route.fulfill({ json: { reply: '已起草。', sources: [], drafts: [{ ...draft, preview_error: '' }] } }))
   await login(page, owner.account, owner.password)
   await sayToAi(page, '加一个分类')

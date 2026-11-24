@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/wzhlinhai/salon/backend/internal/db"
@@ -45,6 +46,7 @@ type Registry struct {
 	api           huma.API
 	ops           map[string]*entry
 	draftCreator  func(context.Context, Env, string, json.RawMessage, string, string) (any, error)
+	draftEditor   func(context.Context, Env, uuid.UUID) error
 	draftPreviews map[string]func(context.Context, Env, json.RawMessage) (any, error)
 }
 

@@ -63,7 +63,7 @@ func TestDraftLifecycle(t *testing.T) {
 	if d["status"] != "pending" {
 		t.Fatal(d)
 	}
-	updated := call(t, s, s.Owner, "update_draft_params", map[string]any{"id": d["id"], "params": map[string]any{"name": "改后"}})
+	updated := call(t, s, s.Owner, "update_draft_params", map[string]any{"id": d["id"], "params": map[string]any{"name": "改后"}, "summary": "改后摘要"})
 	done := call(t, s, s.Owner, "confirm_draft", confirmArgs(updated.Body))
 	if done.Body["status"] != "confirmed_modified" || done.Body["decided_by"] != c.StaffID.String() || done.Body["decided_at"] == nil || count(t, s, "customers") != before+1 {
 		t.Fatal(done)
@@ -103,8 +103,33 @@ func TestDraftLifecycle(t *testing.T) {
 		t.Fatal(logs, got)
 	}
 	rejected(t, s.HTTPWithToken(t, s.Owner, "confirm_draft", confirmArgs(d)), 409, "草稿不是待确认状态")
-	rejected(t, s.HTTPWithToken(t, s.Owner, "update_draft_params", map[string]any{"id": d["id"], "params": map[string]any{}}), 409, "草稿不是待确认状态")
+	rejected(t, s.HTTPWithToken(t, s.Owner, "update_draft_params", map[string]any{"id": d["id"], "params": map[string]any{}, "summary": "再次修改"}), 409, "草稿不是待确认状态")
 	rejected(t, s.AI(t, c, "confirm_draft", confirmArgs(d)), 404, "unknown operation")
+}
+
+func TestDraftUpdateSummary(t *testing.T) {
+	s := optest.OpenShop(t)
+	d := create(t, s, s.Owner)
+	updated := call(t, s, s.Owner, "update_draft_params", map[string]any{"id": d["id"], "params": map[string]any{"name": "改后"}, "summary": "改后摘要"})
+	if updated.Body["summary"] != "改后摘要" {
+		t.Fatal(updated)
+	}
+	got := call(t, s, s.Owner, "get_draft", id(d)).Body
+	if got["summary"] != "改后摘要" || got["params"].(map[string]any)["name"] != "改后" {
+		t.Fatal(got)
+	}
+	events := got["events"].([]any)
+	if len(events) != 2 {
+		t.Fatal(events)
+	}
+	modified := events[1].(map[string]any)
+	if modified["kind"] != "modified" || modified["before_summary"] != "新建顾客" || modified["before_params"].(map[string]any)["name"] != "原名" || modified["after_params"].(map[string]any)["name"] != "改后" {
+		t.Fatal(modified)
+	}
+	rejected(t, s.HTTPWithToken(t, s.Owner, "update_draft_params", map[string]any{"id": d["id"], "params": map[string]any{"name": "空白"}, "summary": "  \t "}), 422, "草稿摘要不能为空")
+	if got := call(t, s, s.Owner, "get_draft", id(d)).Body; got["summary"] != "改后摘要" || len(got["events"].([]any)) != 2 {
+		t.Fatal(got)
+	}
 }
 
 func TestDraftPermission(t *testing.T) {
@@ -128,9 +153,9 @@ func TestDraftPermission(t *testing.T) {
 	}
 	rejected(t, s.AI(t, s.MustCaller(token), "create_customer", map[string]any{}), 403, "permission denied")
 	rejected(t, s.HTTPWithToken(t, token, "get_draft", id(other)), 404, "not found")
-	rejected(t, s.HTTPWithToken(t, token, "update_draft_params", map[string]any{"id": other["id"], "params": map[string]any{}}), 404, "not found")
+	rejected(t, s.HTTPWithToken(t, token, "update_draft_params", map[string]any{"id": other["id"], "params": map[string]any{}, "summary": "修改"}), 404, "not found")
 	// 发起人失去执行权限后仍可修改自己的参数，但不能确认。
-	call(t, s, token, "update_draft_params", map[string]any{"id": d["id"], "params": map[string]any{"name": "待复核"}})
+	call(t, s, token, "update_draft_params", map[string]any{"id": d["id"], "params": map[string]any{"name": "待复核"}, "summary": "待复核"})
 	for _, ch := range s.Channels() {
 		list := ch.Call(t, s.MustCaller(token), "list_drafts", map[string]any{})
 		if list.Status != 200 || len(list.Body["drafts"].([]any)) != 1 {
@@ -343,7 +368,7 @@ func TestDraftSchema(t *testing.T) {
 		t.Fatal("invalid draft stored")
 	}
 	d := create(t, s, s.Owner)
-	rejected(t, s.HTTPWithToken(t, s.Owner, "update_draft_params", map[string]any{"id": d["id"], "params": map[string]any{"gender": "invalid"}}), 422, "gender")
+	rejected(t, s.HTTPWithToken(t, s.Owner, "update_draft_params", map[string]any{"id": d["id"], "params": map[string]any{"gender": "invalid"}, "summary": "改成无效性别"}), 422, "gender")
 	raw, _ := json.Marshal(map[string]any{"summary": 1})
 	_, err := s.Registry.CallTool(context.Background(), s.MustCaller(s.Owner), "create_customer", raw)
 	if ops.StatusOf(err) != 422 || !strings.Contains(err.Error(), "summary must be a string") {
@@ -356,7 +381,6 @@ func TestDraftStorage(t *testing.T) {
 	d := create(t, s, s.Owner)
 	for _, query := range []string{
 		"UPDATE ai_drafts SET original_params='{}'",
-		"UPDATE ai_drafts SET summary='改写'",
 		"DELETE FROM ai_drafts",
 		"UPDATE ai_draft_events SET kind='rejected'",
 		"DELETE FROM ai_draft_events",
@@ -387,7 +411,7 @@ func TestDraftStorage(t *testing.T) {
 			t.Fatal(r)
 		}
 	}
-	rejected(t, s.HTTP(t, &c, "update_draft_params", map[string]any{"id": d["id"], "params": map[string]any{"name": "跨店"}}), 404, "not found")
+	rejected(t, s.HTTP(t, &c, "update_draft_params", map[string]any{"id": d["id"], "params": map[string]any{"name": "跨店"}, "summary": "跨店修改"}), 404, "not found")
 	// 同租户不同门店的审计行也不能关联这个草稿。
 	tx = dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	other, err := dbgen.New(tx).CreateStore(context.Background(), dbgen.CreateStoreParams{TenantID: s.Res.TenantID, Name: "另一门店"})
@@ -416,7 +440,7 @@ func TestDraftPrivacy(t *testing.T) {
 		t.Fatal(r)
 	}
 	d := r.Body
-	updated := call(t, s, token, "update_draft_params", map[string]any{"id": d["id"], "params": map[string]any{"phone": "13912345678"}})
+	updated := call(t, s, token, "update_draft_params", map[string]any{"id": d["id"], "params": map[string]any{"phone": "13912345678"}, "summary": "换手机号"})
 	if phone(updated.Body, "params") != "139****5678" {
 		t.Fatal(updated)
 	}
@@ -460,6 +484,68 @@ func TestDraftPrivacy(t *testing.T) {
 	}
 }
 
+func TestDraftUpdateRestoresMaskedPhone(t *testing.T) {
+	s := optest.OpenShop(t)
+	_, token := s.Hire("发型师", "002", "phone-restore", s.Role("发型师"))
+	d := call(t, s, token, "create_draft", map[string]any{
+		"operation": "create_customer",
+		"params":    map[string]any{"name": "原名", "phone": "13812345678"},
+		"summary":   "建档",
+		"utterance": "建档",
+	}).Body
+	c := s.MustCaller(token)
+	for _, ch := range s.Channels() {
+		got := ch.Call(t, c, "get_draft", id(d))
+		if got.Status != 200 || got.Body["params"].(map[string]any)["phone"] != "138****5678" {
+			t.Fatal(ch.Name, got)
+		}
+		list := ch.Call(t, c, "list_drafts", map[string]any{})
+		entries := list.Body["drafts"].([]any)
+		if list.Status != 200 || len(entries) != 1 || entries[0].(map[string]any)["params"].(map[string]any)["phone"] != "138****5678" {
+			t.Fatal(ch.Name, list)
+		}
+	}
+	updated := call(t, s, token, "update_draft_params", map[string]any{
+		"id":      d["id"],
+		"params":  map[string]any{"name": "改后", "phone": "138****5678"},
+		"summary": "改名字",
+	})
+	if updated.Body["params"].(map[string]any)["phone"] != "138****5678" {
+		t.Fatal(updated)
+	}
+	owner := call(t, s, s.Owner, "get_draft", id(d)).Body
+	params := owner["params"].(map[string]any)
+	if params["name"] != "改后" || params["phone"] != "13812345678" {
+		t.Fatal(owner)
+	}
+	rejected(t, s.HTTPWithToken(t, token, "update_draft_params", map[string]any{
+		"id":      d["id"],
+		"params":  map[string]any{"name": "不能存", "phone": "139****5678"},
+		"summary": "改另一个打码号码",
+	}), 409, "手机号不完整，请填写完整号码或保持原样")
+	if got := call(t, s, s.Owner, "get_draft", id(d)).Body["params"].(map[string]any); got["name"] != "改后" || got["phone"] != "13812345678" {
+		t.Fatal(got)
+	}
+	call(t, s, token, "update_draft_params", map[string]any{
+		"id":      d["id"],
+		"params":  map[string]any{"name": "换号", "phone": "13912345678"},
+		"summary": "换完整号码",
+	})
+	owner = call(t, s, s.Owner, "get_draft", id(d)).Body
+	params = owner["params"].(map[string]any)
+	if params["name"] != "换号" || params["phone"] != "13912345678" {
+		t.Fatal(owner)
+	}
+	ownerUpdated := call(t, s, s.Owner, "update_draft_params", map[string]any{
+		"id":      d["id"],
+		"params":  map[string]any{"name": "老板改", "phone": "13712345678"},
+		"summary": "老板改",
+	})
+	if ownerUpdated.Body["params"].(map[string]any)["phone"] != "13712345678" {
+		t.Fatal(ownerUpdated)
+	}
+}
+
 func TestDraftCreateAppointmentPhoneMask(t *testing.T) {
 	s := optest.OpenShop(t)
 	staff, token := s.Hire("发型师", "002", "stylist", s.Role("发型师"))
@@ -488,7 +574,7 @@ func TestDraftCreateAppointmentPhoneMask(t *testing.T) {
 	if phoneOf(d, "params") != "138****1234" || phoneOf(d, "original_params") != "138****1234" {
 		t.Fatal(d)
 	}
-	updated := call(t, s, s.Owner, "update_draft_params", map[string]any{"id": d["id"], "params": params("13900001234")})
+	updated := call(t, s, s.Owner, "update_draft_params", map[string]any{"id": d["id"], "params": params("13900001234"), "summary": "换成 139 的号码"})
 	if phoneOf(updated.Body, "params") != "13900001234" || phoneOf(updated.Body, "original_params") != "13800001234" {
 		t.Fatal(updated)
 	}
@@ -620,7 +706,7 @@ func TestDraftQueryCount(t *testing.T) {
 		one := ch.Call(t, c, "get_draft", id(d))
 		a := counter.n.Load()
 		for range 5 {
-			call(t, s, s.Owner, "update_draft_params", map[string]any{"id": d["id"], "params": map[string]any{"name": "修改"}})
+			call(t, s, s.Owner, "update_draft_params", map[string]any{"id": d["id"], "params": map[string]any{"name": "修改"}, "summary": "第几次修改"})
 		}
 		counter.n.Store(0)
 		many := ch.Call(t, c, "get_draft", id(d))
@@ -729,7 +815,7 @@ func TestDraftScopeVisibility(t *testing.T) {
 			t.Fatal(ch.Name, list)
 		}
 		rejected(t, ch.Call(t, second, "get_draft", id(d)), 404, "not found")
-		rejected(t, ch.Call(t, second, "update_draft_params", map[string]any{"id": d["id"], "params": params}), 404, "not found")
+		rejected(t, ch.Call(t, second, "update_draft_params", map[string]any{"id": d["id"], "params": params, "summary": "越权修改"}), 404, "not found")
 		rejected(t, ch.Call(t, second, "reject_draft", map[string]any{"id": d["id"], "reason": "越权"}), 404, "not found")
 	}
 	rejected(t, s.HTTPWithToken(t, secondToken, "confirm_draft", confirmArgs(d)), 404, "not found")
@@ -746,7 +832,7 @@ func TestDraftScopeVisibility(t *testing.T) {
 			t.Fatal(ch.Name, got)
 		}
 	}
-	updated := call(t, s, storeToken, "update_draft_params", map[string]any{"id": d["id"], "params": params})
+	updated := call(t, s, storeToken, "update_draft_params", map[string]any{"id": d["id"], "params": params, "summary": "店长改预约"})
 	if updated.Body["version"] == d["version"] {
 		t.Fatal(updated)
 	}
@@ -812,7 +898,7 @@ func TestDraftVersionBoundConfirm(t *testing.T) {
 	if d["version"] != float64(1) {
 		t.Fatal(d)
 	}
-	updated := call(t, s, s.Owner, "update_draft_params", map[string]any{"id": d["id"], "params": map[string]any{"name": "改后"}})
+	updated := call(t, s, s.Owner, "update_draft_params", map[string]any{"id": d["id"], "params": map[string]any{"name": "改后"}, "summary": "版本二"})
 	if updated.Body["version"] != float64(2) {
 		t.Fatal(updated)
 	}
@@ -830,7 +916,7 @@ func TestDraftVersionBoundConfirm(t *testing.T) {
 	amountDraft := call(t, s, s.Owner, "create_draft", map[string]any{"operation": "adjust_card", "params": monetaryParams("adjust_card"), "summary": "金额", "utterance": "金额调整"}).Body
 	_, approver := s.Hire("审批人", "003", "version-approver", s.Role("老板"))
 	before = count(t, s, "customers")
-	amountUpdated := call(t, s, s.Owner, "update_draft_params", map[string]any{"id": amountDraft["id"], "params": monetaryParams("adjust_card")})
+	amountUpdated := call(t, s, s.Owner, "update_draft_params", map[string]any{"id": amountDraft["id"], "params": monetaryParams("adjust_card"), "summary": "金额草稿修改"})
 	rejected(t, s.HTTPWithToken(t, approver, "confirm_draft", confirmArgs(amountDraft)), 409, "草稿已被修改，请重新查看后确认")
 	if got := call(t, s, s.Owner, "get_draft", id(amountDraft)).Body; got["status"] != "pending" || count(t, s, "customers") != before {
 		t.Fatal(got)

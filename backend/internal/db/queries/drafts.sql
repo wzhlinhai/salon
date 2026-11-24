@@ -12,12 +12,12 @@ SELECT * FROM ai_drafts WHERE store_id=$1 AND id=$2;
 SELECT * FROM ai_drafts WHERE store_id=$1 ORDER BY created_at, id;
 
 -- name: SaveDraft :one
-UPDATE ai_drafts SET params=$3,status=$4,decided_at=$5,decided_by=$6,reject_reason=$7,version=version+1
+UPDATE ai_drafts SET params=$3,summary=$4,status=$5,decided_at=$6,decided_by=$7,reject_reason=$8,version=version+1
 WHERE store_id=$1 AND id=$2 RETURNING *;
 
 -- name: AddDraftEvent :exec
-INSERT INTO ai_draft_events (tenant_id,store_id,draft_id,kind,before_params,after_params,actor_id,at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8);
+INSERT INTO ai_draft_events (tenant_id,store_id,draft_id,kind,before_params,before_summary,after_params,actor_id,at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9);
 
 -- name: DraftEvents :many
 SELECT * FROM ai_draft_events WHERE store_id=$1 AND draft_id=$2 ORDER BY ordinal;
