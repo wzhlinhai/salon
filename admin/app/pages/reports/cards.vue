@@ -55,10 +55,10 @@ const brief = computed(() => {
     t.count_used ? `扣次 ${t.count_used} 次折 ${yuan(t.count_amount)}` : '',
     t.refund_count ? `退卡 ${t.refund_count} 张共 ${yuan(t.refund_amount)}` : ''
   ].filter(Boolean)
-  if (out.length) say(`${out.join('，')}。`)
-  say(`到 ${range.value.to} 营业结束，卡里还有 `)
+  if (out.length) say(`这段时间${out.join('，')}。`)
+  say(`到 ${range.value.to} 营业结束，卡内余额 `)
   bold(yuan(t.ending_balance), undefined, 'ending_balance')
-  say(t.ending_counts ? `和 ${t.ending_counts} 次没用。` : ' 没用。')
+  say(t.ending_counts ? `，另有 ${t.ending_counts} 次没用。` : '。')
   return parts
 })
 

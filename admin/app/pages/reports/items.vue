@@ -54,7 +54,7 @@ const brief = computed(() => {
   say(`这段时间${what}实收 `)
   bold(yuan(t.paid), undefined, 'paid')
   const discount = cents(t.line_price) - cents(t.paid)
-  say(`（原价 ${yuan(t.line_price)}${discount ? `，折扣 ${yuan(discount / 100)}` : ''}），做了 `)
+  say(`（原价 ${yuan(t.line_price)}${discount ? `，折扣 ${yuan(discount / 100)}` : ''}），${{ all: '共', service: '做了', goods: '卖了' }[kind.value]} `)
   bold(String(t.times))
   say(`${t.designated ? ` 次，其中指定 ${t.designated} 次` : ' 次'}；业绩 `)
   bold(yuan(t.performance))

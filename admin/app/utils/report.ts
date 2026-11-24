@@ -121,10 +121,10 @@ export function switchGranularity(range: ReportRange, granularity: Granularity, 
   return { granularity, from: `${range.from}-01`, to: end > today ? today : end }
 }
 
-// 涨跌百分比；上一段是 0 时不比。
+// 涨跌百分比；上一段是 0 或负数（只有退款）时不比，负数做分母会把变好说成变差。
 export function percentChange(current: string | number, previous: string | number | undefined) {
   const before = Number(previous ?? 0)
-  if (!before) return null
+  if (before <= 0) return null
   return Math.round(((Number(current) - before) / before) * 100)
 }
 

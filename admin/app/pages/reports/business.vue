@@ -90,7 +90,7 @@ const hasPrevious = computed(() => {
   return !!t && [t.service_revenue, t.sales_revenue, t.guest_total, t.card_principal, t.card_bonus, t.groupbuy_deduct].some(v => Number(v) !== 0)
 })
 
-// 顶上一段话（DESIGN.md 报表页）：实收和办卡充值各和上一段比，再说客数、单数，卡扣、团购、扣次有数才说。
+// 顶上一段话（DESIGN.md 报表页）：实收、办卡充值、客数各和上一段比，再说单数；卡扣、团购、扣次有数才说。
 const brief = computed(() => {
   const t = report.value?.totals
   if (!t) return []
@@ -106,7 +106,9 @@ const brief = computed(() => {
   change(t.sales_revenue, p?.sales_revenue, label)
   say('。来了 ')
   bold(formatGuest(t.guest_total), undefined, 'guest_total')
-  say(' 位顾客，结账 ')
+  say(' 位顾客')
+  change(t.guest_total, p?.guest_total, label)
+  say('，结账 ')
   bold(String(t.checkout_count))
   say(' 单')
   if (t.void_count) say(`，撤单 ${t.void_count} 单`)

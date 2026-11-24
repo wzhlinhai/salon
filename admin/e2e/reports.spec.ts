@@ -29,7 +29,7 @@ async function seedCheckout() {
     orders: [{ order_id: order.id, payments: [{ method: 'wechat', amount: order.net }] }]
   })
   const settings = await api<{ business_date: string }>(token, 'get_settings', {})
-  return { token, suffix, today: settings.business_date, stylist, customerId: created.customer.id, itemName: `报表项目${suffix}`, orderId: order.id }
+  return { token, suffix, today: settings.business_date, stylist, customerId: created.customer.id, itemId: item.id, itemName: `报表项目${suffix}`, orderId: order.id }
 }
 
 // 表格里的数换成分（金额）或整数（单数），合计逐列核对用。
@@ -210,7 +210,12 @@ test('店长看卡项报表：今天开的卡记在它的卡类型下，合计�
 })
 
 test('店长看新客来源：今天第一次结账的顾客算新客；新客来源和欠款对账的合计都等于各行之和', async ({ page }) => {
-  await seedCheckout()
+  const { token, customerId, itemId, stylist } = await seedCheckout()
+  // 再结一单挂账，欠款对账就一定有没还清的欠款。
+  const owed = await api<{ id: string, net: string }>(token, 'open_order', {
+    customer_id: customerId, gender: 'male', designated: false, items: [{ item_id: itemId, staff: [{ slot: 1, staff_id: stylist.id }] }]
+  })
+  await api(token, 'checkout_orders', { orders: [{ order_id: owed.id, payments: [{ method: 'debt', amount: owed.net }] }] })
   const manager = await hire('店长')
   await login(page, manager.account, manager.password)
   await page.goto('/reports/sources')
@@ -224,10 +229,7 @@ test('店长看新客来源：今天第一次结账的顾客算新客；新客�
   const debts = page.getByTestId('debt-table')
   await expect(debts).toBeVisible()
   await expectTotalsAreSums(debts, 'debt-totals', 3)
-  // 有没还清的欠款时，顶上一段话里的未还就是合计行的未还；都还清了（或从没欠过）就直接这么说。
-  const outstanding = amount(await debts.getByTestId('debt-totals').locator('td[data-col="outstanding"]').textContent() ?? '')
-  if (outstanding) await expectBriefIsTotal(debts, 'debt-totals', 'outstanding')
-  else await expect(page.getByTestId('report-brief')).toHaveText(/欠款都还清了|还没有过欠款/)
+  await expectBriefIsTotal(debts, 'debt-totals', 'outstanding')
 })
 
 test('发型师打不开只给店长看的报表', async ({ page }) => {

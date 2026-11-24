@@ -37,7 +37,7 @@ const brief = computed(() => {
   say('。提成 ')
   bold(yuan(t.commission_total))
   say('（阶梯提成月底才定）。')
-  if (!self.value && ranked.value.length > 1) say(`项目业绩最高的是${nameOf(ranked.value[0]!)}。`)
+  if (!self.value && ranked.value.length > 1) say(`员工里项目业绩最高的是${nameOf(ranked.value[0]!)}。`)
   return parts
 })
 
