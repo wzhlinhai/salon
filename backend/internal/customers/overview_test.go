@@ -775,6 +775,7 @@ VALUES ($1,$2,$3,$4,'appointment',$5,$6,'pending',$7)`, s.Res.TenantID, s.Res.St
 		t.Fatal(err)
 	}
 	app := optest.New(t, pool)
+	app.SetNow(now)
 	caller := s.MustCaller(s.Owner)
 	for _, ch := range app.Channels() {
 		counts := []int64{}
