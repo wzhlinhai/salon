@@ -176,7 +176,8 @@ test('修改新建顾客草稿：直接弹表单改，卡片标题跟着改，�
   await expect(modal).toHaveCount(0)
   await expect(card(page, draft.id).getByTestId('draft-summary')).toHaveText(`新建顾客：${after}，男`)
   await card(page, draft.id).getByTestId('draft-confirm').click()
-  await expect(card(page, draft.id).getByText('改后确认')).toBeVisible()
+  // 待确认页默认只列未处理的，确认后卡片离开列表；状态用接口核对。
+  await expect(card(page, draft.id)).toHaveCount(0)
   const { drafts } = await api<{ drafts: (Draft & { params: { name: string, phone: string, gender: string } })[] }>(token, 'list_drafts', {})
   const done = drafts.find(d => d.id === draft.id)!
   expect(done.status).toBe('confirmed_modified')
