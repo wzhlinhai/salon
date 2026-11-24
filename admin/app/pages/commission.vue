@@ -3,7 +3,7 @@ import type { components } from '~/utils/api'
 import type { CommissionValue } from '~/components/CommissionValueEditor.vue'
 import { LOG_PAGE_SIZE } from '~/utils/paging'
 
-definePageMeta({ permission: 'settings.manage', title: '提成规则', description: '保存后从生效日期起执行，之前写入的业绩仍按当时的方案版本算；阶梯提成随当月累计变化，月底锁定后才固定。' })
+definePageMeta({ permission: 'settings.manage', title: '提成规则', description: '保存后从生效日期起执行，之前写入的业绩仍按当时的方案版本算；阶梯提成随当月累计变化，月底锁定后才固定。', art: 'tag' })
 type Schema = components['schemas']
 type Source = Schema['Rule']['source']
 type Cell = Schema['Cell']

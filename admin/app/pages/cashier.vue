@@ -3,7 +3,7 @@ import type { components } from '~/utils/api'
 
 // 收银工作台：扫码框、挂单列表、今日结账在这里；当前单、团购券面板、未关联券、开单弹窗各是一个组件，
 // 页面只管它们之间的联动（开了单就选中、关联了券就刷新挂单等）。
-definePageMeta({ permission: 'order.create', title: '收银', workbench: true })
+definePageMeta({ permission: 'order.create', title: '收银', workbench: true, art: 'register' })
 
 type Order = components['schemas']['Order']
 type Customer = components['schemas']['Customer']

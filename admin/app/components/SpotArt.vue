@@ -18,7 +18,15 @@ const tones: Record<SpotArtName, { tone: string, x: number, y: number }> = {
   bowl: { tone: 'brown', x: 48, y: 60 },
   roller: { tone: 'purple', x: 50, y: 54 },
   mirror: { tone: 'green', x: 50, y: 50 },
-  curl: { tone: 'pink', x: 50, y: 54 }
+  curl: { tone: 'pink', x: 50, y: 54 },
+  register: { tone: 'green', x: 50, y: 58 },
+  clock: { tone: 'yellow', x: 52, y: 54 },
+  coins: { tone: 'yellow', x: 50, y: 58 },
+  ticket: { tone: 'red', x: 52, y: 56 },
+  phone: { tone: 'pink', x: 54, y: 54 },
+  tag: { tone: 'purple', x: 50, y: 56 },
+  key: { tone: 'blue', x: 50, y: 52 },
+  sign: { tone: 'orange', x: 52, y: 58 }
 }
 
 // 不规则色块：绕中心一圈 9 个点，半径随种子起伏，再用二次曲线连圆。种子取名字，每次画出来一样。
@@ -62,6 +70,7 @@ const id = useId()
     aria-hidden="true"
     focusable="false"
     data-testid="spot-art"
+    :data-art="name"
   >
     <defs>
       <filter :id="`${id}-ink`" x="-10%" y="-10%" width="120%" height="120%">
@@ -156,6 +165,75 @@ const id = useId()
       <template v-else-if="name === 'mirror'">
         <ellipse cx="60" cy="40" rx="22" ry="28" fill="#fff" />
         <path d="M48 28 l8 -7 M49 38 l15 -13 M60 68 V82 M46 84 H74" />
+      </template>
+
+      <template v-else-if="name === 'register'">
+        <rect x="46" y="12" width="28" height="14" rx="3" fill="#fff" />
+        <path d="M54 26 v8 M66 26 v8" />
+        <path d="M34 34 H86 L92 64 H28 Z" fill="#fff" />
+        <rect x="26" y="64" width="68" height="16" rx="3" fill="#fff" />
+        <path d="M42 42 h.01 M52 42 h.01 M62 42 h.01 M72 42 h.01 M40 52 h.01 M50 52 h.01 M60 52 h.01 M70 52 h.01 M80 52 h.01" stroke-width="3.4" />
+        <path d="M54 72 h12" />
+        <path d="M51 19 h10" stroke-width="1.6" />
+      </template>
+
+      <template v-else-if="name === 'clock'">
+        <path d="M34 26 A9 9 0 0 1 46 16 M86 26 A9 9 0 0 0 74 16" stroke-width="3" />
+        <circle cx="60" cy="50" r="28" fill="#fff" />
+        <path d="M60 50 V32 M60 50 L72 58" />
+        <path d="M60 24 v3 M86 50 h-3 M60 76 v-3 M34 50 h3" />
+        <path d="M42 76 L36 86 M78 76 L84 86" />
+      </template>
+
+      <template v-else-if="name === 'coins'">
+        <path d="M26 72 v8 c0 5 30 5 30 0 v-8" fill="#fff" />
+        <ellipse cx="41" cy="72" rx="15" ry="5" fill="#fff" />
+        <path d="M26 62 v10 c0 5 30 5 30 0 v-10" fill="#fff" />
+        <ellipse cx="41" cy="62" rx="15" ry="5" fill="#fff" />
+        <path d="M28 52 v10 c0 5 30 5 30 0 v-10" fill="#fff" />
+        <ellipse cx="43" cy="52" rx="15" ry="5" fill="#fff" />
+        <circle cx="78" cy="56" r="20" fill="#fff" />
+        <circle cx="78" cy="56" r="14" />
+        <path d="M73 50 l5 6 l5 -6 M78 56 v10 M73 59 h10" stroke-width="1.8" />
+      </template>
+
+      <template v-else-if="name === 'ticket'">
+        <g transform="rotate(-8 60 50)">
+          <path d="M24 30 H96 V44 A6 6 0 0 0 96 56 V70 H24 V56 A6 6 0 0 0 24 44 Z" fill="#fff" />
+          <path d="M44 32 V68" stroke-dasharray="3 4" />
+          <path d="M56 50 l8 8 l16 -16" stroke-width="2.6" />
+        </g>
+      </template>
+
+      <template v-else-if="name === 'phone'">
+        <rect x="40" y="10" width="40" height="76" rx="7" fill="#fff" />
+        <path d="M54 16 h12 M56 80 h8" />
+        <path d="M46 34 H74 V42 A4 4 0 0 0 74 50 V58 H46 V50 A4 4 0 0 0 46 42 Z" fill="var(--color-tag-pink)" />
+        <path d="M57 36 V56" stroke-dasharray="2 3" stroke-width="1.6" />
+      </template>
+
+      <template v-else-if="name === 'tag'">
+        <path d="M58 18 H88 V48 L56 80 L26 50 Z" fill="#fff" />
+        <circle cx="78" cy="28" r="4" />
+        <path d="M78 28 C88 18 98 14 104 18" />
+        <circle cx="50" cy="44" r="3" />
+        <circle cx="64" cy="58" r="3" />
+        <path d="M66 42 L48 60" />
+      </template>
+
+      <template v-else-if="name === 'key'">
+        <circle cx="38" cy="46" r="16" fill="#fff" />
+        <circle cx="34" cy="46" r="5" />
+        <path d="M54 42 H94 V50 H54 Z" fill="#fff" />
+        <path d="M82 50 v10 M90 50 v6 M74 50 v7" stroke-width="2.6" />
+      </template>
+
+      <template v-else-if="name === 'sign'">
+        <circle cx="60" cy="14" r="2.4" fill="var(--color-ink)" stroke="none" />
+        <path d="M60 14 L36 40 M60 14 L84 40" />
+        <rect x="26" y="40" width="68" height="34" rx="4" fill="#fff" />
+        <path d="M38 52 h28 M38 62 h18" />
+        <path d="M76 56 l4 4 l8 -9" stroke-width="2.6" />
       </template>
 
       <template v-else>

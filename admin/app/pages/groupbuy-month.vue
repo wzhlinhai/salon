@@ -2,7 +2,7 @@
 import type { TableColumn } from '@nuxt/ui'
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'report.view', title: '团购对账' })
+definePageMeta({ permission: 'report.view', title: '团购对账', art: 'ticket' })
 
 type GroupbuyMonth = components['schemas']['GroupbuyMonth']
 type Platform = components['schemas']['GroupbuyMonthInput']['platform']

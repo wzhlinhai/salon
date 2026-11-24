@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { navItems } from '../app/utils/nav'
 import { api, apiLogin, hire, login, owner } from './helpers'
 
 test('侧栏每项都有图标、不请求 Iconify，折叠后仍可用', async ({ page }) => {
@@ -51,7 +52,7 @@ test('个人菜单可以打卡、打开我的考勤并退出登录', async ({ pa
   expect(await page.evaluate(() => localStorage.getItem('salon_token'))).toBeNull()
 })
 
-test('页面骨架：正文顶上统一一个标题，设置类页面居中收窄，首页用问候不用标题', async ({ page }) => {
+test('页面骨架：正文顶上统一插画加标题，设置类页面居中收窄，首页用问候不用标题', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 })
   await login(page, owner.account, owner.password)
   await expect(page.getByTestId('page-header')).toHaveCount(0)
@@ -72,12 +73,16 @@ test('页面骨架：正文顶上统一一个标题，设置类页面居中收�
   // 随数据变的半句接在说明末尾，不另起一行。
   await expect(page.getByTestId('page-description')).toHaveText(/^修改从选定的日期开始执行，之前的业务和已经下的单不受影响。今天是营业日 \d{4}-\d{2}-\d{2}。$/)
 
-  // 工作台（收银、预约）不放大标题，顶栏面包屑已经写了页名；标题只留给读屏。
-  for (const [path, name] of [['/cashier', '收银'], ['/bookings', '预约']] as const) {
-    await page.goto(path)
-    await expect(page.getByRole('heading', { level: 1, name, exact: true })).toBeAttached()
-    await expect(page.getByTestId('page-header')).toHaveCount(0)
+  // 侧栏每一页（首页除外）顶上都是插画加标题，工作台也一样，插画各不相同。
+  const arts = new Set<string>()
+  const pages = [{ label: '待确认', to: '/drafts' }, ...navItems.filter(n => n.to !== '/')]
+  for (const item of pages) {
+    await page.goto(item.to)
+    await expect(header.getByRole('heading', { level: 1, name: item.label, exact: true })).toBeVisible()
+    await expect(header.getByTestId('page-art')).toBeVisible()
+    arts.add((await header.getByTestId('page-art').getAttribute('data-art'))!)
   }
+  expect(arts.size).toBe(pages.length)
 })
 
 test('侧栏配置类分组默认收起，当前页所在组展开，点组名切换并记住', async ({ page }) => {
