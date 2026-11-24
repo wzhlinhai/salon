@@ -229,9 +229,9 @@ func TestEvalScorerAnyOfAndDraftArgument(t *testing.T) {
 		t.Fatalf("any_of should pass: %+v", result)
 	}
 	draftID := uuid.New()
-	draftCase := Case{ID: "draft", Story: "s", Category: "c", Role: "owner", Messages: []CaseMessage{{Role: "user", Content: "问"}}, AnswerContains: []string{"OK"}, ReferenceAnswer: "OK", Expected: []ExpectedCall{{Tool: "update_draft_params", Args: map[string]any{"id": "$draft", "params": map[string]any{"gender": "male"}}}}}
+	draftCase := Case{ID: "draft", Story: "s", Category: "c", Role: "owner", Messages: []CaseMessage{{Role: "user", Content: "问"}}, AnswerContains: []string{"OK"}, ReferenceAnswer: "OK", Expected: []ExpectedCall{{Tool: "update_draft_params", Args: map[string]any{"id": "$draft", "params": map[string]any{"gender": "male"}, "summary": "改为男客"}}}}
 	drafts := []ai.DraftView{{Draft: drafts.Draft{ID: draftID, Operation: "open_order"}}}
-	sources := []ai.Source{{Tool: "update_draft_params", OK: true, Arguments: map[string]any{"id": draftID.String(), "params": map[string]any{"gender": "male", "customer_id": "c"}}}}
+	sources := []ai.Source{{Tool: "update_draft_params", OK: true, Arguments: map[string]any{"id": draftID.String(), "params": map[string]any{"gender": "male", "customer_id": "c"}, "summary": "改为男客"}}}
 	if result := ScoreCase(draftCase, Observed{Reply: "OK", Sources: sources, Drafts: drafts}, nil); !result.Overall {
 		t.Fatalf("draft arg should pass: %+v", result)
 	}

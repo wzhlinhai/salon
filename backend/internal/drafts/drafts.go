@@ -5,7 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -38,12 +41,13 @@ type Draft struct {
 
 // Event 是一次只追加的草稿变更。
 type Event struct {
-	ID           uuid.UUID       `json:"id"`
-	Kind         string          `json:"kind"`
-	BeforeParams json.RawMessage `json:"before_params"`
-	AfterParams  json.RawMessage `json:"after_params"`
-	ActorID      uuid.UUID       `json:"actor_id"`
-	At           time.Time       `json:"at"`
+	ID            uuid.UUID       `json:"id"`
+	Kind          string          `json:"kind"`
+	BeforeParams  json.RawMessage `json:"before_params"`
+	BeforeSummary *string         `json:"before_summary"`
+	AfterParams   json.RawMessage `json:"after_params"`
+	ActorID       uuid.UUID       `json:"actor_id"`
+	At            time.Time       `json:"at"`
 }
 
 // Detail 包含草稿、完整变更历史、产生的业务日志标识和只读预览。
@@ -60,7 +64,7 @@ type CreateInput struct {
 	Operation string         `json:"operation" minLength:"1"`
 	Params    map[string]any `json:"params"`
 	Utterance string         `json:"utterance"`
-	Summary   string         `json:"summary"`
+	Summary   string         `json:"summary" maxLength:"200" doc:"面向人的草稿摘要"`
 }
 
 // IDInput 指定一张草稿。
@@ -74,10 +78,11 @@ type ConfirmInput struct {
 	Version int32     `json:"version" minimum:"1"`
 }
 
-// UpdateInput 是确认前的人工作业参数。
+// UpdateInput 是确认前的人工作业参数和改写后的摘要。
 type UpdateInput struct {
-	ID     uuid.UUID      `json:"id"`
-	Params map[string]any `json:"params"`
+	ID      uuid.UUID      `json:"id"`
+	Params  map[string]any `json:"params"`
+	Summary string         `json:"summary" maxLength:"200" doc:"改写后的面向人的草稿摘要"`
 }
 
 // RejectInput 保存拒绝原因。
@@ -97,6 +102,7 @@ type service struct{ registry *ops.Registry }
 func Register(r *ops.Registry) {
 	s := service{registry: r}
 	r.SetDraftCreator(s.create)
+	r.SetDraftEditor(s.editable)
 	ops.Register(r, ops.Operation[CreateInput, Draft]{Name: "create_draft", Summary: "创建待确认草稿", Kind: ops.Write, Permission: ops.LoggedIn, AI: ops.AIManageDraft, Handle: func(ctx context.Context, env ops.Env, in *CreateInput) (*Draft, error) {
 		params, err := json.Marshal(in.Params)
 		if err != nil {
@@ -110,7 +116,7 @@ func Register(r *ops.Registry) {
 	}})
 	ops.Register(r, ops.Operation[struct{}, List]{Name: "list_drafts", Summary: "查看可见草稿", Kind: ops.Read, Permission: ops.LoggedIn, AI: ops.AIDirect, Handle: s.list})
 	ops.Register(r, ops.Operation[IDInput, Detail]{Name: "get_draft", Summary: "查看草稿与留痕", Kind: ops.Read, Permission: ops.LoggedIn, AI: ops.AIDirect, Handle: s.get})
-	ops.Register(r, ops.Operation[UpdateInput, Draft]{Name: "update_draft_params", Summary: "修改待确认草稿参数", Kind: ops.Write, Permission: ops.LoggedIn, AI: ops.AIManageDraft, Handle: s.update})
+	ops.Register(r, ops.Operation[UpdateInput, Draft]{Name: "update_draft_params", Summary: "修改待确认草稿参数和摘要", Kind: ops.Write, Permission: ops.LoggedIn, AI: ops.AIManageDraft, Handle: s.update})
 	ops.Register(r, ops.Operation[ConfirmInput, Draft]{Name: "confirm_draft", Summary: "由人复检权限并确认执行草稿", Kind: ops.Write, Permission: ops.LoggedIn, AI: ops.AINone, Handle: s.confirm})
 	ops.Register(r, ops.Operation[RejectInput, Draft]{Name: "reject_draft", Summary: "拒绝草稿并保存原因", Kind: ops.Write, Permission: ops.LoggedIn, AI: ops.AIManageDraft, Handle: s.reject})
 }
@@ -157,6 +163,9 @@ func (s service) create(ctx context.Context, env ops.Env, name string, params js
 	if err := s.registry.CheckDraft(env.Caller, name, params); err != nil {
 		return nil, err
 	}
+	if err := checkSummaryLen(summary); err != nil {
+		return nil, err
+	}
 	if err := env.Q.ExpireStoreDrafts(ctx, dbgen.ExpireStoreDraftsParams{StoreID: env.Caller.StoreID, Now: stamp(env.Now), ActorID: env.Caller.StaffID}); err != nil {
 		return nil, err
 	}
@@ -172,18 +181,39 @@ func (s service) create(ctx context.Context, env ops.Env, name string, params js
 	if err != nil {
 		return nil, err
 	}
-	if err := event(ctx, env, d, "created", nil); err != nil {
+	if err := event(ctx, env, d, "created", nil, nil); err != nil {
 		return nil, err
 	}
 	return view(env, d)
 }
 
-func event(ctx context.Context, env ops.Env, d dbgen.AiDraft, kind string, before []byte) error {
-	return env.Q.AddDraftEvent(ctx, dbgen.AddDraftEventParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, DraftID: d.ID, Kind: kind, BeforeParams: before, AfterParams: d.Params, ActorID: env.Caller.StaffID, At: stamp(env.Now)})
+// maxSummaryRunes 是草稿摘要最多的字符数，创建和修改共用。
+const maxSummaryRunes = 200
+
+func checkSummaryLen(summary string) error {
+	if utf8.RuneCountInString(summary) > maxSummaryRunes {
+		return &ops.ToolError{Messages: []string{fmt.Sprintf("草稿摘要最多 %d 字", maxSummaryRunes)}}
+	}
+	return nil
+}
+
+func checkUpdatedSummary(summary string) (string, error) {
+	summary = strings.TrimSpace(summary)
+	if summary == "" {
+		return "", &ops.ToolError{Messages: []string{"草稿摘要不能为空"}}
+	}
+	if err := checkSummaryLen(summary); err != nil {
+		return "", err
+	}
+	return summary, nil
+}
+
+func event(ctx context.Context, env ops.Env, d dbgen.AiDraft, kind string, before []byte, beforeSummary *string) error {
+	return env.Q.AddDraftEvent(ctx, dbgen.AddDraftEventParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, DraftID: d.ID, Kind: kind, BeforeParams: before, BeforeSummary: beforeSummary, AfterParams: d.Params, ActorID: env.Caller.StaffID, At: stamp(env.Now)})
 }
 
 func save(ctx context.Context, env ops.Env, d dbgen.AiDraft) (dbgen.AiDraft, error) {
-	return env.Q.SaveDraft(ctx, dbgen.SaveDraftParams{StoreID: env.Caller.StoreID, ID: d.ID, Params: d.Params, Status: d.Status, DecidedAt: d.DecidedAt, DecidedBy: d.DecidedBy, RejectReason: d.RejectReason})
+	return env.Q.SaveDraft(ctx, dbgen.SaveDraftParams{StoreID: env.Caller.StoreID, ID: d.ID, Params: d.Params, Summary: d.Summary, Status: d.Status, DecidedAt: d.DecidedAt, DecidedBy: d.DecidedBy, RejectReason: d.RejectReason})
 }
 
 func (s service) visible(env ops.Env, d dbgen.AiDraft) bool {
@@ -218,7 +248,7 @@ func (s service) persistExpiry(ctx context.Context, env ops.Env, d dbgen.AiDraft
 		if err != nil {
 			return d, err
 		}
-		err = event(ctx, env, d, "expired", d.Params)
+		err = event(ctx, env, d, "expired", d.Params, &d.Summary)
 	}
 	return d, err
 }
@@ -292,9 +322,18 @@ func (s service) get(ctx context.Context, env ops.Env, in *IDInput) (*Detail, er
 		if err != nil {
 			return nil, err
 		}
-		out.Events = append(out.Events, Event{ID: e.ID, Kind: e.Kind, BeforeParams: e.BeforeParams, AfterParams: e.AfterParams, ActorID: e.ActorID, At: e.At.Time})
+		out.Events = append(out.Events, Event{ID: e.ID, Kind: e.Kind, BeforeParams: e.BeforeParams, BeforeSummary: e.BeforeSummary, AfterParams: e.AfterParams, ActorID: e.ActorID, At: e.At.Time})
 	}
 	return out, nil
+}
+
+// editable 在锁内按修改的可见性和状态规则加载草稿；错误与 update_draft_params 相同。
+func (s service) editable(ctx context.Context, env ops.Env, id uuid.UUID) error {
+	d, err := s.lock(ctx, env, id, true)
+	if err != nil {
+		return err
+	}
+	return pending(d)
 }
 
 func (s service) update(ctx context.Context, env ops.Env, in *UpdateInput) (*Draft, error) {
@@ -303,6 +342,10 @@ func (s service) update(ctx context.Context, env ops.Env, in *UpdateInput) (*Dra
 		return nil, err
 	}
 	if err := pending(d); err != nil {
+		return nil, err
+	}
+	summary, err := checkUpdatedSummary(in.Summary)
+	if err != nil {
 		return nil, err
 	}
 	params, err := json.Marshal(in.Params)
@@ -314,12 +357,14 @@ func (s service) update(ctx context.Context, env ops.Env, in *UpdateInput) (*Dra
 		return nil, err
 	}
 	before := d.Params
+	beforeSummary := d.Summary
 	d.Params = params
+	d.Summary = summary
 	d, err = save(ctx, env, d)
 	if err != nil {
 		return nil, err
 	}
-	if err := event(ctx, env, d, "modified", before); err != nil {
+	if err := event(ctx, env, d, "modified", before, &beforeSummary); err != nil {
 		return nil, err
 	}
 	return view(env, d)
@@ -375,7 +420,7 @@ func (s service) confirm(ctx context.Context, env ops.Env, in *ConfirmInput) (*D
 	if err != nil {
 		return nil, err
 	}
-	if err := event(ctx, env, d, "confirmed", d.Params); err != nil {
+	if err := event(ctx, env, d, "confirmed", d.Params, &d.Summary); err != nil {
 		return nil, err
 	}
 	return view(env, d)
@@ -397,7 +442,7 @@ func (s service) reject(ctx context.Context, env ops.Env, in *RejectInput) (*Dra
 	if err != nil {
 		return nil, err
 	}
-	if err := event(ctx, env, d, "rejected", d.Params); err != nil {
+	if err := event(ctx, env, d, "rejected", d.Params, &d.Summary); err != nil {
 		return nil, err
 	}
 	return view(env, d)

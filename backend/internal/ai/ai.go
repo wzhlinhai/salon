@@ -131,8 +131,8 @@ func NewChat(registry *ops.Registry, model func() Model, now func() time.Time, b
 	return &Chat{registry: registry, model: model, now: now, businessDate: businessDate, timeout: AskTimeout}
 }
 
-// Ask 用调用者本人的权限回答一组 user/assistant 消息。
-func (c *Chat) Ask(ctx context.Context, caller ops.Caller, history []Message) (Answer, error) {
+// Ask 用调用者本人的权限回答一组 user/assistant 消息；draftID 是人在草稿卡上点「修改」的那张草稿。
+func (c *Chat) Ask(ctx context.Context, caller ops.Caller, draftID *uuid.UUID, history []Message) (Answer, error) {
 	model := c.model()
 	if model == nil {
 		return Answer{}, ErrNotConfigured
@@ -157,6 +157,12 @@ func (c *Chat) Ask(ctx context.Context, caller ops.Caller, history []Message) (A
 	answerDrafts := []DraftView{}
 	draftIndex := map[uuid.UUID]int{}
 	allowedDrafts := map[uuid.UUID]bool{}
+	if draftID != nil {
+		if err := c.registry.CheckDraftEdit(ctx, caller, now, *draftID); err != nil {
+			return Answer{}, askError(ctx, err)
+		}
+		allowedDrafts[*draftID] = true
+	}
 	draftCalls := 0
 	for range MaxModelCalls {
 		message, err := model.Chat(ctx, messages, tools)

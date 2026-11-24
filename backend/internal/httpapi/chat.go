@@ -29,6 +29,7 @@ type chatMessage struct {
 type chatInput struct {
 	Body struct {
 		Messages []chatMessage `json:"messages" doc:"对话历史，最多 20 条"`
+		DraftID  *uuid.UUID    `json:"draft_id,omitempty" doc:"人点了「修改」的那张草稿；本次对话只允许改这张和本次新起草的"`
 	}
 }
 
@@ -55,7 +56,7 @@ func chatHandler(chat *ai.Chat) func(context.Context, *chatInput) (*chatOutput, 
 		if err != nil {
 			return nil, err
 		}
-		answer, err := chat.Ask(ctx, caller, history)
+		answer, err := chat.Ask(ctx, caller, in.Body.DraftID, history)
 		switch {
 		case errors.Is(err, ai.ErrNotConfigured):
 			return nil, huma.Error503ServiceUnavailable("AI 未启用")
@@ -64,6 +65,9 @@ func chatHandler(chat *ai.Chat) func(context.Context, *chatInput) (*chatOutput, 
 		case errors.Is(err, ai.ErrTimeout):
 			return nil, huma.Error502BadGateway("AI 对话超时，请稍后再试")
 		case err != nil:
+			if status := ops.StatusOf(err); status != http.StatusInternalServerError {
+				return nil, huma.NewError(status, err.Error())
+			}
 			return nil, huma.Error502BadGateway("AI 暂时不可用，请稍后再试")
 		}
 		return &chatOutput{Body: answer}, nil

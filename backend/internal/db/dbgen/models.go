@@ -75,16 +75,17 @@ type AiDraft struct {
 }
 
 type AiDraftEvent struct {
-	ID           uuid.UUID
-	TenantID     uuid.UUID
-	StoreID      uuid.UUID
-	DraftID      uuid.UUID
-	Ordinal      *int64
-	Kind         string
-	BeforeParams []byte
-	AfterParams  []byte
-	ActorID      uuid.UUID
-	At           pgtype.Timestamptz
+	ID            uuid.UUID
+	TenantID      uuid.UUID
+	StoreID       uuid.UUID
+	DraftID       uuid.UUID
+	Ordinal       *int64
+	Kind          string
+	BeforeParams  []byte
+	AfterParams   []byte
+	ActorID       uuid.UUID
+	At            pgtype.Timestamptz
+	BeforeSummary *string
 }
 
 type Appointment struct {

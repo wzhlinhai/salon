@@ -304,7 +304,7 @@ func TestChatUpdateOwnDraftThenConfirm(t *testing.T) {
 			}
 			params := draft["params"].(map[string]any)
 			params["gender"] = "male"
-			args, _ := json.Marshal(map[string]any{"id": draft["id"], "params": params})
+			args, _ := json.Marshal(map[string]any{"id": draft["id"], "params": params, "summary": "改成男客的开单"})
 			return toolCall("call_2", "update_draft_params", string(args)), nil
 		default:
 			return assistant("已修改草稿，请确认。"), nil
@@ -325,7 +325,7 @@ func TestChatUpdateOwnDraftThenConfirm(t *testing.T) {
 func TestChatUpdateMasterDraftRejected(t *testing.T) {
 	s := newDraftFixture(t)
 	existing := s.Call(t, s.Owner, "create_draft", map[string]any{"operation": "open_order", "params": s.orderParams(), "summary": "已有草稿", "utterance": "之前的口述"}, 200).Body
-	args, err := json.Marshal(map[string]any{"id": existing["id"], "params": s.orderParams()})
+	args, err := json.Marshal(map[string]any{"id": existing["id"], "params": s.orderParams(), "summary": "改已有草稿"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,6 +347,113 @@ func TestChatUpdateMasterDraftRejected(t *testing.T) {
 	got := s.Call(t, s.Owner, "get_draft", map[string]any{"id": existing["id"]}, 200).Body
 	if got["status"] != "pending" || len(got["events"].([]any)) != 1 {
 		t.Fatal(got)
+	}
+}
+
+func TestChatUpdateDraftByID(t *testing.T) {
+	s := newDraftFixture(t)
+	existing := s.Call(t, s.Owner, "create_draft", map[string]any{"operation": "open_order", "params": s.orderParams(), "summary": "旧摘要", "utterance": "之前的口述"}, 200).Body
+	params := s.orderParams()
+	params["gender"] = "male"
+	args, err := json.Marshal(map[string]any{"id": existing["id"], "params": params, "summary": "改成男客"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := &fakeModel{reply: func(call int, _ []ai.Message, _ []ops.Tool) (ai.Message, error) {
+		if call == 1 {
+			return toolCall("call_1", "update_draft_params", string(args)), nil
+		}
+		return assistant("已修改草稿，请确认。"), nil
+	}}
+	s.SetAIModel(fake)
+	r := chatCallWithDraft(t, s.Shop, s.Owner, existing["id"].(string), []map[string]any{user("改成男客")})
+	if r.Status != http.StatusOK {
+		t.Fatal(r)
+	}
+	source := r.Body["sources"].([]any)[0].(map[string]any)
+	if source["ok"] != true {
+		t.Fatal(source)
+	}
+	draft := s.draftBody(t, r.Body)
+	if draft["id"] != existing["id"] || draft["summary"] != "改成男客" || draft["params"].(map[string]any)["gender"] != "male" {
+		t.Fatal(draft)
+	}
+	got := s.Call(t, s.Owner, "get_draft", map[string]any{"id": existing["id"]}, 200).Body
+	if got["summary"] != "改成男客" || got["params"].(map[string]any)["gender"] != "male" {
+		t.Fatal(got)
+	}
+	modified := got["events"].([]any)[1].(map[string]any)
+	if modified["kind"] != "modified" || modified["before_summary"] != "旧摘要" || modified["before_params"].(map[string]any)["gender"] != "female" {
+		t.Fatal(modified)
+	}
+}
+
+func TestChatDraftIDSeedsOnlyThatDraft(t *testing.T) {
+	s := newDraftFixture(t)
+	target := s.Call(t, s.Owner, "create_draft", map[string]any{"operation": "open_order", "params": s.orderParams(), "summary": "目标草稿", "utterance": "之前的口述"}, 200).Body
+	other := s.Call(t, s.Owner, "create_draft", map[string]any{"operation": "open_order", "params": s.orderParams(), "summary": "另一张草稿", "utterance": "之前的口述"}, 200).Body
+	args, err := json.Marshal(map[string]any{"id": other["id"], "params": s.orderParams(), "summary": "改另一张"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := &fakeModel{reply: func(call int, messages []ai.Message, _ []ops.Tool) (ai.Message, error) {
+		if call == 1 {
+			return toolCall("call_1", "update_draft_params", string(args)), nil
+		}
+		return assistant(lastToolResult(messages)), nil
+	}}
+	s.SetAIModel(fake)
+	r := chatCallWithDraft(t, s.Shop, s.Owner, target["id"].(string), []map[string]any{user("改另一张")})
+	if r.Status != http.StatusOK {
+		t.Fatal(r)
+	}
+	source := r.Body["sources"].([]any)[0].(map[string]any)
+	if source["ok"] != false || !strings.Contains(source["error"].(string), "只能修改本次对话起草的草稿") {
+		t.Fatal(source)
+	}
+	if got := s.Call(t, s.Owner, "get_draft", map[string]any{"id": other["id"]}, 200).Body; got["status"] != "pending" || len(got["events"].([]any)) != 1 {
+		t.Fatal(got)
+	}
+	if got := s.Call(t, s.Owner, "get_draft", map[string]any{"id": target["id"]}, 200).Body; got["status"] != "pending" || len(got["events"].([]any)) != 1 {
+		t.Fatal(got)
+	}
+}
+
+func TestChatDraftIDNotUpdatable(t *testing.T) {
+	s := newDraftFixture(t)
+	first, firstToken := s.Hire("发型师甲", "010", "draft-id-a", s.Role("发型师"))
+	_, secondToken := s.Hire("发型师乙", "011", "draft-id-b", s.Role("发型师"))
+	starts := settings.Date(s.Now()).AddDate(0, 0, 1).Format(settings.DateLayout) + "T15:00:00+08:00"
+	draft := s.Call(t, firstToken, "create_draft", map[string]any{"operation": "create_appointment", "params": map[string]any{"customer_id": s.customer, "staff_id": first, "starts_at": starts}, "summary": "预约", "utterance": "预约"}, 200).Body
+	fake := &fakeModel{reply: func(int, []ai.Message, []ops.Tool) (ai.Message, error) {
+		t.Fatal("model must not run when draft_id is not updatable")
+		return ai.Message{}, nil
+	}}
+	s.SetAIModel(fake)
+	r := chatCallWithDraft(t, s.Shop, secondToken, draft["id"].(string), []map[string]any{user("改这张预约")})
+	if r.Status != http.StatusNotFound || r.Body["detail"] != "not found" {
+		t.Fatal(r)
+	}
+	if got := len(fake.requests()); got != 0 {
+		t.Fatalf("model calls = %d, want 0", got)
+	}
+}
+
+func TestChatDraftIDNotPending(t *testing.T) {
+	s := newDraftFixture(t)
+	draft := s.Call(t, s.Owner, "create_draft", map[string]any{"operation": "open_order", "params": s.orderParams(), "summary": "已有草稿", "utterance": "之前的口述"}, 200).Body
+	s.Call(t, s.Owner, "reject_draft", map[string]any{"id": draft["id"], "reason": "不做了"}, 200)
+	fake := &fakeModel{reply: func(int, []ai.Message, []ops.Tool) (ai.Message, error) {
+		t.Fatal("model must not run when draft_id is not pending")
+		return ai.Message{}, nil
+	}}
+	s.SetAIModel(fake)
+	r := chatCallWithDraft(t, s.Shop, s.Owner, draft["id"].(string), []map[string]any{user("改这张草稿")})
+	if r.Status != http.StatusConflict || r.Body["detail"] != "草稿不是待确认状态" {
+		t.Fatal(r)
+	}
+	if got := len(fake.requests()); got != 0 {
+		t.Fatalf("model calls = %d, want 0", got)
 	}
 }
 
@@ -393,7 +500,7 @@ func TestChatDraftCallCap(t *testing.T) {
 func TestChatUpdateDraftInvalidID(t *testing.T) {
 	s := newDraftFixture(t)
 	existing := s.Call(t, s.Owner, "create_draft", map[string]any{"operation": "open_order", "params": s.orderParams(), "summary": "已有草稿", "utterance": "之前的口述"}, 200).Body
-	foreign, err := json.Marshal(map[string]any{"id": existing["id"], "params": s.orderParams()})
+	foreign, err := json.Marshal(map[string]any{"id": existing["id"], "params": s.orderParams(), "summary": "改已有草稿"})
 	if err != nil {
 		t.Fatal(err)
 	}

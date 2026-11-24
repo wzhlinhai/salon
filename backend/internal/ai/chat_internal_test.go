@@ -23,7 +23,7 @@ func TestChatAskTimeout(t *testing.T) {
 		now:      time.Now,
 		timeout:  20 * time.Millisecond,
 	}
-	if _, err := chat.Ask(context.Background(), ops.Caller{}, nil); !errors.Is(err, ErrTimeout) {
+	if _, err := chat.Ask(context.Background(), ops.Caller{}, nil, nil); !errors.Is(err, ErrTimeout) {
 		t.Fatalf("Ask err = %v, want ErrTimeout", err)
 	}
 }
