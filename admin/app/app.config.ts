@@ -1,7 +1,8 @@
 export default defineAppConfig({
   ui: {
     colors: {
-      primary: 'blue',
+      // 主色实际是墨色，由 main.css 的 --ui-primary 定；这里的色板只是占位，和 ai 一样写 neutral。
+      primary: 'neutral',
       neutral: 'stone',
       ai: 'neutral',
       success: 'green',

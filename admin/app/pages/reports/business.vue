@@ -4,7 +4,7 @@
 import type { components } from '~/utils/api'
 import type { Granularity, ReportRange } from '~/utils/report'
 
-definePageMeta({ permission: 'report.view', title: '营业报表', description: '实收不含办卡充值；撤单在撤单那天冲回。' })
+definePageMeta({ permission: 'report.view', title: '营业报表', width: 'wide', description: '实收不含办卡充值；撤单在撤单那天冲回。' })
 
 type BusinessReport = components['schemas']['BusinessReport']
 type Row = components['schemas']['BusinessReportRow']

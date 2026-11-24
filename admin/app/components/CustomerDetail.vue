@@ -44,6 +44,7 @@ const genderItems = [
   { label: '女', value: 'female' }
 ]
 const genderName = (value: string | null) => value === 'male' ? '男' : value === 'female' ? '女' : '未填写'
+const { record: recordRecent } = useRecentPages()
 const customerName = (c: Customer) => c.name || (c.unidentified ? '未识别顾客' : '未填写姓名')
 const sourceItems = computed(() => [
   { label: '不设来源', value: NONE },
@@ -63,6 +64,7 @@ async function load() {
   if (id !== props.id || !request()) return
   if (res.data) {
     customer.value = res.data
+    recordRecent({ to: `/customers?id=${id}`, label: customerName(res.data), icon: 'i-lucide-user' })
   } else {
     loadError.value = errorText(res.error)
     toast.add({ title: loadError.value, color: 'error' })
