@@ -13,7 +13,6 @@ const deals = ref<Deal[]>([])
 const items = ref<Item[]>([])
 const loading = ref(false)
 const loadGuard = useRequestGuard()
-const platformItems: { label: string, value: Platform }[] = [{ label: '美团', value: 'meituan' }, { label: '抖音', value: 'douyin' }]
 const itemItems = computed(() => items.value.filter(i => i.active).map(i => ({ label: `${i.name}（${i.price}）`, value: i.id })))
 
 async function load() {
@@ -94,7 +93,7 @@ async function save() {
       >
         <div class="flex min-w-48 flex-1 items-center gap-1.5">
           <span class="font-medium">{{ deal.name }}</span>
-          <span class="tag bg-tag-gray">{{ platformItems.find(p => p.value === deal.platform)?.label ?? deal.platform }}</span>
+          <span class="tag bg-tag-gray">{{ platformLabel(deal.platform) }}</span>
           <span v-if="!deal.active" class="tag bg-tag-gray">停用</span>
         </div>
         <span class="w-48 text-muted">对应项目 {{ deal.item_name }}</span>
@@ -109,7 +108,7 @@ async function save() {
           <div class="grid grid-cols-2 gap-4">
             <UFormField label="平台">
               <USelect v-if="!editing" v-model="platform" :items="platformItems" class="w-full" aria-label="平台" />
-              <p v-else class="flex min-h-11 items-center">{{ platformItems.find(p => p.value === editing?.platform)?.label ?? editing.platform }}</p>
+              <p v-else class="flex min-h-11 items-center">{{ platformLabel(editing.platform) }}</p>
             </UFormField>
             <UFormField label="平台购买价"><UInput v-model="purchasePrice" inputmode="decimal" aria-label="平台购买价" /></UFormField>
           </div>
