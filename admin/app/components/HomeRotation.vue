@@ -65,7 +65,7 @@ const myPlace = computed(() => {
           v-for="turn in turns.filter(row => row.status !== 'off')"
           :key="turn.staff.id"
           class="flex items-center gap-1.5 rounded-full py-1 pr-2 pl-1 text-meta"
-          :class="turn.staff.id === props.staffId ? 'bg-tag-blue font-semibold' : 'bg-elevated'"
+          :class="turn.staff.id === props.staffId ? 'bg-elevated font-semibold ring-serving' : 'bg-elevated'"
         >
           <i class="grid size-5 place-items-center rounded-full bg-white text-2xs not-italic">{{ turn.staff.name.slice(0, 1) }}</i>
           {{ turn.staff.id === props.staffId ? '我' : turn.staff.name }}<template v-if="turn.status !== 'waiting'"> · {{ statusLabels[turn.status] }}</template>

@@ -15,7 +15,6 @@ const entries = ref<Appointment[]>([])
 const walkIns = ref<Walkin[]>([])
 const loaded = ref(false)
 const guard = useRequestGuard()
-const { load: loadTones, toneOf } = useItemTones()
 const now = ref(Date.now())
 
 async function load() {
@@ -34,7 +33,6 @@ async function load() {
 }
 
 watch(() => props.date, load, { immediate: true })
-void loadTones()
 
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
@@ -58,9 +56,9 @@ function lateMinutes(entry: Appointment) {
 const columns = computed(() => {
   const sorted = [...entries.value].sort((a, b) => a.starts_at.localeCompare(b.starts_at))
   return [
-    { label: '稍后到店', tone: 'bg-tag-gray', rows: sorted.filter(entry => !entry.order_id && (entry.status === 'pending' || entry.status === 'confirmed')) },
-    { label: '已到店', tone: 'bg-tag-blue', rows: sorted.filter(entry => entry.order_id && entry.status !== 'completed'), walkIns: [...walkIns.value].sort((a, b) => a.starts_at.localeCompare(b.starts_at)) },
-    { label: '已完成', tone: 'bg-tag-green', rows: sorted.filter(entry => entry.status === 'completed' || entry.status === 'no_show') }
+    { label: '稍后到店', rows: sorted.filter(entry => !entry.order_id && (entry.status === 'pending' || entry.status === 'confirmed')) },
+    { label: '已到店', rows: sorted.filter(entry => entry.order_id && entry.status !== 'completed'), walkIns: [...walkIns.value].sort((a, b) => a.starts_at.localeCompare(b.starts_at)) },
+    { label: '已完成', rows: sorted.filter(entry => entry.status === 'completed' || entry.status === 'no_show') }
   ]
 })
 </script>
@@ -69,7 +67,7 @@ const columns = computed(() => {
   <div data-testid="home-board" class="grid items-start gap-3 tabular-nums md:grid-cols-3">
     <div v-for="column in columns" :key="column.label" class="rounded-card bg-lane p-2">
       <div class="flex items-center gap-2 px-1 pt-1 pb-2">
-        <span class="tag" :class="column.tone">{{ column.label }}</span>
+        <span class="text-sm font-medium">{{ column.label }}</span>
         <span class="text-meta text-dimmed">{{ column.rows.length + (column.walkIns?.length ?? 0) }}</span>
       </div>
       <NuxtLink
@@ -79,11 +77,10 @@ const columns = computed(() => {
         class="mb-2 block rounded-card bg-white px-3 py-2.5 shadow-card hover:bg-card-hover"
       >
         <b class="font-semibold">{{ entry.customer?.name || '未留名顾客' }}</b>
-        <div class="mt-1.5 mb-1 flex flex-wrap gap-1">
-          <span v-for="item in entry.items" :key="item.item_id" class="tag" :class="toneOf(item.item_id)">{{ item.name }}</span>
-          <span class="tag bg-tag-gray">{{ entry.staff.name }}</span>
+        <div class="mt-1.5 mb-1 flex flex-wrap items-center gap-1.5 text-meta text-muted">
+          <span>{{ [...entry.items.map(item => item.name), entry.staff.name].join(' · ') }}</span>
           <span v-if="entry.status === 'no_show'" class="tag bg-tag-red">爽约</span>
-          <span v-else-if="lateMinutes(entry) > 5" class="tag bg-tag-red">迟到 {{ lateMinutes(entry) }} 分</span>
+          <span v-else-if="lateMinutes(entry) > 5" class="tag bg-tag-yellow">迟到 {{ lateMinutes(entry) }} 分</span>
           <span v-else-if="entry.status === 'pending'" class="tag bg-tag-yellow">待确认</span>
         </div>
         <small class="text-xs text-dimmed">{{ clock(entry.starts_at) }} – {{ clock(entry.ends_at) }}</small>
@@ -95,9 +92,9 @@ const columns = computed(() => {
         data-testid="board-walkin"
       >
         <b class="font-semibold">散客</b>
-        <div class="mt-1.5 mb-1 flex flex-wrap gap-1">
-          <span class="tag bg-tag-gray">{{ walk.staff.name }}</span>
-          <span class="tag bg-tag-blue">服务中</span>
+        <div class="mt-1.5 mb-1 flex flex-wrap items-center gap-1.5 text-meta">
+          <span class="text-muted">{{ walk.staff.name }}</span>
+          <span class="font-semibold">服务中</span>
         </div>
         <small class="text-xs text-dimmed">{{ clock(walk.starts_at) }} 开单</small>
       </div>

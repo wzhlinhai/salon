@@ -520,7 +520,7 @@ defineExpose({ select, clear, refresh, voided })
             <div class="flex flex-wrap items-center gap-1">
               <template v-if="canCollect">
                 <template v-if="countPaymentFor(item.id)">
-                  <span class="tag bg-tag-green">已用次卡 {{ countPaymentFor(item.id)?.card_name }}</span>
+                  <span class="tag bg-tag-gray">已用次卡 {{ countPaymentFor(item.id)?.card_name }}</span>
                   <UButton size="sm" color="neutral" variant="ghost" @click="removeCountPayment(item.id)">取消用次卡</UButton>
                 </template>
                 <UButton v-else-if="countCardsFor(item.item_id).length" size="sm" color="neutral" variant="outline" :disabled="!preview || busy" @click="countBegin(item)">用次卡</UButton>

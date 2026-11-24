@@ -251,7 +251,7 @@ onMounted(async () => {
             <UButton data-testid="home-punch" size="xl" class="ms-auto min-h-12 px-7 text-base" :loading="punching" @click="punch">打卡</UButton>
           </div>
           <p v-else class="-mt-4 flex items-center justify-center gap-2 text-meta text-muted">
-            <span data-testid="home-punch-time" class="tag bg-tag-green tabular-nums">已打卡 {{ clockTime(todayClockIn) }}</span>
+            <span data-testid="home-punch-time" class="tag bg-tag-gray tabular-nums">已打卡 {{ clockTime(todayClockIn) }}</span>
           </p>
         </template>
         <!-- 不在轮牌队列里时轮牌卡不显示，「我今天」占满整行。 -->

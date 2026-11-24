@@ -33,7 +33,7 @@ const eventLabels: Record<AppointmentEvent['kind'], string> = {
   cancel: '取消',
   no_show: '爽约'
 }
-// 预约块照首页时间轴：底色按项目类别（useItemTones），状态用描边和文字区分，不只靠颜色。
+// 预约块照首页时间轴：平时全白，正在做的灰底黑框；状态用描边和文字区分，不只靠颜色（DESIGN.md「颜色只留给有事的东西」）。
 const statusStyles: Record<Appointment['status'], string> = {
   pending: 'ring-pending',
   confirmed: '',
@@ -41,11 +41,13 @@ const statusStyles: Record<Appointment['status'], string> = {
   cancelled: '!bg-white text-dimmed line-through shadow-line',
   no_show: 'ring-alert'
 }
-const { load: loadTones, toneOf } = useItemTones()
 
 function entryClass(entry: Appointment) {
   if (entry.kind === 'block') return 'hatch text-muted shadow-line'
-  return `${toneOf(entry.items[0]?.item_id ?? '')} ${statusStyles[entry.status]}`
+  if (entry.order_id && entry.status !== 'completed') return 'bg-elevated ring-serving'
+  // 状态描边也是 box-shadow，细灰边只给没有描边的状态，免得互相盖掉。
+  const status = statusStyles[entry.status]
+  return `bg-white ${status.includes('ring-') ? status : `shadow-line ${status}`}`
 }
 
 const cancelReasonItems = [
@@ -244,7 +246,6 @@ watch(loading, async (busy) => {
 })
 let clockTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
-  void loadTones()
   clockTimer = setInterval(() => {
     nowClock.value = Date.now()
   }, 60_000)

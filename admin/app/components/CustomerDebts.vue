@@ -100,7 +100,7 @@ onMounted(load)
           <span class="tag bg-tag-gray">{{ debt.kind === 'order' ? '挂账' : '历史欠款' }}</span>
           <span class="font-medium tabular-nums">{{ yuanFixed(debt.amount) }}</span>
           <span v-if="debt.status === 'outstanding'" class="tabular-nums text-ink-orange">未还 {{ yuanFixed(debt.outstanding) }}</span>
-          <span v-else class="tag" :class="debt.status === 'repaid' ? 'bg-tag-green' : 'bg-tag-gray'">{{ statusNames[debt.status] }}</span>
+          <span v-else class="tag bg-tag-gray">{{ statusNames[debt.status] }}</span>
           <span class="ms-auto text-meta text-muted">{{ debt.business_date }}</span>
         </p>
         <p v-if="debt.note" class="text-meta text-muted">{{ debt.note }}</p>

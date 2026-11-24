@@ -432,9 +432,8 @@ function onMembersSaved() {
 }
 
 function statusClass(t: Turn) {
-  if (t.status === 'serving') return 'bg-tag-orange'
-  if (t.status === 'resting') return 'bg-tag-yellow'
-  return 'bg-tag-gray'
+  // 正在做的墨色加粗，其余灰：颜色只留给有事的东西（DESIGN.md）。
+  return t.status === 'serving' ? 'bg-tag-gray font-semibold' : 'bg-tag-gray'
 }
 
 function statusText(t: Turn) {
@@ -507,7 +506,7 @@ function statusText(t: Turn) {
               <PersonAvatar :name="t.staff.name" />
               <div class="min-w-0 flex-1">
                 <span class="font-medium">{{ who(t.staff) }}</span>
-                <span v-if="t === nextUp" class="tag ms-2 bg-tag-blue">下一位</span>
+                <span v-if="t === nextUp" class="ms-2 text-meta font-semibold">下一位</span>
                 <span v-else-if="statusText(t)" class="tag ms-2" :class="statusClass(t)">{{ statusText(t) }}</span>
                 <span v-if="t.half_pending" class="ms-2 text-meta text-dimmed">已记半轮</span>
               </div>

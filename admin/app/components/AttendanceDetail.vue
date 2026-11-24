@@ -142,8 +142,8 @@ async function saveRevoke() {
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="flex flex-wrap items-center gap-1.5">
               <span class="font-medium tabular-nums">{{ day.business_date }}</span>
-              <span v-if="day.late" class="tag bg-tag-orange">迟到 {{ day.late_minutes }} 分钟</span>
-              <span v-if="day.early" class="tag bg-tag-orange">早退 {{ day.early_minutes }} 分钟</span>
+              <span v-if="day.late" class="tag bg-tag-red">迟到 {{ day.late_minutes }} 分钟</span>
+              <span v-if="day.early" class="tag bg-tag-yellow">早退 {{ day.early_minutes }} 分钟</span>
               <span v-if="day.missing" class="tag bg-tag-red">缺卡</span>
             </div>
             <UButton v-if="(day.late || day.early || day.missing) && !day.approval" size="sm" color="neutral" variant="outline" @click="askApprove(day)">核准</UButton>

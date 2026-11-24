@@ -16,7 +16,7 @@ const listGuard = useRequestGuard()
 
 const channelNames: Record<string, string> = { cash: '现金', unionpay_register: '银联登记' }
 const statusNames: Record<Status, string> = { pending: '待收', processing: '收款中', succeeded: '已收', failed: '失败', cancelled: '已撤销', refunded: '已退款' }
-const statusTags: Record<Status, string> = { pending: 'bg-tag-yellow', processing: 'bg-tag-yellow', succeeded: 'bg-tag-green', failed: 'bg-tag-red', cancelled: 'bg-tag-gray', refunded: 'bg-tag-gray' }
+const statusTags: Record<Status, string> = { pending: 'bg-tag-yellow', processing: 'bg-tag-yellow', succeeded: 'bg-tag-gray', failed: 'bg-tag-red', cancelled: 'bg-tag-gray', refunded: 'bg-tag-gray' }
 // 与 backend/internal/collections/channels.go 的 transitions 一致。
 const canCancel = (c: Collection) => ['pending', 'processing', 'succeeded'].includes(c.status)
 const canRefund = (c: Collection) => c.status === 'succeeded'

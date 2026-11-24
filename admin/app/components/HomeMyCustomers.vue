@@ -10,7 +10,6 @@ const api = useApi()
 const { can } = useMe()
 const entries = ref<Appointment[]>([])
 const guard = useRequestGuard()
-const { load: loadTones, toneOf } = useItemTones()
 const now = ref(Date.now())
 
 async function load() {
@@ -22,7 +21,6 @@ async function load() {
 }
 
 watch(() => [props.date, props.staffId], load, { immediate: true })
-void loadTones()
 
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
@@ -63,13 +61,12 @@ function lateMinutes(entry: Appointment) {
       >
         <div class="flex items-center gap-1.5">
           <b class="truncate text-lead font-semibold">{{ entry.kind === 'block' ? (entry.note || '私约占位') : (entry.customer?.name || '未留名顾客') }}</b>
-          <span v-if="entry.order_id" class="tag bg-tag-blue">服务中</span>
-          <span v-else-if="lateMinutes(entry) > 5" class="tag bg-tag-red">迟到 {{ lateMinutes(entry) }} 分</span>
+          <span v-if="entry.order_id" class="text-meta font-semibold">服务中</span>
+          <span v-else-if="lateMinutes(entry) > 5" class="tag bg-tag-yellow">迟到 {{ lateMinutes(entry) }} 分</span>
           <span class="ms-auto shrink-0 text-meta text-dimmed tabular-nums">{{ clock(entry.starts_at) }} – {{ clock(entry.ends_at) }}</span>
         </div>
-        <div class="flex flex-wrap gap-1">
-          <span v-for="item in entry.items" :key="item.item_id" class="tag" :class="toneOf(item.item_id)">{{ item.name }}</span>
-          <span class="tag bg-tag-gray">{{ entry.kind === 'block' ? '占位' : '预约' }}</span>
+        <div class="flex flex-wrap items-center gap-1.5 text-meta text-muted">
+          <span v-if="entry.items.length">{{ entry.items.map(item => item.name).join(' · ') }}</span>
           <span v-if="entry.status === 'pending'" class="tag bg-tag-yellow">待确认</span>
         </div>
         <p v-if="entry.kind === 'block'" class="text-meta text-muted">这段时间留给私约，顾客到店后开单。</p>

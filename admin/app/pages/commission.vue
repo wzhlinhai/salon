@@ -283,7 +283,7 @@ function changeSource(o: OverrideForm) {
               <td class="tabular-nums">{{ v.effective_from }}</td>
               <td>{{ v.saved_by.name }}</td>
               <td class="text-muted tabular-nums">{{ new Date(v.saved_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</td>
-              <td><span v-if="inForce === v.version" class="tag bg-tag-green">执行中</span><span v-else-if="v.effective_from > today" class="tag bg-tag-yellow">已安排</span></td>
+              <td><span v-if="inForce === v.version" class="tag bg-tag-gray">执行中</span><span v-else-if="v.effective_from > today" class="tag bg-tag-yellow">已安排</span></td>
             </tr>
           </tbody>
         </table>
