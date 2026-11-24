@@ -206,7 +206,8 @@ func listCustomerOverview(ctx context.Context, env ops.Env, in *CustomerOverview
 		baseRows[i] = dbgen.Customer{
 			ID: row.ID, TenantID: row.TenantID, StoreID: row.StoreID, Name: row.Name, Phone: row.Phone,
 			Gender: row.Gender, SourceID: row.SourceID, ResponsibleStaffID: row.ResponsibleStaffID,
-			Note: row.Note, MergedInto: row.MergedInto, CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt,
+			Note: row.Note, HairTexture: row.HairTexture, Preferences: row.Preferences, Dislikes: row.Dislikes,
+			MergedInto: row.MergedInto, CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt,
 			CreatedByCustomer: row.CreatedByCustomer,
 		}
 		ids[i] = row.ID

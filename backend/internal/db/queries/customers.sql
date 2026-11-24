@@ -47,7 +47,8 @@ SELECT * FROM customers WHERE id = $1 FOR NO KEY UPDATE;
 -- name: SaveCustomer :exec
 UPDATE customers
 SET name = $2, phone = $3, gender = $4, source_id = $5,
-    responsible_staff_id = $6, note = $7, merged_into = $8
+    responsible_staff_id = $6, note = $7, merged_into = $8,
+    hair_texture = $9, preferences = $10, dislikes = $11
 WHERE id = $1;
 
 -- name: SearchCustomers :many

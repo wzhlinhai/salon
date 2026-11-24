@@ -30,11 +30,14 @@ type CreateCustomerResult struct {
 
 // UpdateCustomerProfileInput 是顾客资料的完整替换参数。
 type UpdateCustomerProfileInput struct {
-	ID       uuid.UUID  `json:"id"`
-	Name     *string    `json:"name,omitempty"`
-	Gender   *string    `json:"gender,omitempty" enum:"male,female"`
-	SourceID *uuid.UUID `json:"source_id,omitempty"`
-	Note     *string    `json:"note,omitempty"`
+	ID          uuid.UUID  `json:"id"`
+	Name        *string    `json:"name,omitempty"`
+	Gender      *string    `json:"gender,omitempty" enum:"male,female"`
+	SourceID    *uuid.UUID `json:"source_id,omitempty"`
+	Note        *string    `json:"note,omitempty"`
+	HairTexture *string    `json:"hair_texture,omitempty" maxLength:"40" doc:"发质，最多 40 字"`
+	Preferences *string    `json:"preferences,omitempty" maxLength:"200" doc:"喜好，最多 200 字"`
+	Dislikes    *string    `json:"dislikes,omitempty" maxLength:"200" doc:"忌讳，最多 200 字"`
 }
 
 // CustomerPhoneInput 是补充或修改顾客手机号的参数。
@@ -60,7 +63,7 @@ func registerProfiles(r *ops.Registry) {
 		},
 	})
 	ops.Register(r, ops.Operation[UpdateCustomerProfileInput, Customer]{
-		Name: "update_customer_profile", Summary: "修改顾客姓名、性别、来源与备注", Kind: ops.Write,
+		Name: "update_customer_profile", Summary: "修改顾客姓名、性别、来源、备注、发质、喜好与忌讳", Kind: ops.Write,
 		Permission: perm.CustomerEdit, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *UpdateCustomerProfileInput) (*Customer, error) {
 			return changeOne(ctx, env, "update_customer_profile", in.ID, func(row *dbgen.Customer) error {
@@ -71,6 +74,9 @@ func registerProfiles(r *ops.Registry) {
 				row.Gender = in.Gender
 				row.SourceID = in.SourceID
 				row.Note = in.Note
+				row.HairTexture = in.HairTexture
+				row.Preferences = in.Preferences
+				row.Dislikes = in.Dislikes
 				return nil
 			})
 		},

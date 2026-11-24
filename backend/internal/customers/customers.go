@@ -46,6 +46,9 @@ type Customer struct {
 	Source             *CustomerRef  `json:"source"`
 	Responsible        *CustomerRef  `json:"responsible"`
 	Note               *string       `json:"note"`
+	HairTexture        *string       `json:"hair_texture" doc:"发质，最多 40 字"`
+	Preferences        *string       `json:"preferences" doc:"喜好，最多 200 字"`
+	Dislikes           *string       `json:"dislikes" doc:"忌讳，最多 200 字"`
 	Unidentified       bool          `json:"unidentified"`
 	MergedInto         *uuid.UUID    `json:"merged_into"`
 	CreatedAt          time.Time     `json:"created_at"`
@@ -117,7 +120,7 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Customer) ([]*Customer
 		byCustomer[l.CustomerID] = append(byCustomer[l.CustomerID], SafetyLabel{ID: l.ID, Kind: l.Kind, Source: l.Source, Note: l.Note, ObservedOn: l.ObservedOn.Time.Format(time.DateOnly), RecordedBy: l.RecordedBy, CreatedAt: l.CreatedAt.Time})
 	}
 	for _, row := range rows {
-		c := &Customer{ID: row.ID, Name: row.Name, Phone: row.Phone, Gender: row.Gender, Note: row.Note, Unidentified: row.Phone == nil, MergedInto: row.MergedInto, CreatedAt: row.CreatedAt.Time, ActiveSafetyLabels: []SafetyLabel{}}
+		c := &Customer{ID: row.ID, Name: row.Name, Phone: row.Phone, Gender: row.Gender, Note: row.Note, HairTexture: row.HairTexture, Preferences: row.Preferences, Dislikes: row.Dislikes, Unidentified: row.Phone == nil, MergedInto: row.MergedInto, CreatedAt: row.CreatedAt.Time, ActiveSafetyLabels: []SafetyLabel{}}
 		if row.SourceID != nil {
 			c.Source = sources[*row.SourceID]
 		}
@@ -160,7 +163,7 @@ func rowError(err error) error {
 
 // save 保存持锁顾客的资料。
 func save(ctx context.Context, env ops.Env, row dbgen.Customer) error {
-	return env.Q.SaveCustomer(ctx, dbgen.SaveCustomerParams{ID: row.ID, Name: row.Name, Phone: row.Phone, Gender: row.Gender, SourceID: row.SourceID, ResponsibleStaffID: row.ResponsibleStaffID, Note: row.Note, MergedInto: row.MergedInto})
+	return env.Q.SaveCustomer(ctx, dbgen.SaveCustomerParams{ID: row.ID, Name: row.Name, Phone: row.Phone, Gender: row.Gender, SourceID: row.SourceID, ResponsibleStaffID: row.ResponsibleStaffID, Note: row.Note, MergedInto: row.MergedInto, HairTexture: row.HairTexture, Preferences: row.Preferences, Dislikes: row.Dislikes})
 }
 
 var phonePattern = regexp.MustCompile("^1[0-9]{10}$")
