@@ -67,7 +67,7 @@ const columns = computed(() => {
 
 <template>
   <div data-testid="home-board" class="grid items-start gap-3 tabular-nums md:grid-cols-3">
-    <div v-for="column in columns" :key="column.label" class="rounded-lane bg-lane p-2">
+    <div v-for="column in columns" :key="column.label" class="rounded-card bg-lane p-2">
       <div class="flex items-center gap-2 px-1 pt-1 pb-2">
         <span class="tag" :class="column.tone">{{ column.label }}</span>
         <span class="text-meta text-dimmed">{{ column.rows.length + (column.walkIns?.length ?? 0) }}</span>
@@ -76,7 +76,7 @@ const columns = computed(() => {
         v-for="entry in column.rows"
         :key="entry.id"
         to="/bookings"
-        class="mb-2 block rounded-lg bg-white px-3 py-2.5 shadow-card hover:bg-card-hover"
+        class="mb-2 block rounded-card bg-white px-3 py-2.5 shadow-card hover:bg-card-hover"
       >
         <b class="font-semibold">{{ entry.customer?.name || '未留名顾客' }}</b>
         <div class="mt-1.5 mb-1 flex flex-wrap gap-1">
@@ -91,7 +91,7 @@ const columns = computed(() => {
       <div
         v-for="walk in column.walkIns ?? []"
         :key="walk.order_id"
-        class="mb-2 rounded-lg bg-white px-3 py-2.5 shadow-card"
+        class="mb-2 rounded-card bg-white px-3 py-2.5 shadow-card"
         data-testid="board-walkin"
       >
         <b class="font-semibold">散客</b>

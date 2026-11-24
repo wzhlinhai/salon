@@ -68,7 +68,7 @@ const orders = computed(() => {
         v-if="commissions"
         type="button"
         data-testid="home-my-commission"
-        class="-m-2 rounded-lg p-2 text-start hover:bg-side"
+        class="-m-2 rounded-md p-2 text-start hover:bg-side"
         @click="showCommissions = true"
       >
         <p class="flex items-center gap-1 text-xs text-dimmed">提成<UIcon name="i-lucide-chevron-right" class="size-3.5" aria-hidden="true" /></p>

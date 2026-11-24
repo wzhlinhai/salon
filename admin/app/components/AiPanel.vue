@@ -70,7 +70,7 @@ watch(() => [entries.value.length, sending.value], async () => {
           </p>
         </div>
         <div v-for="(entry, index) in entries" :key="index" :data-role="entry.role" data-testid="ai-entry">
-          <div v-if="entry.role === 'user'" class="ms-8 rounded-lg bg-elevated px-3 py-2 text-sm whitespace-pre-wrap">
+          <div v-if="entry.role === 'user'" class="ms-8 rounded-card bg-elevated px-3 py-2 text-sm whitespace-pre-wrap">
             <p v-if="entry.editing" class="mb-1 text-xs text-muted">修改：{{ entry.editing }}</p>
             {{ entry.content }}
           </div>

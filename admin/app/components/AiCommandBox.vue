@@ -23,7 +23,7 @@ function submit(event: KeyboardEvent) {
 
 <template>
   <div
-    class="mx-auto w-full max-w-[720px] rounded-panel bg-white py-3 pr-3 pl-4 shadow-float focus-within:ring-2 focus-within:ring-primary"
+    class="mx-auto w-full max-w-[720px] rounded-card bg-white py-3 pr-3 pl-4 shadow-float focus-within:ring-2 focus-within:ring-primary"
   >
     <div class="flex min-h-10 items-center gap-2.5">
       <UIcon name="i-lucide-search" class="size-5 shrink-0 text-dimmed" aria-hidden="true" />

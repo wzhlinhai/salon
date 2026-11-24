@@ -102,7 +102,7 @@ defineExpose({ begin })
     <template #body>
       <div class="space-y-5">
         <!-- 顾客、性别、指定、补录收进一块浅底：都是"这单是谁、怎么来的"，和下面的项目分开。 -->
-        <div class="space-y-3 rounded-lg bg-side p-3.5 ring-1 ring-default ring-inset">
+        <div class="space-y-3 rounded-card bg-side p-3.5 ring-1 ring-default ring-inset">
           <div class="flex items-center gap-3">
             <div class="min-w-0 flex-1">
               <p class="text-meta text-muted">顾客</p>

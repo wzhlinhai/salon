@@ -183,9 +183,9 @@ async function submitVoid() {
 <template>
   <section data-testid="settled-orders">
     <h2 class="sec">今日结账<span class="ms-1 font-normal text-dimmed">{{ total }}</span></h2>
-    <div class="box overflow-hidden p-0">
+    <div class="border-y border-default">
       <ListSkeleton v-if="loading && !orders.length" :rows="3" />
-      <EmptyState v-else-if="!orders.length" art="receipt" title="今天还没有结账的单" hint="结过账的单会列在这里，结错了可以撤单" />
+      <p v-else-if="!orders.length" class="px-3 py-2.5 text-sm text-muted">今天还没有结账的单。结过账的单会列在这里，结错了可以撤单。</p>
       <div
         v-for="order in orders"
         :key="order.id"
@@ -250,7 +250,7 @@ async function submitVoid() {
   <UModal v-model:open="staffOpen" title="改做的人" description="钱不变。原员工这一行的业绩和客数在今天冲回，改记给新员工，提成跟着重算。">
     <template #body>
       <div v-if="staffTarget" class="space-y-5">
-        <p class="rounded-lg bg-side px-3 py-2.5 text-sm">
+        <p class="rounded-card bg-side px-3 py-2.5 text-sm">
           {{ customerName(staffTarget.customer_id) }} · {{ staffTarget.business_date }} · 实收 {{ yuanFixed(staffTarget.net) }}
         </p>
         <div v-for="item in activeItems(staffTarget)" :key="item.id" class="space-y-2">
@@ -279,7 +279,7 @@ async function submitVoid() {
   <UModal v-model:open="voidOpen" title="撤单" description="撤单后这张单的收款、业绩全部作废，卡余额、次数和红包退回。">
     <template #body>
       <div v-if="target" class="space-y-5">
-        <p class="rounded-lg bg-side px-3 py-2.5 text-sm">
+        <p class="rounded-card bg-side px-3 py-2.5 text-sm">
           {{ customerName(target.customer_id) }} · {{ itemNames(target) }} · 实收 {{ yuanFixed(target.net) }}
         </p>
         <UFormField label="撤单原因" required><UTextarea v-model="reason" :maxlength="200" placeholder="例如：项目开错了" /></UFormField>

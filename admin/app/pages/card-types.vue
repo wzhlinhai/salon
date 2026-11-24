@@ -209,7 +209,7 @@ async function saveRule() {
             <UFormField v-if="kind !== 'count'" label="折扣率" help="以折填写，留空为不打折"><UInput v-model="discount" type="number" :min="0.1" :max="9.9" :step="0.1" placeholder="不打折" class="w-full" /></UFormField>
           </div>
           <div v-if="kind !== 'stored_value'" class="space-y-3">
-            <div v-for="(row, index) in definition" :key="index" data-testid="card-type-item" class="space-y-2 rounded-lg bg-side p-3">
+            <div v-for="(row, index) in definition" :key="index" data-testid="card-type-item" class="space-y-2 rounded-card bg-side p-3">
               <UFormField label="项目"><USelect v-model="row.item_id" :items="catalog.filter(i => i.active || definition.some(x => x.item_id === i.id)).map(i => ({ label: i.name, value: i.id }))" class="w-full" /></UFormField>
               <div class="grid grid-cols-3 gap-3">
                 <UFormField label="购买次数"><UInput v-model="row.paid_count" type="number" :min="1" /></UFormField>

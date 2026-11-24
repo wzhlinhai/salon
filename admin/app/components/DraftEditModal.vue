@@ -134,7 +134,7 @@ defineExpose({ begin })
   <UModal v-model:open="open" :title="isOrder ? '修改开单草稿' : '修改新建顾客草稿'" description="改完回到卡片上核对，再点确认才会执行" :ui="{ content: isOrder ? 'sm:max-w-[600px]' : undefined }">
     <template #body>
       <div v-if="isOrder" class="space-y-5">
-        <div class="space-y-3 rounded-lg bg-side p-3.5 ring-1 ring-default ring-inset">
+        <div class="space-y-3 rounded-card bg-side p-3.5 ring-1 ring-default ring-inset">
           <div class="flex items-center gap-3">
             <div class="min-w-0 flex-1">
               <p class="text-meta text-muted">顾客</p>

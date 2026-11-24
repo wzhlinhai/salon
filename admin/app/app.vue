@@ -366,7 +366,7 @@ const searchGroups = computed(() => {
         <template #body>
           <div :class="pageWidth">
             <header v-if="showPageHeader" class="mb-5" data-testid="page-header">
-              <h1 class="text-title font-bold text-balance">{{ pageTitle }}</h1>
+              <h1 class="text-title font-semibold text-balance">{{ pageTitle }}</h1>
               <p id="page-description" class="mt-2 text-muted text-pretty empty:hidden" data-testid="page-description"><span v-if="pageDescription">{{ pageDescription }}</span></p>
             </header>
             <h1 v-else-if="route.meta.workbench" class="sr-only">{{ pageTitle }}</h1>

@@ -332,7 +332,7 @@ function changeSource(o: OverrideForm) {
         <p v-if="categoryLoading">加载类别中</p>
         <div v-if="ready" class="space-y-5">
           <UFormField label="生效日期" help="不能早于今天，也不能早于最新版本；同一天保存多次，取最后保存的。" class="max-w-xs"><DateInput v-model="effectiveFrom" :min="minDate" /></UFormField>
-          <section v-for="rule in editRules" :key="rule.source" :data-rule="rule.source" class="space-y-3 rounded-lg bg-side p-4">
+          <section v-for="rule in editRules" :key="rule.source" :data-rule="rule.source" class="space-y-3 rounded-card bg-side p-4">
             <USwitch v-model="rule.enabled" :label="`按${sources.find(s => s.value === rule.source)?.label}计提成`" @update:model-value="toggleRule(rule)" />
             <template v-if="rule.enabled">
               <UFormField label="计提基数"><USelect v-if="rule.source === 'item'" v-model="rule.base" :items="bases" /><span v-else>业绩</span></UFormField>
@@ -351,7 +351,7 @@ function changeSource(o: OverrideForm) {
           <section class="space-y-3">
             <h3 class="font-medium">覆盖比例</h3>
             <p class="text-sm text-muted">覆盖比例是比例或固定金额，不带阶梯；项目覆盖和岗位 × 类别覆盖只作用于项目业绩和耗卡业绩。</p>
-            <div v-for="(o, index) in overrides" :key="index" data-testid="override-row" class="space-y-2 rounded-lg bg-side p-3">
+            <div v-for="(o, index) in overrides" :key="index" data-testid="override-row" class="space-y-2 rounded-card bg-side p-3">
               <UFormField label="目标"><USelect v-model="o.target" :items="targets" @update:model-value="changeTarget(o)" /></UFormField>
               <UFormField label="来源"><USelect v-model="o.source" :items="o.target === 'position_category' ? enabledSources.filter(s => s.value !== 'sale') : enabledSources" @update:model-value="changeSource(o)" /></UFormField>
               <template v-if="o.target === 'position_category'">

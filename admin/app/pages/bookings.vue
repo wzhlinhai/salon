@@ -735,7 +735,7 @@ function actorLabel(actor: Actor) {
             type="button"
             :aria-label="choice.label"
             :aria-describedby="`chooser-${choice.label}`"
-            class="flex w-full items-center gap-4 rounded-lg px-4 py-3.5 text-left ring-1 ring-[#d6d3d1] ring-inset hover:bg-hover focus-visible:outline-0 focus-visible:ring-[#2c2c2b]"
+            class="flex w-full items-center gap-4 rounded-md px-4 py-3.5 text-left ring-1 ring-accented ring-inset hover:bg-hover focus-visible:outline-0 focus-visible:ring-inverted"
             @click="choice.pick"
           >
             <UIcon :name="choice.icon" class="size-5 shrink-0 text-muted" aria-hidden="true" />
@@ -771,7 +771,7 @@ function actorLabel(actor: Actor) {
             <p v-else class="text-sm text-muted">没有可预约的服务项目</p>
           </UFormField>
           <UFormField label="顾客">
-            <div v-if="selectedCustomer" class="flex items-center gap-2 rounded-lg bg-side p-2">
+            <div v-if="selectedCustomer" class="flex items-center gap-2 rounded-card bg-side p-2">
               <span class="flex-1 text-sm">已选顾客：{{ selectedCustomer.name ?? '未识别顾客' }}{{ selectedCustomer.phone ? ` · ${selectedCustomer.phone}` : '' }}</span>
               <UButton size="xs" variant="ghost" @click="clearCustomer">更换</UButton>
             </div>
@@ -780,7 +780,7 @@ function actorLabel(actor: Actor) {
                 <UInput v-model="customerQuery" aria-label="搜索顾客" placeholder="姓名或手机号" class="flex-1" @keyup.enter="searchCustomers" />
                 <UButton :loading="customerSearching" variant="outline" @click="searchCustomers">搜索</UButton>
               </div>
-              <div v-if="customerResults.length" class="space-y-1 rounded-lg bg-side p-2" data-customer-results>
+              <div v-if="customerResults.length" class="space-y-1 rounded-card bg-side p-2" data-customer-results>
                 <UButton v-for="customer in customerResults" :key="customer.id" size="xs" variant="ghost" class="w-full justify-start" @click="pickCustomer(customer)">
                   {{ customer.name ?? '未识别顾客' }}{{ customer.phone ? ` · ${customer.phone}` : '' }}
                 </UButton>
@@ -852,7 +852,7 @@ function actorLabel(actor: Actor) {
 
           <div class="space-y-2">
             <h2 class="font-medium">状态变化</h2>
-            <div v-for="event in detail.events" :key="event.id" class="rounded-lg bg-side p-2 text-sm" data-event-row :data-event-kind="event.kind">
+            <div v-for="event in detail.events" :key="event.id" class="rounded-card bg-side p-2 text-sm" data-event-row :data-event-kind="event.kind">
               <p class="font-medium" data-event-actor :data-actor-kind="event.actor.kind">{{ eventLabels[event.kind] }} · {{ dateTimeText(event.created_at) }} · {{ actorLabel(event.actor) }}</p>
               <p v-if="event.from_starts_at" class="text-muted">时间：{{ eventRange(event) }} → {{ eventToRange(event) }}</p>
               <p v-else class="text-muted">时间：{{ eventToRange(event) }}</p>

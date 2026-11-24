@@ -78,7 +78,7 @@ async function submitChange() {
   <UModal v-model:open="open" title="收款记录" description="结账时按收款方式自动登记，撤单时自动撤销。这里的退款、撤销只改收款记录，不改单的实收和业绩；退钱给顾客请走撤单或售后。">
     <template #body>
       <div class="space-y-4">
-        <p class="rounded-lg bg-side px-3 py-2.5 text-sm">{{ summary }}</p>
+        <p class="rounded-card bg-side px-3 py-2.5 text-sm">{{ summary }}</p>
         <div data-testid="collections" class="box overflow-hidden p-0">
           <ListSkeleton v-if="loading && !items.length" :rows="2" />
           <p v-else-if="!items.length" class="px-3 py-2.5 text-sm text-muted">这张单没有收款记录（卡扣、团购和红包不登记收款）</p>
