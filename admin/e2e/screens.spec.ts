@@ -5,6 +5,8 @@ import { api, apiLogin, owner, uniqueSuffix } from './helpers'
 
 const output = process.env.SCREENSHOTS_DIR
 test.skip(!output, 'SCREENSHOTS_DIR not set')
+// 按 2 倍像素截：店里的屏幕多是高分屏，1 倍截图放大看是糊的。
+test.use({ deviceScaleFactor: 2 })
 
 const sizes = [{ width: 1366, height: 900 }, { width: 1024, height: 768 }]
 
