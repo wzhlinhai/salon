@@ -74,11 +74,18 @@ test('页面骨架：正文顶上统一插画加标题，设置类页面居中�
   await expect(page.getByTestId('page-description')).toHaveText(/^修改从选定的日期开始执行，之前的业务和已经下的单不受影响。今天是营业日 \d{4}-\d{2}-\d{2}。$/)
 
   // 侧栏每一页（首页除外）顶上都是插画加标题，工作台也一样，插画各不相同。
+  // 日结、工资表打开在某一天、某个月时标题带上日子（「11 月 24 日日结」「11 月工资」），
+  // 打开哪天看库里有没有没结的日子、有没有算过的月份，所以这两页两种写法都认。
+  const dataTitles: Record<string, RegExp> = {
+    '/closing': /^(日结|\d{1,2} 月 \d{1,2} 日日结)$/,
+    '/payroll': /^(工资表|\d{1,2} 月工资)$/
+  }
   const arts = new Set<string>()
   const pages = [{ label: '待确认', to: '/drafts' }, ...navItems.filter(n => n.to !== '/')]
   for (const item of pages) {
     await page.goto(item.to)
-    await expect(header.getByRole('heading', { level: 1, name: item.label, exact: true })).toBeVisible()
+    await expect(header.getByRole('heading', { level: 1, name: dataTitles[item.to] ?? item.label, exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
     await expect(header.getByTestId('page-art')).toBeVisible()
     // 插画背后的色块要真有颜色：标签色变量没输出时 fill 落空，只剩网点。
     expect(await header.getByTestId('page-art').evaluate(svg => getComputedStyle(svg.querySelector('path')!).fill)).not.toBe('none')
