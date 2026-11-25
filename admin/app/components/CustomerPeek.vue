@@ -3,7 +3,8 @@ import type { CustomerGlance } from '~/composables/useCustomerGlance'
 
 // 顾客小卡片（样稿 26）：点名字弹出一张纸，只放上次做了什么、怎么做的、卡里还剩多少；完整的去档案页。
 // 打开时才取数，同一张卡片关了再开不重取。触发元素由使用方放进默认插槽（要是按钮）。
-const props = defineProps<{ customerId: string }>()
+// reference：卡片贴着哪个元素弹（默认贴触发按钮）；列表里传整行，免得卡片盖住这一行。
+const props = defineProps<{ customerId: string, reference?: HTMLElement | null }>()
 
 const { load } = useCustomerGlance()
 const open = ref(false)
@@ -25,7 +26,7 @@ watch(open, async (value) => {
 </script>
 
 <template>
-  <UPopover v-model:open="open" :content="{ side: 'right', align: 'start', sideOffset: 8 }">
+  <UPopover v-model:open="open" :reference="reference ?? undefined" :content="{ side: 'right', align: 'start', sideOffset: 8 }">
     <slot />
     <template #content>
       <div class="w-80 p-4 text-sm" data-testid="customer-peek">
