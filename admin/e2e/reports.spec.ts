@@ -1,5 +1,6 @@
 import { expect, test, type Locator } from '@playwright/test'
 import { api, apiLogin, cash, hire, login, owner, uniqueSuffix } from './helpers'
+import { yuan } from '../app/utils/money'
 
 async function seedCheckout() {
   const token = await apiLogin(owner.account, owner.password)
@@ -231,6 +232,11 @@ test('店长看新客来源：今天第一次结账的顾客算新客；新客�
   await expectBriefIsTotal(table, 'source-totals', 'new_customers')
 
   await page.goto('/reports/debts')
+  // 这笔挂账在「还没还的」里，点进去是那位顾客。
+  const owedRow = page.getByTestId('debt-row').and(page.locator(`[href="/customers/${customerId}"]`))
+  await expect(owedRow.locator('[data-col="outstanding"]')).toHaveText(yuan(owed.net))
+  await expect(owedRow).toContainText('结账挂账')
+  await page.getByTestId('debt-details').locator('summary').click()
   const debts = page.getByTestId('debt-table')
   await expect(debts).toBeVisible()
   await expectTotalsAreSums(debts, 'debt-totals', 3)
