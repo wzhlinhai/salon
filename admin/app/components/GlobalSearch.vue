@@ -14,7 +14,7 @@ interface SearchItem {
 }
 
 // 全局搜索（样稿 L5）：输一个字同时找顾客、员工、页面，最下面是能直接做的事。
-// 顾客那行先写「上次做了什么」，不写编号；第一位顾客可以直接开单、约时间；搜不到的手机号，最后一行就是「用这个号新建」（样稿 L6）。
+// 顾客那行先写「上次做了什么」，不写编号；搜到的顾客可以直接开单、约时间（默认第一位，Tab 换人）；搜不到的手机号，最后一行就是「用这个号新建」（样稿 L6）。
 // 页面来自用户看得到的导航；顾客、员工、各个动作都只在有对应权限时出现。
 const open = defineModel<boolean>('open', { required: true })
 
@@ -64,12 +64,44 @@ watch(term, () => {
   timer = setTimeout(() => searchCustomers(query), 300)
 })
 
-// 员工不多，打开搜索时取一次，按名字在本机找。
+// 员工不多，每次打开搜索取一遍（刚入职、刚停用的人也对得上），按名字在本机找。
+// 没读出来就说一声，手上已有的名单先留着用。
 watch(open, async (value) => {
-  if (!value || !can('staff.manage') || staff.value.length) return
+  if (!value || !can('staff.manage')) return
   const { data } = await api.POST('/api/ops/list_staff', { body: {} })
-  staff.value = data?.staff ?? []
+  if (!open.value) return
+  if (!data) {
+    toast.add({ title: '员工没有读出来', description: '先找顾客和页面，关掉再打开会重读', color: 'warning' })
+    return
+  }
+  staff.value = data.staff
 })
+
+// 「直接做」对着哪位顾客：默认第一位，搜到多位时按 Tab 换下一位（样稿 L5「Tab 换人」）。
+const target = ref(0)
+watch(customers, () => {
+  target.value = 0
+})
+
+// 只在搜索框里拦 Tab：焦点在「Esc 关掉」等别处时，Tab 照常走焦点。
+// 换人后动作行的字变了，选项列表会把高亮重置回第一行（Nuxt UI CommandPalette 监听 groups）；
+// 这里记下原来高亮在第几行，等它重置完再用一次悬停把高亮放回去，回车才是给换到的那位开单。
+function onKeydown(event: KeyboardEvent) {
+  if (!open.value || event.key !== 'Tab' || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return
+  if (!said.value || customers.value.length < 2) return
+  const input = event.target
+  const dialog = input instanceof HTMLInputElement ? input.closest('[role="dialog"]') : null
+  if (!dialog) return
+  event.preventDefault()
+  const options = () => [...dialog.querySelectorAll('[role="option"]')]
+  const row = options().findIndex(option => option.hasAttribute('data-highlighted'))
+  target.value = (target.value + 1) % customers.value.length
+  if (row < 0) return
+  setTimeout(() => options()[row]?.dispatchEvent(new PointerEvent('pointermove', { bubbles: true })))
+}
+
+onMounted(() => document.addEventListener('keydown', onKeydown, true))
+onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown, true))
 
 // 换人登录时清掉上一个人的搜索词、结果和员工名单。
 watch(() => me.value?.staff.id, () => {
@@ -158,11 +190,14 @@ const groups = computed(() => {
   }
   if (!pageFirst) list.push(pages)
   const actions: SearchItem[] = []
-  const first = customers.value[0]
-  if (said.value && first) {
-    const name = customerName(first)
-    if (can('order.create')) actions.push({ label: `给${name}开单`, icon: 'i-lucide-plus', onSelect: () => go({ path: '/cashier', query: { open: 'customer', customer: first.customer.id } }) })
-    if (can('booking.manage')) actions.push({ label: `给${name}约时间`, icon: 'i-lucide-clock', onSelect: () => go({ path: '/bookings', query: { book: first.customer.id } }) })
+  const chosen = customers.value[target.value] ?? customers.value[0]
+  if (said.value && chosen) {
+    const name = customerName(chosen)
+    if (can('order.create')) actions.push({ label: `给${name}开单`, icon: 'i-lucide-plus', onSelect: () => go({ path: '/cashier', query: { open: 'customer', customer: chosen.customer.id } }) })
+    if (can('booking.manage')) actions.push({ label: `给${name}约时间`, icon: 'i-lucide-clock', onSelect: () => go({ path: '/bookings', query: { book: chosen.customer.id } }) })
+    // 搜到不止一位时，第一行动作的行尾写「Tab 换人」。
+    const head = actions[0]
+    if (head && customers.value.length > 1) Object.assign(head, { slot: 'action', hint: 'Tab 换人' })
   }
   const nobody = searchedFor.value === phoneDigits.value && !searching.value && !customers.value.length
   if (looksLikePhone.value && nobody && can('customer.edit')) {
@@ -220,6 +255,9 @@ const groups = computed(() => {
     </template>
     <template #person-trailing="{ item }">
       <span class="hidden text-meta text-muted group-data-highlighted:inline">↵ {{ item.hint }}</span>
+    </template>
+    <template #action-trailing="{ item }">
+      <kbd class="text-meta font-sans text-muted">{{ item.hint }}</kbd>
     </template>
   </UDashboardSearch>
   <NewCustomerModal v-model:open="createOpen" :phone="createPhone" />

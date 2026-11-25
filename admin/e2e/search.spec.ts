@@ -118,3 +118,54 @@ test('Ctrl K 直接做：给搜到的顾客开单；搜不到的手机号就地�
   await form.getByLabel('怎么称呼', { exact: true }).press('Enter')
   await expect(page.getByRole('dialog', { name: '开单' })).toContainText(`新客${suffix}`)
 })
+
+test('Ctrl K 搜到不止一位顾客时，按 Tab 换「直接做」对着的人，回车就给换到的那位开单', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const suffix = uniqueSuffix().slice(-6)
+  const people: { id: string, name: string }[] = []
+  for (const [index, name] of [`换人甲${suffix}`, `换人乙${suffix}`].entries()) {
+    const res = await api<{ customer: { id: string, name: string } }>(token, 'create_customer', { name, phone: `135${String(Date.now() + index).slice(-8)}` })
+    people.push(res.customer)
+  }
+  await login(page, owner.account, owner.password)
+
+  await page.keyboard.press('Control+k')
+  const dialog = page.getByRole('dialog', { name: '搜索' })
+  const input = dialog.getByPlaceholder('找顾客、员工、页面，或说一句话交给 AI')
+  await input.fill(suffix)
+  const order = dialog.getByRole('option', { name: /^给换人.+开单/ })
+  await expect(order).toContainText('Tab 换人')
+  const first = (await order.textContent()) ?? ''
+  // 方向键走到「给…开单」，按 Tab 换人：高亮留在这一行，焦点还在搜索框里。
+  while (await order.getAttribute('data-highlighted') === null) await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Tab')
+  await expect(order).not.toHaveText(first)
+  await expect(order).toHaveAttribute('data-highlighted', '')
+  await expect(input).toBeFocused()
+  const chosen = people.find(person => !first.includes(person.name))!
+  await expect(order).toContainText(chosen.name)
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(new RegExp(`/cashier`))
+  await expect(page.getByRole('dialog', { name: '开单' })).toContainText(chosen.name)
+})
+
+test('Ctrl K 每次打开都重读员工；读不出来时说一声，手上的名单照样能找', async ({ page }) => {
+  await login(page, owner.account, owner.password)
+  const dialog = page.getByRole('dialog', { name: '搜索' })
+  const input = dialog.getByPlaceholder('找顾客、员工、页面，或说一句话交给 AI')
+  await page.keyboard.press('Control+k')
+  await input.fill('王老板')
+  await expect(dialog.getByRole('option', { name: /王老板/ }).first()).toBeVisible()
+  await page.keyboard.press('Escape')
+
+  let asked = 0
+  await page.route('**/api/ops/list_staff', (route) => {
+    asked++
+    return route.abort()
+  })
+  await page.keyboard.press('Control+k')
+  await expect(page.getByText('员工没有读出来', { exact: true })).toBeVisible()
+  expect(asked).toBe(1)
+  await input.fill('王老板')
+  await expect(dialog.getByRole('option', { name: /王老板/ }).first()).toBeVisible()
+})
