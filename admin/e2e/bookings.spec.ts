@@ -343,6 +343,51 @@ test('重新打开代约窗口丢弃上一次顾客搜索的迟到结果', async
   await expect(second.locator('[data-customer-results]')).toHaveCount(0)
 })
 
+// 过时没到要过去的时间，后端不让约过去的时段：固定浏览器时钟，预约列表用假数据，只测页头怎么数、块怎么写。
+test('今天的页头写约了几位、几位没到；过时没到的写打个电话，过了 90 分钟不再提醒；现在的时间标在左栏', async ({ page }) => {
+  const seeded = await seed()
+  const { businessDate: today, hours } = await settings(seeded.token)
+  const at = (offset: number) => `${today}T${clockAt(hours, offset)}:00+08:00`
+  await page.clock.install({ time: new Date(at(200)) })
+  const staff = { id: seeded.staff.id, name: seeded.staff.name }
+  const booking = (id: string, name: string, start: number, extra: Record<string, unknown> = {}) => ({
+    id,
+    kind: 'appointment',
+    status: 'confirmed',
+    customer: { id: `c-${id}`, name, phone: null, phone_masked: true },
+    staff,
+    items: [{ item_id: seeded.item.id, name: seeded.item.name, duration_minutes: 60, position: 1 }],
+    starts_at: at(start),
+    ends_at: at(start + 60),
+    order_id: null,
+    note: null,
+    events: [],
+    created_at: at(0),
+    created_by: { id: staff.id, kind: 'staff', name: staff.name },
+    ...extra
+  })
+  await page.route('**/api/ops/list_appointments', route => route.fulfill({ json: {
+    entries: [
+      booking('stale', '早约顾客', 60),
+      booking('serving', '在做顾客', 150, { order_id: 'order-1' }),
+      booking('late', '迟到顾客', 170),
+      booking('soon', '稍后顾客', 260, { status: 'pending' }),
+      booking('gone', '取消顾客', 230, { status: 'cancelled' }),
+      booking('block', '', 300, { kind: 'block', customer: null, items: [], note: '私事' })
+    ],
+    walk_ins: []
+  } }))
+
+  await login(page, owner.account, owner.password)
+  await page.goto('/bookings')
+  await expect(page.getByTestId('booking-day-summary')).toHaveText(/约了 4 位\s*1 位没到/)
+  await expect(entry(page, staff.id, '迟到顾客')).toContainText('打个电话')
+  await expect(entry(page, staff.id, '迟到顾客')).toContainText('过了 30 分钟没到')
+  await expect(entry(page, staff.id, '早约顾客')).not.toContainText('打个电话')
+  await expect(entry(page, staff.id, '在做顾客')).toContainText('正在做')
+  await expect(page.getByTestId('booking-now')).toHaveText(clockAt(hours, 200))
+})
+
 test('未来已确认预约不显示记爽约', async ({ page }) => {
   const seeded = await seed()
   const today = await settings(seeded.token)

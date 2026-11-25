@@ -663,7 +663,7 @@ function onMembersSaved() {
                 <template v-if="peekId(r)">
                   接
                   <CustomerPeek :customer-id="peekId(r)!">
-                    <button type="button" class="hover:underline">{{ roundText(r).name }}</button>
+                    <button type="button" class="hover:underline focus-visible:underline" aria-haspopup="dialog">{{ roundText(r).name }}</button>
                   </CustomerPeek>
                 </template>
                 <template v-else>{{ roundText(r).who }}</template>

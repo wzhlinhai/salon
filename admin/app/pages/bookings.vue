@@ -48,12 +48,12 @@ function entryClass(entry: Appointment) {
   return 'entry bg-white'
 }
 
-// 过了开始时间 5 分钟还没开单的（只看今天），和首页「接下来」同一个口径。
+// 过了开始时间 5 分钟还没开单的（只看今天），和首页「接下来」同一个口径：过了 90 分钟多半不来了，不再提醒。
 function lateMinutes(entry: Appointment) {
   if (entry.kind !== 'appointment' || entry.order_id || day.value !== businessDate.value) return 0
   if (entry.status !== 'pending' && entry.status !== 'confirmed') return 0
   const late = Math.floor((nowClock.value - new Date(entry.starts_at).getTime()) / 60_000)
-  return late > 5 ? late : 0
+  return late > 5 && late <= 90 ? late : 0
 }
 
 // 块里第二行：项目 · 现在怎样（确认过、还没到点的不写状态）；私约占位写备注。
@@ -859,7 +859,7 @@ function actorLabel(actor: Actor) {
             <p>状态：{{ statusLabels[detail.status] }}</p>
             <p class="col-span-2">
               顾客：<CustomerPeek v-if="detail.kind !== 'block' && detail.customer?.name && can('customer.view')" :customer-id="detail.customer.id">
-                <button type="button" class="hover:underline" data-detail-customer>{{ detail.customer.name }}</button>
+                <button type="button" class="hover:underline focus-visible:underline" aria-haspopup="dialog" data-detail-customer>{{ detail.customer.name }}</button>
               </CustomerPeek>
               <span v-else data-detail-customer>{{ detail.kind === 'block' ? '私约占位' : (detail.customer?.name ?? '未识别顾客') }}</span><span v-if="detail.customer?.phone"> · {{ detail.customer.phone }}</span>
             </p>
