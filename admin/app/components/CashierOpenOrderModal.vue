@@ -30,7 +30,8 @@ const rows = ref<OrderItemRow[]>([])
 const pendingRedemption = ref<Redemption | null>(null)
 const pendingDeal = ref<Deal | null>(null)
 
-function begin(who: Customer | null, deal: Deal | null = null, redemption: Redemption | null = null) {
+// itemIDs：从顾客档案「照这个开单」带来的上次项目，只预填项目，做的人照常选。
+function begin(who: Customer | null, deal: Deal | null = null, redemption: Redemption | null = null, itemIDs: string[] = []) {
   form.begin(() => {
     customer.value = who
     gender.value = who?.gender === 'male' ? 'male' : 'female'
@@ -39,7 +40,10 @@ function begin(who: Customer | null, deal: Deal | null = null, redemption: Redem
     paperDate.value = props.businessDate ? addDays(props.businessDate, -1) : ''
     pendingDeal.value = deal
     pendingRedemption.value = redemption
-    rows.value = deal ? [{ item_id: deal.item_id, staff: {} }] : [{ item_id: '', staff: {} }]
+    const preset = itemIDs.filter(id => props.items.some(item => item.id === id))
+    rows.value = deal
+      ? [{ item_id: deal.item_id, staff: {} }]
+      : preset.length ? preset.map(id => ({ item_id: id, staff: {} })) : [{ item_id: '', staff: {} }]
   })
 }
 

@@ -17,7 +17,7 @@ async function create(page: Page, name: string, number: string) {
   await form.getByLabel('手机号', { exact: true }).fill(number)
   await form.getByLabel('姓名', { exact: true }).fill(name)
   await form.getByRole('button', { name: '保存', exact: true }).click()
-  await expect(page.getByRole('dialog', { name: '顾客详情', exact: true })).toBeVisible()
+  await expect(page.getByTestId('customer-profile')).toBeVisible()
 }
 
 async function select(page: Page, label: string, name: string) {
@@ -37,7 +37,7 @@ test('前台重复手机号打开同一位顾客，不再新建', async ({ page 
   await create(page, '重复建档', number)
   await expect(page.getByText('这个手机号已有档案', { exact: true })).toBeVisible()
   await expect(page).toHaveURL(firstURL)
-  await expect(page.getByRole('dialog', { name: '顾客详情', exact: true })).toContainText(name)
+  await expect(page.getByTestId('customer-profile')).toContainText(name)
 })
 
 test('前台看到完整手机号，发型师看到打码号码', async ({ page }) => {
@@ -51,17 +51,17 @@ test('前台看到完整手机号，发型师看到打码号码', async ({ page 
   await page.goto('/customers')
   await search(page, name)
   await expect(page.getByTestId('customer-row').filter({ hasText: name })).toContainText(number)
-  await page.goto(`/customers?id=${customer.id}`)
-  await expect(page.getByRole('dialog', { name: '顾客详情', exact: true })).toContainText(number)
+  await page.goto(`/customers/${customer.id}`)
+  await expect(page.getByTestId('customer-profile')).toContainText(number)
   await login(page, stylist.account, stylist.password)
   await page.goto('/customers')
   await search(page, name)
   const masked = `138****${number.slice(-4)}`
   await expect(page.getByTestId('customer-row').filter({ hasText: name })).toContainText(masked)
   await expect(page.getByTestId('customer-row').filter({ hasText: name })).not.toContainText(number)
-  await page.goto(`/customers?id=${customer.id}`)
-  await expect(page.getByRole('dialog', { name: '顾客详情', exact: true })).toContainText(masked)
-  await expect(page.getByRole('dialog', { name: '顾客详情', exact: true })).not.toContainText(number)
+  await page.goto(`/customers/${customer.id}`)
+  await expect(page.getByTestId('customer-profile')).toContainText(masked)
+  await expect(page.getByTestId('customer-profile')).not.toContainText(number)
 })
 
 test('店长合并顾客时迁移安全标签，默认搜索隐藏被合并顾客', async ({ page }) => {
@@ -75,7 +75,7 @@ test('店长合并顾客时迁移安全标签，默认搜索隐藏被合并顾�
   const { business_date } = await api(token, 'get_settings', {})
   await api(token, 'add_safety_label', { customer_id: merged.id, kind: 'allergy', source: 'customer_said', observed_on: business_date, note: `染发过敏${suffix}` })
   await login(page, manager.account, manager.password)
-  await page.goto(`/customers?id=${keep.id}`)
+  await page.goto(`/customers/${keep.id}`)
   await customerAction(page, '合并重复顾客')
   await page.getByLabel('搜索另一位顾客', { exact: true }).fill(mergedName)
   await page.getByLabel('搜索另一位顾客', { exact: true }).press('Enter')
@@ -85,17 +85,17 @@ test('店长合并顾客时迁移安全标签，默认搜索隐藏被合并顾�
   await page.getByRole('button', { name: '继续合并', exact: true }).click()
   await expect(page.getByText('合并后不可撤销：被合并顾客的安全标签等记录归到保留的顾客名下', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '确认合并', exact: true }).click()
-  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  const detail = page.getByTestId('customer-profile')
   await expect(detail.getByText(`染发过敏${suffix}`, { exact: true })).toBeVisible()
-  await expect(detail.getByText('过敏', { exact: true })).toBeVisible()
-  await expect(page).toHaveURL(new RegExp(`id=${keep.id}`))
+  await expect(detail.getByTestId('customer-labels').getByText('过敏', { exact: true })).toBeVisible()
+  await expect(page).toHaveURL(new RegExp(`/customers/${keep.id}$`))
   await page.goto('/customers')
   expect((await search(page, mergedName)).items).toEqual([])
   await expect(page.getByRole('button', { name: mergedName, exact: true })).toHaveCount(0)
-  await page.goto(`/customers?id=${merged.id}`)
+  await page.goto(`/customers/${merged.id}`)
   await expect(page.getByText('已合并到另一位顾客', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '修改资料', exact: true })).toHaveCount(0)
-  await page.getByRole('button', { name: '查看保留的顾客', exact: true }).click()
+  await page.getByRole('link', { name: '查看保留的顾客', exact: true }).click()
   await expect(detail.getByRole('heading', { name: keepName, exact: true })).toBeVisible()
 })
 
@@ -116,7 +116,7 @@ test('店长从空查询分页找到全空未识别顾客，并选择保留另�
     newerIDs.unshift(customer.id)
   }
   await login(page, manager.account, manager.password)
-  await page.goto(`/customers?id=${keep.id}`)
+  await page.goto(`/customers/${keep.id}`)
   await customerAction(page, '合并重复顾客')
   const mergeDialog = page.getByRole('dialog', { name: '合并重复顾客', exact: true })
   await expect(mergeDialog.getByLabel('搜索另一位顾客', { exact: true })).toHaveValue('')
@@ -129,7 +129,7 @@ test('店长从空查询分页找到全空未识别顾客，并选择保留另�
   await expect(mergeDialog.getByRole('button', { name: '保留这位顾客', exact: true })).toHaveCount(2)
   await mergeDialog.getByRole('button', { name: '上一页', exact: true }).click()
   await expect(mergeDialog.locator('[data-customer-id]')).toHaveCount(50)
-  await page.goto(`/customers?id=${blank.id}`)
+  await page.goto(`/customers/${blank.id}`)
   await customerAction(page, '合并重复顾客')
   await expect(mergeDialog.locator('[data-customer-id]')).toHaveCount(50)
   await mergeDialog.getByRole('button', { name: '下一页', exact: true }).click()
@@ -139,8 +139,8 @@ test('店长从空查询分页找到全空未识别顾客，并选择保留另�
   await mergeDialog.getByRole('button', { name: '继续合并', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '确认合并顾客', exact: true })).toContainText(`保留：${name}；被合并：未识别顾客`)
   await page.getByRole('button', { name: '确认合并', exact: true }).click()
-  await expect(page).toHaveURL(new RegExp(`id=${keep.id}`))
-  await expect(page.getByRole('dialog', { name: '顾客详情', exact: true }).getByRole('heading', { name, exact: true })).toBeVisible()
+  await expect(page).toHaveURL(new RegExp(`/customers/${keep.id}$`))
+  await expect(page.getByTestId('customer-profile').getByRole('heading', { name, exact: true })).toBeVisible()
   expect((await api(token, 'get_customer', { id: blank.id })).merged_into).toBe(keep.id)
 })
 
@@ -171,8 +171,8 @@ test('店长把停用员工负责的顾客交接后，按新负责人筛选可�
   await expect(page.getByTestId('customer-list')).toContainText(names[0]!)
   await expect(page.getByTestId('customer-list')).toContainText(names[1]!)
   await page.getByRole('button', { name: names[0]!, exact: true }).click()
-  await page.getByRole('dialog', { name: '顾客详情', exact: true }).getByRole('tab', { name: '修改记录', exact: true }).click()
-  const log = page.getByRole('dialog', { name: '顾客详情', exact: true }).getByTestId('customer-log-entry').filter({ has: page.getByText('负责人交接', { exact: true }) })
+  await page.getByTestId('customer-profile').getByRole('button', { name: '修改记录', exact: true }).click()
+  const log = page.getByTestId('customer-log-entry').filter({ has: page.getByText('负责人交接', { exact: true }) })
   await expect(log).toHaveCount(1)
   await expect(log.getByTestId('log-change')).toHaveCount(1)
   await expect(log.getByTestId('log-change')).toContainText('负责人')
@@ -242,7 +242,7 @@ test('发型师没有合并重复顾客和负责人交接入口', async ({ page 
   await search(page, customer.name)
   await expect(page.getByTestId('customer-row').filter({ hasText: customer.name })).toHaveCount(1)
   await expect(page.getByTestId('customer-list').getByRole('checkbox')).toHaveCount(0)
-  await page.goto(`/customers?id=${customer.id}`)
+  await page.goto(`/customers/${customer.id}`)
   await expect(page.getByRole('button', { name: '修改资料', exact: true })).toBeVisible()
   // 发型师有安全标签权限，菜单一定在；里面不能有合并
   await page.getByRole('button', { name: '顾客操作', exact: true }).click()
@@ -258,12 +258,12 @@ test('修改顾客资料保留已有字段，补改手机号及安全标签可�
   const { customer } = await api(token, 'create_customer', { name, gender: 'female', note: `原备注${suffix}` })
   const number = phone()
   await login(page, manager.account, manager.password)
-  await page.goto(`/customers?id=${customer.id}`)
+  await page.goto(`/customers/${customer.id}`)
   await page.getByRole('button', { name: '修改资料', exact: true }).click()
   const form = page.getByRole('dialog', { name: '修改顾客资料', exact: true })
   await form.getByLabel('姓名', { exact: true }).fill(`${name}改`)
   await form.getByRole('button', { name: '保存', exact: true }).click()
-  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  const detail = page.getByTestId('customer-profile')
   await expect(detail).toContainText(`原备注${suffix}`)
   await expect(detail).toContainText('女')
   await customerAction(page, '补手机号')
@@ -280,11 +280,11 @@ test('修改顾客资料保留已有字段，补改手机号及安全标签可�
   await labelForm.getByLabel('备注', { exact: true }).fill(`观察备注${suffix}`)
   await labelForm.getByRole('button', { name: '保存', exact: true }).click()
   await expect(detail.getByText(`观察备注${suffix}`, { exact: true })).toBeVisible()
-  await detail.getByRole('button', { name: '撤销', exact: true }).click()
+  await detail.getByRole('button', { name: /^撤销/ }).click()
   await page.getByRole('button', { name: '确认撤销', exact: true }).click()
-  await expect(detail.getByText('暂无有效安全标签', { exact: true })).toBeVisible()
-  await detail.getByRole('tab', { name: '修改记录', exact: true }).click()
-  await expect(detail.getByTestId('customer-logs')).toContainText('撤销安全标签')
+  await expect(detail.getByTestId('customer-labels')).toHaveCount(0)
+  await detail.getByRole('button', { name: '修改记录', exact: true }).click()
+  await expect(page.getByTestId('customer-logs')).toContainText('撤销安全标签')
   const saved = await api(token, 'get_customer', { id: customer.id })
   expect(saved.name).toBe(`${name}改`)
   expect(saved.gender).toBe('female')
@@ -370,13 +370,13 @@ test('切换顾客后丢弃迟到的详情，编辑仍预填当前顾客', async
   })
   await login(page, manager.account, manager.password)
   const startedLog = page.waitForRequest(r => r.url().endsWith('/api/ops/list_audit_log') && r.postDataJSON().target_id === a.id)
-  await page.goto(`/customers?id=${a.id}`)
+  await page.goto(`/customers/${a.id}`)
   await Promise.all([started, startedLog])
   await page.evaluate((id) => {
-    window.history.pushState({}, '', `/customers?id=${id}`)
+    window.history.pushState({}, '', `/customers/${id}`)
     window.dispatchEvent(new PopStateEvent('popstate'))
   }, b.id)
-  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  const detail = page.getByTestId('customer-profile')
   await expect(detail.getByRole('heading', { name: b.name, exact: true })).toBeVisible()
   const lateResponse = page.waitForResponse(r => r.url().endsWith('/api/ops/get_customer') && r.request().postDataJSON().id === a.id)
   const lateLogResponse = page.waitForResponse(r => r.url().endsWith('/api/ops/list_audit_log') && r.request().postDataJSON().target_id === a.id)
@@ -416,16 +416,16 @@ test('切回同一顾客后丢弃旧详情，编辑预填最新姓名', async ({
     }
   })
   await login(page, owner.account, owner.password)
-  await page.goto(`/customers?id=${a.id}`)
+  await page.goto(`/customers/${a.id}`)
   await started
   await page.evaluate((id) => {
-    window.history.pushState({}, '', `/customers?id=${id}`)
+    window.history.pushState({}, '', `/customers/${id}`)
     window.dispatchEvent(new PopStateEvent('popstate'))
   }, b.id)
-  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  const detail = page.getByTestId('customer-profile')
   await expect(detail.getByRole('heading', { name: b.name, exact: true })).toBeVisible()
   await page.evaluate((id) => {
-    window.history.pushState({}, '', `/customers?id=${id}`)
+    window.history.pushState({}, '', `/customers/${id}`)
     window.dispatchEvent(new PopStateEvent('popstate'))
   }, a.id)
   await expect(detail.getByRole('heading', { name: a.name, exact: true })).toBeVisible()
@@ -468,8 +468,8 @@ test('切换顾客后迟到的资料保存不关闭当前编辑弹窗或提示�
     await route.continue()
   })
   await login(page, manager.account, manager.password)
-  await page.goto(`/customers?id=${a.id}`)
-  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  await page.goto(`/customers/${a.id}`)
+  const detail = page.getByTestId('customer-profile')
   await expect(detail.getByRole('heading', { name: a.name, exact: true })).toBeVisible()
   await detail.getByRole('button', { name: '修改资料', exact: true }).click()
   const form = page.getByRole('dialog', { name: '修改顾客资料', exact: true })
@@ -477,7 +477,7 @@ test('切换顾客后迟到的资料保存不关闭当前编辑弹窗或提示�
   await form.getByRole('button', { name: '保存', exact: true }).click()
   await started
   await page.evaluate((id) => {
-    window.history.pushState({}, '', `/customers?id=${id}`)
+    window.history.pushState({}, '', `/customers/${id}`)
     window.dispatchEvent(new PopStateEvent('popstate'))
   }, b.id)
   await expect(detail.getByRole('heading', { name: b.name, exact: true })).toBeVisible()
@@ -493,7 +493,7 @@ test('切换顾客后迟到的资料保存不关闭当前编辑弹窗或提示�
   await expect(save).toBeEnabled()
   await expect(form).toBeVisible()
   await expect(form.getByLabel('姓名', { exact: true })).toHaveValue(b.name)
-  await expect(page).toHaveURL(new RegExp(`id=${b.id}`))
+  await expect(page).toHaveURL(new RegExp(`/customers/${b.id}$`))
   await expect(page.getByText('资料已保存', { exact: true })).toHaveCount(0)
   expect((await api(token, 'get_customer', { id: a.id })).name).toBe(`${a.name}改`)
 })
@@ -521,8 +521,8 @@ test('切换顾客后迟到的合并不跳转详情或提示成功', async ({ pa
     await route.continue()
   })
   await login(page, manager.account, manager.password)
-  await page.goto(`/customers?id=${a.id}`)
-  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  await page.goto(`/customers/${a.id}`)
+  const detail = page.getByTestId('customer-profile')
   await expect(detail.getByRole('heading', { name: a.name, exact: true })).toBeVisible()
   await customerAction(page, '合并重复顾客')
   const mergeDialog = page.getByRole('dialog', { name: '合并重复顾客', exact: true })
@@ -533,7 +533,7 @@ test('切换顾客后迟到的合并不跳转详情或提示成功', async ({ pa
   await page.getByRole('dialog', { name: '确认合并顾客', exact: true }).getByRole('button', { name: '确认合并', exact: true }).click()
   await started
   await page.evaluate((id) => {
-    window.history.pushState({}, '', `/customers?id=${id}`)
+    window.history.pushState({}, '', `/customers/${id}`)
     window.dispatchEvent(new PopStateEvent('popstate'))
   }, b.id)
   await expect(detail.getByRole('heading', { name: b.name, exact: true })).toBeVisible()
@@ -548,7 +548,7 @@ test('切换顾客后迟到的合并不跳转详情或提示成功', async ({ pa
   await response.finished()
   expect(response.ok()).toBe(true)
   await expect(save).toBeEnabled()
-  await expect(page).toHaveURL(new RegExp(`id=${b.id}`))
+  await expect(page).toHaveURL(new RegExp(`/customers/${b.id}$`))
   await expect(form).toBeVisible()
   await expect(form.getByLabel('姓名', { exact: true })).toHaveValue(b.name)
   await expect(page.getByText('顾客已合并', { exact: true })).toHaveCount(0)
@@ -562,8 +562,8 @@ test('顾客日志按游标加载更多，不重不漏', async ({ page }) => {
     await api(token, 'update_customer_profile', { id: customer.id, note: `分页记录${i}` })
   }
   await login(page, owner.account, owner.password)
-  await page.goto(`/customers?id=${customer.id}&tab=logs`)
-  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  await page.goto(`/customers/${customer.id}?tab=logs`)
+  const detail = page.getByRole('dialog', { name: '修改记录', exact: true })
   const rows = detail.getByTestId('customer-log-entry')
   await expect(rows).toHaveCount(50)
   const more = detail.getByRole('button', { name: '加载更多', exact: true })
@@ -588,8 +588,8 @@ test('资料保存但没改动时日志写明没有变化', async ({ page }) => 
   await api(token, 'update_customer_profile', { id: customer.id, name: customer.name, note: '同一条备注' })
   await api(token, 'update_customer_profile', { id: customer.id, name: customer.name, note: '同一条备注' })
   await login(page, owner.account, owner.password)
-  await page.goto(`/customers?id=${customer.id}&tab=logs`)
-  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  await page.goto(`/customers/${customer.id}?tab=logs`)
+  const detail = page.getByRole('dialog', { name: '修改记录', exact: true })
   const rows = detail.getByTestId('customer-log-entry')
   await expect(rows).toHaveCount(3)
   await expect(rows.first().getByTestId('log-change')).toHaveCount(0)
@@ -615,8 +615,8 @@ test('顾客日志加载更多断网后可重试', async ({ page }) => {
   const pageErrors: string[] = []
   page.on('pageerror', error => pageErrors.push(error.message))
   await login(page, owner.account, owner.password)
-  await page.goto(`/customers?id=${customer.id}&tab=logs`)
-  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  await page.goto(`/customers/${customer.id}?tab=logs`)
+  const detail = page.getByRole('dialog', { name: '修改记录', exact: true })
   const rows = detail.getByTestId('customer-log-entry')
   await expect(rows).toHaveCount(50)
   const more = detail.getByRole('button', { name: '加载更多', exact: true })
@@ -654,15 +654,15 @@ test('切换顾客后丢弃迟到的加载更多日志', async ({ page }) => {
     await route.continue()
   })
   await login(page, owner.account, owner.password)
-  await page.goto(`/customers?id=${a.id}&tab=logs`)
-  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  await page.goto(`/customers/${a.id}?tab=logs`)
+  const detail = page.getByRole('dialog', { name: '修改记录', exact: true })
   await detail.getByRole('button', { name: '加载更多', exact: true }).click()
   await pending
   await page.evaluate((id) => {
-    window.history.pushState({}, '', `/customers?id=${id}&tab=logs`)
+    window.history.pushState({}, '', `/customers/${id}?tab=logs`)
     window.dispatchEvent(new PopStateEvent('popstate'))
   }, b.id)
-  await expect(detail.getByRole('heading', { name: b.name, exact: true })).toBeVisible()
+  await expect(page.getByTestId('customer-profile').locator('h1')).toHaveText(b.name)
   await expect(detail.getByTestId('customer-log-entry')).toHaveCount(1)
   const response = page.waitForResponse(r => r.url().endsWith('/api/ops/list_audit_log') && r.request().postDataJSON().before_id)
   release()
@@ -709,8 +709,8 @@ test('合并搜索断网后结束搜索并可重试', async ({ page }) => {
   const { customer } = await api(token, 'create_customer', { name: `合并重试${Date.now()}`, phone: phone() })
   const candidate = (await api(token, 'create_customer', { name: `重试候选${Date.now()}`, phone: phone() })).customer
   await login(page, owner.account, owner.password)
-  await page.goto(`/customers?id=${customer.id}`)
-  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  await page.goto(`/customers/${customer.id}`)
+  const detail = page.getByTestId('customer-profile')
   await expect(detail.getByRole('heading', { name: customer.name, exact: true })).toBeVisible()
   let abortSearch = true
   await page.route('**/api/ops/search_customers', async (route) => {
@@ -783,20 +783,13 @@ for (const duringDebounce of [false, true]) {
 }
 
 for (const fails of [false, true]) {
-  test(`切回同一顾客后旧保存${fails ? '失败仍提示错误' : '成功只刷新列表'}且新窗口不关`, async ({ page }) => {
+  test(`切回同一顾客后旧保存${fails ? '失败仍提示错误' : '成功只落库'}且新窗口不关`, async ({ page }) => {
     const token = await apiLogin(owner.account, owner.password)
     const a = (await api(token, 'create_customer', { name: `保存回切甲${Date.now()}`, phone: phone() })).customer
     const b = (await api(token, 'create_customer', { name: `保存回切乙${Date.now()}`, phone: phone() })).customer
     await login(page, owner.account, owner.password)
-    await page.goto('/customers')
-    // 没到过店的顾客按上次到店排在最后，整套测试建的顾客多了会翻到第二页；先搜出来，列表刷新才看得到。
-    await page.getByRole('textbox', { name: '搜索顾客' }).fill('保存回切')
-    await expect(page.getByTestId('customer-list').getByText(a.name, { exact: true })).toHaveCount(1)
-    await page.evaluate((id) => {
-      window.history.pushState({}, '', `/customers?id=${id}`)
-      window.dispatchEvent(new PopStateEvent('popstate'))
-    }, a.id)
-    const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+    await page.goto(`/customers/${a.id}`)
+    const detail = page.getByTestId('customer-profile')
     await expect(detail.getByRole('heading', { name: a.name, exact: true })).toBeVisible()
     let release!: () => void
     const blocked = new Promise<void>((resolve) => {
@@ -819,7 +812,7 @@ for (const fails of [false, true]) {
     await pending
     for (const customer of [b, a]) {
       await page.evaluate((id) => {
-        window.history.pushState({}, '', `/customers?id=${id}`)
+        window.history.pushState({}, '', `/customers/${id}`)
         window.dispatchEvent(new PopStateEvent('popstate'))
       }, customer.id)
       await expect(detail.getByRole('heading', { name: customer.name, exact: true })).toBeVisible()
@@ -830,7 +823,7 @@ for (const fails of [false, true]) {
     release()
     await (await response).finished()
     if (fails) await expect(page.getByText('旧保存冲突', { exact: true })).toBeVisible()
-    else await expect(page.getByTestId('customer-list').getByText(`${a.name}改`, { exact: true })).toHaveCount(1)
+    else expect((await api(token, 'get_customer', { id: a.id })).name).toBe(`${a.name}改`)
     await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeEnabled()
     await expect(dialog).toBeVisible()
     await expect(dialog.getByLabel('姓名', { exact: true })).toHaveValue(a.name)
@@ -856,10 +849,10 @@ for (const op of ['get_customer', 'list_audit_log', 'get_settings']) {
       await blocked
       await route.fulfill({ status: 500, json: { detail: '迟到的详情错误' } })
     })
-    await page.goto(`/customers?id=${customer.id}`)
+    await page.goto(`/customers/${customer.id}`)
     await pending
-    const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
-    await detail.getByRole('button', { name: '关闭', exact: true }).click()
+    const detail = page.getByTestId('customer-profile')
+    await page.getByTestId('parent-crumb').click()
     await expect(detail).toHaveCount(0)
     const response = page.waitForResponse(r => r.url().endsWith(`/api/ops/${op}`))
     release()
@@ -874,8 +867,8 @@ test('关闭顾客详情后旧保存成功不再加载详情或提示', async ({
   const token = await apiLogin(owner.account, owner.password)
   const { customer } = await api(token, 'create_customer', { name: `卸载保存${Date.now()}`, phone: phone() })
   await login(page, owner.account, owner.password)
-  await page.goto(`/customers?id=${customer.id}`)
-  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  await page.goto(`/customers/${customer.id}`)
+  const detail = page.getByTestId('customer-profile')
   await detail.getByRole('button', { name: '修改资料', exact: true }).click()
   let release!: () => void
   const blocked = new Promise<void>((resolve) => {
@@ -896,7 +889,7 @@ test('关闭顾客详情后旧保存成功不再加载详情或提示', async ({
   await pending
   await dialog.getByRole('button', { name: '关闭', exact: true }).click()
   await expect(dialog).toHaveCount(0)
-  await detail.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.getByTestId('parent-crumb').click()
   await expect(detail).toHaveCount(0)
   let callbacks = 0
   await page.route('**/api/ops/get_customer', async (route) => {
@@ -918,8 +911,8 @@ test('切回同一顾客后旧保存断网仍提示错误且新窗口不关', as
   const a = (await api(token, 'create_customer', { name: `断网回切甲${Date.now()}`, phone: phone() })).customer
   const b = (await api(token, 'create_customer', { name: `断网回切乙${Date.now()}`, phone: phone() })).customer
   await login(page, owner.account, owner.password)
-  await page.goto(`/customers?id=${a.id}`)
-  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  await page.goto(`/customers/${a.id}`)
+  const detail = page.getByTestId('customer-profile')
   await expect(detail.getByRole('heading', { name: a.name, exact: true })).toBeVisible()
   let release!: () => void
   const blocked = new Promise<void>((resolve) => {
@@ -941,7 +934,7 @@ test('切回同一顾客后旧保存断网仍提示错误且新窗口不关', as
   await pending
   for (const customer of [b, a]) {
     await page.evaluate((id) => {
-      window.history.pushState({}, '', `/customers?id=${id}`)
+      window.history.pushState({}, '', `/customers/${id}`)
       window.dispatchEvent(new PopStateEvent('popstate'))
     }, customer.id)
     await expect(detail.getByRole('heading', { name: customer.name, exact: true })).toBeVisible()
@@ -955,7 +948,7 @@ test('切回同一顾客后旧保存断网仍提示错误且新窗口不关', as
   await expect(dialog.getByLabel('姓名', { exact: true })).toHaveValue(a.name)
 })
 
-test('从列表点开详情：左栏资料和分节导航，右边指标小卡', async ({ page }) => {
+test('从列表点开整页档案：一句话写到店节奏，修改记录从右侧滑出', async ({ page }) => {
   const token = await apiLogin(owner.account, owner.password)
   const name = `详情顾客${Date.now().toString(36)}`
   await api(token, 'create_customer', { name, phone: phone(), note: `详情备注${name}` })
@@ -963,14 +956,13 @@ test('从列表点开详情：左栏资料和分节导航，右边指标小卡',
   await page.goto('/customers')
   await search(page, name)
   await page.getByTestId('customer-row').filter({ hasText: name }).click()
-  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  const detail = page.getByTestId('customer-profile')
   await expect(detail.getByTestId('customer-rail')).toContainText(`详情备注${name}`)
-  const metrics = detail.getByTestId('customer-metrics')
-  await expect(metrics).toContainText('卡余额')
-  await expect(metrics).toContainText('还没来过')
-  await detail.getByRole('tab', { name: '修改记录', exact: true }).click()
-  await expect(detail.getByTestId('customer-logs')).toBeVisible()
-  await expect(detail.getByTestId('customer-metrics')).toHaveCount(0)
+  await expect(page).toHaveURL(/\/customers\/[0-9a-f-]+$/)
+  await expect(detail.getByTestId('customer-summary')).toContainText('还没来过')
+  await expect(detail.getByTestId('customer-last')).toContainText('还没在店里做过头发')
+  await detail.getByRole('button', { name: '修改记录', exact: true }).click()
+  await expect(page.getByTestId('customer-logs')).toBeVisible()
   await expect(page).toHaveURL(/[?&]tab=logs/)
 })
 
@@ -979,8 +971,8 @@ test('改资料时保留发质、喜好和忌讳', async ({ page }) => {
   const { customer } = await api(token, 'create_customer', { name: `发质顾客${Date.now()}`, phone: phone() })
   await api(token, 'update_customer_profile', { id: customer.id, name: customer.name, hair_texture: '细软', preferences: '短发', dislikes: '烫发' })
   await login(page, owner.account, owner.password)
-  await page.goto(`/customers?id=${customer.id}`)
-  const detail = page.getByRole('dialog', { name: '顾客详情', exact: true })
+  await page.goto(`/customers/${customer.id}`)
+  const detail = page.getByTestId('customer-profile')
   await detail.getByRole('button', { name: '修改资料', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '修改顾客资料', exact: true })
   await dialog.getByLabel('姓名', { exact: true }).fill(`${customer.name}改`)
@@ -989,4 +981,19 @@ test('改资料时保留发质、喜好和忌讳', async ({ page }) => {
   expect((await saved).ok()).toBe(true)
   const after = await api(token, 'get_customer', { id: customer.id })
   expect([after.name, after.hair_texture, after.preferences, after.dislikes]).toEqual([`${customer.name}改`, '细软', '短发', '烫发'])
+})
+
+test('档案里就地改记住的事，只改这一条', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const { customer } = await api(token, 'create_customer', { name: `就地改${Date.now()}`, phone: phone(), note: '原备注' })
+  await api(token, 'update_customer_profile', { id: customer.id, name: customer.name, note: '原备注', hair_texture: '细软' })
+  await login(page, owner.account, owner.password)
+  await page.goto(`/customers/${customer.id}`)
+  const memory = page.getByTestId('customer-memory')
+  await memory.getByRole('button', { name: /^改喜欢：/ }).click()
+  await memory.getByLabel('喜欢', { exact: true }).fill('自然棕')
+  await memory.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(memory.locator('[data-memory="preferences"]')).toContainText('自然棕')
+  const after = await api(token, 'get_customer', { id: customer.id })
+  expect([after.preferences, after.hair_texture, after.note, after.name]).toEqual(['自然棕', '细软', '原备注', customer.name])
 })

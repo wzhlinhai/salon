@@ -23,8 +23,8 @@ test('Ctrl K 搜索页面和顾客并导航', async ({ page }) => {
   await expect(dialog).toBeVisible()
   await input.fill(created.customer.name)
   await dialog.getByRole('option', { name: `${created.customer.name} · ${phoneNumber}`, exact: true }).click()
-  await expect(page).toHaveURL(new RegExp(`/customers\\?id=${created.customer.id}`))
-  await expect(page.getByRole('dialog', { name: '顾客详情', exact: true }).getByRole('heading', { name: created.customer.name, exact: true })).toBeVisible()
+  await expect(page).toHaveURL(new RegExp(`/customers/${created.customer.id}$`))
+  await expect(page.getByTestId('customer-profile').getByRole('heading', { name: created.customer.name, exact: true })).toBeVisible()
 })
 
 test('没有查看顾客权限时 Ctrl K 不查顾客', async ({ page }) => {

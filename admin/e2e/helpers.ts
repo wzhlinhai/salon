@@ -1,4 +1,5 @@
 import type { Locator, Page } from '@playwright/test'
+import { expect } from '@playwright/test'
 import { env } from './env'
 
 export const owner = env.owner
@@ -67,12 +68,17 @@ export async function menuAction(page: Page, trigger: Locator, name: string) {
   await page.getByRole('menuitem', { name, exact: true }).click()
 }
 
-// 顾客详情里卡的操作（充值以外都在卡行尾的 ··· 里）。
+// 顾客档案里卡的操作（充值以外都在卡面右上角的 ··· 里）。卡的明细从右侧滑出、盖着右栏，开着就先关掉。
 export async function cardAction(page: Page, card: Locator, name: string) {
+  const history = page.getByTestId('card-history')
+  if (await history.count()) {
+    await page.keyboard.press('Escape')
+    await expect(history).toHaveCount(0)
+  }
   await menuAction(page, card.getByRole('button', { name: / 的操作$/ }), name)
 }
 
-// 顾客详情左栏"修改资料"旁边的 ··· 菜单。
+// 顾客档案页头的 ··· 菜单。
 export async function customerAction(page: Page, name: string) {
   await menuAction(page, page.getByRole('button', { name: '顾客操作', exact: true }), name)
 }

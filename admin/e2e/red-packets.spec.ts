@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { api, apiLogin, hire, login, owner } from './helpers'
+import { api, apiLogin, customerAction, hire, login, owner } from './helpers'
 
 async function seed() {
   const token = await apiLogin(owner.account, owner.password)
@@ -13,9 +13,9 @@ async function seed() {
 test('发放卖和送的红包、两名业绩归属人、撤回原因', async ({ page }) => {
   const { customer, staff, second } = await seed()
   await login(page, owner.account, owner.password)
-  await page.goto(`/customers?id=${customer.id}&tab=red-packets`)
+  await page.goto(`/customers/${customer.id}`)
   const section = page.getByTestId('red-packets')
-  await section.getByRole('button', { name: '发放红包', exact: true }).click()
+  await customerAction(page, '发放红包')
   const dialog = page.getByRole('dialog', { name: '发放红包', exact: true })
   await dialog.getByLabel('面额', { exact: true }).fill('200.00')
   await dialog.getByLabel('售价', { exact: true }).fill('150.00')
@@ -30,7 +30,7 @@ test('发放卖和送的红包、两名业绩归属人、撤回原因', async ({
   await expect(section).toContainText('售价 ¥150.00')
   await expect(section).toContainText(staff.name)
   await expect(section).toContainText(second.name)
-  await section.getByRole('button', { name: '发放红包', exact: true }).click()
+  await customerAction(page, '发放红包')
   await dialog.getByRole('combobox', { name: '卖或送', exact: true }).click()
   await page.getByRole('option', { name: '送', exact: true }).click()
   await dialog.getByLabel('面额', { exact: true }).fill('30.00')
@@ -55,11 +55,13 @@ test('无红包发放和撤回权限隐藏按钮', async ({ page }) => {
   await api(token, 'issue_red_packet', { customer_id: customer.id, kind: 'gift', face_value: '25.00', expires_on: '2999-01-01', payments: [] })
   const stylist = await hire('发型师')
   await login(page, stylist.account, stylist.password)
-  await page.goto(`/customers?id=${customer.id}&tab=red-packets`)
+  await page.goto(`/customers/${customer.id}`)
   const section = page.getByTestId('red-packets')
   await expect(section).toContainText('面额 ¥25.00')
-  await expect(section.getByRole('button', { name: '发放红包', exact: true })).toHaveCount(0)
   await expect(section.getByRole('button', { name: '撤回', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '顾客操作', exact: true }).click()
+  await expect(page.getByRole('menuitem').first()).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '发放红包', exact: true })).toHaveCount(0)
 })
 
 test('切换顾客丢弃迟到的红包列表并支持切回同一顾客', async ({ page }) => {
@@ -86,17 +88,19 @@ test('切换顾客丢弃迟到的红包列表并支持切回同一顾客', async
   })
   try {
     await login(page, owner.account, owner.password)
-    await page.goto(`/customers?id=${a.id}&tab=red-packets`)
+    await page.goto(`/customers/${a.id}`)
     await pending
     await page.evaluate((id) => {
-      window.history.pushState({}, '', `/customers?id=${id}&tab=red-packets`)
+      window.history.pushState({}, '', `/customers/${id}`)
       window.dispatchEvent(new PopStateEvent('popstate'))
     }, b.id)
     const section = page.getByTestId('red-packets')
-    await expect(section).toContainText('暂无红包')
+    await expect(page.getByTestId('customer-profile').getByRole('heading', { name: b.name, exact: true })).toBeVisible()
+    await expect(page.getByTestId('customer-memory')).toBeVisible()
+    await expect(section).toHaveCount(0)
     await api(token, 'revoke_red_packet', { red_packet_id: packet.id, reason: '切回前撤回' })
     await page.evaluate((id) => {
-      window.history.pushState({}, '', `/customers?id=${id}&tab=red-packets`)
+      window.history.pushState({}, '', `/customers/${id}`)
       window.dispatchEvent(new PopStateEvent('popstate'))
     }, a.id)
     await expect(section).toContainText('切回前撤回')
@@ -134,10 +138,10 @@ test('同一顾客发放刷新丢弃首次迟到的红包列表', async ({ page 
   })
   try {
     await login(page, owner.account, owner.password)
-    await page.goto(`/customers?id=${customer.id}&tab=red-packets`)
+    await page.goto(`/customers/${customer.id}`)
     await pending
     const section = page.getByTestId('red-packets')
-    await section.getByRole('button', { name: '发放红包', exact: true }).click()
+    await customerAction(page, '发放红包')
     const dialog = page.getByRole('dialog', { name: '发放红包', exact: true })
     await dialog.getByRole('combobox', { name: '卖或送', exact: true }).click()
     await page.getByRole('option', { name: '送', exact: true }).click()
@@ -179,11 +183,11 @@ for (const action of ['issue', 'revoke'] as const) {
     })
     try {
       await login(page, owner.account, owner.password)
-      await page.goto(`/customers?id=${customer.id}&tab=red-packets`)
+      await page.goto(`/customers/${customer.id}`)
       const section = page.getByTestId('red-packets')
       const dialog = page.getByRole('dialog', { name: action === 'issue' ? '发放红包' : '撤回红包', exact: true })
       if (action === 'issue') {
-        await section.getByRole('button', { name: '发放红包', exact: true }).click()
+        await customerAction(page, '发放红包')
         await dialog.getByRole('combobox', { name: '卖或送', exact: true }).click()
         await page.getByRole('option', { name: '送', exact: true }).click()
         await dialog.getByLabel('面额', { exact: true }).fill('33')
@@ -197,7 +201,7 @@ for (const action of ['issue', 'revoke'] as const) {
       await pending
       await dialog.getByRole('button', { name: '关闭', exact: true }).click()
       if (action === 'issue') {
-        await section.getByRole('button', { name: '发放红包', exact: true }).click()
+        await customerAction(page, '发放红包')
         await dialog.getByLabel('面额', { exact: true }).fill('44')
       } else {
         await section.locator(`[data-red-packet="${b.id}"]`).getByRole('button', { name: '撤回', exact: true }).click()
@@ -227,11 +231,11 @@ for (const action of ['issue', 'revoke'] as const) {
       } else await route.continue()
     })
     await login(page, owner.account, owner.password)
-    await page.goto(`/customers?id=${customer.id}&tab=red-packets`)
+    await page.goto(`/customers/${customer.id}`)
     const section = page.getByTestId('red-packets')
     const dialog = page.getByRole('dialog', { name: action === 'issue' ? '发放红包' : '撤回红包', exact: true })
     if (action === 'issue') {
-      await section.getByRole('button', { name: '发放红包', exact: true }).click()
+      await customerAction(page, '发放红包')
       await dialog.getByRole('combobox', { name: '卖或送', exact: true }).click()
       await page.getByRole('option', { name: '送', exact: true }).click()
       await dialog.getByLabel('面额', { exact: true }).fill('33')

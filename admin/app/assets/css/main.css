@@ -130,6 +130,12 @@ h1 {
   padding: 16px;
 }
 
+/* 卡面（顾客档案右栏）：一张实物卡，底色由使用方给（储值卡粉、次卡蓝），卡片圆角。 */
+@utility card-face {
+  border-radius: var(--radius-card);
+  padding: 16px;
+}
+
 /* 指标条：不包卡片，上下各一条细线，数字直接放在页面上。 */
 @utility stats {
   border-block: 1px solid var(--color-line);

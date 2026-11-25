@@ -104,6 +104,7 @@ const cardPoints = useCursorList(async (beforeId) => {
 })
 
 function showPoints(id: string) {
+  closeLedgers()
   pointsCard.value = id
   cardPoints.reload()
 }
@@ -115,6 +116,7 @@ const cardLedger = useCursorList(async (beforeId) => {
 })
 
 function cardShowLedger(id: string) {
+  closeLedgers()
   cardLedgerCard.value = id
   cardLedger.reload()
 }
@@ -126,6 +128,7 @@ const cardCounts = useCursorList(async (beforeId) => {
 })
 
 function showCounts(id: string) {
+  closeLedgers()
   countCard.value = id
   cardCounts.reload()
 }
@@ -137,6 +140,7 @@ const adjustments = useCursorList(async (beforeId) => {
 })
 
 function showAdjustments(id: string) {
+  closeLedgers()
   adjustmentCard.value = id
   adjustments.reload()
 }
@@ -213,6 +217,7 @@ const upgrades = useCursorList(async (beforeId) => {
 })
 
 function showUpgrades(id: string) {
+  closeLedgers()
   upgradeCardID.value = id
   upgrades.reload()
 }
@@ -324,6 +329,22 @@ async function saveRefund() {
   })
 }
 
+// 明细一次只看一种：从右侧滑出，标题写哪张卡的哪种记录。
+const ledgerCard = computed(() => upgradeCardID.value || pointsCard.value || countCard.value || adjustmentCard.value || cardLedgerCard.value)
+const ledgerTitle = computed(() => {
+  const name = cardCards.value.find(card => card.id === ledgerCard.value)?.card_type_name ?? '卡'
+  const kind = upgradeCardID.value ? '升级记录' : pointsCard.value ? '积分流水' : countCard.value ? '次数流水' : adjustmentCard.value ? '调整记录' : '流水'
+  return `${name} · ${kind}`
+})
+
+function closeLedgers() {
+  upgradeCardID.value = ''
+  pointsCard.value = ''
+  countCard.value = ''
+  adjustmentCard.value = ''
+  cardLedgerCard.value = ''
+}
+
 const ledgerKinds: Record<string, string> = { open: '开卡', recharge: '充值', adjust: '调整', upgrade: '升级', transfer_out: '转出', transfer_in: '转入', consume: '消费', void: '撤单退回', refund: '退卡' }
 
 // 所有写操作刷新同一组已展开的明细，避免某个弹窗漏掉积分或升级记录。
@@ -366,85 +387,106 @@ onMounted(cardLoad)
 </script>
 
 <template>
-  <div>
-    <section>
-      <div class="sec mt-0! min-h-8">
-        <span v-if="cardCards.length" class="font-normal text-dimmed">{{ cardCards.length }} 张</span>
-        <UButton v-if="can('card.sell') && !props.merged" size="sm" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto" @click="cardEdit(null)">开卡</UButton>
-      </div>
-      <div class="box overflow-hidden p-0">
-        <p v-if="cardLoading" class="px-3 py-2 text-sm text-muted">正在读取卡…</p>
-        <p v-else-if="!cardCards.length" class="px-3 py-2 text-sm text-muted">暂无卡</p>
-        <div v-for="card in cardCards" :key="card.id" :data-card="card.id" class="space-y-2 border-t border-default px-3 py-2 text-sm first:border-t-0" :class="card.status === 'refunded' ? 'text-muted' : ''">
+  <!-- 档案右栏的卡（layout.md）：每张有效的卡画成一张卡面，储值卡写余额、次卡写剩几次；退了的收成一行灰字。流水类明细从右侧滑出。 -->
+  <section data-testid="customer-cards">
+    <div class="flex h-7 items-center gap-2">
+      <h3 class="text-meta text-muted">卡</h3>
+      <UButton v-if="can('card.sell') && !props.merged" size="sm" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto -me-2" @click="cardEdit(null)">开卡</UButton>
+    </div>
+    <p v-if="cardLoading && !cardCards.length" class="text-sm text-muted">正在读取卡…</p>
+    <p v-else-if="!cardCards.length" class="text-sm text-dimmed">暂无卡</p>
+    <div class="space-y-3">
+      <div
+        v-for="card in cardCards"
+        :key="card.id"
+        :data-card="card.id"
+        class="text-sm"
+        :class="card.status === 'active' ? ['card-face', card.kind === 'count' ? 'bg-tag-blue' : 'bg-tag-pink'] : 'flex items-center gap-2 text-muted'"
+      >
+        <template v-if="card.status === 'active'">
           <div class="flex items-start gap-2">
-            <p class="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
-              <span class="font-medium">{{ card.card_type_name }}</span>
-              <span v-if="card.status === 'refunded'" class="tag bg-tag-gray">已退</span>
-              <span class="tabular-nums"><span class="text-muted">本金</span> {{ yuanFixed(card.principal) }}</span>
-              <span class="tabular-nums"><span class="text-muted">赠送金</span> {{ yuanFixed(card.bonus) }}</span>
-              <span class="tabular-nums"><span class="text-muted">积分</span> {{ card.points }}</span>
-              <span class="ms-auto text-meta text-muted">有效期 {{ card.expires_on || '不限' }}</span>
+            <p class="min-w-0 flex-1 truncate text-meta" :title="card.card_type_name">{{ card.card_type_name }}</p>
+            <UDropdownMenu :items="cardMenu(card)" :content="{ align: 'end' }">
+              <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-ellipsis" class="-me-2 -mt-1" :aria-label="`${card.card_type_name} 的操作`" />
+            </UDropdownMenu>
+          </div>
+          <template v-if="card.kind !== 'count'">
+            <p class="mt-3 text-meta text-muted">余额</p>
+            <p class="figure tabular-nums">{{ yuan((cents(card.principal) + cents(card.bonus)) / 100) }}</p>
+            <p class="text-meta text-muted tabular-nums">本金 {{ yuanFixed(card.principal) }} · 赠送金 {{ yuanFixed(card.bonus) }} · 积分 {{ card.points }}</p>
+          </template>
+          <div v-if="card.items.length" class="mt-3 space-y-0.5">
+            <p v-for="item in card.items" :key="item.item_id" data-testid="remaining-counts" class="tabular-nums">
+              {{ item.item_name }} 剩 <span class="figure">{{ item.paid_remaining + item.gift_remaining }}</span> 次<span class="text-meta text-muted"> · 购买 {{ item.paid_remaining }} · 赠送 {{ item.gift_remaining }}</span>
             </p>
-            <div class="-my-1 flex shrink-0 items-center gap-1">
-              <UButton v-if="canRecharge(card)" size="sm" color="neutral" variant="outline" @click="cardEdit(card)">充值</UButton>
-              <UDropdownMenu :items="cardMenu(card)" :content="{ align: 'end' }">
-                <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-ellipsis" :aria-label="`${card.card_type_name} 的操作`" />
-              </UDropdownMenu>
-            </div>
+            <p class="text-meta text-muted">次数售价 {{ yuanFixed(card.counts_price) }}</p>
           </div>
-          <div v-if="card.items.length" class="rounded-md bg-elevated px-2 py-2 text-meta">
-            <p v-for="item in card.items" :key="item.item_id" data-testid="remaining-counts" class="tabular-nums">{{ item.item_name }} · 购买 {{ item.paid_remaining }} · 赠送 {{ item.gift_remaining }}</p>
-            <p class="text-muted">次数售价 {{ yuanFixed(card.counts_price) }}</p>
+          <div class="mt-2 flex items-center gap-2">
+            <span class="text-meta text-muted">有效期 {{ card.expires_on || '不限' }}</span>
+            <UButton v-if="canRecharge(card)" size="sm" color="neutral" variant="outline" class="ms-auto bg-white" @click="cardEdit(card)">充值</UButton>
           </div>
-          <div v-if="upgradeCardID === card.id" data-testid="card-upgrades" class="space-y-2 border-s-2 border-default ps-3 text-meta">
-            <p v-if="upgrades.loading.value">正在读取升级记录…</p>
-            <p v-for="entry in upgrades.items.value" :key="entry.id" data-testid="card-upgrade-entry">{{ entry.type_before.name }} → {{ entry.type_after.name }} · {{ entry.trigger === 'auto' ? '自动升级' : '手动升级' }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }} · {{ entry.actor.name }}</p>
-            <p v-if="!upgrades.loading.value && !upgrades.items.value.length">暂无升级记录</p>
-            <UButton v-if="upgrades.hasMore.value" :loading="upgrades.loading.value" size="sm" color="neutral" variant="ghost" @click="upgrades.loadMore">加载更多</UButton>
-          </div>
-          <div v-if="pointsCard === card.id" data-testid="card-points" class="space-y-2 border-s-2 border-default ps-3 text-meta">
-            <p v-if="cardPoints.loading.value">正在读取积分流水…</p>
-            <p v-for="entry in cardPoints.items.value" :key="entry.id" data-testid="card-points-entry">
-              {{ ledgerKinds[entry.kind] || entry.kind }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }} · {{ entry.actor.name }}
-              积分 {{ entry.before }} + {{ entry.delta }} = {{ entry.after }} <span v-if="entry.reason">· 原因：{{ entry.reason }}</span>
-            </p>
-            <p v-if="!cardPoints.loading.value && !cardPoints.items.value.length">暂无积分流水</p>
-            <UButton v-if="cardPoints.hasMore.value" :loading="cardPoints.loading.value" size="sm" color="neutral" variant="ghost" @click="cardPoints.loadMore">加载更多</UButton>
-          </div>
-          <div v-if="countCard === card.id" data-testid="card-counts" class="space-y-2 border-s-2 border-default ps-3 text-meta">
-            <p v-if="cardCounts.loading.value">正在读取次数流水…</p>
-            <p v-for="entry in cardCounts.items.value" :key="entry.id" data-testid="card-count-entry">
-              {{ entry.item.name }} · {{ ledgerKinds[entry.kind] || entry.kind }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }} · {{ entry.actor.name }}
-              购买 {{ entry.paid_before }} + {{ entry.paid_delta }} = {{ entry.paid_after }}；赠送 {{ entry.gift_before }} + {{ entry.gift_delta }} = {{ entry.gift_after }}
-              <span v-if="entry.reason">· 原因：{{ entry.reason }}</span>
-            </p>
-            <UButton v-if="cardCounts.hasMore.value" :loading="cardCounts.loading.value" size="sm" color="neutral" variant="ghost" @click="cardCounts.loadMore">加载更多</UButton>
-          </div>
-          <div v-if="adjustmentCard === card.id" data-testid="card-adjustments" class="space-y-2 border-s-2 border-default ps-3 text-meta">
-            <p v-if="adjustments.loading.value">正在读取调整记录…</p>
-            <p v-for="entry in adjustments.items.value" :key="entry.id" data-testid="card-adjustment-entry">
-              {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }} · {{ entry.actor.name }} · 原因：{{ entry.reason }}
-              <span v-for="change in entry.counts" :key="change.id">{{ change.item.name }}：购买 {{ change.paid_before }} → {{ change.paid_after }}；赠送 {{ change.gift_before }} → {{ change.gift_after }}</span>
-              <span v-if="entry.balance">本金 {{ entry.balance.principal_before }} + {{ entry.balance.principal_delta }} = {{ entry.balance.principal_after }}；赠送金 {{ entry.balance.bonus_before }} + {{ entry.balance.bonus_delta }} = {{ entry.balance.bonus_after }}</span>
-              <span v-if="entry.expiry_before && entry.expiry_after">有效期 {{ entry.expiry_before.expires_on || '不限' }} → {{ entry.expiry_after.expires_on || '不限' }}</span>
-              <span v-if="entry.card_type_before && entry.card_type_after">卡类型 {{ entry.card_type_before.name }} → {{ entry.card_type_after.name }}</span>
-            </p>
-            <UButton v-if="adjustments.hasMore.value" :loading="adjustments.loading.value" size="sm" color="neutral" variant="ghost" @click="adjustments.loadMore">加载更多</UButton>
-          </div>
-          <div v-if="cardLedgerCard === card.id" data-testid="card-ledger" class="space-y-2 border-s-2 border-default ps-3 text-meta">
-            <p v-for="entry in cardLedger.items.value" :key="entry.id" data-testid="card-ledger-entry">
-              {{ ledgerKinds[entry.kind] || entry.kind }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }} · {{ entry.actor.name }}
-              本金 {{ entry.principal_before }} + {{ entry.principal_delta }} = {{ entry.principal_after }}；赠送金 {{ entry.bonus_before }} + {{ entry.bonus_delta }} = {{ entry.bonus_after }}
-              <span v-if="entry.reason">· 原因：{{ entry.reason }}</span>
-              <span v-if="entry.other_card_id">· 对方卡：{{ entry.other_card_id }}</span>
-              <span v-if="entry.sales_staff.length">· 业绩归属人：{{ entry.sales_staff.map(s => s.name).join('、') }}</span>
-            </p>
-            <UButton v-if="cardLedger.hasMore.value" :loading="cardLedger.loading.value" size="sm" color="neutral" variant="ghost" @click="cardLedger.loadMore">加载更多</UButton>
-          </div>
+        </template>
+        <template v-else>
+          <span class="tag bg-tag-gray">已退</span>
+          <span class="min-w-0 flex-1 truncate" :title="card.card_type_name">{{ card.card_type_name }}</span>
+          <UDropdownMenu :items="cardMenu(card)" :content="{ align: 'end' }">
+            <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-ellipsis" class="-me-2" :aria-label="`${card.card_type_name} 的操作`" />
+          </UDropdownMenu>
+        </template>
+      </div>
+    </div>
+  </section>
+  <USlideover :open="!!ledgerCard" :title="ledgerTitle" @update:open="v => { if (!v) closeLedgers() }">
+    <template #body>
+      <div data-testid="card-history" class="contents">
+        <div v-if="upgradeCardID" data-testid="card-upgrades" class="space-y-2 text-sm">
+          <p v-if="upgrades.loading.value" class="text-muted">正在读取升级记录…</p>
+          <p v-for="entry in upgrades.items.value" :key="entry.id" data-testid="card-upgrade-entry">{{ entry.type_before.name }} → {{ entry.type_after.name }} · {{ entry.trigger === 'auto' ? '自动升级' : '手动升级' }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }} · {{ entry.actor.name }}</p>
+          <p v-if="!upgrades.loading.value && !upgrades.items.value.length" class="text-muted">暂无升级记录</p>
+          <UButton v-if="upgrades.hasMore.value" :loading="upgrades.loading.value" size="sm" color="neutral" variant="ghost" @click="upgrades.loadMore">加载更多</UButton>
+        </div>
+        <div v-if="pointsCard" data-testid="card-points" class="space-y-2 text-sm">
+          <p v-if="cardPoints.loading.value" class="text-muted">正在读取积分流水…</p>
+          <p v-for="entry in cardPoints.items.value" :key="entry.id" data-testid="card-points-entry">
+            {{ ledgerKinds[entry.kind] || entry.kind }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }} · {{ entry.actor.name }}
+            积分 {{ entry.before }} + {{ entry.delta }} = {{ entry.after }} <span v-if="entry.reason">· 原因：{{ entry.reason }}</span>
+          </p>
+          <p v-if="!cardPoints.loading.value && !cardPoints.items.value.length" class="text-muted">暂无积分流水</p>
+          <UButton v-if="cardPoints.hasMore.value" :loading="cardPoints.loading.value" size="sm" color="neutral" variant="ghost" @click="cardPoints.loadMore">加载更多</UButton>
+        </div>
+        <div v-if="countCard" data-testid="card-counts" class="space-y-2 text-sm">
+          <p v-if="cardCounts.loading.value" class="text-muted">正在读取次数流水…</p>
+          <p v-for="entry in cardCounts.items.value" :key="entry.id" data-testid="card-count-entry">
+            {{ entry.item.name }} · {{ ledgerKinds[entry.kind] || entry.kind }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }} · {{ entry.actor.name }}
+            购买 {{ entry.paid_before }} + {{ entry.paid_delta }} = {{ entry.paid_after }}；赠送 {{ entry.gift_before }} + {{ entry.gift_delta }} = {{ entry.gift_after }}
+            <span v-if="entry.reason">· 原因：{{ entry.reason }}</span>
+          </p>
+          <UButton v-if="cardCounts.hasMore.value" :loading="cardCounts.loading.value" size="sm" color="neutral" variant="ghost" @click="cardCounts.loadMore">加载更多</UButton>
+        </div>
+        <div v-if="adjustmentCard" data-testid="card-adjustments" class="space-y-2 text-sm">
+          <p v-if="adjustments.loading.value" class="text-muted">正在读取调整记录…</p>
+          <p v-for="entry in adjustments.items.value" :key="entry.id" data-testid="card-adjustment-entry">
+            {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }} · {{ entry.actor.name }} · 原因：{{ entry.reason }}
+            <span v-for="change in entry.counts" :key="change.id">{{ change.item.name }}：购买 {{ change.paid_before }} → {{ change.paid_after }}；赠送 {{ change.gift_before }} → {{ change.gift_after }}</span>
+            <span v-if="entry.balance">本金 {{ entry.balance.principal_before }} + {{ entry.balance.principal_delta }} = {{ entry.balance.principal_after }}；赠送金 {{ entry.balance.bonus_before }} + {{ entry.balance.bonus_delta }} = {{ entry.balance.bonus_after }}</span>
+            <span v-if="entry.expiry_before && entry.expiry_after">有效期 {{ entry.expiry_before.expires_on || '不限' }} → {{ entry.expiry_after.expires_on || '不限' }}</span>
+            <span v-if="entry.card_type_before && entry.card_type_after">卡类型 {{ entry.card_type_before.name }} → {{ entry.card_type_after.name }}</span>
+          </p>
+          <UButton v-if="adjustments.hasMore.value" :loading="adjustments.loading.value" size="sm" color="neutral" variant="ghost" @click="adjustments.loadMore">加载更多</UButton>
+        </div>
+        <div v-if="cardLedgerCard" data-testid="card-ledger" class="space-y-2 text-sm">
+          <p v-for="entry in cardLedger.items.value" :key="entry.id" data-testid="card-ledger-entry">
+            {{ ledgerKinds[entry.kind] || entry.kind }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }} · {{ entry.actor.name }}
+            本金 {{ entry.principal_before }} + {{ entry.principal_delta }} = {{ entry.principal_after }}；赠送金 {{ entry.bonus_before }} + {{ entry.bonus_delta }} = {{ entry.bonus_after }}
+            <span v-if="entry.reason">· 原因：{{ entry.reason }}</span>
+            <span v-if="entry.other_card_id">· 对方卡：{{ entry.other_card_id }}</span>
+            <span v-if="entry.sales_staff.length">· 业绩归属人：{{ entry.sales_staff.map(s => s.name).join('、') }}</span>
+          </p>
+          <UButton v-if="cardLedger.hasMore.value" :loading="cardLedger.loading.value" size="sm" color="neutral" variant="ghost" @click="cardLedger.loadMore">加载更多</UButton>
         </div>
       </div>
-    </section>
-  </div>
+    </template>
+  </USlideover>
   <UModal v-model:open="refundOpen" title="退卡">
     <template #body>
       <div class="space-y-5">

@@ -80,6 +80,20 @@ async function init() {
     openOrderBegin(null)
     return
   }
+  // 从顾客档案来：为这位顾客开单，「照这个开单」还带着上次的项目。
+  if (route.query.open === 'customer' && typeof route.query.customer === 'string') {
+    const customerID = route.query.customer
+    const itemIDs = typeof route.query.items === 'string' ? route.query.items.split(',').filter(Boolean) : []
+    await router.replace({ query: { ...route.query, open: undefined, customer: undefined, items: undefined } })
+    const res = await api.POST('/api/ops/get_customer', { body: { id: customerID } })
+    if (!current()) return
+    if (!res.data) {
+      toast.add({ title: errorText(res.error), color: 'error' })
+      return
+    }
+    openOrderModal.value?.begin(res.data, null, null, itemIDs)
+    return
+  }
   focusScan()
 }
 
