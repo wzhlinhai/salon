@@ -86,12 +86,12 @@ function cell(value: string | number) {
           <table class="w-full text-sm tabular-nums" data-testid="card-table">
             <thead class="border-b border-default text-sm text-muted">
               <tr>
-                <th rowspan="2" scope="col" class="sticky left-0 bg-page px-3 py-1.5 text-left font-normal">卡类型</th>
-                <th v-for="g in groups" :key="g.label" :colspan="g.columns.length" scope="colgroup" class="border-l border-default px-3 pt-1.5 text-center font-normal">{{ g.label }}</th>
+                <th rowspan="2" scope="col" class="sticky left-0 bg-page px-3 py-2 text-left font-normal">卡类型</th>
+                <th v-for="g in groups" :key="g.label" :colspan="g.columns.length" scope="colgroup" class="border-l border-default px-3 pt-2 text-center font-normal">{{ g.label }}</th>
               </tr>
               <tr>
                 <template v-for="g in groups" :key="g.label">
-                  <th v-for="(c, i) in g.columns" :key="c.key" scope="col" class="px-3 py-1.5 text-right font-normal whitespace-nowrap" :class="!i && 'border-l border-default'">{{ c.label }}</th>
+                  <th v-for="(c, i) in g.columns" :key="c.key" scope="col" class="px-3 py-2 text-right font-normal whitespace-nowrap" :class="!i && 'border-l border-default'">{{ c.label }}</th>
                 </template>
               </tr>
             </thead>

@@ -63,8 +63,8 @@ watch(() => [entries.value.length, sending.value], async () => {
       <div ref="scroller" class="flex-1 space-y-4 overflow-y-auto p-4" data-testid="ai-messages">
         <!-- 还没说话时照 Notion 的 AI 面板：形象和一句招呼落在底部，挨着输入框。 -->
         <div v-if="!entries.length" class="flex min-h-full flex-col justify-end gap-3 pb-2">
-          <span class="grid size-16 place-items-center rounded-full bg-white shadow-float"><AiMark class="size-11" /></span>
-          <p class="text-lg font-semibold text-highlighted">店里的事，跟我说。</p>
+          <span class="grid size-16 place-items-center rounded-full bg-white shadow-lift"><AiMark class="size-11" /></span>
+          <p class="text-base font-semibold text-highlighted">店里的事，跟我说。</p>
           <p class="text-sm text-muted text-pretty">
             说一句话，例如“给陈女士约明天下午 3 点剪发”“今天实收多少”。要改数据时 AI 会先起草，由你确认。
           </p>
@@ -79,7 +79,7 @@ watch(() => [entries.value.length, sending.value], async () => {
             <DraftCard v-for="draft in entry.drafts ?? []" :key="draft.id" :draft="draft" />
           </div>
         </div>
-        <p v-if="sending" class="flex items-center gap-1.5 text-sm text-muted" data-testid="ai-thinking">
+        <p v-if="sending" class="flex items-center gap-2 text-sm text-muted" data-testid="ai-thinking">
           <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin" />
           正在想…
         </p>

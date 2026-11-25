@@ -28,6 +28,6 @@ function positionsOf(itemID: string) {
         <span v-if="position.required" class="tag shrink-0 bg-tag-yellow">必填</span>
       </div>
     </div>
-    <UButton color="neutral" icon="i-lucide-plus" class="-ms-2.5 self-start" variant="ghost" @click="rows.push({ item_id: '', staff: {} })">添加项目</UButton>
+    <UButton color="neutral" icon="i-lucide-plus" class="-ms-2 self-start" variant="ghost" @click="rows.push({ item_id: '', staff: {} })">添加项目</UButton>
   </FieldGroup>
 </template>

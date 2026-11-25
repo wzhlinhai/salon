@@ -1,7 +1,49 @@
+// 控件高只有三档（DESIGN.md「档位」）：xs、sm 紧凑 28，md 常规 36，lg、xl 前台 44。按钮和下拉用 min-h，内容折行时能撑高；
+// 输入框单行，直接定高。
+const compact = 'min-h-7 py-0.5 px-2 text-meta gap-1'
+const regular = 'min-h-9 py-1 px-3 text-sm gap-2'
+const front = 'min-h-11 py-2 px-4 text-base gap-2'
+const sizes = { xs: { base: compact }, sm: { base: compact }, md: { base: regular }, lg: { base: front }, xl: { base: front } }
+const fieldSizes = {
+  xs: { base: 'h-7 py-0 px-2 text-meta gap-1' },
+  sm: { base: 'h-7 py-0 px-2 text-meta gap-1' },
+  md: { base: 'h-9 py-0 px-3 text-sm gap-2' },
+  lg: { base: 'h-11 py-0 px-4 text-base gap-2' },
+  xl: { base: 'h-11 py-0 px-4 text-base gap-2' }
+}
+const pickerSizes = {
+  xs: { base: 'min-h-7 py-0.5 px-2 text-meta gap-1' },
+  sm: { base: 'min-h-7 py-0.5 px-2 text-meta gap-1' },
+  md: { base: 'min-h-9 py-1 px-3 text-sm gap-2' },
+  lg: { base: 'min-h-11 py-2 px-4 text-base gap-2' },
+  xl: { base: 'min-h-11 py-2 px-4 text-base gap-2' }
+}
+
+const numberSizes = Object.fromEntries(Object.entries(fieldSizes).map(([k, v]) => [k, v.base]))
+// 只放图标的方形按钮：宽高相等，跟着三档走。
+const squares = [
+  { size: ['xs', 'sm'], square: true, class: 'size-7 min-h-0 p-0 justify-center' },
+  { size: 'md', square: true, class: 'size-9 min-h-0 p-0 justify-center' },
+  { size: ['lg', 'xl'], square: true, class: 'size-11 min-h-0 p-0 justify-center' }
+]
+
 const focusRing = { color: 'primary' as const, variant: ['outline' as const, 'subtle' as const], class: 'outline-primary/10 focus-visible:outline-2' }
 
 export default defineAppConfig({
   ui: {
+    // 让 tailwind-merge 认得本站的档位类名（main.css 的 @theme），否则 text-meta 会被当成文字颜色，
+    // 和组件默认的 text-xs、rounded-lg、shadow-lg 并存，谁赢看字母序。
+    tv: {
+      twMergeConfig: {
+        extend: {
+          classGroups: {
+            'font-size': [{ text: ['meta', 'figure', 'title'] }],
+            'shadow': [{ shadow: ['line', 'paper', 'lift'] }],
+            'rounded': [{ rounded: ['card'] }]
+          }
+        }
+      }
+    },
     colors: {
       // 主色实际是墨色，由 main.css 的 --ui-primary 定；这里的色板只是占位，和 ai 一样写 neutral。
       primary: 'neutral',
@@ -17,7 +59,7 @@ export default defineAppConfig({
     table: {
       slots: {
         th: 'h-9 px-2 py-0 text-sm font-normal text-muted [&:not(:last-child)]:border-e [&:not(:last-child)]:border-default',
-        td: 'h-[37px] px-2 py-1.5 text-sm text-default [&:not(:last-child)]:border-e [&:not(:last-child)]:border-default',
+        td: 'h-[37px] px-2 py-2 text-sm text-default [&:not(:last-child)]:border-e [&:not(:last-child)]:border-default',
         tbody: 'border-b border-default [&>tr:has(td+td)]:hover:bg-hover [&>tr]:data-[selectable=true]:hover:bg-hover [&>tr]:data-[selectable=true]:cursor-pointer',
         separator: 'bg-(--ui-border)',
         empty: 'text-center text-sm text-muted border-e-0',
@@ -52,7 +94,7 @@ export default defineAppConfig({
       },
       variants: {
         fullscreen: {
-          false: { content: 'rounded-card shadow-float ring-0' }
+          false: { content: 'rounded-card shadow-lift ring-0' }
         }
       }
     },
@@ -62,14 +104,14 @@ export default defineAppConfig({
         label: 'text-sm font-normal text-muted',
         container: 'field-fill mt-1',
         description: 'text-meta text-muted',
-        help: 'mt-1.5 text-meta text-muted',
-        error: 'mt-1.5 text-meta'
+        help: 'mt-2 text-meta text-muted',
+        error: 'mt-2 text-meta'
       }
     },
     // 侧滑面板和弹窗同一套：标题栏、按钮栏各一道细线，控件和页面上一样大。
     slideover: {
       slots: {
-        content: 'divide-y divide-default sm:ring-0 sm:shadow-float',
+        content: 'divide-y divide-default sm:ring-0 sm:shadow-lift',
         header: 'min-h-0 px-6 py-4 sm:px-6',
         title: 'text-base font-semibold text-highlighted',
         description: 'mt-1 text-sm text-muted',
@@ -82,21 +124,34 @@ export default defineAppConfig({
     // 实心主按钮（墨色）照 Notion 按钮的做法：一道内描边加 1px 阴影，看着压得住。
     // 行内的删除类文字按钮（去掉、撤销、删除）平时是灰字，悬停才变红，免得列表里一排红字。
     button: {
+      variants: { size: sizes },
       compoundVariants: [
+        ...squares,
         { color: ['primary', 'neutral'], variant: 'outline', class: 'bg-white text-default ring-accented hover:bg-hover active:bg-hover disabled:bg-white aria-disabled:bg-white' },
-        { color: 'primary', variant: 'solid', class: 'shadow-[inset_0_0_0_1px_rgba(15,15,15,0.1),0_1px_2px_rgba(15,15,15,0.1)]' },
+        { color: 'primary', variant: 'solid', class: 'shadow-[inset_0_0_0_1px_rgba(15,15,15,0.1)]' },
         { color: 'error', variant: 'ghost', class: 'text-muted hover:bg-hover hover:text-error active:bg-hover' },
         { color: 'primary', variant: 'solid', class: 'disabled:bg-elevated disabled:text-dimmed aria-disabled:bg-elevated aria-disabled:text-dimmed disabled:opacity-100 aria-disabled:opacity-100' },
         { color: 'ai', variant: 'solid', class: 'disabled:bg-elevated disabled:text-dimmed aria-disabled:bg-elevated aria-disabled:text-dimmed disabled:opacity-100 aria-disabled:opacity-100' }
       ]
     },
     // 输入类控件聚焦时照 Notion：细墨线加一圈很淡的光晕。Nuxt UI 默认是 3px 的主色光晕，主色是墨色，看着像一圈粗黑框。
-    input: { compoundVariants: [focusRing] },
-    textarea: { compoundVariants: [focusRing] },
-    select: { compoundVariants: [focusRing] },
-    selectMenu: { compoundVariants: [focusRing] },
-    inputNumber: { compoundVariants: [focusRing] },
-    inputMenu: { compoundVariants: [focusRing] },
+    input: { variants: { size: fieldSizes }, compoundVariants: [focusRing] },
+    textarea: {
+      variants: {
+        size: {
+          xs: { base: 'px-2 py-1 text-meta gap-1' },
+          sm: { base: 'px-2 py-1 text-meta gap-1' },
+          md: { base: 'px-3 py-2 text-sm gap-2' },
+          lg: { base: 'px-4 py-2 text-base gap-2' },
+          xl: { base: 'px-4 py-2 text-base gap-2' }
+        }
+      },
+      compoundVariants: [focusRing]
+    },
+    select: { variants: { size: pickerSizes }, compoundVariants: [focusRing] },
+    selectMenu: { variants: { size: pickerSizes }, compoundVariants: [focusRing] },
+    inputNumber: { variants: { size: numberSizes }, compoundVariants: [focusRing] },
+    inputMenu: { variants: { size: pickerSizes }, compoundVariants: [focusRing] },
     card: {
       slots: {
         root: 'rounded-card'

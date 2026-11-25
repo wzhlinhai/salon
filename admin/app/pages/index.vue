@@ -236,7 +236,7 @@ onMounted(async () => {
 <template>
   <div class="mx-auto w-full max-w-[960px]">
     <header class="mt-4 mb-8 text-center">
-      <h1 data-testid="home-greeting" class="font-kai text-title text-balance">
+      <h1 data-testid="home-greeting" class="text-title text-balance">
         {{ greeting }}，{{ me?.staff.name }}
       </h1>
       <p class="mt-1 text-muted tabular-nums" data-testid="home-date">{{ dateLine }}</p>
@@ -245,9 +245,9 @@ onMounted(async () => {
     <div class="flex flex-col gap-4">
       <template v-if="selectedHome === 'personal'">
         <template v-if="can('attendance.clock')">
-          <div v-if="!todayClockIn" class="flex items-center gap-4 rounded-card bg-notice px-[18px] py-4">
+          <div v-if="!todayClockIn" class="flex items-center gap-4 rounded-card bg-notice px-4 py-4">
             <UIcon name="i-lucide-clock" class="size-7 shrink-0 text-muted" aria-hidden="true" />
-            <p class="text-lead font-semibold">今天还没打卡<small class="block text-meta font-normal text-muted">上班先打卡，迟到、早退按门店的班次算</small></p>
+            <p class="text-sm font-semibold">今天还没打卡<small class="block text-meta font-normal text-muted">上班先打卡，迟到、早退按门店的班次算</small></p>
             <UButton data-testid="home-punch" size="xl" class="ms-auto min-h-12 px-7 text-base" :loading="punching" @click="punch">打卡</UButton>
           </div>
           <p v-else class="-mt-4 flex items-center justify-center gap-2 text-meta text-muted">
@@ -298,7 +298,7 @@ onMounted(async () => {
               v-for="page in recentPages"
               :key="page.to"
               :to="page.to"
-              class="flex min-w-0 flex-col gap-1.5 rounded-card bg-white px-3 py-2.5 shadow-card transition-colors hover:bg-card-hover"
+              class="flex min-w-0 flex-col gap-2 rounded-card bg-white px-3 py-2 shadow-paper transition-colors hover:bg-card-hover"
             >
               <span class="flex min-w-0 items-center gap-2 text-sm font-medium">
                 <UIcon :name="page.icon" class="size-4 shrink-0 text-toned" aria-hidden="true" />
@@ -325,7 +325,7 @@ onMounted(async () => {
             <template #aside>实收口径</template>
             <ul data-testid="home-manager-metrics" class="tabular-nums">
               <li v-for="metric in metrics" :key="metric.label" :data-metric="metric.label" class="flex min-h-9 items-center gap-3">
-                <span class="w-16 shrink-0 text-lead font-medium">{{ metric.label }}</span>
+                <span class="w-16 shrink-0 text-sm font-medium">{{ metric.label }}</span>
                 <span data-testid="metric-compare" class="min-w-0 flex-1 truncate text-meta text-muted">
                   <template v-if="metric.change !== null">
                     <span :class="metric.change >= 0 ? 'text-ink-green' : 'text-ink-red'">{{ metric.change >= 0 ? '↑' : '↓' }} {{ Math.abs(metric.change) }}%</span>
@@ -333,7 +333,7 @@ onMounted(async () => {
                   </template>
                   <template v-else>{{ metric.note }}</template>
                 </span>
-                <span data-testid="metric-value" class="shrink-0 text-lead font-semibold" :class="zeroText(metric.value) && 'text-dimmed'">{{ metric.value }}</span>
+                <span data-testid="metric-value" class="shrink-0 text-sm font-semibold" :class="zeroText(metric.value) && 'text-dimmed'">{{ metric.value }}</span>
               </li>
             </ul>
           </HomeWidget>
@@ -341,7 +341,7 @@ onMounted(async () => {
           <HomeWidget v-if="shortcuts.length" title="常用" icon="i-lucide-zap">
             <ul class="-mx-1" data-testid="home-shortcuts">
               <li v-for="item in shortcuts" :key="item.to">
-                <NuxtLink :to="item.to" class="flex min-h-9 items-center gap-2.5 rounded-md px-1 text-lead font-medium hover:bg-hover">
+                <NuxtLink :to="item.to" class="flex min-h-9 items-center gap-2 rounded-md px-1 text-sm font-medium hover:bg-hover">
                   <UIcon :name="item.icon" class="size-4 shrink-0 text-muted" aria-hidden="true" />
                   {{ item.label }}
                 </NuxtLink>
@@ -366,7 +366,7 @@ onMounted(async () => {
   justify-content: center;
   gap: 8px;
   min-height: 44px;
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--color-white);
   box-shadow: var(--shadow-line);
   font-weight: 500;

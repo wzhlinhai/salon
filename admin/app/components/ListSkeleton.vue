@@ -7,10 +7,10 @@ withDefaults(defineProps<{ rows?: number }>(), { rows: 5 })
 <template>
   <div class="divide-y divide-default" role="status" data-testid="list-skeleton">
     <div v-for="i in rows" :key="i" class="flex items-center gap-4 px-3 py-3" aria-hidden="true">
-      <span class="h-3 w-1/5 animate-pulse rounded-tag bg-elevated motion-reduce:animate-none" />
-      <span class="h-3 w-1/6 animate-pulse rounded-tag bg-elevated motion-reduce:animate-none" />
-      <span class="h-3 w-1/4 animate-pulse rounded-tag bg-elevated motion-reduce:animate-none" />
-      <span class="ms-auto h-3 w-12 animate-pulse rounded-tag bg-elevated motion-reduce:animate-none" />
+      <span class="h-3 w-1/5 animate-pulse rounded-md bg-elevated motion-reduce:animate-none" />
+      <span class="h-3 w-1/6 animate-pulse rounded-md bg-elevated motion-reduce:animate-none" />
+      <span class="h-3 w-1/4 animate-pulse rounded-md bg-elevated motion-reduce:animate-none" />
+      <span class="ms-auto h-3 w-12 animate-pulse rounded-md bg-elevated motion-reduce:animate-none" />
     </div>
     <span class="sr-only">加载中</span>
   </div>

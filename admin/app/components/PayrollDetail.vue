@@ -59,25 +59,25 @@ onMounted(() => Promise.all([commissions.reload(), adjustments.reload()]))
         <p v-for="t in totals" :key="t.source" class="rounded-md bg-elevated px-3 py-2"><span class="text-muted">{{ commissionSourceNames[t.source] }}</span> <span class="font-medium tabular-nums">{{ t.amount }}</span></p>
       </div>
       <div class="box overflow-hidden p-0">
-        <div v-for="c in commissions.items.value" :key="c.id" class="border-t border-default px-3 py-2.5 text-sm first:border-t-0" data-testid="payroll-commission">
+        <div v-for="c in commissions.items.value" :key="c.id" class="border-t border-default px-3 py-2 text-sm first:border-t-0" data-testid="payroll-commission">
           <p class="flex items-center gap-2"><span class="tabular-nums">{{ c.business_date }} · {{ commissionSourceNames[c.source] }} · {{ c.amount }}</span><span v-if="c.reversal" class="tag bg-tag-gray">冲回</span></p>
           <p class="text-meta text-muted">{{ commissionExplanation(c) }}</p>
         </div>
-        <p v-if="!commissions.loading.value && !commissions.items.value.length" class="px-3 py-2.5 text-sm text-muted">本月还没有提成</p>
+        <p v-if="!commissions.loading.value && !commissions.items.value.length" class="px-3 py-2 text-sm text-muted">本月还没有提成</p>
       </div>
       <UButton v-if="commissions.hasMore.value" :loading="commissions.loading.value" size="sm" color="neutral" variant="ghost" class="mt-1" @click="commissions.loadMore">加载更多</UButton>
     </section>
     <section>
       <h2 class="sec">加减项</h2>
       <div class="box overflow-hidden p-0">
-        <div v-for="a in adjustments.items.value" :key="a.id" data-testid="payroll-adjustment" class="group/row border-t border-default px-3 py-2.5 text-sm first:border-t-0">
+        <div v-for="a in adjustments.items.value" :key="a.id" data-testid="payroll-adjustment" class="group/row border-t border-default px-3 py-2 text-sm first:border-t-0">
           <div class="flex items-center justify-between gap-2">
             <p>{{ a.name }} <span class="tabular-nums" :class="a.amount.startsWith('-') ? 'text-ink-red' : ''">{{ signed(a.amount) }}</span></p>
             <UButton v-if="!locked" size="sm" color="error" variant="ghost" class="opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100" @click="askDelete(a)">删除</UButton>
           </div>
           <p data-testid="adjustment-meta" class="text-meta text-muted"><template v-if="a.note">{{ a.note }} · </template>{{ a.created_by.name }} · {{ new Date(a.created_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</p>
         </div>
-        <p v-if="!adjustments.loading.value && !adjustments.items.value.length" class="px-3 py-2.5 text-sm text-muted">本月没有加减项</p>
+        <p v-if="!adjustments.loading.value && !adjustments.items.value.length" class="px-3 py-2 text-sm text-muted">本月没有加减项</p>
       </div>
       <UButton v-if="adjustments.hasMore.value" :loading="adjustments.loading.value" size="sm" color="neutral" variant="ghost" class="mt-1" @click="adjustments.loadMore">加载更多</UButton>
     </section>

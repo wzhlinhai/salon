@@ -176,7 +176,7 @@ onMounted(loadSources)
 
     <section data-setting="store_name">
       <div class="sec">门店</div>
-      <div class="box grid gap-x-6 gap-y-2 px-4 py-3.5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
+      <div class="box grid gap-x-6 gap-y-2 px-4 py-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
         <div>
           <div class="text-sm font-medium">门店名</div>
           <div class="mt-0.5 text-xs text-muted">显示在侧栏顶上和小票上，改了立即生效</div>
@@ -193,7 +193,7 @@ onMounted(loadSources)
           v-for="s in group.items"
           :key="s.key"
           :data-setting="s.key"
-          class="grid gap-x-6 gap-y-2 border-t border-default px-4 py-3.5 first:border-t-0 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center"
+          class="grid gap-x-6 gap-y-2 border-t border-default px-4 py-4 first:border-t-0 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center"
         >
           <div>
             <div class="text-sm font-medium">{{ s.label }}</div>
@@ -205,7 +205,7 @@ onMounted(loadSources)
               <span v-if="s.is_default" class="text-xs text-dimmed">系统默认</span>
               <span v-else class="text-xs text-dimmed">{{ s.effective_from }} 起</span>
             </div>
-            <div v-for="u in s.upcoming" :key="u.effective_from" class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+            <div v-for="u in s.upcoming" :key="u.effective_from" class="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
               <span class="tag bg-tag-yellow">已安排</span>
               {{ u.effective_from }} 起改为 {{ show(s, u.value) }}{{ u.is_default ? '（系统默认）' : '' }}
             </div>

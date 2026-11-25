@@ -138,9 +138,9 @@ async function saveRevoke() {
       </div>
       <EmptyState v-if="!days.length && !loading" title="本月还没有考勤明细" />
       <div v-else class="box overflow-hidden p-0">
-        <div v-for="day in days" :key="day.business_date" data-testid="attendance-day" :data-date="day.business_date" class="space-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0">
+        <div v-for="day in days" :key="day.business_date" data-testid="attendance-day" :data-date="day.business_date" class="space-y-1 border-t border-default px-3 py-2 text-sm first:border-t-0">
           <div class="flex flex-wrap items-center justify-between gap-2">
-            <div class="flex flex-wrap items-center gap-1.5">
+            <div class="flex flex-wrap items-center gap-2">
               <span class="font-medium tabular-nums">{{ day.business_date }}</span>
               <span v-if="day.late" class="tag bg-tag-red">迟到 {{ day.late_minutes }} 分钟</span>
               <span v-if="day.early" class="tag bg-tag-yellow">早退 {{ day.early_minutes }} 分钟</span>

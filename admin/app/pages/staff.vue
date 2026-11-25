@@ -238,10 +238,10 @@ async function setActive(s: Staff, active: boolean) {
     <div class="overflow-x-auto">
       <UTable :data="shown" :columns="columns" :loading="loading" :aria-busy="loading" :ui="{ tr: 'group/row' }" @select="selectRow">
         <template #who-cell="{ row }">
-          <div class="flex items-center gap-2.5" :class="row.original.active ? '' : 'opacity-60'">
+          <div class="flex items-center gap-2" :class="row.original.active ? '' : 'opacity-60'">
             <PersonAvatar :name="row.original.name" />
             <div class="min-w-0">
-              <div class="flex items-center gap-1.5">
+              <div class="flex items-center gap-2">
                 <span class="font-medium" data-staff-name>{{ row.original.name }}</span>
                 <span v-if="!row.original.active" class="tag bg-tag-gray">已停用</span>
               </div>

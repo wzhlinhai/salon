@@ -56,22 +56,22 @@ function lateMinutes(entry: Appointment) {
       <div
         v-for="entry in upcoming"
         :key="entry.id"
-        class="box flex flex-col gap-1.5"
+        class="box flex flex-col gap-2"
         :class="entry.kind === 'block' ? 'hatch' : ''"
       >
-        <div class="flex items-center gap-1.5">
-          <b class="truncate text-lead font-semibold">{{ entry.kind === 'block' ? (entry.note || '私约占位') : (entry.customer?.name || '未留名顾客') }}</b>
+        <div class="flex items-center gap-2">
+          <b class="truncate text-sm font-semibold">{{ entry.kind === 'block' ? (entry.note || '私约占位') : (entry.customer?.name || '未留名顾客') }}</b>
           <span v-if="entry.order_id" class="text-meta font-semibold">服务中</span>
           <span v-else-if="lateMinutes(entry) > 5" class="tag bg-tag-yellow">迟到 {{ lateMinutes(entry) }} 分</span>
           <span class="ms-auto shrink-0 text-meta text-dimmed tabular-nums">{{ clock(entry.starts_at) }} – {{ clock(entry.ends_at) }}</span>
         </div>
-        <div class="flex flex-wrap items-center gap-1.5 text-meta text-muted">
+        <div class="flex flex-wrap items-center gap-2 text-meta text-muted">
           <span v-if="entry.items.length">{{ entry.items.map(item => item.name).join(' · ') }}</span>
           <span v-if="entry.status === 'pending'" class="tag bg-tag-yellow">待确认</span>
         </div>
         <p v-if="entry.kind === 'block'" class="text-meta text-muted">这段时间留给私约，顾客到店后开单。</p>
         <p v-else-if="entry.note" class="text-meta text-muted">{{ entry.note }}</p>
-        <div v-if="entry.customer && can('customer.view')" class="mt-auto flex gap-1.5 pt-1">
+        <div v-if="entry.customer && can('customer.view')" class="mt-auto flex gap-2 pt-1">
           <UButton color="neutral" variant="outline" class="min-h-8 px-3" :to="{ path: '/customers', query: { id: entry.customer.id } }">完整档案</UButton>
         </div>
       </div>

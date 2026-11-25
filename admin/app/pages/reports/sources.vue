@@ -77,7 +77,7 @@ function cell(value: string | number) {
           <table class="w-full text-sm tabular-nums" data-testid="source-table">
             <thead class="border-b border-default text-sm text-muted">
               <tr>
-                <th scope="col" class="sticky left-0 bg-page px-3 py-1.5 text-left font-normal">来源</th>
+                <th scope="col" class="sticky left-0 bg-page px-3 py-2 text-left font-normal">来源</th>
                 <th scope="col" class="px-3 text-right font-normal whitespace-nowrap">新客</th>
                 <th scope="col" class="px-3 text-right font-normal whitespace-nowrap">占比</th>
                 <th scope="col" class="px-3 text-right font-normal whitespace-nowrap">回头客</th>

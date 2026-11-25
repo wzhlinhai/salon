@@ -71,7 +71,7 @@ const menuItems = computed(() => {
     <button
       type="button"
       data-testid="personal-menu"
-      class="flex min-h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-start text-default hover:bg-hover"
+      class="flex min-h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 py-2 text-start text-default hover:bg-hover"
       :class="collapsed ? 'justify-center px-0' : ''"
       :aria-label="me?.staff.name || '个人菜单'"
     >

@@ -4,7 +4,7 @@ defineProps<{ to: string, label: string, icon: string, description?: string, fig
 </script>
 
 <template>
-  <NuxtLink :to="to" class="-mx-2 flex items-baseline gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-hover">
+  <NuxtLink :to="to" class="-mx-2 flex items-baseline gap-2 rounded-md px-2 py-2 transition-colors hover:bg-hover">
     <UIcon :name="icon" class="size-4 shrink-0 self-center text-muted" aria-hidden="true" />
     <span class="shrink-0 border-b border-accented font-medium">{{ label }}</span>
     <span v-if="description" class="min-w-0 truncate text-meta text-dimmed">{{ description }}</span>

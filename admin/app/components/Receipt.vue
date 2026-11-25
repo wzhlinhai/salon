@@ -47,7 +47,7 @@ function print() {
 <template>
   <Teleport to="body">
     <div class="receipt-print-root fixed inset-0 z-50 overflow-auto bg-black/40 p-4" data-testid="receipt">
-      <div class="receipt-paper mx-auto bg-white text-black shadow-lg" :style="{ width }" data-testid="receipt-paper">
+      <div class="receipt-paper mx-auto bg-white text-black shadow-paper" :style="{ width }" data-testid="receipt-paper">
         <div class="no-print flex items-center justify-between gap-2 border-b border-default px-3 py-2" :style="{ width }">
           <span class="text-sm font-medium">小票预览</span>
           <div class="flex gap-2">
@@ -56,13 +56,13 @@ function print() {
           </div>
         </div>
         <div class="receipt-content px-3 py-4 font-mono text-xs leading-5">
-          <div v-if="receipt.backfill" data-testid="receipt-backfill" class="mb-2 text-center text-base font-bold">补录</div>
+          <div v-if="receipt.backfill" data-testid="receipt-backfill" class="mb-2 text-center text-base font-semibold">补录</div>
           <div class="text-center text-base font-semibold" data-testid="receipt-header">{{ receipt.header || receipt.store_name }}</div>
           <div class="mt-1 text-center">营业日 {{ receipt.business_date }}</div>
           <div class="text-center">结账时间 {{ timeText(receipt.checked_out_at) }}</div>
           <div class="my-2 border-t border-dashed border-black" />
           <div v-for="order in receipt.orders" :key="order.id" class="mb-3" data-testid="receipt-order">
-            <div v-if="order.backfill" class="text-center font-bold">补录</div>
+            <div v-if="order.backfill" class="text-center font-semibold">补录</div>
             <div v-if="receipt.show_customer_name && (order.customer_name || receipt.customer_name)" data-testid="receipt-customer">
               顾客 {{ order.customer_name || receipt.customer_name }}
             </div>

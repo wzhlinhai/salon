@@ -49,9 +49,9 @@ const myPlace = computed(() => {
   <HomeWidget v-if="rotation" title="轮牌" icon="i-lucide-list-ordered" data-testid="home-rotation">
     <template #aside><NuxtLink :to="`/rotation?queue=${rotation.queue.id}`" class="inline-flex items-center gap-0.5 hover:text-default">{{ rotation.queue.name }}<UIcon name="i-lucide-chevron-right" class="size-3.5" aria-hidden="true" /></NuxtLink></template>
     <div>
-      <div class="flex items-center gap-3.5">
-        <div v-if="myPlace" class="text-hero leading-none font-bold tabular-nums">
-          第 {{ myPlace }} <small class="text-lead font-medium text-dimmed">位</small>
+      <div class="flex items-center gap-4">
+        <div v-if="myPlace" class="font-serif text-title leading-none font-semibold tabular-nums">
+          第 {{ myPlace }} <small class="text-sm font-medium text-dimmed">位</small>
         </div>
         <div>
           <b>{{ mine ? statusLabels[mine.status] : '不在今天的名单里' }}</b>
@@ -60,14 +60,14 @@ const myPlace = computed(() => {
           </p>
         </div>
       </div>
-      <div class="mt-3 flex flex-wrap gap-1.5">
+      <div class="mt-3 flex flex-wrap gap-2">
         <span
           v-for="turn in turns.filter(row => row.status !== 'off')"
           :key="turn.staff.id"
-          class="flex items-center gap-1.5 rounded-full py-1 pr-2 pl-1 text-meta"
+          class="flex items-center gap-2 rounded-full py-1 pr-2 pl-1 text-meta"
           :class="turn.staff.id === props.staffId ? 'bg-elevated font-semibold ring-serving' : 'bg-elevated'"
         >
-          <i class="grid size-5 place-items-center rounded-full bg-white text-2xs not-italic">{{ turn.staff.name.slice(0, 1) }}</i>
+          <i class="grid size-5 place-items-center rounded-full bg-white text-xs not-italic">{{ turn.staff.name.slice(0, 1) }}</i>
           {{ turn.staff.id === props.staffId ? '我' : turn.staff.name }}<template v-if="turn.status !== 'waiting'"> · {{ statusLabels[turn.status] }}</template>
         </span>
       </div>

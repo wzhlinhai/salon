@@ -294,21 +294,21 @@ function changeSource(o: OverrideForm) {
     <section v-if="detail" data-testid="scheme-detail">
       <div class="sec">版本 {{ detail.version }} · {{ detail.effective_from }} 起执行</div>
       <div class="overflow-x-auto">
-        <div v-for="source in shownSources(detail.scheme.rules.some(r => r.source === 'labor'))" :key="source.value" class="grid gap-x-6 gap-y-2 border-t border-default px-4 py-3.5 first:border-t-0 md:grid-cols-[10rem_minmax(0,1fr)]" :data-source="source.value">
+        <div v-for="source in shownSources(detail.scheme.rules.some(r => r.source === 'labor'))" :key="source.value" class="grid gap-x-6 gap-y-2 border-t border-default px-4 py-4 first:border-t-0 md:grid-cols-[10rem_minmax(0,1fr)]" :data-source="source.value">
           <div class="text-sm font-medium">{{ source.label }}</div>
           <div class="text-sm">
             <template v-for="rule in detail.scheme.rules.filter(r => r.source === source.value)" :key="rule.source">
               <p class="text-muted">计提基数：{{ bases.find(b => b.value === rule.base)?.label }} · 区分：{{ [rule.by_position ? '岗位' : '', rule.by_designated ? '指定或非指定' : '', rule.by_member ? '会员或散客' : ''].filter(Boolean).join('、') || '不区分' }}</p>
-              <table class="mt-1.5 w-full max-w-xl">
+              <table class="mt-2 w-full max-w-xl">
                 <thead class="text-left text-sm text-muted"><tr><th v-if="rule.by_position" class="py-1 font-normal">岗位</th><th v-if="rule.by_designated" class="font-normal">指定或非指定</th><th v-if="rule.by_member" class="font-normal">会员或散客</th><th class="font-normal">提成规则</th></tr></thead>
-                <tbody><tr v-for="(cell, index) in rule.cells" :key="index" class="border-t border-default"><td v-if="rule.by_position" class="py-1.5">{{ cell.position?.name }}</td><td v-if="rule.by_designated">{{ cell.designated ? '指定' : '非指定' }}</td><td v-if="rule.by_member">{{ cell.member ? '会员' : '散客' }}</td><td class="py-1.5 font-medium tabular-nums">{{ valueText(cell) }}</td></tr></tbody>
+                <tbody><tr v-for="(cell, index) in rule.cells" :key="index" class="border-t border-default"><td v-if="rule.by_position" class="py-2">{{ cell.position?.name }}</td><td v-if="rule.by_designated">{{ cell.designated ? '指定' : '非指定' }}</td><td v-if="rule.by_member">{{ cell.member ? '会员' : '散客' }}</td><td class="py-2 font-medium tabular-nums">{{ valueText(cell) }}</td></tr></tbody>
               </table>
               <p class="mt-1 text-xs text-dimmed">未填的格子不计提成。</p>
             </template>
             <p v-if="!detail.scheme.rules.some(r => r.source === source.value)" class="text-dimmed">不计提成</p>
           </div>
         </div>
-        <div class="grid gap-x-6 gap-y-2 border-t border-default px-4 py-3.5 md:grid-cols-[10rem_minmax(0,1fr)]">
+        <div class="grid gap-x-6 gap-y-2 border-t border-default px-4 py-4 md:grid-cols-[10rem_minmax(0,1fr)]">
           <div class="text-sm font-medium">覆盖比例</div>
           <div class="space-y-1 text-sm">
             <p v-if="!detail.scheme.overrides.length" class="text-dimmed">无</p>
@@ -320,7 +320,7 @@ function changeSource(o: OverrideForm) {
             </p>
           </div>
         </div>
-        <div class="grid gap-x-6 gap-y-2 border-t border-default px-4 py-3.5 md:grid-cols-[10rem_minmax(0,1fr)]">
+        <div class="grid gap-x-6 gap-y-2 border-t border-default px-4 py-4 md:grid-cols-[10rem_minmax(0,1fr)]">
           <div class="text-sm font-medium">不计提成的员工</div>
           <p class="text-sm" :class="detail.scheme.excluded_staff.length ? '' : 'text-dimmed'">{{ detail.scheme.excluded_staff.map(s => s.staff.name).join('、') || '无' }}</p>
         </div>
@@ -365,7 +365,7 @@ function changeSource(o: OverrideForm) {
               <CommissionValueEditor v-model="o.value" />
               <UButton variant="ghost" @click="overrides.splice(index, 1)">删除覆盖</UButton>
             </div>
-            <UButton color="neutral" icon="i-lucide-plus" class="-ms-2.5 self-start" :disabled="!enabledSources.length" variant="ghost" @click="overrides.push({ source: enabledSources[0]!.value, target: 'staff_item', staff_id: '__all__', item_id: '__all__', position_id: '__all__', category_id: '__all__', value: formValue({ percent: '' }) })">添加覆盖</UButton>
+            <UButton color="neutral" icon="i-lucide-plus" class="-ms-2 self-start" :disabled="!enabledSources.length" variant="ghost" @click="overrides.push({ source: enabledSources[0]!.value, target: 'staff_item', staff_id: '__all__', item_id: '__all__', position_id: '__all__', category_id: '__all__', value: formValue({ percent: '' }) })">添加覆盖</UButton>
           </section>
           <UFormField label="不计提成的员工"><USelect v-model="excludedStaff" multiple :items="staffOptions" class="w-full" /></UFormField>
         </div>

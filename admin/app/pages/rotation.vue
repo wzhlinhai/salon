@@ -484,8 +484,8 @@ function statusText(t: Turn) {
       />
 
       <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1" data-testid="rotation-summary">
-        <p v-if="nextUp" class="text-lead">下一位：<b data-testid="next-up">{{ who(nextUp.staff) }}</b></p>
-        <p v-else-if="rotation" class="text-lead text-muted">现在没有人在等，{{ onDuty.length ? '等有人空下来' : '员工到岗后点「到岗」上牌' }}</p>
+        <p v-if="nextUp" class="text-sm">下一位：<b data-testid="next-up">{{ who(nextUp.staff) }}</b></p>
+        <p v-else-if="rotation" class="text-sm text-muted">现在没有人在等，{{ onDuty.length ? '等有人空下来' : '员工到岗后点「到岗」上牌' }}</p>
         <p class="ms-auto text-meta text-dimmed">等待 {{ waiting.length }} 人 · 服务中 {{ counts.serving }} 人<template v-if="counts.away"> · 休息或盖牌 {{ counts.away }} 人</template></p>
       </div>
 
@@ -553,7 +553,7 @@ function statusText(t: Turn) {
 
         <section>
           <div class="sec">今日记录</div>
-          <ul v-if="events.length" class="space-y-1.5" data-testid="rotation-events">
+          <ul v-if="events.length" class="space-y-2" data-testid="rotation-events">
             <li v-for="e in shownEvents" :key="e.id" class="flex gap-3 text-meta">
               <span class="w-11 shrink-0 text-dimmed tabular-nums">{{ formatAttendanceTime(e.created_at) }}</span>
               <span>

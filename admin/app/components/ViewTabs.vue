@@ -11,7 +11,7 @@ const model = defineModel<K>({ required: true })
       v-for="v in items"
       :key="v.key"
       type="button"
-      class="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary"
+      class="inline-flex h-8 items-center gap-2 rounded-full px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary"
       :class="model === v.key ? 'bg-selected text-default' : 'text-muted hover:bg-hover hover:text-default'"
       :aria-pressed="model === v.key"
       :data-filter="v.key"

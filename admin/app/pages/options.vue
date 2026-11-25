@@ -144,11 +144,11 @@ async function save(k: typeof kinds[number], o: LevelOrPosition) {
         <div class="sec">{{ k.title }}<span class="ms-2 font-normal text-dimmed">{{ items[k.key]?.length ?? 0 }}</span></div>
         <p class="mb-2 text-xs text-muted">{{ k.hint }}</p>
         <div class="overflow-x-auto">
-          <div v-for="o in items[k.key]" :key="o.id" class="flex items-center gap-2 border-b border-default px-2 py-1.5 hover:bg-hover">
+          <div v-for="o in items[k.key]" :key="o.id" class="flex items-center gap-2 border-b border-default px-2 py-2 hover:bg-hover">
             <UInput v-model="o.name" variant="ghost" :disabled="saving[o.id]" class="flex-1" :class="o.active ? '' : 'opacity-60'" @change="save(k, o)" />
             <USwitch v-model="o.active" size="sm" :loading="saving[o.id]" :label="o.active ? '启用' : '停用'" @update:model-value="save(k, o)" />
           </div>
-          <form class="flex gap-2 px-2 py-1.5" @submit.prevent="add(k)">
+          <form class="flex gap-2 px-2 py-2" @submit.prevent="add(k)">
             <UInput v-model="draft[k.key]" variant="ghost" :placeholder="`新${k.title}`" class="flex-1" />
             <UButton :loading="saving[k.key]" type="submit" size="sm" color="neutral" variant="ghost" icon="i-lucide-plus">添加</UButton>
           </form>
@@ -160,9 +160,9 @@ async function save(k: typeof kinds[number], o: LevelOrPosition) {
       <p class="mb-2 text-xs text-muted">门店自己维护的类别，例如剪发、烫染、护理；每个类别有一个 0–100 的业绩比例</p>
       <div class="overflow-x-auto">
         <ListSkeleton v-if="categoryLoading" :rows="3" />
-        <div v-for="category in categories" :key="category.id" data-category-row :data-category-name="category.name" class="flex flex-wrap items-center gap-2 border-b border-default px-2 py-1.5 hover:bg-hover">
+        <div v-for="category in categories" :key="category.id" data-category-row :data-category-name="category.name" class="flex flex-wrap items-center gap-2 border-b border-default px-2 py-2 hover:bg-hover">
           <UInput v-model="category.name" variant="ghost" :disabled="categorySaving[category.id] || !canManageSettings" :aria-label="`类别 ${category.name}`" class="flex-1" :class="category.active ? '' : 'opacity-60'" @change="saveCategory(category)" />
-          <label class="flex items-center gap-1.5 text-xs text-muted">
+          <label class="flex items-center gap-2 text-xs text-muted">
             业绩比例
             <UInput v-model.number="category.performance_ratio" type="number" min="0" max="100" class="w-20" :disabled="categorySaving[category.id] || !canManageSettings" :aria-label="`${category.name}业绩比例`" @change="saveCategory(category)" />
             %
@@ -170,9 +170,9 @@ async function save(k: typeof kinds[number], o: LevelOrPosition) {
           <USwitch v-if="canManageSettings" v-model="category.active" size="sm" :loading="categorySaving[category.id]" :label="category.active ? '启用' : '停用'" @update:model-value="saveCategory(category)" />
           <span v-else-if="!category.active" class="tag bg-tag-gray">停用</span>
         </div>
-        <form v-if="canManageSettings" class="flex flex-wrap items-center gap-2 px-2 py-1.5" @submit.prevent="addCategory">
+        <form v-if="canManageSettings" class="flex flex-wrap items-center gap-2 px-2 py-2" @submit.prevent="addCategory">
           <UInput v-model="categoryDraft.name" variant="ghost" placeholder="新类别" aria-label="新类别" class="flex-1" />
-          <label class="flex items-center gap-1.5 text-xs text-muted">
+          <label class="flex items-center gap-2 text-xs text-muted">
             业绩比例
             <UInput v-model.number="categoryDraft.performance_ratio" type="number" min="0" max="100" class="w-20" aria-label="新类别业绩比例" />
             %

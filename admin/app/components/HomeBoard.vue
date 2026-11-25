@@ -74,10 +74,10 @@ const columns = computed(() => {
         v-for="entry in column.rows"
         :key="entry.id"
         to="/bookings"
-        class="mb-2 block rounded-card bg-white px-3 py-2.5 shadow-card hover:bg-card-hover"
+        class="mb-2 block rounded-card bg-white px-3 py-2 shadow-paper hover:bg-card-hover"
       >
         <b class="font-semibold">{{ entry.customer?.name || '未留名顾客' }}</b>
-        <div class="mt-1.5 mb-1 flex flex-wrap items-center gap-1.5 text-meta text-muted">
+        <div class="mt-2 mb-1 flex flex-wrap items-center gap-2 text-meta text-muted">
           <span>{{ [...entry.items.map(item => item.name), entry.staff.name].join(' · ') }}</span>
           <span v-if="entry.status === 'no_show'" class="tag bg-tag-red">爽约</span>
           <span v-else-if="lateMinutes(entry) > 5" class="tag bg-tag-yellow">迟到 {{ lateMinutes(entry) }} 分</span>
@@ -88,17 +88,17 @@ const columns = computed(() => {
       <div
         v-for="walk in column.walkIns ?? []"
         :key="walk.order_id"
-        class="mb-2 rounded-card bg-white px-3 py-2.5 shadow-card"
+        class="mb-2 rounded-card bg-white px-3 py-2 shadow-paper"
         data-testid="board-walkin"
       >
         <b class="font-semibold">散客</b>
-        <div class="mt-1.5 mb-1 flex flex-wrap items-center gap-1.5 text-meta">
+        <div class="mt-2 mb-1 flex flex-wrap items-center gap-2 text-meta">
           <span class="text-muted">{{ walk.staff.name }}</span>
           <span class="font-semibold">服务中</span>
         </div>
         <small class="text-xs text-dimmed">{{ clock(walk.starts_at) }} 开单</small>
       </div>
-      <p v-if="loaded && !column.rows.length && !column.walkIns?.length" class="px-2 py-1.5 text-meta text-dimmed">没有</p>
+      <p v-if="loaded && !column.rows.length && !column.walkIns?.length" class="px-2 py-2 text-meta text-dimmed">没有</p>
     </div>
   </div>
 </template>

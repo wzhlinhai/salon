@@ -29,10 +29,10 @@ function setTo(value: string) {
 </script>
 
 <template>
-  <div class="space-y-1.5" data-testid="report-range">
+  <div class="space-y-2" data-testid="report-range">
     <div class="flex flex-wrap items-center gap-2">
       <MethodPicker v-if="!dayOnly" v-model="granularity" :items="granularityItems" label="按日或按月" />
-      <div class="flex items-center gap-1.5">
+      <div class="flex items-center gap-2">
         <DateInput :key="`from-${range.granularity}`" :model-value="range.from" :month="month" :max="today" size="sm" class="w-36" aria-label="开始" @update:model-value="setFrom" />
         <span class="text-meta text-muted">至</span>
         <DateInput :key="`to-${range.granularity}`" :model-value="range.to" :month="month" :max="today" size="sm" class="w-36" aria-label="结束" @update:model-value="setTo" />

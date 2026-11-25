@@ -64,7 +64,7 @@ function remove(index: number) {
       </UInput>
       <UButton color="neutral" variant="ghost" icon="i-lucide-x" aria-label="删除" @click="remove(index)" />
     </div>
-    <UButton color="neutral" variant="ghost" icon="i-lucide-plus" class="-ms-2.5" @click="add">添加收款方式</UButton>
+    <UButton color="neutral" variant="ghost" icon="i-lucide-plus" class="-ms-2" @click="add">添加收款方式</UButton>
     <p v-if="total !== cents(expected)" class="text-meta text-ink-orange">已录入 {{ yuanFixed(money(total)) }}，{{ total < cents(expected) ? '还应录入' : '多录入' }} {{ yuanFixed(money(Math.abs(cents(expected) - total))) }}</p>
   </div>
 </template>

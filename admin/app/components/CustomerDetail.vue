@@ -426,8 +426,8 @@ onBeforeUnmount(() => {
       <div v-if="customer" class="sm:grid sm:h-full sm:grid-cols-[15rem_minmax(0,1fr)]">
         <aside class="side-scroll border-b border-default p-5 sm:overflow-y-auto sm:border-e sm:border-b-0" data-testid="customer-rail">
           <div class="flex flex-col items-center text-center">
-            <span class="grid size-16 place-items-center rounded-full bg-tag-gray text-2xl font-semibold" aria-hidden="true">{{ customerName(customer).slice(0, 1) }}</span>
-            <h2 class="mt-3 text-lg font-semibold">{{ customerName(customer) }}</h2>
+            <span class="grid size-16 place-items-center rounded-full bg-tag-gray text-figure font-semibold" aria-hidden="true">{{ customerName(customer).slice(0, 1) }}</span>
+            <h2 class="mt-3 text-base font-semibold">{{ customerName(customer) }}</h2>
             <p class="text-sm text-muted tabular-nums">{{ customer.phone || '没留手机号' }}</p>
             <div v-if="!customer.merged_into && (can('customer.edit') || moreItems.length)" class="mt-4 flex gap-2">
               <UButton v-if="can('customer.edit')" color="neutral" variant="outline" icon="i-lucide-pencil" @click="edit">修改资料</UButton>
@@ -436,26 +436,26 @@ onBeforeUnmount(() => {
               </UDropdownMenu>
             </div>
           </div>
-          <ul class="mt-5 space-y-2.5 text-sm">
-            <li class="flex gap-2.5">
+          <ul class="mt-5 space-y-2 text-sm">
+            <li class="flex gap-2">
               <UIcon name="i-lucide-user" class="mt-0.5 size-4 shrink-0 text-muted" aria-hidden="true" />
               <span :class="customer.gender ? '' : 'text-dimmed'"><span class="sr-only">性别：</span>{{ customer.gender ? genderName(customer.gender) : '性别未填' }}</span>
             </li>
-            <li class="flex gap-2.5">
+            <li class="flex gap-2">
               <UIcon name="i-lucide-megaphone" class="mt-0.5 size-4 shrink-0 text-muted" aria-hidden="true" />
               <span :class="customer.source ? '' : 'text-dimmed'"><span class="sr-only">来源：</span>{{ customer.source?.name || '来源未填' }}</span>
             </li>
-            <li class="flex gap-2.5">
+            <li class="flex gap-2">
               <UIcon name="i-lucide-user-check" class="mt-0.5 size-4 shrink-0 text-muted" aria-hidden="true" />
               <span :class="customer.responsible ? '' : 'text-dimmed'">{{ customer.responsible ? `负责人 ${customer.responsible.name}` : '不设负责人' }}</span>
             </li>
-            <li class="flex gap-2.5">
+            <li class="flex gap-2">
               <UIcon name="i-lucide-user-plus" class="mt-0.5 size-4 shrink-0 text-muted" aria-hidden="true" />
               <span class="tabular-nums">{{ createdOn }} 建档</span>
             </li>
-            <li class="flex gap-2.5">
+            <li class="flex gap-2">
               <UIcon name="i-lucide-sticky-note" class="mt-0.5 size-4 shrink-0 text-muted" aria-hidden="true" />
-              <span class="min-w-0 whitespace-pre-wrap break-words" :class="customer.note ? '' : 'text-dimmed'"><span class="sr-only">备注：</span>{{ customer.note || '没有备注' }}</span>
+              <span class="min-w-0 whitespace-pre-wrap break-words" :class="customer.note ? 'said' : 'text-dimmed'"><span class="sr-only">备注：</span>{{ customer.note || '没有备注' }}</span>
             </li>
           </ul>
         </aside>
@@ -471,32 +471,32 @@ onBeforeUnmount(() => {
               <div v-if="overview" class="stats grid grid-cols-2 gap-x-4 gap-y-3 border-t-0! pt-1! lg:grid-cols-4" data-testid="customer-metrics">
                 <div>
                   <p class="text-meta text-muted">卡余额</p>
-                  <p class="mt-1 text-2xl font-semibold tabular-nums" :class="zeroText(overview.stored_balance) && 'text-dimmed'">{{ yuan(overview.stored_balance) }}</p>
+                  <p class="mt-1 figure" :class="zeroText(overview.stored_balance) && 'text-dimmed'">{{ yuan(overview.stored_balance) }}</p>
                   <p class="mt-0.5 text-meta text-muted">{{ overview.count_remaining ? `另有 ${overview.count_remaining} 次` : '本金加赠送金' }}</p>
                 </div>
                 <div>
                   <p class="text-meta text-muted">累计消费</p>
-                  <p class="mt-1 text-2xl font-semibold tabular-nums" :class="zeroText(overview.total_spend) && 'text-dimmed'">{{ yuan(overview.total_spend) }}</p>
+                  <p class="mt-1 figure" :class="zeroText(overview.total_spend) && 'text-dimmed'">{{ yuan(overview.total_spend) }}</p>
                   <p class="mt-0.5 text-meta text-muted">{{ overview.visit_count ? `平均每次 ${yuan(averageSpend(overview))}` : '实收，不扣售后' }}</p>
                 </div>
                 <div>
                   <p class="text-meta text-muted">来过</p>
-                  <p class="mt-1 text-2xl font-semibold tabular-nums" :class="overview.visit_count ? '' : 'text-dimmed'">{{ overview.visit_count }} 次</p>
+                  <p class="mt-1 figure" :class="overview.visit_count ? '' : 'text-dimmed'">{{ overview.visit_count }} 次</p>
                   <p class="mt-0.5 text-meta text-muted">{{ overview.cycle_days ? `约 ${overview.cycle_days} 天一次` : overview.visit_count ? '只来过一天' : '还没来过' }}</p>
                 </div>
                 <div>
                   <p class="text-meta text-muted">上次到店</p>
-                  <p class="mt-1 text-2xl font-semibold" :class="overview.days_since_last_visit == null && 'text-dimmed'">{{ overview.days_since_last_visit == null ? '没有' : sinceText(overview.days_since_last_visit) }}</p>
+                  <p class="mt-1 figure" :class="overview.days_since_last_visit == null && 'text-dimmed'">{{ overview.days_since_last_visit == null ? '没有' : sinceText(overview.days_since_last_visit) }}</p>
                   <p class="mt-0.5 truncate text-meta" :class="overview.overdue_days ? 'text-ink-yellow' : 'text-muted'">{{ overview.overdue_days ? `比平时晚了 ${overview.overdue_days} 天` : overview.first_visit_date ? `首次 ${shortDate(overview.first_visit_date)}` : '' }}</p>
                 </div>
               </div>
               <div v-if="overview && (overview.next_appointment || overview.last_visit_date)" class="box divide-y divide-default p-0 text-sm">
-                <p v-if="overview.next_appointment" class="flex items-center gap-3 px-3 py-2.5">
+                <p v-if="overview.next_appointment" class="flex items-center gap-3 px-3 py-2">
                   <span class="w-16 shrink-0 text-meta text-muted">下次预约</span>
                   <span class="tag bg-tag-gray tabular-nums">{{ nextText(overview.next_appointment.starts_at) }}</span>
                   <span class="text-muted">{{ overview.next_appointment.staff.name }}</span>
                 </p>
-                <p v-if="overview.last_visit_date" class="flex items-center gap-3 px-3 py-2.5">
+                <p v-if="overview.last_visit_date" class="flex items-center gap-3 px-3 py-2">
                   <span class="w-16 shrink-0 text-meta text-muted">上次做了</span>
                   <span class="min-w-0 truncate" :title="lastVisitMeta(overview)">{{ lastVisitMeta(overview) || overview.last_visit_date }}</span>
                 </p>
@@ -506,12 +506,12 @@ onBeforeUnmount(() => {
                   安全标签<span class="ms-1 font-normal text-dimmed">{{ customer.active_safety_labels.length }}</span>
                 </div>
                 <div class="box overflow-hidden p-0">
-                  <p v-if="!customer.active_safety_labels.length" class="px-3 py-2.5 text-sm text-muted">暂无有效安全标签</p>
-                  <div v-for="l in customer.active_safety_labels" :key="l.id" class="group/row flex items-start gap-3 border-t border-default px-3 py-2.5 text-sm first:border-t-0">
+                  <p v-if="!customer.active_safety_labels.length" class="px-3 py-2 text-sm text-muted">暂无有效安全标签</p>
+                  <div v-for="l in customer.active_safety_labels" :key="l.id" class="group/row flex items-start gap-3 border-t border-default px-3 py-2 text-sm first:border-t-0">
                     <span class="tag bg-tag-red shrink-0">{{ labelNames[l.kind] }}</span>
                     <div class="min-w-0 flex-1 space-y-0.5">
                       <p class="text-meta text-muted">{{ labelSources[l.source] }} · {{ l.observed_on }}</p>
-                      <p class="whitespace-pre-wrap">{{ l.note || '无备注' }}</p>
+                      <p class="whitespace-pre-wrap" :class="l.note && 'said'">{{ l.note || '无备注' }}</p>
                     </div>
                     <UButton v-if="!customer.merged_into && can('customer.safety_label')" size="xs" color="error" variant="ghost" class="opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100" @click="revokeTarget = l">撤销</UButton>
                   </div>
@@ -523,15 +523,15 @@ onBeforeUnmount(() => {
             <CustomerDebts v-if="tab === 'debts'" :id="customer.id" :today="today" />
             <section v-if="tab === 'logs'">
               <div class="box overflow-hidden p-0" data-testid="customer-logs">
-                <p v-if="!logs.items.value.length" class="px-3 py-2.5 text-sm text-muted">暂无修改记录</p>
-                <div v-for="{ entry, changes } in logEntries" :key="entry.id" data-testid="customer-log-entry" class="space-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0">
+                <p v-if="!logs.items.value.length" class="px-3 py-2 text-sm text-muted">暂无修改记录</p>
+                <div v-for="{ entry, changes } in logEntries" :key="entry.id" data-testid="customer-log-entry" class="space-y-1 border-t border-default px-3 py-2 text-sm first:border-t-0">
                   <p class="flex flex-wrap items-center gap-x-2 text-meta text-muted">
                     <span class="font-medium text-default">{{ actions[entry.action] || entry.action }}</span>
                     <span>{{ entry.actor.name }}</span>
                     <span class="ms-auto tabular-nums">{{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</span>
                   </p>
                   <p v-for="change in changes" :key="change.label" data-testid="log-change">
-                    <span class="me-1.5 text-meta text-muted">{{ change.label }}</span>
+                    <span class="me-2 text-meta text-muted">{{ change.label }}</span>
                     <template v-if="change.before !== null">
                       <span class="sr-only">原为</span>
                       <span data-testid="log-before" class="text-muted line-through">{{ change.before }}</span>
@@ -542,7 +542,7 @@ onBeforeUnmount(() => {
                   </p>
                   <p v-if="!changes.length" class="text-muted">资料没有变化</p>
                 </div>
-                <div v-if="logs.hasMore.value" class="border-t border-default px-3 py-1.5">
+                <div v-if="logs.hasMore.value" class="border-t border-default px-3 py-2">
                   <UButton :loading="logs.loading.value" size="xs" color="neutral" variant="ghost" @click="logs.loadMore">加载更多</UButton>
                 </div>
               </div>

@@ -18,11 +18,11 @@ const shown = computed(() => {
 
 <template>
   <div v-if="total > 0" data-testid="report-mix">
-    <div class="mb-2 flex h-2.5 gap-0.5 overflow-hidden rounded-tag" aria-hidden="true">
+    <div class="mb-2 flex h-2.5 gap-0.5 overflow-hidden rounded-md" aria-hidden="true">
       <i v-for="(p, i) in shown" :key="i" :style="{ flexGrow: p.value, background: p.color }" />
     </div>
     <ul class="flex flex-wrap gap-x-4 gap-y-1 text-meta text-muted">
-      <li v-for="(p, i) in shown" :key="i" class="flex items-center gap-1.5">
+      <li v-for="(p, i) in shown" :key="i" class="flex items-center gap-2">
         <i class="size-2 rounded-full" :style="{ background: p.color }" aria-hidden="true" />{{ p.label }}<span class="text-default tabular-nums">{{ p.pct }}%</span>
       </li>
     </ul>

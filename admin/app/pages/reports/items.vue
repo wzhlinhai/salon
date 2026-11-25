@@ -105,7 +105,7 @@ function cell(value: string | number) {
           <table class="w-full text-sm tabular-nums" data-testid="item-table">
             <thead class="border-b border-default text-sm text-muted">
               <tr>
-                <th scope="col" class="sticky left-0 bg-page px-3 py-1.5 text-left font-normal">项目</th>
+                <th scope="col" class="sticky left-0 bg-page px-3 py-2 text-left font-normal">项目</th>
                 <th scope="col" class="px-3 text-right font-normal whitespace-nowrap">次数</th>
                 <th scope="col" class="px-3 text-right font-normal whitespace-nowrap">指定</th>
                 <th v-for="c in moneyColumns" :key="c.key" scope="col" class="px-3 text-right font-normal whitespace-nowrap">{{ c.label }}</th>
@@ -114,7 +114,7 @@ function cell(value: string | number) {
             <tbody>
               <tr v-for="row in rows" :key="row.item_id" class="border-t border-default" :data-item="row.item_name">
                 <th scope="row" class="sticky left-0 bg-page px-3 py-2 text-left font-normal whitespace-nowrap">
-                  {{ row.item_name }}<span v-if="row.item_kind === 'goods'" class="tag ms-1.5 bg-tag-gray">卖品</span>
+                  {{ row.item_name }}<span v-if="row.item_kind === 'goods'" class="tag ms-2 bg-tag-gray">卖品</span>
                 </th>
                 <td class="px-3 text-right" :class="cell(row.times)" data-col="times">{{ row.times }}</td>
                 <td class="px-3 text-right" :class="cell(row.designated)" data-col="designated">{{ row.designated }}</td>

@@ -137,7 +137,7 @@ function summary(g: components['schemas']['GrantSpec']) {
           <UButton size="sm" variant="ghost" color="error" :loading="removing[role.id]" @click="remove(role)">删除</UButton>
         </div>
       </div>
-      <p v-if="role.is_owner" class="mt-1.5 text-sm text-muted">老板拥有全部权限，包括以后新增的；不能修改。</p>
+      <p v-if="role.is_owner" class="mt-2 text-sm text-muted">老板拥有全部权限，包括以后新增的；不能修改。</p>
       <div v-else class="mt-2 flex flex-wrap gap-1">
         <span v-for="g in role.permissions" :key="g.permission" class="tag bg-tag-gray">{{ summary(g) }}</span>
         <span v-if="!role.permissions.length" class="text-sm text-muted">没有权限</span>

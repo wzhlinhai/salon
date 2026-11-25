@@ -202,7 +202,7 @@ defineExpose({ reload: load })
         </div>
       </div>
       <div v-for="row in lanes" :key="row.id" class="tl-row border-t border-default">
-        <div class="overflow-hidden pt-[9px] pr-2.5 leading-tight">
+        <div class="overflow-hidden pt-2 pr-2 leading-tight">
           <b v-if="!props.staffId" class="block truncate text-sm font-medium">{{ row.name }}</b>
         </div>
         <div class="relative">
@@ -216,18 +216,18 @@ defineExpose({ reload: load })
             v-for="block in row.blocks"
             :key="block.key"
             data-testid="timeline-block"
-            class="absolute top-[7px] bottom-[7px] overflow-hidden rounded px-2 py-1 text-xs leading-tight whitespace-nowrap shadow-line"
+            class="absolute top-[7px] bottom-[7px] overflow-hidden rounded-md px-2 py-1 text-xs leading-tight whitespace-nowrap shadow-line"
             :class="block.tone"
             :style="{ left: `${pct(block.start)}%`, width: `calc(${pct(block.end) - pct(block.start)}% - 3px)` }"
             :title="`${block.title} ${block.detail}`"
           >
             <template v-if="block.end - block.start < 0.75">
               <b class="block truncate font-medium">{{ block.short }}</b>
-              <small class="block truncate text-2xs text-muted">{{ block.category.slice(0, 1) }}</small>
+              <small class="block truncate text-xs text-muted">{{ block.category.slice(0, 1) }}</small>
             </template>
             <template v-else>
               <b class="block truncate font-medium">{{ block.title }}</b>
-              <small class="block truncate text-2xs text-muted">{{ block.detail }}</small>
+              <small class="block truncate text-xs text-muted">{{ block.detail }}</small>
             </template>
           </div>
         </div>
@@ -237,7 +237,7 @@ defineExpose({ reload: load })
         class="pointer-events-none absolute top-[22px] bottom-0 z-[2] w-0"
         :style="{ left: `calc(var(--who) + (100% - var(--who)) * ${pct(nowHour) / 100})` }"
       >
-        <span class="absolute -top-0.5 left-0 -translate-x-1/2 rounded-tag bg-ink-red px-1 text-2xs whitespace-nowrap text-white">{{ hhmm(nowHour) }}</span>
+        <span class="absolute -top-0.5 left-0 -translate-x-1/2 rounded-md bg-ink-red px-1 text-xs whitespace-nowrap text-white">{{ hhmm(nowHour) }}</span>
         <i class="absolute top-3.5 bottom-0 -left-px w-0.5 bg-ink-red" />
       </div>
     </div>

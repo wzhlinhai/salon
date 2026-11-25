@@ -145,10 +145,10 @@ async function saveRule() {
           v-for="item in items"
           :key="item.id"
           :data-card-type="item.name"
-          class="group/row flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0 hover:bg-hover"
+          class="group/row flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-default px-3 py-2 text-sm first:border-t-0 hover:bg-hover"
           :class="item.active ? '' : 'text-dimmed'"
         >
-          <div class="flex min-w-40 flex-1 items-center gap-1.5">
+          <div class="flex min-w-40 flex-1 items-center gap-2">
             <span class="font-medium">{{ item.name }}</span>
             <span class="tag bg-tag-gray">{{ kindItems.find(k => k.value === item.kind)?.label }}</span>
             <span v-if="!item.active" class="tag bg-tag-gray">停用</span>
@@ -165,12 +165,12 @@ async function saveRule() {
         <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto" @click="editRule(null)">新建升级规则</UButton>
       </div>
       <div class="overflow-x-auto">
-        <p v-if="!loading && !upgradeRules.length" class="px-3 py-2.5 text-sm text-muted">还没有升级规则。储值卡累计充值或消费到门槛后，可以自动升到更高的卡。</p>
+        <p v-if="!loading && !upgradeRules.length" class="px-3 py-2 text-sm text-muted">还没有升级规则。储值卡累计充值或消费到门槛后，可以自动升到更高的卡。</p>
         <div
           v-for="rule in upgradeRules"
           :key="rule.id"
           data-testid="upgrade-rule"
-          class="group/row flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0 hover:bg-hover"
+          class="group/row flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-default px-3 py-2 text-sm first:border-t-0 hover:bg-hover"
           :class="rule.active ? '' : 'text-dimmed'"
         >
           <span class="flex-1 font-medium">{{ rule.from_type_name }} → {{ rule.to_type_name }}</span>
@@ -216,9 +216,9 @@ async function saveRule() {
                 <UFormField label="赠送次数"><UInput v-model="row.gift_count" type="number" :min="0" /></UFormField>
                 <UFormField label="单次金额"><UInput v-model="row.unit_price" inputmode="decimal" /></UFormField>
               </div>
-              <UButton color="error" variant="ghost" class="-ms-2.5" @click="definition.splice(index, 1)">移除项目</UButton>
+              <UButton color="error" variant="ghost" class="-ms-2" @click="definition.splice(index, 1)">移除项目</UButton>
             </div>
-            <UButton color="neutral" icon="i-lucide-plus" class="-ms-2.5 self-start" :disabled="definition.length >= 20" variant="ghost" @click="definition.push({ item_id: '', paid_count: 1, gift_count: 0, unit_price: '0.00' })">添加项目</UButton>
+            <UButton color="neutral" icon="i-lucide-plus" class="-ms-2 self-start" :disabled="definition.length >= 20" variant="ghost" @click="definition.push({ item_id: '', paid_count: 1, gift_count: 0, unit_price: '0.00' })">添加项目</UButton>
             <p class="text-meta text-muted">次数售价 {{ countsPrice.toFixed(2) }}。编辑项目只影响以后开卡，已开卡保留原次数和单次金额。</p>
           </div>
           <div class="grid grid-cols-2 gap-4">

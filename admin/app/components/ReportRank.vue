@@ -8,7 +8,7 @@ const max = computed(() => Math.max(...props.rows.map(r => r.value), 0))
 
 <template>
   <ol v-if="max > 0" class="flex flex-col" data-testid="report-rank">
-    <li v-for="r in rows" :key="r.key" class="grid items-center gap-2.5 py-1" :class="avatar ? 'grid-cols-[24px_6rem_1fr_5.5rem]' : 'grid-cols-[7rem_1fr_5.5rem]'" :data-rank="r.name">
+    <li v-for="r in rows" :key="r.key" class="grid items-center gap-2 py-1" :class="avatar ? 'grid-cols-[24px_6rem_1fr_5.5rem]' : 'grid-cols-[7rem_1fr_5.5rem]'" :data-rank="r.name">
       <PersonAvatar v-if="avatar" :name="r.name" size="sm" />
       <span class="truncate">{{ r.name }}</span>
       <i class="h-1.5 rounded-full bg-dye-1 opacity-70" :style="{ width: `${Math.max(r.value, 0) / max * 100}%` }" aria-hidden="true" />

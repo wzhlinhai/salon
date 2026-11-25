@@ -111,8 +111,8 @@ defineExpose({ load })
   <section v-if="canGroupbuy" data-testid="unlinked-coupons">
     <h2 class="sec">未关联团购券<span class="ms-1 font-normal text-dimmed">{{ unlinked.length }}</span><span class="ms-auto text-meta font-normal text-dimmed">近 90 天</span></h2>
     <div class="border-y border-default">
-      <p v-if="!unlinked.length" class="px-3 py-2.5 text-sm text-muted">没有未关联的团购券</p>
-      <div v-for="row in unlinked" :key="row.id" class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0 hover:bg-hover">
+      <p v-if="!unlinked.length" class="px-3 py-2 text-sm text-muted">没有未关联的团购券</p>
+      <div v-for="row in unlinked" :key="row.id" class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-default px-3 py-2 text-sm first:border-t-0 hover:bg-hover">
         <span class="tag bg-tag-gray">{{ platformLabel(row.platform) }}</span>
         <span class="font-medium tabular-nums">{{ row.coupon_code }}</span>
         <span class="text-meta text-muted">{{ row.redeemed_at ? new Date(row.redeemed_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '' }}</span>

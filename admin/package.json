@@ -7,7 +7,7 @@
     "build": "nuxt build",
     "generate:api": "cd ../backend && go run ./cmd/salon openapi > ../admin/openapi.json && cd ../admin && openapi-typescript openapi.json -o app/utils/api.d.ts",
     "typecheck": "nuxt typecheck",
-    "lint": "eslint .",
+    "lint": "eslint . && node scripts/check-tokens.mjs",
     "lint:fix": "eslint . --fix",
     "postinstall": "nuxt prepare",
     "e2e": "playwright test"

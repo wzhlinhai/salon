@@ -4,7 +4,7 @@
 // size：sm 24px 用在窄行，默认 30px，lg 64px 用在档案页名字上方。
 defineProps<{ name: string, size?: 'sm' | 'lg' }>()
 
-const sizeClass = { sm: 'size-6 text-xs', lg: 'size-16 text-[26px]' }
+const sizeClass = { sm: 'size-6 text-xs', lg: 'size-16 text-figure' }
 </script>
 
 <template>

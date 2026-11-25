@@ -93,7 +93,7 @@ function save() {
           <div>
             <p class="mb-2 text-meta text-muted">默认顺序</p>
             <ol v-if="order.length" class="divide-y divide-default border-y border-default" data-testid="member-order">
-              <li v-for="(m, i) in order" :key="m.id" class="flex items-center gap-2 py-1.5">
+              <li v-for="(m, i) in order" :key="m.id" class="flex items-center gap-2 py-2">
                 <span class="w-5 text-end text-meta text-dimmed tabular-nums">{{ i + 1 }}</span>
                 <PersonAvatar :name="m.name" />
                 <span class="min-w-0 flex-1 truncate">{{ m.name }}</span>

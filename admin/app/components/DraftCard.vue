@@ -91,8 +91,8 @@ async function saveReject() {
 </script>
 
 <template>
-  <article data-testid="draft-card" :data-draft-id="current.id" class="box flex flex-col gap-1.5">
-    <header class="flex items-center gap-1.5 text-xs text-dimmed">
+  <article data-testid="draft-card" :data-draft-id="current.id" class="box flex flex-col gap-2">
+    <header class="flex items-center gap-2 text-xs text-dimmed">
       <span class="tag shrink-0 bg-ai-soft text-ai">AI 起草</span>
       <span class="min-w-0 truncate"><span data-testid="draft-initiator">{{ staffName(current.initiator) }}</span>说 · <span class="tabular-nums">{{ formatStamp(props.draft.created_at) }}</span></span>
       <span v-if="!isPending" class="tag ms-auto shrink-0" :class="statusBadge.tone">{{ statusBadge.label }}</span>
@@ -101,7 +101,7 @@ async function saveReject() {
     <button
       type="button"
       data-testid="draft-summary"
-      class="block w-full text-left text-lead font-semibold text-pretty hover:underline"
+      class="block w-full text-left text-sm font-semibold text-pretty hover:underline"
       @click="emit('open', props.draft.id)"
     >
       {{ props.draft.summary }}
@@ -109,14 +109,14 @@ async function saveReject() {
 
     <p v-if="props.draft.utterance" data-testid="draft-utterance" class="text-xs text-muted text-pretty">“{{ props.draft.utterance }}”</p>
 
-    <ul v-if="previewLines.length" class="space-y-0.5 rounded-md bg-elevated px-2 py-1.5 text-meta text-muted">
+    <ul v-if="previewLines.length" class="space-y-0.5 rounded-md bg-elevated px-2 py-2 text-meta text-muted">
       <li v-for="(line, index) in previewLines" :key="index" class="flex gap-2">
         <span class="truncate font-medium text-default">{{ line.item_name }}</span>
         <span class="truncate">{{ line.staff.map(s => s.staff_name).join('、') }}</span>
         <span class="ms-auto tabular-nums text-default">{{ yuanFixed(line.price) }}</span>
       </li>
     </ul>
-    <p v-if="previewError" class="rounded-md bg-tag-yellow/60 px-2 py-1.5 text-meta">{{ previewError }}</p>
+    <p v-if="previewError" class="rounded-md bg-tag-yellow/60 px-2 py-2 text-meta">{{ previewError }}</p>
     <p v-if="current.status === 'rejected' && current.reject_reason" class="text-meta text-muted">
       拒绝原因：{{ current.reject_reason }}
     </p>
@@ -124,7 +124,7 @@ async function saveReject() {
     <p v-if="stale" class="mt-auto text-meta text-ink-yellow" data-testid="draft-stale">
       这张草稿已经改过，<ULink to="/drafts" class="underline">到待确认里看最新内容</ULink>再确认。
     </p>
-    <footer v-else-if="isPending" class="mt-auto flex items-center gap-1.5 pt-1">
+    <footer v-else-if="isPending" class="mt-auto flex items-center gap-2 pt-1">
       <UButton color="neutral" :loading="confirming" data-testid="draft-confirm" class="min-h-8 px-3" @click="confirm">确认</UButton>
       <UButton color="neutral" variant="outline" data-testid="draft-modify" class="min-h-8 px-3" @click="modify">修改</UButton>
       <UButton color="neutral" variant="outline" data-testid="draft-reject" class="min-h-8 px-3" @click="beginReject">拒绝</UButton>

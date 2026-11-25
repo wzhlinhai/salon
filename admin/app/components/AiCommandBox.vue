@@ -23,9 +23,9 @@ function submit(event: KeyboardEvent) {
 
 <template>
   <div
-    class="mx-auto w-full max-w-[720px] rounded-card bg-white py-3 pr-3 pl-4 shadow-float focus-within:ring-2 focus-within:ring-primary"
+    class="mx-auto w-full max-w-[720px] rounded-card bg-white py-3 pr-3 pl-4 shadow-lift focus-within:ring-2 focus-within:ring-primary"
   >
-    <div class="flex min-h-10 items-center gap-2.5">
+    <div class="flex min-h-10 items-center gap-2">
       <UIcon name="i-lucide-search" class="size-5 shrink-0 text-dimmed" aria-hidden="true" />
       <input
         v-model="text"
@@ -33,10 +33,10 @@ function submit(event: KeyboardEvent) {
         :placeholder="placeholder ?? '说一句要做的事，或搜索顾客、预约…'"
         aria-label="吩咐 AI"
         data-testid="ai-command"
-        class="min-w-0 flex-1 bg-transparent text-lead outline-none placeholder:text-dimmed"
+        class="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-dimmed"
         @keydown.enter.prevent="submit"
       >
-      <kbd class="hidden rounded border border-default px-1.5 font-mono text-2xs text-dimmed sm:inline">Ctrl K</kbd>
+      <kbd class="hidden rounded-md border border-default px-2 font-mono text-xs text-dimmed sm:inline">Ctrl K</kbd>
       <button
         type="button"
         aria-label="发送"
@@ -46,12 +46,12 @@ function submit(event: KeyboardEvent) {
         <UIcon name="i-lucide-arrow-up" class="size-5" />
       </button>
     </div>
-    <div v-if="props.suggestions?.length" class="mt-2 flex flex-wrap gap-1.5" data-testid="ai-suggestions">
+    <div v-if="props.suggestions?.length" class="mt-2 flex flex-wrap gap-2" data-testid="ai-suggestions">
       <button
         v-for="said in props.suggestions"
         :key="said"
         type="button"
-        class="min-h-6 rounded-full bg-elevated px-2.5 py-1 text-meta text-muted hover:bg-accented"
+        class="min-h-6 rounded-full bg-elevated px-2 py-1 text-meta text-muted hover:bg-accented"
         @click="ask(said)"
       >
         {{ said }}
