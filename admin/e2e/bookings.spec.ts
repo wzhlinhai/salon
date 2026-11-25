@@ -484,6 +484,9 @@ test('详情窗口丢弃切换到另一条预约后的旧响应', async ({ page 
   await page.waitForTimeout(500)
   await expect(dialog.locator('[data-detail-customer]')).toHaveText(secondCustomer.customer.name)
   await expect(dialog.locator('[data-appointment-detail]')).toHaveAttribute('data-detail-id', second.id)
+  // 详情里点顾客名弹小卡片，看上次做了什么。
+  await dialog.locator('[data-detail-customer]').click()
+  await expect(page.getByTestId('customer-peek')).toContainText(secondCustomer.customer.name)
 })
 
 async function selfBookable(token: string, staffID: string) {

@@ -12,6 +12,7 @@ type StaffOption = components['schemas']['StaffOption']
 
 const api = useApi()
 const toast = useToast()
+const { can } = useMe()
 
 const SLOT_MINUTES = 15
 const SLOT_HEIGHT = 24
@@ -856,7 +857,12 @@ function actorLabel(actor: Actor) {
           <div class="grid grid-cols-2 gap-2 text-sm">
             <p>类型：{{ kindLabels[detail.kind] }}</p>
             <p>状态：{{ statusLabels[detail.status] }}</p>
-            <p class="col-span-2">顾客：<span data-detail-customer>{{ detail.kind === 'block' ? '私约占位' : (detail.customer?.name ?? '未识别顾客') }}</span><span v-if="detail.customer?.phone"> · {{ detail.customer.phone }}</span></p>
+            <p class="col-span-2">
+              顾客：<CustomerPeek v-if="detail.kind !== 'block' && detail.customer?.name && can('customer.view')" :customer-id="detail.customer.id">
+                <button type="button" class="hover:underline" data-detail-customer>{{ detail.customer.name }}</button>
+              </CustomerPeek>
+              <span v-else data-detail-customer>{{ detail.kind === 'block' ? '私约占位' : (detail.customer?.name ?? '未识别顾客') }}</span><span v-if="detail.customer?.phone"> · {{ detail.customer.phone }}</span>
+            </p>
             <p>发型师：{{ detail.staff.name }}</p>
             <p data-detail-created-by :data-actor-kind="detail.created_by.kind">创建人：{{ actorLabel(detail.created_by) }}</p>
             <p>开始：{{ dateTimeText(detail.starts_at) }}</p>

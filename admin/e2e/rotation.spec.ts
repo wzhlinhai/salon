@@ -212,4 +212,7 @@ test('今天的轮次写出接的是哪位顾客：结账后照样写，点客�
   await expect(rounds).toContainText(item.name)
   await expect(onDuty(page, b!.name)).toContainText('今天 1 位 · 点 1')
   await expect(onDuty(page, b!.name)).toContainText('等着')
+  // 点顾客名弹小卡片。
+  await rounds.getByRole('button', { name: customerName }).click()
+  await expect(page.getByTestId('customer-peek')).toContainText(customerName)
 })

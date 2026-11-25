@@ -395,7 +395,13 @@ function customerOf(order: Order | null) {
 function roundText(r: Round) {
   const order = orderOf(r.orderId)
   const name = customerOf(order)
-  return { who: name ? `接 ${name}` : '接客', items: order ? orderItemNames(order).replaceAll('、', ' · ') : '' }
+  return { who: name ? `接 ${name}` : '接客', name, items: order ? orderItemNames(order).replaceAll('、', ' · ') : '' }
+}
+
+// 认得出的顾客点名字弹小卡片（样稿 26）；散客没有档案可看。
+function peekId(r: Round) {
+  const order = orderOf(r.orderId)
+  return order && can('customer.view') && customerNames.value[order.customer_id] && customerNames.value[order.customer_id] !== '散客' ? order.customer_id : null
 }
 
 // 椅子上那一行：在做的写做谁，其余写在干什么。
@@ -653,7 +659,15 @@ function onMembersSaved() {
               <span class="rail" aria-hidden="true"><i /></span>
               <PersonAvatar :name="r.staff.name" size="sm" />
               <span class="min-w-0 truncate" :title="`${r.staff.name} ${roundText(r).who} ${roundText(r).items}`">
-                {{ who(r.staff) }} {{ roundText(r).who }}<span v-if="roundText(r).items" class="ms-2 text-muted">{{ roundText(r).items }}</span>
+                {{ who(r.staff) }}
+                <template v-if="peekId(r)">
+                  接
+                  <CustomerPeek :customer-id="peekId(r)!">
+                    <button type="button" class="hover:underline">{{ roundText(r).name }}</button>
+                  </CustomerPeek>
+                </template>
+                <template v-else>{{ roundText(r).who }}</template>
+                <span v-if="roundText(r).items" class="ms-2 text-muted">{{ roundText(r).items }}</span>
               </span>
               <span class="tag bg-tag-gray"><span class="sr-only">{{ r.designated ? '点客' : '轮到的' }}</span><span aria-hidden="true">{{ r.designated ? '点' : '轮' }}</span></span>
             </li>
