@@ -33,21 +33,37 @@ const eventLabels: Record<AppointmentEvent['kind'], string> = {
   cancel: '取消',
   no_show: '爽约'
 }
-// 预约块照首页时间轴：平时全白，正在做的灰底黑框；状态用描边和文字区分，不只靠颜色（DESIGN.md「颜色只留给有事的东西」）。
-const statusStyles: Record<Appointment['status'], string> = {
-  pending: 'ring-pending',
-  confirmed: '',
-  completed: 'opacity-60',
-  cancelled: '!bg-white text-dimmed line-through shadow-line',
-  no_show: 'ring-alert'
-}
 
+// 预约块（样稿 03）：平时全白；正在做的灰底、左边一道墨线；过了开始时间还没开单的黄底，写「打个电话」；做完的淡下去。
+// 状态同时写在块里的文字上，不只靠颜色（DESIGN.md「颜色只留给有事的东西」）。
 function entryClass(entry: Appointment) {
   if (entry.kind === 'block') return 'hatch text-muted shadow-line'
-  if (entry.order_id && entry.status !== 'completed') return 'bg-elevated ring-serving'
-  // 状态描边也是 box-shadow，细灰边只给没有描边的状态，免得互相盖掉。
-  const status = statusStyles[entry.status]
-  return `bg-white ${status.includes('ring-') ? status : `shadow-line ${status}`}`
+  if (entry.order_id && entry.status !== 'completed') return 'entry entry-serving'
+  if (lateMinutes(entry)) return 'entry entry-late'
+  if (entry.status === 'pending') return 'entry bg-white ring-pending'
+  if (entry.status === 'no_show') return 'entry bg-white ring-alert'
+  if (entry.status === 'cancelled') return 'entry bg-white text-dimmed line-through'
+  if (entry.status === 'completed') return 'entry bg-white text-muted'
+  return 'entry bg-white'
+}
+
+// 过了开始时间 5 分钟还没开单的（只看今天），和首页「接下来」同一个口径。
+function lateMinutes(entry: Appointment) {
+  if (entry.kind !== 'appointment' || entry.order_id || day.value !== businessDate.value) return 0
+  if (entry.status !== 'pending' && entry.status !== 'confirmed') return 0
+  const late = Math.floor((nowClock.value - new Date(entry.starts_at).getTime()) / 60_000)
+  return late > 5 ? late : 0
+}
+
+// 块里第二行：项目 · 现在怎样（确认过、还没到点的不写状态）；私约占位写备注。
+function entryLine(entry: Appointment) {
+  if (entry.kind === 'block') return entry.note ?? ''
+  let state = ''
+  if (entry.order_id && entry.status !== 'completed') state = '正在做'
+  else if (lateMinutes(entry)) state = '打个电话'
+  else if (entry.status === 'completed') state = entry.order_id ? '已结账' : '完成'
+  else if (entry.status !== 'confirmed') state = statusLabels[entry.status]
+  return [entryItems(entry), state].filter(Boolean).join(' · ')
 }
 
 const cancelReasonItems = [
@@ -131,6 +147,10 @@ const staffColumns = computed(() => {
 const bookableItems = computed(() => items.value.filter(item => item.active && item.kind === 'service' && item.bookable))
 const activeStaffItems = computed(() => staff.value.filter(person => person.active).map(person => ({ label: person.name, value: person.id })))
 
+// 页头的「约了 N 位 · N 位没到」：没取消的预约，私约占位不算。
+const dayBooked = computed(() => [...bookedCount.value.values()].reduce((sum, n) => sum + n, 0))
+const dayLate = computed(() => entries.value.filter(entry => lateMinutes(entry)).length)
+
 // 列头的「N 约」：这位员工当天没取消的预约数，私约占位不算。
 const bookedCount = computed(() => {
   const counts = new Map<string, number>()
@@ -155,11 +175,13 @@ function entryStyle(entry: Appointment) {
 
 function entryTitle(entry: Appointment) {
   if (entry.kind === 'block') return '私约占位'
-  return entry.customer?.name ?? '未识别顾客'
+  const late = lateMinutes(entry)
+  const name = entry.customer?.name ?? '未识别顾客'
+  return late ? `${name} · 过了 ${late} 分钟没到` : name
 }
 
 function entryItems(entry: Appointment) {
-  return entry.items.map(item => item.name).join('、')
+  return entry.items.map(item => item.name).join(' + ')
 }
 
 async function loadOptions() {
@@ -234,6 +256,7 @@ const nowTop = computed(() => {
   if (minutes < openMinutes.value || minutes >= closeMinutes.value) return null
   return ((minutes - openMinutes.value) / SLOT_MINUTES) * SLOT_HEIGHT
 })
+const nowText = computed(() => clockOf(new Date(nowClock.value).toISOString()))
 const grid = useTemplateRef<HTMLElement>('grid')
 let scrolledFor = ''
 watch(loading, async (busy) => {
@@ -652,7 +675,11 @@ function actorLabel(actor: Actor) {
         <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" aria-label="前一天" @click="moveDay(-1)" />
         <UButton icon="i-lucide-chevron-right" color="neutral" variant="ghost" aria-label="后一天" @click="moveDay(1)" />
       </div>
-      <h2 class="text-base font-semibold" data-testid="booking-day-title">{{ dayTitle }}</h2>
+      <h2 class="figure" data-testid="booking-day-title">{{ dayTitle }}</h2>
+      <p class="flex items-center gap-2 text-meta text-muted tabular-nums" data-testid="booking-day-summary">
+        {{ dayBooked ? `约了 ${dayBooked} 位` : '还没有人约' }}
+        <span v-if="dayLate" class="tag bg-tag-yellow">{{ dayLate }} 位没到</span>
+      </p>
       <span v-if="day && day === businessDate" class="tag bg-tag-gray">今天</span>
       <UButton v-else color="neutral" variant="outline" size="sm" @click="goToday">今天</UButton>
       <DateInput v-model="day" size="sm" aria-label="营业日" class="ms-2 w-36" />
@@ -668,6 +695,7 @@ function actorLabel(actor: Actor) {
         <div class="w-14 shrink-0">
           <div class="sticky top-0 z-20 h-11 border-b border-default bg-white" />
           <div class="relative" :style="{ height: `${gridHeight}px` }">
+            <div v-if="nowTop !== null" class="absolute right-2 z-10 -translate-y-1/2 bg-white text-xs font-medium text-ink-red tabular-nums" :style="{ top: `${nowTop}px` }" data-testid="booking-now">{{ nowText }}</div>
             <div
               v-for="slot in hourSlots"
               :key="slot.minutes"
@@ -700,12 +728,13 @@ function actorLabel(actor: Actor) {
                 @click="chooseSlot(person.id, slot.label)"
               />
             </template>
-            <div v-if="nowTop !== null" class="pointer-events-none absolute inset-x-0 z-10 border-t-2 border-ink-red" :style="{ top: `${nowTop}px` }" aria-hidden="true" />
+            <div v-if="nowTop !== null" class="pointer-events-none absolute inset-x-0 z-10 border-t border-ink-red" :style="{ top: `${nowTop}px` }" aria-hidden="true" />
             <button
               v-for="entry in visibleEntries(person.id)"
               :key="entry.id"
               type="button"
-              class="absolute inset-x-1 z-10 flex flex-col justify-start overflow-hidden rounded-md px-2 py-0.5 text-left text-xs text-ink"
+              class="absolute inset-x-1 z-10 flex flex-col justify-start overflow-hidden rounded-md px-2 py-1 text-left text-xs text-ink"
+              :title="`${clockOf(entry.starts_at)}–${clockOf(entry.ends_at)}`"
               :class="entryClass(entry)"
               :style="entryStyle(entry)"
               :data-entry="entry.id"
@@ -713,9 +742,9 @@ function actorLabel(actor: Actor) {
               :data-entry-kind="entry.kind"
               @click.stop="openDetail(entry)"
             >
-              <span class="block truncate font-medium">{{ entryTitle(entry) }}</span>
-              <span class="block truncate tabular-nums" :class="entry.status === 'no_show' ? 'text-ink-red' : 'text-muted'">{{ clockOf(entry.starts_at) }}–{{ clockOf(entry.ends_at) }} · {{ statusLabels[entry.status] }}</span>
-              <span v-if="entry.items.length" class="block truncate text-muted">{{ entryItems(entry) }}</span>
+              <span class="block truncate text-sm font-medium">{{ entryTitle(entry) }}</span>
+              <span v-if="entryLine(entry)" class="block truncate" :class="entry.status === 'no_show' ? 'text-ink-red' : 'text-muted'">{{ entryLine(entry) }}</span>
+              <span class="sr-only">{{ clockOf(entry.starts_at) }}–{{ clockOf(entry.ends_at) }} · {{ statusLabels[entry.status] }}</span>
             </button>
           </div>
         </div>
@@ -913,3 +942,20 @@ function actorLabel(actor: Actor) {
     </UModal>
   </div>
 </template>
+
+<style scoped>
+/* 预约块：细边，左边一道竖线标状态（平时浅灰，正在做墨色，没到黄色）。 */
+.entry {
+  box-shadow: var(--shadow-line), inset 2px 0 0 var(--ui-border-accented);
+}
+
+.entry-serving {
+  background: var(--ui-bg-elevated);
+  box-shadow: var(--shadow-line), inset 3px 0 0 var(--color-ink);
+}
+
+.entry-late {
+  background: var(--color-tag-yellow);
+  box-shadow: inset 3px 0 0 var(--color-ink-yellow);
+}
+</style>
