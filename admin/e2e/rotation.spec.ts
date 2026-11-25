@@ -40,7 +40,7 @@ test('前台按到岗、轮牌接客、点客、撤销、跳过和休息走完�
   await expect(page.getByTestId('next-up')).toHaveText(b!.name)
 
   await onDuty(page, c!.name).getByRole('button', { name: '点客' }).click()
-  await expect(onDuty(page, c!.name)).toContainText('服务中 · 点客')
+  await expect(onDuty(page, c!.name)).toContainText('在做 · 点客')
   await onDuty(page, c!.name).getByRole('button', { name: '撤销接客' }).click()
   await expect(onDuty(page, c!.name)).toHaveAttribute('data-status', 'waiting')
 
@@ -74,6 +74,12 @@ test('前台按到岗、轮牌接客、点客、撤销、跳过和休息走完�
   await expect(events).toContainText(`${c!.name} 临时休息 15 分钟`)
   await expect(events).toContainText(`${c!.name} 撤销接客，不算一轮`)
   await expect(events).toContainText(`${a!.name} 轮牌接客`)
+  // 今天的轮次只记真接了的：撤销掉的点客不算，椅子上的计数跟着。
+  const rounds = page.getByTestId('rotation-rounds')
+  await expect(rounds.locator('li')).toHaveCount(1)
+  await expect(rounds).toContainText(`${a!.name} 接客`)
+  await expect(onDuty(page, a!.name)).toContainText('今天 1 位 · 轮 1')
+  await expect(onDuty(page, c!.name)).toContainText('今天还没接')
 })
 
 test('调整顺序要写原因，盖牌后不能点客、取消盖牌恢复，离岗回到未到岗', async ({ page }) => {

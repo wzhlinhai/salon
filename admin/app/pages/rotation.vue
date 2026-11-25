@@ -126,10 +126,6 @@ const offDuty = computed(() => {
   const absent = [...(queue.value?.members ?? [])].sort((a, b) => a.sort_order - b.sort_order).map(m => m.staff).filter(s => !listed.has(s.id) && (activeStaff.value?.has(s.id) ?? true))
   return [...off, ...absent]
 })
-const counts = computed(() => ({
-  serving: onDuty.value.filter(t => t.status === 'serving').length,
-  away: onDuty.value.filter(t => t.status === 'resting' || t.status === 'covered').length
-}))
 
 // ---- 操作 ----
 const busy = ref(false)
@@ -298,9 +294,113 @@ async function loadEvents() {
   const { data } = await api.POST('/api/ops/list_rotation_events', { body: { queue_id: id, from: day, to: day } })
   if (!request() || !data || id !== queueId.value) return
   events.value = [...data.entries].sort((a, b) => b.created_at.localeCompare(a.created_at))
+  void loadOrders()
 }
 
 const shownEvents = computed(() => showAllEvents.value ? events.value : events.value.slice(0, 8))
+
+// ---- 今天的轮次（样稿 04）：谁接了谁，轮到的还是点的 ----
+// 撤销接客抵掉这人上一次接客。接的是哪位顾客：这人接客之后第一次结账记下的单；还在做的，找他名下最近开的挂单。
+type Order = components['schemas']['Order']
+interface Round { id: string, at: string, staff: RotationEvent['staff'], designated: boolean, orderId: string | null }
+
+const rounds = computed<Round[]>(() => {
+  const asc = [...events.value].reverse()
+  const kept: Round[] = []
+  const stacks: Record<string, Round[]> = {}
+  for (const e of asc) {
+    const stack = (stacks[e.staff.id] ??= [])
+    if (e.kind === 'assign') {
+      const round = { id: e.id, at: e.created_at, staff: e.staff, designated: !!e.designated, orderId: e.order_id }
+      stack.push(round)
+      kept.push(round)
+    } else if (e.kind === 'release') {
+      const dropped = stack.pop()
+      if (dropped) kept.splice(kept.indexOf(dropped), 1)
+    } else if (e.order_id && e.kind.startsWith('advance')) {
+      const open = stack.findLast(r => !r.orderId)
+      if (open) open.orderId = e.order_id
+    }
+  }
+  for (const turn of onDuty.value) {
+    if (turn.status !== 'serving') continue
+    const last = stacks[turn.staff.id]?.at(-1)
+    if (last && !last.orderId) last.orderId = turn.serving_order_id ?? servingOrder(turn.staff.id, last.at)?.id ?? null
+  }
+  return kept.reverse()
+})
+
+// 每人今天接了几位：轮到的和点的分开数。
+const tally = computed(() => {
+  const out: Record<string, { round: number, designated: number }> = {}
+  for (const r of rounds.value) {
+    const row = (out[r.staff.id] ??= { round: 0, designated: 0 })
+    if (r.designated) row.designated++
+    else row.round++
+  }
+  return out
+})
+
+function tallyText(staffId: string) {
+  const row = tally.value[staffId]
+  if (!row) return '今天还没接'
+  return [`今天 ${row.round + row.designated} 位`, row.round && `轮 ${row.round}`, row.designated && `点 ${row.designated}`].filter(Boolean).join(' · ')
+}
+
+const canOrders = computed(() => can('order.create'))
+const orders = ref<Order[]>([])
+const customerNames = ref<Record<string, string>>({})
+const ordersGuard = useRequestGuard()
+
+// 和轮牌一起刷新；没有开单权限的只写「接客」，不写接的是谁。
+async function loadOrders() {
+  if (!canOrders.value) return
+  const request = ordersGuard.next()
+  const [open, done] = await Promise.all([
+    api.POST('/api/ops/list_open_orders', { body: {} }),
+    api.POST('/api/ops/list_orders', { body: { limit: 200 } })
+  ])
+  if (!request() || !open.data) return
+  orders.value = [...open.data.items, ...(done.data?.items ?? [])]
+  if (!can('customer.view')) return
+  const ids = [...new Set(orders.value.map(o => o.customer_id))].filter(id => !(id in customerNames.value))
+  const found = await Promise.all(ids.map(id => api.POST('/api/ops/get_customer', { body: { id } })))
+  for (const { data } of found) {
+    if (data) customerNames.value[data.id] = data.unidentified ? '散客' : (data.name || '未留名顾客')
+  }
+}
+
+function servingOrder(staffId: string, since: string) {
+  return orders.value
+    .filter(o => o.status === 'open' && o.opened_at >= since && o.items.some(i => !i.removed_at && i.positions.some(p => p.staff_id === staffId)))
+    .sort((a, b) => a.opened_at.localeCompare(b.opened_at))[0] ?? null
+}
+
+function orderOf(id: string | null) {
+  return id ? orders.value.find(o => o.id === id) ?? null : null
+}
+
+function customerOf(order: Order | null) {
+  return order ? customerNames.value[order.customer_id] ?? '' : ''
+}
+
+function roundText(r: Round) {
+  const order = orderOf(r.orderId)
+  const name = customerOf(order)
+  return { who: name ? `接 ${name}` : '接客', items: order ? orderItemNames(order).replaceAll('、', ' · ') : '' }
+}
+
+// 椅子上那一行：在做的写做谁，其余写在干什么。
+function doingText(t: Turn) {
+  if (t.status === 'serving') {
+    const last = rounds.value.find(r => r.staff.id === t.staff.id)
+    const name = customerOf(orderOf(last?.orderId ?? null))
+    return [name ? `做${name}` : '在做', t.serving_designated && '点客'].filter(Boolean).join(' · ')
+  }
+  if (t.status === 'resting') return `休息到 ${formatAttendanceTime(t.rest_until)}`
+  if (t.status === 'covered') return '盖牌'
+  return '等着'
+}
 
 function eventText(e: RotationEvent): string {
   const reason = e.reason ? `（${e.reason}${e.note ? `：${e.note}` : ''}）` : ''
@@ -430,18 +530,6 @@ const settingsMenu = computed<DropdownMenuItem[][]>(() => {
 function onMembersSaved() {
   loadQueues().then(() => loadRotation(true))
 }
-
-function statusClass(t: Turn) {
-  // 正在做的墨色加粗，其余灰：颜色只留给有事的东西（DESIGN.md）。
-  return t.status === 'serving' ? 'bg-tag-gray font-semibold' : 'bg-tag-gray'
-}
-
-function statusText(t: Turn) {
-  if (t.status === 'serving') return t.serving_designated ? '服务中 · 点客' : '服务中'
-  if (t.status === 'resting') return `休息到 ${formatAttendanceTime(t.rest_until)}`
-  if (t.status === 'covered') return '盖牌'
-  return ''
-}
 </script>
 
 <template>
@@ -452,16 +540,6 @@ function statusText(t: Turn) {
       <UDropdownMenu v-if="canOperate" :items="settingsMenu" :content="{ align: 'end' }">
         <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-ellipsis" aria-label="队列设置" />
       </UDropdownMenu>
-      <UButton
-        v-if="canOperate && queue"
-        size="sm"
-        icon="i-lucide-user-check"
-        :disabled="!nextUp || busy"
-        data-testid="assign-next"
-        @click="assignNext"
-      >
-        轮牌接客
-      </UButton>
     </PageActions>
 
     <ListSkeleton v-if="!queuesLoaded" />
@@ -483,89 +561,113 @@ function statusText(t: Turn) {
         @update:model-value="pickQueue"
       />
 
-      <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1" data-testid="rotation-summary">
-        <p v-if="nextUp" class="text-sm">下一位：<b data-testid="next-up">{{ who(nextUp.staff) }}</b></p>
-        <p v-else-if="rotation" class="text-sm text-muted">现在没有人在等，{{ onDuty.length ? '等有人空下来' : '员工到岗后点「到岗」上牌' }}</p>
-        <p class="ms-auto text-meta text-dimmed">等待 {{ waiting.length }} 人 · 服务中 {{ counts.serving }} 人<template v-if="counts.away"> · 休息或盖牌 {{ counts.away }} 人</template></p>
-      </div>
+      <p v-if="rotation && !nextUp" class="text-sm text-muted">现在没有人在等，{{ onDuty.length ? '等有人空下来' : '员工到岗后点「到岗」上牌' }}</p>
 
       <ListSkeleton v-if="rotationLoading && !rotation" />
 
       <template v-else-if="rotation">
-        <section>
-          <div class="sec">在岗 <span class="font-normal text-dimmed">{{ onDuty.length }}</span></div>
-          <ol v-if="onDuty.length" class="border-y border-default divide-y divide-default" data-testid="on-duty">
+        <!-- 一排椅子（样稿 04）：按轮牌顺序，轮到的描黑边；没到岗的排在后面，淡一层。 -->
+        <div class="chairs">
+          <ol v-if="onDuty.length" class="contents" data-testid="on-duty">
             <li
               v-for="(t, i) in onDuty"
               :key="t.staff.id"
-              class="group/row flex min-h-14 items-center gap-3 px-3 py-2 hover:bg-hover"
+              class="chair"
+              :class="t === nextUp && 'chair-next'"
               :data-staff="t.staff.name"
               :data-status="t.status"
             >
-              <span class="w-6 text-end text-meta text-dimmed tabular-nums">{{ i + 1 }}</span>
-              <PersonAvatar :name="t.staff.name" />
-              <div class="min-w-0 flex-1">
-                <span class="font-medium">{{ who(t.staff) }}</span>
-                <span v-if="t === nextUp" class="ms-2 text-meta font-semibold">下一位</span>
-                <span v-else-if="statusText(t)" class="tag ms-2" :class="statusClass(t)">{{ statusText(t) }}</span>
-                <span v-if="t.half_pending" class="ms-2 text-meta text-dimmed">已记半轮</span>
+              <div class="flex h-7 items-center justify-between gap-2">
+                <p class="text-meta text-muted">第 {{ i + 1 }} 位<template v-if="t === nextUp"> · 轮到</template></p>
+                <UDropdownMenu v-if="canOperate && rowActions(t)[0]!.length" :items="rowActions(t)" :content="{ align: 'end' }">
+                  <UButton
+                    size="sm"
+                    color="neutral"
+                    variant="ghost"
+                    icon="i-lucide-ellipsis"
+                    class="-me-2"
+                    :aria-label="`${t.staff.name} 的操作`"
+                    :disabled="busy"
+                  />
+                </UDropdownMenu>
               </div>
-              <template v-if="canOperate">
-                <UButton v-if="t.status === 'waiting'" size="sm" color="neutral" variant="outline" :disabled="busy" @click="designate(t)">点客</UButton>
-                <UButton v-else-if="t.status === 'serving'" size="sm" color="neutral" variant="ghost" :disabled="busy" @click="release(t)">撤销接客</UButton>
-                <UButton v-else-if="t.status === 'resting'" size="sm" color="neutral" variant="outline" :disabled="busy" @click="endRest(t)">结束休息</UButton>
-                <UButton v-else-if="t.status === 'covered'" size="sm" color="neutral" variant="outline" :disabled="busy" @click="uncover(t)">取消盖牌</UButton>
-                <div class="flex w-8 shrink-0 justify-end">
-                  <UDropdownMenu v-if="rowActions(t)[0]!.length" :items="rowActions(t)" :content="{ align: 'end' }">
-                    <UButton
-                      size="sm"
-                      color="neutral"
-                      variant="ghost"
-                      icon="i-lucide-ellipsis"
-                      :aria-label="`${t.staff.name} 的操作`"
-                      :disabled="busy"
-                      class="opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 any-pointer-coarse:opacity-100"
-                    />
-                  </UDropdownMenu>
+              <div class="mt-2 flex items-center gap-3">
+                <PersonAvatar :name="t.staff.name" size="md" />
+                <div class="min-w-0">
+                  <p class="truncate text-base font-semibold" :data-testid="t === nextUp ? 'next-up' : undefined">{{ who(t.staff) }}</p>
+                  <p class="truncate text-meta text-muted tabular-nums">{{ tallyText(t.staff.id) }}</p>
                 </div>
-              </template>
+              </div>
+              <p class="mt-3 text-sm" :class="t.status === 'serving' ? 'text-default' : 'text-muted'">
+                {{ doingText(t) }}<span v-if="t.half_pending" class="text-dimmed"> · 已记半轮</span>
+              </p>
+              <div v-if="canOperate" class="mt-auto flex items-center gap-2 pt-4">
+                <template v-if="t === nextUp">
+                  <UButton size="lg" class="flex-1 justify-center whitespace-nowrap" :disabled="busy" data-testid="assign-next" @click="assignNext">接散客</UButton>
+                  <UButton size="lg" color="neutral" variant="outline" class="whitespace-nowrap" :disabled="busy" @click="askSkip(t)">跳过…</UButton>
+                </template>
+                <UButton v-else-if="t.status === 'waiting'" color="neutral" variant="outline" :disabled="busy" @click="designate(t)">点客</UButton>
+                <UButton v-else-if="t.status === 'serving'" color="neutral" variant="ghost" :disabled="busy" @click="release(t)">撤销接客</UButton>
+                <UButton v-else-if="t.status === 'resting'" color="neutral" variant="outline" :disabled="busy" @click="endRest(t)">结束休息</UButton>
+                <UButton v-else-if="t.status === 'covered'" color="neutral" variant="outline" :disabled="busy" @click="uncover(t)">取消盖牌</UButton>
+              </div>
             </li>
           </ol>
-          <EmptyState v-else-if="offDuty.length" icon="i-lucide-user-check" title="还没有人上牌" hint="员工到店后在下面点「到岗」" />
-        </section>
-
-        <section v-if="offDuty.length">
-          <div class="sec">未到岗 <span class="font-normal text-dimmed">{{ offDuty.length }}</span></div>
-          <ul class="border-y border-default divide-y divide-default" data-testid="off-duty">
-            <li v-for="s in offDuty" :key="s.id" class="flex items-center gap-3 px-3 py-2 hover:bg-hover" :data-staff="s.name">
-              <span class="w-6" aria-hidden="true" />
-              <PersonAvatar :name="s.name" />
-              <span class="min-w-0 flex-1 text-muted">{{ who(s) }}</span>
-              <UButton v-if="canOperate" size="sm" color="neutral" variant="outline" :disabled="busy" @click="join(s)">到岗</UButton>
-              <span v-if="canOperate" class="w-8 shrink-0" aria-hidden="true" />
+          <ul v-if="offDuty.length" class="contents" data-testid="off-duty">
+            <li v-for="s in offDuty" :key="s.id" class="chair chair-off" :data-staff="s.name">
+              <p class="flex h-7 items-center text-meta text-dimmed">不在牌上</p>
+              <div class="mt-2 flex items-center gap-3">
+                <PersonAvatar :name="s.name" size="md" />
+                <div class="min-w-0">
+                  <p class="truncate text-base font-semibold text-muted">{{ who(s) }}</p>
+                  <p class="text-meta text-dimmed">还没到岗</p>
+                </div>
+              </div>
+              <div v-if="canOperate" class="mt-auto pt-4">
+                <UButton color="neutral" variant="outline" :disabled="busy" @click="join(s)">到岗</UButton>
+              </div>
             </li>
           </ul>
-        </section>
+        </div>
 
         <EmptyState v-if="!onDuty.length && !offDuty.length" art="chair" title="这个队列还没有成员" hint="选好参加的员工和默认顺序后，员工到店就能上牌">
           <UButton v-if="canOperate && queue" icon="i-lucide-users" @click="members?.start(queue)">选成员</UButton>
         </EmptyState>
 
-        <section>
-          <div class="sec">今日记录</div>
-          <ul v-if="events.length" class="space-y-2" data-testid="rotation-events">
-            <li v-for="e in shownEvents" :key="e.id" class="flex gap-3 text-meta">
-              <span class="w-11 shrink-0 text-dimmed tabular-nums">{{ formatAttendanceTime(e.created_at) }}</span>
-              <span>
-                <b class="font-medium">{{ who(e.staff) }}</b> {{ eventText(e) }}
-                <span v-if="e.kind === 'skip' || e.kind === 'drag'" class="text-dimmed"> · {{ who(e.actor) }} 操作</span>
+        <section class="pt-4">
+          <h2 class="mb-3 flex items-baseline gap-2">
+            <span class="text-base font-semibold">今天的轮次</span>
+            <span class="text-meta text-dimmed">谁接了谁</span>
+          </h2>
+          <ol v-if="rounds.length" class="rounds" data-testid="rotation-rounds">
+            <li v-for="r in rounds" :key="r.id" class="flex min-h-10 items-center gap-3 text-sm">
+              <span class="w-12 shrink-0 text-end text-meta text-dimmed tabular-nums">{{ formatAttendanceTime(r.at) }}</span>
+              <span class="rail" aria-hidden="true"><i /></span>
+              <PersonAvatar :name="r.staff.name" size="sm" />
+              <span class="min-w-0 truncate">
+                {{ who(r.staff) }} {{ roundText(r).who }}<span v-if="roundText(r).items" class="ms-2 text-muted">{{ roundText(r).items }}</span>
               </span>
+              <span class="tag bg-tag-gray">{{ r.designated ? '点' : '轮' }}</span>
             </li>
-          </ul>
-          <p v-else class="text-meta text-dimmed">今天还没有记录。</p>
-          <UButton v-if="events.length > 8" size="sm" color="neutral" variant="ghost" class="mt-1" @click="showAllEvents = !showAllEvents">
-            {{ showAllEvents ? '收起' : `显示全部 ${events.length} 条` }}
-          </UButton>
+          </ol>
+          <p v-else class="text-meta text-dimmed">今天还没有人接客。</p>
+
+          <!-- 跳过、休息、调顺序这些也都记着，收在下面，要查再展开。 -->
+          <details v-if="events.length" class="mt-4 text-meta">
+            <summary class="cursor-pointer text-dimmed hover:text-default">全部记录 {{ events.length }} 条</summary>
+            <ul class="mt-2 space-y-2" data-testid="rotation-events">
+              <li v-for="e in shownEvents" :key="e.id" class="flex gap-3">
+                <span class="w-12 shrink-0 text-end text-dimmed tabular-nums">{{ formatAttendanceTime(e.created_at) }}</span>
+                <span>
+                  <b class="font-medium">{{ who(e.staff) }}</b> {{ eventText(e) }}
+                  <span v-if="e.kind === 'skip' || e.kind === 'drag'" class="text-dimmed"> · {{ who(e.actor) }} 操作</span>
+                </span>
+              </li>
+            </ul>
+            <UButton v-if="events.length > 8" size="sm" color="neutral" variant="ghost" class="mt-1" @click="showAllEvents = !showAllEvents">
+              {{ showAllEvents ? '收起' : `显示全部 ${events.length} 条` }}
+            </UButton>
+          </details>
         </section>
       </template>
     </template>
@@ -645,3 +747,58 @@ function statusText(t: Turn) {
     <RotationHalfItemsModal ref="halfItems" />
   </div>
 </template>
+
+<style scoped>
+/* 椅子：等宽卡片一排，放不下就换行；纸面白底、细边、大圆角（DESIGN.md 卡片）。 */
+.chairs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 16px;
+}
+
+.chair {
+  display: flex;
+  flex-direction: column;
+  min-height: 12rem;
+  padding: 16px 20px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-card);
+  background: var(--ui-bg);
+}
+
+.chair-next {
+  border-color: var(--ui-text);
+  box-shadow: 0 0 0 1px var(--ui-text);
+}
+
+.chair-off {
+  background: transparent;
+  border-style: dashed;
+}
+
+/* 轮次时间线：一根竖线串起每一次接客。 */
+.rounds .rail {
+  position: relative;
+  align-self: stretch;
+  width: 10px;
+  flex-shrink: 0;
+}
+
+.rounds .rail::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 4px;
+  border-left: 1px solid var(--ui-border-accented);
+}
+
+.rounds .rail i {
+  position: absolute;
+  top: calc(50% - 5px);
+  left: 0;
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--ui-border-accented);
+  border-radius: 999px;
+  background: var(--ui-bg);
+}
+</style>
