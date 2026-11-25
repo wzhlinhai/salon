@@ -11,7 +11,7 @@ defineProps<{ label: string, presets?: { label: string, value: string }[] }>()
       inputmode="decimal"
       :aria-label="label"
       class="w-full"
-      :ui="{ base: 'h-14 ps-10 font-serif text-figure tabular-nums', leading: 'ps-4' }"
+      :ui="{ base: 'h-14 ps-10 font-serif text-figure! tabular-nums', leading: 'ps-4' }"
     >
       <template #leading>
         <span class="font-serif text-figure text-muted">¥</span>
