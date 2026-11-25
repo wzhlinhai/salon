@@ -1,160 +1,322 @@
 <script setup lang="ts">
-import type { TableColumn, TableRow } from '@nuxt/ui'
 import type { components } from '~/utils/api'
 
+// 日结（样稿 14）：一页一天，默认昨天（今天还没营业完，后端也只收昨天及以前）。页头「‹ 日期 ›」换日子。
+// 顶上一句结论，下面按收款方式对：系统记的、你点的、差，格子就在表里填；对不上的那行标出来，旁边「写个原因」跳到备注。
+// 主按钮「对完了，封账」先保存日结，能封账时接着弹封账确认；不能封（没权限、前面还有日子没封）就只日结。
 definePageMeta({ permission: 'closing.daily', title: '日结', art: 'receipt' })
 
-type Item = components['schemas']['DayCloseListItem']
-// 列表一行是一个营业日：日结过的带上最新一版快照，没日结的只有日期。
-// business 是这天有没有营业（后端和封账用同一个判断）；没营业的日子不用日结，也不标「待日结」。
-interface Day { date: string, close: Item | null, sealed: boolean, business: boolean }
+type SystemFigures = components['schemas']['SystemFigures']
+type DayCloseDetail = components['schemas']['DayCloseDetail']
+type Order = components['schemas']['Order']
+type Line = components['schemas']['MethodAmount']
 
-const DAYS = 31
+const RECENT = 31
+const route = useRoute()
+const router = useRouter()
 const api = useApi()
 const toast = useToast()
 const { can } = useMe()
+const crumbTitle = useState('page-crumb-title', () => '')
 const guard = useRequestGuard()
+
+const today = ref('')
+const date = ref('')
+const sealedThrough = ref<string | null>(null)
+const pendingDays = ref<string[]>([])
+const business = ref(false)
+const preview = ref<SystemFigures | null>(null)
+const detail = ref<DayCloseDetail | null>(null)
 const loading = ref(false)
 const failed = ref(false)
-const today = ref('')
-const sealedThrough = ref<string | null>(null)
-const closes = ref<Item[]>([])
-const businessDays = ref<string[]>([])
 
+// 四个现场方式各自对应 close_day 的一个字段。
+const FIELDS = { cash: 'cash_counted', unionpay: 'unionpay_actual', wechat: 'wechat_actual', alipay: 'alipay_actual' } as const
+type Method = keyof typeof FIELDS
+const actual = reactive<Record<Method, string>>({ cash: '', unionpay: '', wechat: '', alipay: '' })
+const note = ref('')
+const noteBox = useTemplateRef('noteBox')
+const MONEY = /^\d{1,9}(\.\d{1,2})?$/
+
+const yesterday = computed(() => today.value ? addDays(today.value, -1) : '')
+const sealed = computed(() => !!sealedThrough.value && !!date.value && date.value <= sealedThrough.value)
+const saved = computed(() => detail.value?.current ?? null)
+
+function dayTitle(value: string) {
+  const [, m, d] = value.split('-')
+  return `${Number(m)} 月 ${Number(d)} 日日结`
+}
+
+// 页头换日子那里写「11月24日 周一」。
+function dayLabel(value: string) {
+  const [, m, d] = value.split('-')
+  return `${Number(m)}月${Number(d)}日 ${weekdayOf(value)}`
+}
+
+async function start() {
+  const settings = await api.POST('/api/ops/get_settings', { body: {} })
+  if (!settings.data) {
+    failed.value = true
+    toast.add({ title: errorText(settings.error), color: 'error' })
+    return
+  }
+  today.value = settings.data.business_date
+  const asked = typeof route.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(route.query.date) ? route.query.date : ''
+  date.value = asked && asked < today.value ? asked : yesterday.value
+}
+
+// 一天的账：最近 31 天谁还没日结（提醒用）、这天日结过没有、系统此刻的数。封了账的日子只看当时存下的快照。
 async function load() {
+  const day = date.value
+  if (!day) return
   const current = guard.next()
   loading.value = true
   failed.value = false
+  crumbTitle.value = dayTitle(day)
+  // 单子可能因撤单、补录变了，折叠区下次点开重新取。
+  ordersGuard.invalidate()
+  ordersOpen.value = false
+  orders.value = null
   try {
-    const settings = await api.POST('/api/ops/get_settings', { body: {} })
+    const [recent, one, live] = await Promise.all([
+      api.POST('/api/ops/list_day_closes', { body: { date_from: addDays(today.value, -RECENT), date_to: yesterday.value } }),
+      api.POST('/api/ops/list_day_closes', { body: { date_from: day, date_to: day } }),
+      api.POST('/api/ops/preview_day_close', { body: { date: day } })
+    ])
     if (!current()) return
-    if (!settings.data) {
+    if (!recent.data || !one.data || !live.data) {
       failed.value = true
-      toast.add({ title: errorText(settings.error), color: 'error' })
+      toast.add({ title: errorText(recent.error ?? one.error ?? live.error), color: 'error' })
       return
     }
-    today.value = settings.data.business_date
-    const { data, error } = await api.POST('/api/ops/list_day_closes', {
-      body: { date_from: addDays(today.value, -DAYS), date_to: addDays(today.value, -1) }
-    })
-    if (!current()) return
-    if (!data) {
-      failed.value = true
-      toast.add({ title: errorText(error), color: 'error' })
-      return
+    sealedThrough.value = one.data.sealed_through
+    const closedRecently = new Set(recent.data.items.map(c => c.business_date))
+    pendingDays.value = recent.data.business_days
+      .filter(d => !closedRecently.has(d) && !(recent.data.sealed_through && d <= recent.data.sealed_through))
+      .sort()
+    business.value = one.data.business_days.includes(day)
+    preview.value = live.data
+    detail.value = null
+    if (one.data.items.length) {
+      const got = await api.POST('/api/ops/get_day_close', { body: { date: day } })
+      if (!current()) return
+      if (got.data) detail.value = got.data
+      else toast.add({ title: errorText(got.error), color: 'error' })
     }
-    sealedThrough.value = data.sealed_through
-    closes.value = data.items
-    businessDays.value = data.business_days
+    fillForm()
   } finally {
     if (current()) loading.value = false
   }
 }
 
-onMounted(load)
+// 日结过的填上次存的数；没日结的空着，系统是 0 的方式多半当天没用，先填 0。
+function fillForm() {
+  const c = saved.value
+  note.value = c?.note ?? ''
+  for (const m of Object.keys(FIELDS) as Method[]) {
+    const line = preview.value?.on_site.find(l => l.method === m)
+    const before = c?.differences.find(d => d.method === m)?.actual
+    actual[m] = before !== undefined ? String(Number(before)) : !c && line && zeroText(line.amount) ? '0' : ''
+  }
+}
 
-const days = computed<Day[]>(() => {
-  if (!today.value) return []
-  const byDate = new Map(closes.value.map(c => [c.business_date, c]))
-  const business = new Set(businessDays.value)
-  return Array.from({ length: DAYS }, (_, i) => {
-    const date = addDays(today.value, -1 - i)
-    return { date, close: byDate.get(date) ?? null, sealed: !!sealedThrough.value && date <= sealedThrough.value, business: business.has(date) }
-  })
+onMounted(async () => {
+  await start()
+  void load()
 })
 
-// 视图页签，照 Notion 只列有记录的行：默认「营业日」只列营业过或日结过的日子，
-// 没营业的日子在「所有日子」里（封账要从那里点更早的日子）。数字是这一类的天数。
-interface Filter { key: string, label: string, empty: string, test: (d: Day) => boolean }
-const pending = (d: Day) => d.business && !d.close && !d.sealed
-const filters: Filter[] = [
-  { key: 'business', label: '营业日', empty: `最近 ${DAYS} 天没有营业`, test: d => d.business || !!d.close },
-  { key: 'open', label: '待日结', empty: '营业的日子都日结了', test: pending },
-  { key: 'closed', label: '已日结', empty: '还没有日结过', test: d => !!d.close && !d.sealed },
-  { key: 'sealed', label: '已封账', empty: '还没有封账', test: d => d.sealed },
-  { key: 'days', label: '所有日子', empty: '', test: () => true }
-]
-const filterKey = ref('business')
-const filterTabs = computed(() => filters.map(f => ({ key: f.key, label: f.label, count: f.key === 'days' || (loading.value && !days.value.length) ? undefined : days.value.filter(f.test).length })))
-const filter = computed(() => filters.find(f => f.key === filterKey.value)!)
-const shown = computed(() => days.value.filter(filter.value.test))
-
-const columns: TableColumn<Day>[] = [
-  { id: 'date', header: '日期' },
-  { id: 'cash', header: '现金清点', meta: { class: { th: 'text-right', td: 'text-right tabular-nums' } } },
-  { id: 'unionpay', header: '银联', meta: { class: { th: 'text-right', td: 'text-right tabular-nums' } } },
-  { id: 'wechat', header: '微信', meta: { class: { th: 'text-right', td: 'text-right tabular-nums' } } },
-  { id: 'alipay', header: '支付宝', meta: { class: { th: 'text-right', td: 'text-right tabular-nums' } } },
-  { id: 'differences', header: '差异' },
-  { id: 'note', header: '备注' }
-]
-const AMOUNTS = { cash: 'cash_counted', unionpay: 'unionpay_actual', wechat: 'wechat_actual', alipay: 'alipay_actual' } as const
-
-function signed(value: string) {
-  const n = Number(value)
-  return `${n > 0 ? '多' : '少'} ${yuanFixed(Math.abs(n))}`
+// 设置没取到时连今天是哪天都不知道，重试要从头来。
+async function retry() {
+  if (!date.value) await start()
+  void load()
 }
 
-function offLines(close: Item) {
-  return close.differences.filter(d => Number(d.difference) !== 0)
+onBeforeUnmount(() => {
+  crumbTitle.value = ''
+})
+
+function go(day: string) {
+  if (!day || day === date.value) return
+  date.value = day
+  void router.replace({ query: day === yesterday.value ? {} : { date: day } })
+  // 先清掉上一天的数，新一天没取到之前不显示也不能存。
+  preview.value = null
+  detail.value = null
+  fillForm()
+  void load()
 }
+
+// 封了账的日子看快照，其余看系统此刻的数（日结后有人补录、撤单，差会跟着变，提醒重新日结）。
+const figures = computed(() => sealed.value && saved.value ? saved.value.system : preview.value)
+const onSite = computed(() => figures.value?.on_site ?? [])
+const nonSite = computed(() => (figures.value?.non_site ?? []).filter(l => !zeroText(l.amount)))
+
+function filled(method: string) {
+  const value = sealed.value ? saved.value?.differences.find(d => d.method === method)?.actual : actual[method as Method]
+  return value !== undefined && MONEY.test(value.trim()) ? value.trim() : null
+}
+
+function difference(line: Line) {
+  const value = filled(line.method)
+  if (value === null) return null
+  return (cents(value) - cents(line.amount)) / 100
+}
+
+const systemTotal = computed(() => onSite.value.reduce((s, l) => s + cents(l.amount), 0) / 100)
+const allFilled = computed(() => onSite.value.every(l => filled(l.method) !== null))
+const actualTotal = computed(() => allFilled.value ? onSite.value.reduce((s, l) => s + cents(filled(l.method)!), 0) / 100 : null)
+const totalDifference = computed(() => actualTotal.value === null ? null : Math.round((actualTotal.value - systemTotal.value) * 100) / 100)
+
+function label(line: Line) {
+  return line.method === 'cash' ? '现金' : line.label
+}
+
+function signedYuan(n: number) {
+  return `${n > 0 ? '+' : '−'}${yuan(Math.abs(n))}`
+}
+
+// 顶上一句话：这天收了多少、几单；对不上的那项说清应有多少、点出来多少、差多少；对上的合成一句。
+const brief = computed(() => {
+  const f = figures.value
+  if (!f) return []
+  const { parts, say, bold } = briefWriter()
+  if (!business.value && !f.checkout_count && !systemTotal.value) {
+    say('这天没有营业，不用日结。')
+  } else {
+    say(`这天现场收了 ${yuan(systemTotal.value)}，结账 ${f.checkout_count} 单${f.void_count ? `，撤单 ${f.void_count} 单` : ''}。`)
+    const off = onSite.value.filter(l => (difference(l) ?? 0) !== 0)
+    const matched = onSite.value.filter(l => difference(l) === 0 && !zeroText(l.amount))
+    const blank = onSite.value.filter(l => difference(l) === null)
+    off.forEach((l, i) => {
+      const d = difference(l)!
+      say(`${i ? '；' : ''}${label(l)}应有 ${yuan(l.amount)}，${l.method === 'cash' ? '你点出来' : '实际到账'} ${yuan(filled(l.method)!)}，`)
+      bold(`${d > 0 ? '多了' : '少了'} ${yuan(Math.abs(d))}`, 'down')
+    })
+    if (matched.length) say(`${off.length ? '；' : ''}${matched.map(label).join('和')}跟后台对得上`)
+    if (blank.length) say(`${off.length || matched.length ? '；' : ''}${blank.map(label).join('、')}还没填`)
+    if (off.length || matched.length || blank.length) say('。')
+  }
+  if (sealed.value) say('已封账，账不能再改。')
+  else if (saved.value && changed.value) say('日结之后账有变动或改了数，记得重新日结。')
+  return parts
+})
+
+// 和上次存的日结比，有没有要重新存的：没日结过、填的数或备注改了、系统的数变了（补录、撤单，连团购这些不进钱箱的也算：封账时后端比的是整份系统数）。
+const changed = computed(() => {
+  const c = saved.value
+  if (!c) return true
+  if ((c.note ?? '') !== note.value.trim()) return true
+  if (!sealed.value && JSON.stringify(c.system) !== JSON.stringify(preview.value)) return true
+  return c.differences.some(d => filled(d.method) === null || cents(filled(d.method)!) !== cents(d.actual))
+})
 
 // 封账只能接着上次封到的那天往后一天；从没封过时，昨天及以前哪天都行。
-function canSeal(date: string) {
-  if (!can('closing.seal') || !today.value || date >= today.value) return false
+function canSeal(day: string) {
+  if (!can('closing.seal') || !today.value || !day || day >= today.value) return false
   if (!sealedThrough.value) return true
-  return date === addDays(sealedThrough.value, 1)
+  return day === addDays(sealedThrough.value, 1)
 }
 
-function canUnseal(date: string) {
-  return can('closing.unseal') && date === sealedThrough.value
-}
-
-const yesterday = computed(() => today.value ? addDays(today.value, -1) : '')
-const yesterdayOpen = computed(() => days.value.some(d => d.date === yesterday.value && pending(d)))
-// 下一个可封账的日子。按日期顺序封，可能早于列表的 31 天，所以入口放在列表上方，不靠某一行。
+const canUnseal = computed(() => can('closing.unseal') && !!sealedThrough.value && date.value === sealedThrough.value)
 const nextSeal = computed(() => sealedThrough.value ? addDays(sealedThrough.value, 1) : '')
 
-// 详情抽屉。
-const selected = ref<Day | null>(null)
-const detailOpen = ref(false)
-
-function selectRow(_event: Event, row: TableRow<Day>) {
-  selected.value = row.original
-  detailOpen.value = true
-}
-
-// 列表刷新后，抽屉里的那天跟着换成新数据；那天已经滑出 31 天（例如营业日翻了）就关掉抽屉。
-watch(days, (list) => {
-  if (!selected.value) return
-  selected.value = list.find(d => d.date === selected.value!.date) ?? null
-  if (!selected.value) detailOpen.value = false
+// 主按钮：要存日结就存，存完能封就弹封账确认。没营业的日子不用日结，只封账。
+const needsClose = computed(() => (business.value || !!saved.value) && changed.value)
+const primaryLabel = computed(() => {
+  if (sealed.value || !figures.value) return ''
+  if (needsClose.value) return canSeal(date.value) ? '对完了，封账' : '对完了，日结'
+  return canSeal(date.value) ? '封账' : ''
 })
 
-const closeModal = useTemplateRef('closeModal')
+const closing = ref(false)
+// 取数或存日结的时候不让换日子。
+const busy = computed(() => loading.value || closing.value)
 
-function openClose(day: Day) {
-  const c = day.close
-  closeModal.value?.start(day.date, c ? { cash_counted: c.cash_counted, unionpay_actual: c.unionpay_actual, wechat_actual: c.wechat_actual, alipay_actual: c.alipay_actual, note: c.note } : undefined)
+async function primary() {
+  const day = date.value
+  if (needsClose.value && !(await saveClose())) return
+  // 存日结时换了日子，就不弹封账了，免得封错天。
+  if (date.value === day && canSeal(day)) openSeal()
 }
 
-function openCloseDate(date: string) {
-  const day = days.value.find(d => d.date === date)
-  if (day) openClose(day)
+async function saveClose() {
+  const missing = onSite.value.find(l => filled(l.method) === null)
+  if (missing) {
+    toast.add({ title: `填一下${label(missing)}的实际金额，没有就填 0`, color: 'error' })
+    return false
+  }
+  const day = date.value
+  closing.value = true
+  try {
+    const { data, error } = await api.POST('/api/ops/close_day', {
+      body: {
+        date: day,
+        cash_counted: actual.cash.trim(),
+        unionpay_actual: actual.unionpay.trim(),
+        wechat_actual: actual.wechat.trim(),
+        alipay_actual: actual.alipay.trim(),
+        note: note.value.trim() || undefined
+      }
+    })
+    if (!data) {
+      toast.add({ title: errorText(error), color: 'error' })
+      return false
+    }
+    const off = data.differences.filter(d => Number(d.difference) !== 0).length
+    toast.add({ title: `已日结（${dayLabel(day)}，第 ${data.version} 版）${off ? `，有 ${off} 项对不上` : '，都对上了'}`, color: 'success' })
+    if (date.value !== day) return false
+    await load()
+    return true
+  } finally {
+    closing.value = false
+  }
 }
 
-// 日结后列表里这天换成新的快照 id，抽屉内容按 key 重新挂载并自己加载。
-function onClosed() {
-  void load()
+function writeReason() {
+  noteBox.value?.textareaRef?.focus()
+}
+
+// 这天的单：点开才取，看每单怎么付的。要开单权限。
+const ordersOpen = ref(false)
+const orders = ref<Order[] | null>(null)
+const ordersTotal = ref(0)
+const ordersGuard = useRequestGuard()
+const PAY_NAMES: Record<string, string> = { cash: '现金', unionpay: '银联', wechat: '微信', alipay: '支付宝', groupbuy: '团购', debt: '挂账', card: '储值卡', count: '扣次', red_packet: '红包' }
+
+watch(ordersOpen, async (open) => {
+  if (!open || orders.value) return
+  const current = ordersGuard.next()
+  const { data, error } = await api.POST('/api/ops/list_orders', { body: { business_date: date.value, limit: 100 } })
+  if (!current()) return
+  if (data) {
+    orders.value = data.items
+    ordersTotal.value = data.total
+  } else toast.add({ title: errorText(error), color: 'error' })
+})
+
+function clock(value: string) {
+  return new Date(value).toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
+function payText(o: Order) {
+  if (!o.payments.length) return ''
+  return o.payments.map(p => p.method === 'count' ? '扣次' : `${PAY_NAMES[p.method] ?? p.method} ${yuan(p.amount)}`).join(' + ')
+}
+
+const history = computed(() => [...(detail.value?.versions ?? [])].sort((a, b) => b.version - a.version))
+
+function offText(differences: components['schemas']['MethodDifference'][]) {
+  const off = differences.filter(d => Number(d.difference) !== 0)
+  return off.length ? off.map(d => `${d.method === 'cash' ? '现金' : d.label} ${signedYuan(Number(d.difference))}`).join('，') : '都对上了'
 }
 
 // 封账确认。
 const sealForm = useModalForm()
 const sealDate = ref('')
 
-function openSeal(date: string) {
+function openSeal() {
   sealForm.begin(() => {
-    sealDate.value = date
+    sealDate.value = date.value
   })
 }
 
@@ -189,7 +351,7 @@ function saveUnseal() {
     return
   }
   unsealForm.save(async (current) => {
-    const date = sealedThrough.value
+    const day = sealedThrough.value
     const { error } = await api.POST('/api/ops/unseal_day', { body: { reason } })
     if (!current()) return
     if (error) {
@@ -197,81 +359,130 @@ function saveUnseal() {
       return
     }
     unsealForm.open.value = false
-    toast.add({ title: `已撤销 ${date} 的封账`, color: 'success' })
+    toast.add({ title: `已撤销 ${day} 的封账`, color: 'success' })
     await load()
   })
 }
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div class="space-y-6">
     <PageActions>
-      <UButton v-if="yesterdayOpen" size="sm" icon="i-lucide-calculator" @click="openCloseDate(yesterday)">日结昨天</UButton>
+      <div v-if="date" class="flex items-center rounded-md border border-default" role="group" aria-label="换一天">
+        <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-chevron-left" aria-label="前一天" :disabled="busy" @click="go(addDays(date, -1))" />
+        <span class="px-1 text-sm tabular-nums" data-testid="close-date">{{ dayLabel(date) }}</span>
+        <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-chevron-right" aria-label="后一天" :disabled="busy || date >= yesterday" @click="go(addDays(date, 1))" />
+      </div>
+      <UButton v-if="primaryLabel" size="sm" :loading="closing" :disabled="loading" @click="primary">{{ primaryLabel }}</UButton>
     </PageActions>
 
-    <ViewTabs v-model="filterKey" :items="filterTabs" label="筛选营业日" />
+    <EmptyState v-if="failed && !figures" title="这天的账没加载出来" hint="检查网络后再试一次">
+      <UButton color="neutral" variant="outline" size="sm" @click="retry">重试</UButton>
+    </EmptyState>
+    <ListSkeleton v-else-if="!figures" :rows="5" />
 
-    <div class="flex flex-wrap items-center gap-2 text-meta text-muted">
-      <UIcon name="i-lucide-lock" class="size-3.5" aria-hidden="true" />
-      <span data-testid="sealed-through">{{ sealedThrough ? `已封账到 ${sealedThrough}` : '还没有封账' }}</span>
-      <UButton v-if="nextSeal && canSeal(nextSeal)" size="xs" color="neutral" variant="outline" @click="openSeal(nextSeal)">封账到 {{ nextSeal }}…</UButton>
-      <UButton v-if="sealedThrough && canUnseal(sealedThrough)" size="xs" color="neutral" variant="ghost" @click="openUnseal">撤销封账…</UButton>
-      <span class="ms-auto text-dimmed">最近 {{ DAYS }} 天</span>
-    </div>
+    <template v-else>
+      <ReportBrief :parts="brief" data-testid="close-brief" />
 
-    <div class="overflow-x-auto">
-      <UTable :data="shown" :columns="columns" :loading="loading" :aria-busy="loading" @select="selectRow">
-        <template #date-cell="{ row }">
-          <div class="flex items-center gap-2" :data-date="row.original.date">
-            <span class="font-medium tabular-nums">{{ row.original.date }}</span>
-            <span class="text-dimmed">{{ weekdayOf(row.original.date) }}</span>
-            <span v-if="row.original.sealed" class="inline-flex items-center gap-1 text-meta text-dimmed"><UIcon name="i-lucide-lock" class="size-3" aria-hidden="true" />已封账</span>
-            <span v-else-if="pending(row.original)" class="tag bg-tag-yellow">待日结</span>
-            <span v-if="row.original.close && row.original.close.version > 1" class="text-meta text-dimmed">第 {{ row.original.close.version }} 版</span>
-          </div>
-        </template>
-        <template v-for="(field, key) in AMOUNTS" :key="key" #[`${key}-cell`]="{ row }">
-          <span v-if="row.original.close" :class="zeroText(row.original.close[field]) ? 'text-dimmed' : ''">{{ yuanFixed(row.original.close[field]) }}</span>
-        </template>
-        <template #differences-cell="{ row }">
-          <template v-if="row.original.close">
-            <span v-if="offLines(row.original.close).length" class="text-ink-red">
-              <template v-for="(d, i) in offLines(row.original.close)" :key="d.method">{{ i ? '，' : '' }}{{ d.label }} {{ signed(d.difference) }}</template>
-            </span>
-            <span v-else class="text-dimmed">对上了</span>
-          </template>
-        </template>
-        <template #note-cell="{ row }">
-          <span class="line-clamp-1 max-w-56 text-muted">{{ row.original.close?.note }}</span>
-        </template>
-        <template #loading>
-          <ListSkeleton />
-        </template>
-        <template #empty>
-          <EmptyState v-if="failed" title="日结列表没加载出来" hint="检查网络后再试一次">
-            <UButton color="neutral" variant="outline" size="sm" @click="load">重试</UButton>
-          </EmptyState>
-          <EmptyState v-else-if="filterKey !== 'days'" :title="filter.empty">
-            <UButton color="neutral" variant="outline" size="sm" @click="filterKey = 'days'">看所有日子</UButton>
-          </EmptyState>
-        </template>
-      </UTable>
-    </div>
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-meta text-muted">
+        <span data-testid="sealed-through">{{ sealedThrough ? `已封账到 ${sealedThrough}` : '还没有封账' }}</span>
+        <button v-if="sealedThrough && sealedThrough !== date && can('closing.unseal')" type="button" class="hover:underline" :disabled="busy" @click="go(sealedThrough)">去 {{ sealedThrough.slice(5) }} 撤销封账 ›</button>
+        <button v-if="nextSeal && nextSeal !== date && canSeal(nextSeal)" type="button" class="hover:underline" :disabled="busy" @click="go(nextSeal)">接着封 {{ nextSeal.slice(5) }} ›</button>
+        <UButton v-if="canUnseal" size="xs" color="neutral" variant="ghost" @click="openUnseal">撤销封账…</UButton>
+        <span v-if="pendingDays.filter(d => d !== date).length" data-testid="pending-days">
+          · 还没日结：
+          <template v-for="(d, i) in pendingDays.filter(x => x !== date)" :key="d">{{ i ? '、' : '' }}<button type="button" class="hover:underline" :disabled="busy" @click="go(d)">{{ d.slice(5) }}</button></template>
+        </span>
+      </div>
 
-    <USlideover v-model:open="detailOpen" :modal="false" :title="selected ? `${selected.date} ${weekdayOf(selected.date)}` : ''" :description="selected?.sealed ? '已封账，账目不能再改' : selected?.close ? `已日结 · 第 ${selected.close.version} 版` : '还没日结'">
-      <template #body>
-        <DayCloseDetail v-if="selected" :key="`${selected.date}:${selected.close?.id ?? ''}`" :date="selected.date" :closed="!!selected.close" />
-      </template>
-      <template v-if="selected" #footer>
-        <div class="flex w-full flex-wrap justify-end gap-2">
-          <UButton v-if="canUnseal(selected.date)" color="neutral" variant="ghost" icon="i-lucide-lock-open" @click="openUnseal">撤销封账…</UButton>
-          <UButton v-if="canSeal(selected.date)" color="neutral" variant="outline" icon="i-lucide-lock" @click="openSeal(selected.date)">封账到这天…</UButton>
-          <UButton v-if="!selected.sealed" @click="openClose(selected)">{{ selected.close ? '重新日结' : '日结' }}</UButton>
+      <section>
+        <h2 class="sec">按收款方式对<span class="font-normal text-dimmed">系统记的 · 你点的 · 差</span></h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm" data-testid="close-form">
+            <thead>
+              <tr class="border-b border-default text-sm text-muted">
+                <th scope="col" class="px-3 py-2 text-start font-normal">方式</th>
+                <th scope="col" class="px-3 py-2 text-end font-normal">系统记的</th>
+                <th scope="col" class="px-3 py-2 text-end font-normal">实际</th>
+                <th scope="col" class="px-3 py-2 text-end font-normal">差</th>
+                <th scope="col" class="w-28 px-3 py-2"><span class="sr-only">说明</span></th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-default">
+              <tr v-for="line in onSite" :key="line.method" :data-method="line.method" :class="(difference(line) ?? 0) !== 0 ? 'bg-notice' : ''">
+                <td class="px-3 py-2">{{ label(line) }}</td>
+                <td class="px-3 py-2 text-end tabular-nums" :class="zeroText(line.amount) ? 'text-dimmed' : ''">{{ yuan(line.amount) }}</td>
+                <td class="px-3 py-1">
+                  <div class="flex justify-end">
+                    <span v-if="sealed" class="tabular-nums">{{ filled(line.method) === null ? '—' : yuan(filled(line.method)) }}</span>
+                    <UInput
+                      v-else
+                      v-model="actual[line.method as Method]"
+                      inputmode="decimal"
+                      :aria-label="`${line.label}实际`"
+                      class="w-28"
+                      :ui="{ base: 'text-end tabular-nums' }"
+                    />
+                  </div>
+                </td>
+                <td class="px-3 py-2 text-end tabular-nums">
+                  <span v-if="!difference(line)" class="text-dimmed">—</span>
+                  <span v-else class="text-ink-red">{{ signedYuan(difference(line)!) }}</span>
+                </td>
+                <td class="px-3 py-2">
+                  <span v-if="difference(line) === 0 && !zeroText(line.amount)" class="text-ink-green">✓ 对上</span>
+                  <button v-else-if="difference(line) !== null && !sealed" type="button" class="text-muted hover:underline" @click="writeReason">写个原因</button>
+                </td>
+              </tr>
+              <tr class="font-semibold" data-testid="close-total">
+                <td class="px-3 py-2">现场合计</td>
+                <td class="px-3 py-2 text-end tabular-nums">{{ yuan(systemTotal) }}</td>
+                <td class="px-3 py-2 text-end tabular-nums">{{ actualTotal === null ? '' : yuan(actualTotal) }}</td>
+                <td class="px-3 py-2 text-end tabular-nums" :class="totalDifference ? 'text-ink-red' : 'text-dimmed font-normal'">{{ totalDifference ? signedYuan(totalDifference) : '—' }}</td>
+                <td />
+              </tr>
+              <tr v-for="line in nonSite" :key="line.method" class="text-muted" :data-method="line.method">
+                <td class="px-3 py-2">{{ line.label }}<span class="text-dimmed">（不进钱箱）</span></td>
+                <td class="px-3 py-2 text-end tabular-nums">{{ yuan(line.amount) }}</td>
+                <td class="px-3 py-2 text-end text-dimmed">—</td>
+                <td class="px-3 py-2 text-end text-dimmed">—</td>
+                <td />
+              </tr>
+            </tbody>
+          </table>
         </div>
-      </template>
-    </USlideover>
+        <p v-if="figures.unrecorded.count" class="mt-2 text-meta text-muted">另有 {{ figures.unrecorded.count }} 笔没记收款方式，共 {{ yuan(figures.unrecorded.amount) }}，单独列出不算进上面</p>
+      </section>
 
-    <DayCloseModal ref="closeModal" :can-seal="canSeal" @closed="onClosed" @seal="openSeal" />
+      <UFormField v-if="!sealed" label="备注" help="对不上的原因，日结时一起存下">
+        <UTextarea ref="noteBox" v-model="note" :maxlength="200" :rows="2" class="w-full" placeholder="对不上的原因，例如：找零少了 5 元" />
+      </UFormField>
+      <p v-else-if="saved?.note" class="text-sm text-muted">备注：{{ saved.note }}</p>
+
+      <details v-if="can('order.create') && (figures.checkout_count || figures.void_count)" :open="ordersOpen" class="border-t border-default pt-3" data-testid="close-orders" @toggle="ordersOpen = ($event.target as HTMLDetailsElement).open">
+        <summary class="cursor-pointer text-sm text-muted">这天的 {{ figures.checkout_count }} 单（点开看每单怎么付的）</summary>
+        <ListSkeleton v-if="!orders" :rows="3" class="mt-2" />
+        <ul v-else class="mt-2 divide-y divide-default text-sm">
+          <li v-for="o in orders" :key="o.id" class="flex items-center gap-3 py-2">
+            <span class="w-12 text-meta text-muted tabular-nums">{{ clock(o.opened_at) }}</span>
+            <span class="min-w-0 flex-1 truncate">{{ o.items.map(i => i.item_name).join('、') || '没有项目' }}</span>
+            <span v-if="o.status === 'voided'" class="tag bg-tag-gray">已撤</span>
+            <span class="text-muted tabular-nums">{{ payText(o) }}</span>
+          </li>
+          <li v-if="ordersTotal > orders.length" class="py-2 text-meta text-muted">只列了前 {{ orders.length }} 单，共 {{ ordersTotal }} 单</li>
+        </ul>
+      </details>
+
+      <details v-if="history.length" class="border-t border-default pt-3" data-testid="close-versions">
+        <summary class="cursor-pointer text-sm text-muted">日结记录（{{ history.length }} 版）</summary>
+        <ol class="mt-2 space-y-2 text-sm">
+          <li v-for="v in history" :key="v.id" class="flex flex-col">
+            <span><span class="font-medium">第 {{ v.version }} 版</span><span class="text-dimmed"> · {{ formatStamp(v.created_at) }}</span></span>
+            <span class="text-muted">{{ offText(v.differences) }}</span>
+          </li>
+        </ol>
+      </details>
+    </template>
 
     <UModal v-model:open="sealForm.open.value" :title="`封账到 ${sealDate}`">
       <template #body>
