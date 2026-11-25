@@ -29,6 +29,7 @@ const selected = ref<string[]>([])
 const loading = ref(false)
 const searchGuard = useRequestGuard()
 const segmentGuard = useRequestGuard()
+const searchFocused = ref(false)
 let timer: ReturnType<typeof setTimeout> | undefined
 const staffItems = computed(() => staff.value.map(s => ({
   label: s.name + (s.active ? '' : '（已停用）'),
@@ -152,6 +153,10 @@ function clearFilters() {
   responsible.value = NONE
 }
 
+// 排序跟着分组：该回来了默认按晚了几天，其余按上次到店；换分组就回到那个分组的默认。
+const defaultSort = computed<SortKey>(() => segment.value === 'due' ? 'overdue' : 'last_visit')
+const sortName = computed(() => sortItems.find(s => s.value === sort.value)?.label.replace(/^按/, '') ?? '')
+
 function changePage(change: number) {
   offset.value += change * PAGE
   load()
@@ -175,7 +180,11 @@ watch(query, () => {
   timer = setTimeout(search, 300)
 })
 
-watch([segment, sort], search)
+watch(segment, () => {
+  if (sort.value === defaultSort.value) search()
+  else sort.value = defaultSort.value
+})
+watch(sort, search)
 watch(responsible, () => {
   search()
   loadSegments()
@@ -189,10 +198,91 @@ onMounted(async () => {
   await Promise.all([load(), loadSegments(), loadOptions()])
 })
 
-// 行内显示
+// 行内显示（样稿 05）：名字下面一句话写平时多久一次、上次做了什么、谁负责；右边大字写多久没来，小字写卡里还有什么。
 function displayName(c: Overview['customer']) {
   return c.name || '未填写姓名'
 }
+
+function span(days: number, round = Math.floor) {
+  return days >= 14 ? `${round(days / 7)} 周` : `${days} 天`
+}
+
+function rowMeta(row: Overview) {
+  const last = row.last_visit_date
+    ? ['上次', monthDay(row.last_visit_date), row.last_visit_items.join('、'), row.last_visit_staff.map(s => s.name).join('、')].filter(Boolean).join(' ')
+    : ''
+  return [
+    row.cycle_days ? `平时 ${span(row.cycle_days, Math.round)}` : '',
+    last,
+    row.customer.responsible ? `${row.customer.responsible.name}负责` : ''
+  ].filter(Boolean).join(' · ')
+}
+
+function rowSince(row: Overview) {
+  if (row.next_appointment) return [`下次 ${nextText(row.next_appointment.starts_at)}`, row.next_appointment.staff.name].filter(Boolean).join(' ')
+  const days = row.days_since_last_visit
+  if (days === null || days === undefined) return '还没来过'
+  if (row.overdue_days) return `${span(days)}没来`
+  return days <= 1 ? `${sinceText(days)}来过` : `${span(days)}前来过`
+}
+
+function rowCards(row: Overview) {
+  const parts = [
+    sort.value === 'spend' ? `累计 ${yuan(row.total_spend)}` : '',
+    Number(row.stored_balance) > 0 ? `卡余 ${yuan(row.stored_balance)}` : '',
+    row.count_remaining ? `次卡剩 ${row.count_remaining} 次` : ''
+  ]
+  return parts.filter(Boolean).join(' · ') || '没有卡'
+}
+
+// 该回来了按晚了几天排时分两段：晚了一周以上的先打。其余情况不分段。
+const groups = computed(() => segment.value === 'due' && sort.value === 'overdue'
+  ? [
+      { title: '晚了 1 周以上', rows: items.value.filter(r => (r.overdue_days ?? 0) >= 7) },
+      { title: '晚了不到 1 周', rows: items.value.filter(r => (r.overdue_days ?? 0) < 7) }
+    ].filter(g => g.rows.length)
+  : [{ title: '', rows: items.value }])
+
+// 右边三个字：搜索（平时收窄）、筛选（用了写成小签）、···（排序、负责人交接）。
+const responsibleName = computed(() => staff.value.find(s => s.id === responsible.value)?.name ?? '')
+const filterItems = computed(() => [[{
+  label: '负责人',
+  icon: 'i-lucide-user-round',
+  children: [staff.value.map(s => ({
+    label: s.name + (s.active ? '' : '（已停用）'),
+    type: 'checkbox' as const,
+    checked: responsible.value === s.id,
+    onUpdateChecked: (checked: boolean) => {
+      responsible.value = checked ? s.id : NONE
+    }
+  }))]
+}]])
+const moreItems = computed(() => [
+  [
+    { type: 'label' as const, label: '排序' },
+    ...sortItems.map(s => ({
+      label: s.label,
+      type: 'checkbox' as const,
+      checked: sort.value === s.value,
+      onUpdateChecked: () => {
+        sort.value = s.value as SortKey
+      }
+    }))
+  ],
+  ...(can('customer.assign')
+    ? [[{ label: '负责人交接', icon: 'i-lucide-arrow-left-right', onSelect: () => {
+        handoverOpen.value = true
+      } }]]
+    : [])
+])
+
+// Esc 取消批量选择；弹窗开着时 Esc 只关弹窗。不用 defineShortcuts：它命中就 preventDefault，下拉菜单就收不起来了。
+function clearSelectionOnEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape' && !event.defaultPrevented && selected.value.length && !assignOpen.value && !handoverOpen.value) selected.value = []
+}
+
+onMounted(() => document.addEventListener('keydown', clearSelectionOnEscape))
+onBeforeUnmount(() => document.removeEventListener('keydown', clearSelectionOnEscape))
 
 // 新建顾客
 const createOpen = ref(false)
@@ -316,101 +406,93 @@ async function handover() {
 <template>
   <div class="space-y-4">
     <PageActions>
-      <UDropdownMenu v-if="can('customer.assign')" :items="[[{ label: '负责人交接', icon: 'i-lucide-arrow-left-right', onSelect: () => { handoverOpen = true } }]]" :content="{ align: 'end' }">
-        <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-ellipsis" aria-label="更多操作" />
-      </UDropdownMenu>
       <UButton v-if="can('customer.edit')" size="sm" icon="i-lucide-plus" @click="openCreate">新建顾客</UButton>
     </PageActions>
 
-    <!-- 照 Notion 数据库的工具条：第一行视图页签和无框搜索，第二行筛选、排序和人数。 -->
-    <div class="space-y-1">
+    <!-- 样稿 05、L3：页签就是常用分组；右边只放「搜索 筛选 ···」；用了的筛选写成一行能删的小签，人数跟在后面。 -->
+    <div class="space-y-2">
       <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
         <ViewTabs v-model="segment" :items="tiles" label="顾客分组" testid="segment" />
-        <UInput v-model="query" icon="i-lucide-search" variant="ghost" aria-label="搜索顾客" placeholder="手机号、后四位或姓名" class="ms-auto w-56" @keydown.enter="search" />
-      </div>
-      <div class="flex flex-wrap items-center gap-1">
-        <USelect v-model="responsible" variant="ghost" aria-label="负责人筛选" :items="[{ label: '全部负责人', value: NONE }, ...staffItems]" class="min-w-32 text-muted" />
-        <USelect v-model="sort" variant="ghost" aria-label="排序" :items="sortItems" class="min-w-32 text-muted" />
-        <div v-if="can('customer.assign') && selected.length" class="ms-2 flex items-center gap-2">
-          <span class="text-meta text-muted">已选 {{ selected.length }} 位</span>
-          <UButton size="sm" color="neutral" variant="outline" @click="openAssign">分配负责人</UButton>
+        <div class="ms-auto flex items-center gap-1">
+          <UInput
+            v-model="query"
+            icon="i-lucide-search"
+            variant="ghost"
+            aria-label="搜索顾客"
+            :placeholder="query || searchFocused ? '手机号、后四位或姓名' : '搜索'"
+            class="transition-[width]"
+            :class="query ? 'w-56' : 'w-24 focus-within:w-56'"
+            @focus="searchFocused = true"
+            @blur="searchFocused = false"
+            @keydown.enter="search"
+          />
+          <UDropdownMenu :items="filterItems" :content="{ align: 'end' }">
+            <UButton color="neutral" variant="ghost" class="text-muted">筛选</UButton>
+          </UDropdownMenu>
+          <UDropdownMenu :items="moreItems" :content="{ align: 'end' }">
+            <UButton color="neutral" variant="ghost" icon="i-lucide-ellipsis" class="text-muted" aria-label="更多操作" />
+          </UDropdownMenu>
         </div>
-        <span class="ms-auto text-meta text-muted tabular-nums" data-testid="customer-total">共 {{ total }} 位<template v-if="activeHint"> · {{ activeHint }}</template></span>
+      </div>
+      <div class="flex min-h-7 flex-wrap items-center gap-2">
+        <span v-if="responsibleName" class="inline-flex h-7 items-center gap-1 rounded-md bg-selected ps-2 text-sm" data-testid="filter-chip">
+          <span class="text-muted">负责人 是</span>{{ responsibleName }}
+          <button type="button" class="grid size-6 place-items-center rounded-md text-muted hover:text-default" aria-label="去掉负责人筛选" @click="responsible = NONE">
+            <UIcon name="i-lucide-x" class="size-3.5" />
+          </button>
+        </span>
+        <span v-if="sort !== defaultSort" class="inline-flex h-7 items-center gap-1 rounded-md bg-selected ps-2 text-sm" data-testid="sort-chip">
+          <span class="text-muted">排序</span>{{ sortName }}
+          <button type="button" class="grid size-6 place-items-center rounded-md text-muted hover:text-default" aria-label="恢复默认排序" @click="sort = defaultSort">
+            <UIcon name="i-lucide-x" class="size-3.5" />
+          </button>
+        </span>
+        <span class="ms-auto text-meta text-muted tabular-nums" data-testid="customer-total">{{ total }} 位<template v-if="activeHint"> · {{ activeHint }}</template></span>
       </div>
     </div>
 
-    <div class="border-b border-default" data-testid="customer-list" :aria-busy="loading">
-      <div class="grid gap-4 grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_8rem_8rem] xl:grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_6rem_8rem_8rem_8rem] border-b border-default px-3 py-2 text-sm text-muted">
-        <span>顾客</span><span>上次到店</span><span class="max-xl:hidden">来过</span><span class="text-right max-xl:hidden">累计消费</span><span class="text-right">卡余额</span><span class="ps-4">下次</span>
-      </div>
-      <div
-        v-for="row in items"
-        :key="row.customer.id"
-        data-testid="customer-row"
-        class="group/row grid gap-4 grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_8rem_8rem] xl:grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_6rem_8rem_8rem_8rem] cursor-pointer items-start border-t border-default px-3 py-3 text-sm first-of-type:border-t-0 hover:bg-hover"
-        @click="openDetail(row.customer.id)"
-      >
-        <div class="flex min-w-0 gap-3">
-          <span v-if="can('customer.assign')" class="relative size-9 shrink-0" @click.stop>
-            <span class="absolute inset-0 grid place-items-center rounded-full bg-tag-gray font-semibold transition-opacity" :class="[selected.includes(row.customer.id) ? 'opacity-0' : 'group-hover/row:opacity-0 group-focus-within/row:opacity-0 any-pointer-coarse:opacity-0']" aria-hidden="true">{{ displayName(row.customer).slice(0, 1) }}</span>
-            <UCheckbox
-              class="absolute inset-0 grid place-items-center transition-opacity"
-              :class="selected.includes(row.customer.id) ? '' : 'opacity-0 group-hover/row:opacity-100 focus-within:opacity-100 any-pointer-coarse:opacity-100'"
-              :aria-label="`选择顾客 ${displayName(row.customer)}`"
-              :model-value="selected.includes(row.customer.id)"
-              @update:model-value="v => toggle(row.customer.id, v)"
-            />
-          </span>
-          <span v-else class="grid size-9 shrink-0 place-items-center rounded-full bg-tag-gray font-semibold" aria-hidden="true">{{ displayName(row.customer).slice(0, 1) }}</span>
-          <div class="min-w-0">
-            <p class="flex flex-wrap items-center gap-2">
-              <button type="button" class="min-w-0 text-start font-semibold break-all hover:underline" @click.stop="openDetail(row.customer.id)">{{ displayName(row.customer) }}</button>
-              <span v-for="label in row.customer.active_safety_labels" :key="label.id" class="tag bg-tag-red">{{ labelNames[label.kind] || '安全标签' }}</span>
-            </p>
-            <p class="truncate text-meta text-muted" :title="row.customer.responsible ? `负责人 ${row.customer.responsible.name}` : undefined">
-              <span class="tabular-nums" data-testid="customer-phone">{{ row.customer.phone }}</span>
-              <template v-if="row.customer.responsible"> · 负责人 {{ row.customer.responsible.name }}</template>
-            </p>
+    <div data-testid="customer-list" :aria-busy="loading" :class="{ 'pb-20': selected.length }">
+      <section v-for="group in groups" :key="group.title" class="mb-4">
+        <h2 v-if="group.title" class="mb-1 text-meta text-muted">{{ group.title }}</h2>
+        <div class="divide-y divide-default">
+          <div
+            v-for="row in group.rows"
+            :key="row.customer.id"
+            data-testid="customer-row"
+            class="group/row -mx-3 flex cursor-pointer items-center gap-3 rounded-card px-3 py-3 hover:bg-hover"
+            :class="selected.includes(row.customer.id) && 'bg-hover'"
+            @click="openDetail(row.customer.id)"
+          >
+            <span v-if="can('customer.assign')" class="relative size-8 shrink-0" @click.stop>
+              <span class="absolute inset-0 grid place-items-center rounded-full bg-tag-gray text-sm transition-opacity" :class="[selected.length || selected.includes(row.customer.id) ? 'opacity-0' : 'group-hover/row:opacity-0 group-focus-within/row:opacity-0 any-pointer-coarse:opacity-0']" aria-hidden="true">{{ displayName(row.customer).slice(0, 1) }}</span>
+              <UCheckbox
+                class="absolute inset-0 grid place-items-center transition-opacity"
+                :class="selected.length ? '' : 'opacity-0 group-hover/row:opacity-100 focus-within:opacity-100 any-pointer-coarse:opacity-100'"
+                :aria-label="`选择顾客 ${displayName(row.customer)}`"
+                :model-value="selected.includes(row.customer.id)"
+                @update:model-value="v => toggle(row.customer.id, v)"
+              />
+            </span>
+            <span v-else class="grid size-8 shrink-0 place-items-center rounded-full bg-tag-gray text-sm" aria-hidden="true">{{ displayName(row.customer).slice(0, 1) }}</span>
+            <div class="min-w-0 flex-1">
+              <p class="flex flex-wrap items-center gap-2">
+                <button type="button" class="min-w-0 text-start font-medium break-all hover:underline" @click.stop="openDetail(row.customer.id)">{{ displayName(row.customer) }}</button>
+                <span v-for="label in row.customer.active_safety_labels" :key="label.id" class="tag bg-tag-red">{{ labelNames[label.kind] || '安全标签' }}</span>
+              </p>
+              <p class="truncate text-meta text-muted" :title="rowMeta(row)">
+                <span class="tabular-nums" data-testid="customer-phone">{{ row.customer.phone }}</span><template v-if="rowMeta(row)"> · {{ rowMeta(row) }}</template>
+              </p>
+            </div>
+            <div class="shrink-0 text-right">
+              <p class="flex items-center justify-end gap-2 tabular-nums">
+                <span v-if="row.overdue_days" class="tag bg-tag-yellow">晚了 {{ span(row.overdue_days) }}</span>
+                {{ rowSince(row) }}
+              </p>
+              <p class="text-meta text-muted tabular-nums">{{ rowCards(row) }}</p>
+            </div>
           </div>
         </div>
-        <div class="min-w-0">
-          <template v-if="row.days_since_last_visit !== null && row.days_since_last_visit !== undefined">
-            <p class="flex flex-wrap items-center gap-2">
-              <span class="tabular-nums">{{ sinceText(row.days_since_last_visit) }}</span>
-              <span v-if="row.overdue_days" class="tag bg-tag-yellow">晚了 {{ row.overdue_days }} 天</span>
-            </p>
-            <p class="truncate text-meta text-muted" :title="lastVisitMeta(row)">{{ lastVisitMeta(row) }}</p>
-          </template>
-          <p v-else class="text-muted">还没来过</p>
-        </div>
-        <div class="max-xl:hidden">
-          <template v-if="row.visit_count">
-            <p class="tabular-nums">{{ row.visit_count }} 次</p>
-            <p class="text-meta text-muted">{{ row.cycle_days ? `约 ${row.cycle_days} 天一次` : '只来过一天' }}</p>
-          </template>
-        </div>
-        <div class="text-right max-xl:hidden">
-          <template v-if="row.visit_count">
-            <p class="tabular-nums">{{ yuanFixed(row.total_spend) }}</p>
-            <p class="text-meta text-muted tabular-nums">平均每次 {{ yuanFixed(averageSpend(row)) }}</p>
-          </template>
-        </div>
-        <div class="text-right">
-          <template v-if="Number(row.stored_balance) > 0">
-            <p class="tabular-nums">{{ yuanFixed(row.stored_balance) }}</p>
-            <p class="text-meta text-muted">{{ row.count_remaining ? `另有 ${row.count_remaining} 次` : '储值' }}</p>
-          </template>
-          <template v-else-if="row.count_remaining">
-            <p class="tabular-nums">{{ row.count_remaining }} 次</p>
-            <p class="text-meta text-muted">次卡</p>
-          </template>
-          <p v-else class="text-dimmed">没有</p>
-        </div>
-        <div class="min-w-0 ps-4">
-          <span v-if="row.next_appointment" class="tag bg-tag-gray tabular-nums">{{ nextText(row.next_appointment.starts_at) }}</span>
-          <p v-if="row.next_appointment" class="mt-0.5 truncate text-meta text-muted" :title="row.next_appointment.staff.name">{{ row.next_appointment.staff.name }}</p>
-        </div>
-      </div>
+      </section>
       <template v-if="!items.length && !loading">
         <EmptyState v-if="query || responsible !== NONE" title="没有找到顾客" hint="换个手机号或姓名试试">
           <UButton color="neutral" variant="outline" @click="clearFilters">清除筛选</UButton>
@@ -423,6 +505,17 @@ async function handover() {
       <UButton color="neutral" variant="ghost" icon="i-lucide-chevron-left" :disabled="offset === 0 || loading" @click="changePage(-1)">上一页</UButton>
       <span class="tabular-nums">第 {{ offset / PAGE + 1 }} 页，共 {{ Math.ceil(total / PAGE) }} 页</span>
       <UButton color="neutral" variant="ghost" trailing-icon="i-lucide-chevron-right" :disabled="offset + PAGE >= total || loading" @click="changePage(1)">下一页</UButton>
+    </div>
+
+    <!-- 批量（样稿 L4）：勾了才从底下浮出一条墨色操作栏，平时不放「批量」按钮。 -->
+    <div v-if="can('customer.assign') && selected.length" class="pointer-events-none fixed inset-x-0 bottom-6 z-40 flex justify-center">
+      <div class="pointer-events-auto flex items-center gap-1 rounded-card bg-inverted p-2 ps-4 text-sm text-white shadow-lift" role="toolbar" aria-label="批量操作" data-testid="bulk-bar">
+        <span class="me-2 tabular-nums" aria-live="polite">选了 {{ selected.length }} 位</span>
+        <button type="button" class="h-8 rounded-md bg-white/10 px-3 hover:bg-white/20" @click="openAssign">交给别人负责</button>
+        <button type="button" class="grid size-8 place-items-center rounded-md text-white/70 hover:bg-white/10 hover:text-white" aria-label="取消选择" @click="selected = []">
+          <UIcon name="i-lucide-x" class="size-4" />
+        </button>
+      </div>
     </div>
     <UModal v-model:open="createOpen" title="新建顾客">
       <template #body>
@@ -454,7 +547,7 @@ async function handover() {
         </ModalActions>
       </template>
     </UModal>
-    <UModal v-if="can('customer.assign')" v-model:open="assignOpen" title="分配负责人" :description="`为选中的 ${selected.length} 位顾客分配负责人。`">
+    <UModal v-if="can('customer.assign')" v-model:open="assignOpen" title="交给别人负责" :description="`选中的 ${selected.length} 位顾客交给谁负责。`">
       <template #body>
         <UFormField label="负责人">
           <USelect v-model="assignStaff" :items="[{ label: '不设负责人', value: NONE }, ...activeStaffItems]" class="w-full" />

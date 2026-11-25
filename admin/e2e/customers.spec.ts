@@ -165,11 +165,22 @@ test('店长把停用员工负责的顾客交接后，按新负责人筛选可�
   await select(page, '接手的员工', toMe.name)
   await page.getByRole('button', { name: '确认交接', exact: true }).click()
   await expect(page.getByText('已移交 2 位顾客', { exact: true })).toBeVisible()
-  await select(page, '负责人筛选', toMe.name)
+  await page.getByRole('button', { name: '筛选', exact: true }).click()
+  await page.getByRole('menuitem', { name: '负责人', exact: true }).click()
+  await page.getByRole('menuitemcheckbox', { name: toMe.name, exact: true }).click()
+  await expect(page.getByTestId('filter-chip')).toHaveText(`负责人 是${toMe.name}`)
   await expect(page.getByTestId('customer-row')).toHaveCount(2)
   await expect(page.getByTestId('segment-all').getByTestId('segment-count')).toHaveText('2')
   await expect(page.getByTestId('customer-list')).toContainText(names[0]!)
   await expect(page.getByTestId('customer-list')).toContainText(names[1]!)
+  const narrowed = page.waitForResponse(r => r.url().endsWith('/api/ops/list_customer_overview') && !r.request().postDataJSON().responsible_staff_id)
+  await page.getByRole('button', { name: '去掉负责人筛选', exact: true }).click()
+  await narrowed
+  await expect(page.getByTestId('filter-chip')).toHaveCount(0)
+  await page.getByRole('button', { name: '筛选', exact: true }).click()
+  await page.getByRole('menuitem', { name: '负责人', exact: true }).click()
+  await page.getByRole('menuitemcheckbox', { name: toMe.name, exact: true }).click()
+  await expect(page.getByTestId('customer-row')).toHaveCount(2)
   await page.getByRole('button', { name: names[0]!, exact: true }).click()
   await page.getByTestId('customer-profile').getByRole('button', { name: '修改记录', exact: true }).click()
   const log = page.getByTestId('customer-log-entry').filter({ has: page.getByText('负责人交接', { exact: true }) })
@@ -202,8 +213,10 @@ test('点分组只列这一组的顾客，没来过的新建顾客只在全部�
 
 test('翻到第二页后切分组、改排序都从第一页开始', async ({ page }) => {
   const offsets: number[] = []
+  const sorts: string[] = []
   await page.route('**/api/ops/list_customer_overview', async (route) => {
     offsets.push(route.request().postDataJSON().offset ?? 0)
+    sorts.push(route.request().postDataJSON().sort)
     // 只把总数放大到三页，翻页和切分组走真实接口。切分组、改排序会取消上一条请求，
     // 被取消的请求读不到响应，直接放弃，不算失败。
     try {
@@ -224,11 +237,19 @@ test('翻到第二页后切分组、改排序都从第一页开始', async ({ pa
   await expect(page.getByTestId('segment-due')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByText('第 1 页，共 3 页', { exact: true })).toBeVisible()
   expect(offsets.at(-1)).toBe(0)
+  // 该回来了默认按晚了几天排，不出排序小签
+  expect(sorts.at(-1)).toBe('overdue')
+  await expect(page.getByTestId('sort-chip')).toHaveCount(0)
   await page.getByRole('button', { name: '下一页', exact: true }).click()
   await expect(page.getByText('第 2 页，共 3 页', { exact: true })).toBeVisible()
-  await select(page, '排序', '按累计消费')
+  await page.getByRole('button', { name: '更多操作', exact: true }).click()
+  await page.getByRole('menuitemcheckbox', { name: '按累计消费', exact: true }).click()
   await expect(page.getByText('第 1 页，共 3 页', { exact: true })).toBeVisible()
   expect(offsets.at(-1)).toBe(0)
+  await expect(page.getByTestId('sort-chip')).toHaveText('排序累计消费')
+  await page.getByRole('button', { name: '恢复默认排序', exact: true }).click()
+  await expect(page.getByTestId('sort-chip')).toHaveCount(0)
+  await expect.poll(() => sorts.at(-1)).toBe('overdue')
 })
 
 test('发型师没有合并重复顾客和负责人交接入口', async ({ page }) => {
@@ -238,7 +259,11 @@ test('发型师没有合并重复顾客和负责人交接入口', async ({ page 
   await login(page, stylist.account, stylist.password)
   await page.goto('/customers')
   await expect(page.getByRole('heading', { name: '顾客', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: '更多操作', exact: true })).toHaveCount(0)
+  // ··· 里人人有排序，负责人交接只给能分配负责人的人
+  await page.getByRole('button', { name: '更多操作', exact: true }).click()
+  await expect(page.getByRole('menuitemcheckbox', { name: '按上次到店', exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '负责人交接', exact: true })).toHaveCount(0)
+  await page.keyboard.press('Escape')
   await search(page, customer.name)
   await expect(page.getByTestId('customer-row').filter({ hasText: customer.name })).toHaveCount(1)
   await expect(page.getByTestId('customer-list').getByRole('checkbox')).toHaveCount(0)
@@ -303,17 +328,23 @@ test('店长多选分配负责人，可清空负责人', async ({ page }) => {
   await login(page, manager.account, manager.password)
   await page.goto('/customers')
   await search(page, prefix)
+  // 勾了才浮出批量栏，Esc 取消选择
+  await page.getByRole('checkbox', { name: `选择顾客 ${prefix}甲`, exact: true }).check()
+  await expect(page.getByTestId('bulk-bar')).toContainText('选了 1 位')
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('bulk-bar')).toHaveCount(0)
   await page.getByRole('checkbox', { name: `选择顾客 ${prefix}甲`, exact: true }).check()
   await page.getByRole('checkbox', { name: `选择顾客 ${prefix}乙`, exact: true }).check()
-  await page.getByRole('button', { name: '分配负责人', exact: true }).click()
+  await page.getByTestId('bulk-bar').getByRole('button', { name: '交给别人负责', exact: true }).click()
   await select(page, '负责人', staff.name)
   await page.getByRole('button', { name: '确认分配', exact: true }).click()
   await expect(page.getByTestId('customer-row').filter({ hasText: staff.name })).toHaveCount(2)
   await page.getByRole('checkbox', { name: `选择顾客 ${prefix}甲`, exact: true }).check()
   await page.getByRole('checkbox', { name: `选择顾客 ${prefix}乙`, exact: true }).check()
-  await page.getByRole('button', { name: '分配负责人', exact: true }).click()
+  await page.getByTestId('bulk-bar').getByRole('button', { name: '交给别人负责', exact: true }).click()
   await page.getByRole('button', { name: '确认分配', exact: true }).click()
-  await expect(page.getByRole('dialog', { name: '分配负责人', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: '交给别人负责', exact: true })).toHaveCount(0)
+  await expect(page.getByTestId('bulk-bar')).toHaveCount(0)
   expect((await api(token, 'get_customer', { id: a.id })).responsible).toBeNull()
   expect((await api(token, 'get_customer', { id: b.id })).responsible).toBeNull()
 })
