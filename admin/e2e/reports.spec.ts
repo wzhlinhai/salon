@@ -251,3 +251,16 @@ test('发型师打不开只给店长看的报表', async ({ page }) => {
     await expect(page).toHaveURL('/forbidden')
   }
 })
+
+test('报表读不出来时原地一块红框写哪里没读出来，点「重试」重新读', async ({ page }) => {
+  let fail = true
+  await page.route('**/api/ops/get_business_report', route => fail ? route.abort() : route.continue())
+  await login(page, owner.account, owner.password)
+  await page.goto('/reports/business')
+  const error = page.getByTestId('load-error')
+  await expect(error).toContainText('报表没有读出来')
+  fail = false
+  await error.getByRole('button', { name: '重试', exact: true }).click()
+  await expect(error).toHaveCount(0)
+  await expect(page.getByTestId('report-brief')).toBeVisible()
+})

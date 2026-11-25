@@ -1,8 +1,5 @@
 <script setup lang="ts">
 import { zh_cn } from '@nuxt/ui/locale'
-import type { components } from '~/utils/api'
-
-type Customer = components['schemas']['Customer']
 
 const route = useRoute()
 const { me, can } = useMe()
@@ -16,7 +13,7 @@ watch(() => route.path, () => {
 const pageTitle = computed(() => pageCrumbTitle.value || String(route.meta.title || '首页'))
 
 const { pending: pendingDrafts, load: loadDrafts, reset: resetDrafts } = useDrafts()
-const { ask: askAi, reset: resetAi, open: aiOpen } = useAiChat()
+const { reset: resetAi, open: aiOpen } = useAiChat()
 
 const visibleNav = computed(() => navItems.filter(item => !item.permission || can(item.permission)))
 
@@ -92,41 +89,11 @@ async function loadStore() {
   storeName.value = data?.name ?? ''
 }
 
-// 全局搜索：页面直接来自用户可见的导航；顾客只在有查看权限时按输入异步查询。
+// 全局搜索（GlobalSearch）：侧栏「搜索」和 Ctrl K 打开。
 const searchOpen = ref(false)
-const searchTerm = ref('')
-const customerResults = ref<Customer[]>([])
-const customerGuard = useRequestGuard()
-let searchTimer: ReturnType<typeof setTimeout> | undefined
 
-async function searchCustomers(query: string) {
-  const current = customerGuard.next()
-  const { data } = await useApi().POST('/api/ops/search_customers', {
-    body: { query, include_unidentified: false, limit: 10 }
-  })
-  if (!current()) return
-  customerResults.value = data?.items ?? []
-}
-
-watch(searchTerm, (value) => {
-  clearTimeout(searchTimer)
-  const query = value.trim()
-  // 换了词就清掉上一词的顾客结果，免得快速回车选中旧结果。
-  customerGuard.invalidate()
-  customerResults.value = []
-  if (!can('customer.view') || !query) return
-  searchTimer = setTimeout(() => searchCustomers(query), 300)
-})
-
-onBeforeUnmount(() => clearTimeout(searchTimer))
-
-// 换人登录时清掉上一个人的搜索词、顾客结果、AI 对话和草稿，再取新登录者的草稿。
+// 换人登录时清掉上一个人的 AI 对话和草稿，再取新登录者的草稿；搜索框自己清。
 watch(() => me.value?.staff.id, (staffId) => {
-  clearTimeout(searchTimer)
-  customerGuard.invalidate()
-  searchTerm.value = ''
-  customerResults.value = []
-  searchOpen.value = false
   resetAi()
   resetDrafts()
   if (staffId) {
@@ -143,56 +110,6 @@ onMounted(() => {
   }, 60_000)
 })
 onBeforeUnmount(() => clearInterval(draftTimer))
-
-const searchGroups = computed(() => {
-  const groups: {
-    id: string
-    label: string
-    ignoreFilter?: boolean
-    items: { label: string, icon?: string, ui?: { itemLeadingIcon: string }, onSelect: () => void }[]
-  }[] = [{
-    id: 'pages',
-    label: '页面',
-    items: [{ label: '待确认', icon: DRAFTS_ICON, to: '/drafts' }, ...visibleNav.value].map(item => ({
-      label: item.label,
-      icon: item.icon,
-      ui: { itemLeadingIcon: 'text-muted' },
-      onSelect: () => navigateTo(item.to)
-    }))
-  }]
-  if (can('customer.view') && searchTerm.value.trim()) {
-    groups.push({
-      id: 'customers',
-      label: '顾客',
-      // 后端已按手机号、后四位和姓名查好，不再让组件按标签二次过滤。
-      ignoreFilter: true,
-      items: customerResults.value.map(customer => ({
-        label: `${customer.name || '未识别顾客'}${customer.phone ? ` · ${customer.phone}` : ''}`,
-        icon: 'i-lucide-contact',
-        onSelect: () => navigateTo(`/customers/${customer.id}`)
-      }))
-    })
-  }
-  const said = searchTerm.value.trim()
-  if (said) {
-    // 放在最后：输入页面名或顾客名时回车仍然打开搜索结果，说一整句话时只剩这一项。
-    groups.push({
-      id: 'ai',
-      label: 'AI',
-      ignoreFilter: true,
-      items: [{
-        label: `吩咐 AI：${said}`,
-        icon: 'i-lucide-corner-down-left',
-        onSelect: () => {
-          searchOpen.value = false
-          searchTerm.value = ''
-          askAi(said)
-        }
-      }]
-    })
-  }
-  return groups
-})
 </script>
 
 <template>
@@ -338,23 +255,15 @@ const searchGroups = computed(() => {
         </template>
       </UDashboardPanel>
 
-      <UDashboardSearch
-        v-model:open="searchOpen"
-        v-model:search-term="searchTerm"
-        :groups="searchGroups"
-        :color-mode="false"
-        title="搜索"
-        placeholder="搜索顾客、页面，或说一句话交给 AI…"
-        :ui="{ label: 'font-medium text-muted' }"
-      />
+      <GlobalSearch v-model:open="searchOpen" />
 
       <AiPanel />
-      <!-- 吩咐 AI 的常驻入口（照 Notion 右下角的 AI 按钮）：每一页都在，面板打开时收起。 -->
+      <!-- 问 AI 的常驻入口（照 Notion 右下角的 AI 按钮）：每一页都在，面板打开时收起。 -->
       <button
         v-if="!aiOpen"
         type="button"
-        aria-label="吩咐 AI"
-        title="吩咐 AI"
+        aria-label="问 AI"
+        title="问 AI"
         data-testid="ai-fab"
         class="fixed right-5 bottom-5 z-40 grid size-12 place-items-center rounded-full bg-white text-default shadow-lift transition-colors hover:bg-side"
         @click="aiOpen = true"

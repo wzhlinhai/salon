@@ -376,9 +376,7 @@ function saveUnseal() {
       <UButton v-if="primaryLabel" size="sm" :loading="closing" :disabled="loading" @click="primary">{{ primaryLabel }}</UButton>
     </PageActions>
 
-    <EmptyState v-if="failed && !figures" title="这天的账没加载出来" hint="检查网络后再试一次">
-      <UButton color="neutral" variant="outline" size="sm" @click="retry">重试</UButton>
-    </EmptyState>
+    <LoadError v-if="failed && !figures" title="这天的账没加载出来" hint="检查网络后再试一次" @retry="retry" />
     <ListSkeleton v-else-if="!figures" :rows="5" />
 
     <template v-else>

@@ -86,9 +86,7 @@ function cell(value: string | number) {
       <MethodPicker v-model="kind" :items="kinds" label="项目类型" />
     </div>
 
-    <EmptyState v-if="failed && !report" class="box" icon="i-lucide-circle-alert" title="报表没有读出来" hint="检查网络后再试一次">
-      <UButton color="neutral" variant="outline" @click="retry">重试</UButton>
-    </EmptyState>
+    <LoadError v-if="failed && !report" title="报表没有读出来" hint="检查网络后再试一次" @retry="retry" />
 
     <template v-if="report && totals">
       <ReportBrief :parts="brief" :class="loading && 'opacity-60'" />

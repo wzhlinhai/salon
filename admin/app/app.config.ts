@@ -129,6 +129,22 @@ export default defineAppConfig({
     popover: {
       slots: { content: 'rounded-card ring-0 shadow-lift' }
     },
+    // 提示条（样稿 25）：墨色底白字一行，做完了说一声；出错是浅红底黑字，说清哪里不行。
+    toast: {
+      slots: {
+        root: 'bg-inverted ring-0 shadow-lift rounded-card px-4 py-3',
+        title: 'text-inverted',
+        description: 'text-inverted/70',
+        close: 'text-inverted/70 hover:text-inverted'
+      },
+      variants: {
+        color: {
+          primary: { icon: 'text-inverted' },
+          neutral: { icon: 'text-inverted' },
+          error: { root: 'bg-tag-red', title: 'text-highlighted', description: 'text-muted', close: 'text-muted hover:text-default' }
+        }
+      }
+    },
     // 禁用的实心按钮变成灰底灰字，而不是半透明的主色：半透明看着像"能点但没反应"。
     // 描边按钮照 Notion 的次要按钮：白底深色字、一圈淡灰框，不出现主色框和主色字（没写 color 时默认是 primary）。
     // 实心主按钮（墨色）照 Notion 按钮的做法：一道内描边加 1px 阴影，看着压得住。
