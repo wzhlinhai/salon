@@ -72,7 +72,7 @@ function cell(value: string | number) {
 
       <section>
         <div class="sec">明细</div>
-        <EmptyState v-if="!rows.length" class="box" art="chart" title="这段时间没有新客" hint="新顾客第一次结账后这里会有数" />
+        <EmptyState v-if="!rows.length" art="chart" title="这段时间没有新客" hint="新顾客第一次结账后这里会有数" />
         <div v-else class="overflow-x-auto">
           <table class="w-full text-sm tabular-nums" data-testid="source-table">
             <thead class="border-b border-default text-sm text-muted">

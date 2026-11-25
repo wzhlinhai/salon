@@ -136,8 +136,8 @@ function cell(value: string | number) {
 
       <section>
         <h2 class="sec">每种卡<span class="font-normal text-dimmed">收进 · 用掉 · 还剩</span></h2>
-        <EmptyState v-if="!rows.length" class="box" art="card" title="还没有卡类型" hint="在“卡类型”里新建后这里会有数" />
-        <EmptyState v-else-if="idle" class="box" art="card" title="这段时间没有卡的进出" hint="开卡、充值、耗卡后这里会有数" />
+        <EmptyState v-if="!rows.length" art="card" title="还没有卡类型" hint="在“卡类型”里新建后这里会有数" />
+        <EmptyState v-else-if="idle" art="card" title="这段时间没有卡的进出" hint="开卡、充值、耗卡后这里会有数" />
         <template v-else>
           <ul class="mb-2 flex gap-4 text-meta text-muted" aria-hidden="true">
             <li v-for="l in [{ key: 'in', label: '收进' }, { key: 'used', label: '用掉' }, { key: 'left', label: '还剩' }]" :key="l.key" class="flex items-center gap-2">

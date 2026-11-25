@@ -61,7 +61,7 @@ const settingGroups = computed(() => {
   return groups.filter(g => g.items.length)
 })
 
-// 编辑中的设置。值按形式分开存，保存时再组装。
+// 编辑中的设置。改的时候要挑生效日期，所以在弹窗里改，行上只写现在的值和「修改」。值按形式分开存，保存时再组装。
 const editorGuard = useRequestGuard()
 const editing = ref<Setting | null>(null)
 const form = reactive({ choice: '', integer: 0, time: '', text: '', open: '', close: '', from: '' })
@@ -170,55 +170,55 @@ async function saveSource(source: components['schemas']['CustomerSource']) {
 onMounted(loadSources)
 </script>
 
+<!-- 窄栏文档（样稿 16）：一组一个小标题，一行左边名字和一句说明，右边现在的值和「修改」，行间一道细线；窄屏值掉到下一行。 -->
 <template>
-  <div class="space-y-4">
+  <div>
     <PageDescriptionTail v-if="today">今天是营业日 {{ today }}。</PageDescriptionTail>
 
     <section data-setting="store_name">
-      <div class="sec">门店</div>
-      <div class="box grid gap-x-6 gap-y-2 px-4 py-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
-        <div>
-          <div class="text-sm font-medium">门店名</div>
-          <div class="mt-0.5 text-xs text-muted">显示在侧栏顶上和小票上，改了立即生效</div>
+      <h2 class="sec">门店</h2>
+      <div class="border-y border-default">
+        <div class="flex flex-wrap items-start gap-x-6 gap-y-1 py-3 text-sm">
+          <div class="min-w-0 flex-1 basis-full md:basis-0">
+            <p class="font-medium">门店名</p>
+            <p class="text-meta text-muted">显示在侧栏顶上和小票上，改了立即生效</p>
+          </div>
+          <p class="flex-1 md:w-64 md:flex-none md:text-right">{{ storeName }}</p>
+          <div v-if="can('settings.manage')" class="flex w-14 justify-end">
+            <UButton v-if="storeName" size="sm" color="neutral" variant="ghost" aria-label="修改门店名" @click="editName">修改</UButton>
+          </div>
         </div>
-        <div class="text-sm">{{ storeName }}</div>
-        <UButton v-if="can('settings.manage') && storeName" size="sm" color="neutral" variant="ghost" class="justify-self-start md:justify-self-end" aria-label="修改门店名" @click="editName">修改</UButton>
       </div>
     </section>
 
     <section v-for="group in settingGroups" :key="group.label" :data-setting-group="group.label">
-      <div class="sec">{{ group.label }}</div>
-      <div class="box overflow-hidden p-0">
-        <div
-          v-for="s in group.items"
-          :key="s.key"
-          :data-setting="s.key"
-          class="grid gap-x-6 gap-y-2 border-t border-default px-4 py-4 first:border-t-0 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center"
-        >
-          <div>
-            <div class="text-sm font-medium">{{ s.label }}</div>
-            <div class="mt-0.5 text-xs text-muted">{{ s.hint }}</div>
+      <h2 class="sec">{{ group.label }}</h2>
+      <div class="divide-y divide-default border-y border-default">
+        <div v-for="s in group.items" :key="s.key" :data-setting="s.key" class="flex flex-wrap items-start gap-x-6 gap-y-1 py-3 text-sm">
+          <div class="min-w-0 flex-1 basis-full md:basis-0">
+            <p class="font-medium">{{ s.label }}</p>
+            <p class="text-meta text-pretty text-muted">{{ s.hint }}</p>
           </div>
-          <div class="text-sm">
-            <div class="flex flex-wrap items-center gap-2">
-              <span>{{ show(s, s.value) }}</span>
-              <span v-if="s.is_default" class="text-xs text-dimmed">系统默认</span>
-              <span v-else class="text-xs text-dimmed">{{ s.effective_from }} 起</span>
-            </div>
-            <div v-for="u in s.upcoming" :key="u.effective_from" class="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+          <div class="flex-1 md:w-64 md:flex-none md:text-right">
+            <p>{{ show(s, s.value) }}</p>
+            <p class="text-meta text-dimmed">{{ s.is_default ? '系统默认' : `${s.effective_from} 起` }}</p>
+            <p v-for="u in s.upcoming" :key="u.effective_from" class="mt-1 text-meta text-muted">
               <span class="tag bg-tag-yellow">已安排</span>
               {{ u.effective_from }} 起改为 {{ show(s, u.value) }}{{ u.is_default ? '（系统默认）' : '' }}
-            </div>
+            </p>
           </div>
-          <UButton v-if="can('settings.manage')" size="sm" color="neutral" variant="ghost" class="justify-self-start md:justify-self-end" @click="openEditor(s)">修改</UButton>
+          <div v-if="can('settings.manage')" class="flex w-14 justify-end">
+            <UButton size="sm" color="neutral" variant="ghost" @click="openEditor(s)">修改</UButton>
+          </div>
         </div>
       </div>
     </section>
 
     <section data-setting="customer_sources">
-      <div class="sec">顾客来源</div>
-      <div class="box space-y-2">
-        <div v-for="source in sources" :key="source.id" class="flex items-center gap-2">
+      <h2 class="sec">顾客来源</h2>
+      <p class="-mt-1 mb-2 text-meta text-muted">新建顾客时选的「从哪儿来」</p>
+      <div class="divide-y divide-default border-y border-default">
+        <div v-for="source in sources" :key="source.id" class="flex items-center gap-2 py-2">
           <template v-if="can('settings.manage')">
             <UInput v-model="source.name" :aria-label="`顾客来源 ${source.name}`" class="flex-1" @change="saveSource(source)" />
             <USwitch v-model="source.active" :label="source.active ? '启用' : '停用'" @update:model-value="saveSource(source)" />
@@ -228,7 +228,7 @@ onMounted(loadSources)
             <span v-if="!source.active" class="tag bg-tag-gray">停用</span>
           </template>
         </div>
-        <form v-if="can('settings.manage')" class="flex gap-2 pt-2" @submit.prevent="addSource">
+        <form v-if="can('settings.manage')" class="flex gap-2 py-2" @submit.prevent="addSource">
           <UInput v-model="sourceName" aria-label="新顾客来源" placeholder="新顾客来源" class="flex-1" />
           <UButton type="submit" size="sm" color="neutral" variant="outline" icon="i-lucide-plus">添加</UButton>
         </form>
@@ -236,7 +236,7 @@ onMounted(loadSources)
     </section>
 
     <section v-if="can('audit_log.view')">
-      <div class="sec">修改记录</div>
+      <h2 class="sec">修改记录</h2>
       <div class="overflow-x-auto">
         <p v-if="!changes.items.value.length" class="text-sm text-muted">还没有修改过设置</p>
         <table v-else class="data-table">
