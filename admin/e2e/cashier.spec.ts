@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { api, apiLogin, customerAction, hire, login, owner, uniqueSuffix } from './helpers'
 import { addDays } from '../app/utils/datetime'
 
@@ -53,10 +53,17 @@ async function businessDate(token: string) {
   return settings
 }
 
+// 开单弹窗里用「搜全部项目」找到项目：测试项目名带随机后缀，不一定在前面那排胶囊里。
+async function pickItem(page: Page, dialog: Locator, itemName: string) {
+  await dialog.getByRole('button', { name: '搜全部项目' }).click()
+  await page.getByPlaceholder('项目名').fill(itemName)
+  await page.getByRole('option', { name: new RegExp(itemName) }).click()
+  await expect(dialog.locator(`[data-testid="order-item-row"][data-item="${itemName}"]`)).toBeVisible()
+}
+
 async function chooseItem(page: Page, dialogRole: 'dialog', itemName: string, staffName: string) {
   const dialog = page.getByRole(dialogRole, { name: '开单' })
-  await dialog.getByRole('combobox', { name: '项目1' }).click()
-  await page.getByRole('option', { name: new RegExp(itemName) }).click()
+  await pickItem(page, dialog, itemName)
   await dialog.getByRole('combobox', { name: '项目1岗位1员工' }).click()
   await page.getByRole('option', { name: staffName, exact: true }).click()
   return dialog
@@ -125,10 +132,9 @@ test('补录单有标记且超出补录天数被拒绝', async ({ page }) => {
   await expect(page.locator(`[data-order-id="${normal.id}"]`).getByTestId('backfill-badge')).toHaveCount(0)
   await page.getByRole('button', { name: '开单', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '开单' })
-  await dialog.getByRole('switch', { name: '补录' }).click()
+  await dialog.getByRole('checkbox', { name: '补录纸单' }).click()
   await dialog.getByLabel('纸单营业日').fill(yesterday)
-  await dialog.getByRole('combobox', { name: '项目1' }).click()
-  await page.getByRole('option', { name: new RegExp(item.name) }).click()
+  await pickItem(page, dialog, item.name)
   await dialog.getByRole('combobox', { name: '项目1岗位1员工' }).click()
   await page.getByRole('option', { name: staff.name, exact: true }).click()
   await dialog.getByRole('button', { name: '开单', exact: true }).click()
@@ -141,10 +147,9 @@ test('补录单有标记且超出补录天数被拒绝', async ({ page }) => {
 
   await page.getByTestId('receipt-paper').getByRole('button', { name: '关闭', exact: true }).click()
   await page.getByRole('button', { name: '开单', exact: true }).click()
-  await dialog.getByRole('switch', { name: '补录' }).click()
+  await dialog.getByRole('checkbox', { name: '补录纸单' }).click()
   await dialog.getByLabel('纸单营业日').fill(tooOld)
-  await dialog.getByRole('combobox', { name: '项目1' }).click()
-  await page.getByRole('option', { name: new RegExp(item.name) }).click()
+  await pickItem(page, dialog, item.name)
   await dialog.getByRole('combobox', { name: '项目1岗位1员工' }).click()
   await page.getByRole('option', { name: staff.name, exact: true }).click()
   await dialog.getByRole('button', { name: '开单', exact: true }).click()
@@ -182,7 +187,7 @@ test('团购验券、核销、立即开单、暂不开单后关联与撤销', as
   await page.getByRole('button', { name: '立即开单', exact: true }).click()
   const groupbuyDialog = page.getByRole('dialog', { name: '团购立即开单' })
   // 团购开单走 open_groupbuy_order 一步完成，不能补录。
-  await expect(groupbuyDialog.getByRole('switch', { name: '补录' })).toHaveCount(0)
+  await expect(groupbuyDialog.getByRole('checkbox', { name: '补录纸单' })).toHaveCount(0)
   await groupbuyDialog.getByRole('combobox', { name: '项目1岗位1员工' }).click()
   await page.getByRole('option', { name: staff.name, exact: true }).click()
   const openedGroupbuy = page.waitForResponse(r => r.url().endsWith('/api/ops/open_groupbuy_order'))
