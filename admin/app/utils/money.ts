@@ -17,7 +17,7 @@ export function zeroText(value: string | number | null | undefined) {
   return /^[¥-]?0(\.0+)?$/.test(String(value ?? '').trim())
 }
 
-// 报表明细表身里的金额：零写成一道短横（DESIGN.md 报表），一屏 ¥0.00 时有数的格子才跳得出来。合计行仍写 ¥0.00。
+// 报表明细表身里的金额：零写成一道长横，整数不带 .00（DESIGN.md 报表），一屏 ¥0.00 时有数的格子才跳得出来。
 export function yuanCell(value: string | number | null | undefined) {
-  return zeroText(value) ? '–' : yuanFixed(value)
+  return zeroText(value) ? '—' : yuan(value)
 }
