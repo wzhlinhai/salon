@@ -293,8 +293,10 @@ async function loadEvents() {
   if (!day || !id) return
   const { data } = await api.POST('/api/ops/list_rotation_events', { body: { queue_id: id, from: day, to: day } })
   if (!request() || !data || id !== queueId.value) return
-  events.value = [...data.entries].sort((a, b) => b.created_at.localeCompare(a.created_at))
-  void loadOrders()
+  // 后端按发生先后（同一刻再按 id）给，倒过来就是新的在上；不按时间字符串比，小数位数不一会比反。
+  events.value = [...data.entries].reverse()
+  // 顾客名取不到只是少写几个字，断网时不报错。
+  void loadOrders().catch(() => {})
 }
 
 const shownEvents = computed(() => showAllEvents.value ? events.value : events.value.slice(0, 8))
@@ -322,10 +324,14 @@ const rounds = computed<Round[]>(() => {
       if (open) open.orderId = e.order_id
     }
   }
+  // 已经认过的单不再配给别人。
+  const claimed = new Set(kept.map(r => r.orderId).filter(Boolean))
   for (const turn of onDuty.value) {
     if (turn.status !== 'serving') continue
     const last = stacks[turn.staff.id]?.at(-1)
-    if (last && !last.orderId) last.orderId = turn.serving_order_id ?? servingOrder(turn.staff.id, last.at)?.id ?? null
+    if (!last || last.orderId) continue
+    last.orderId = turn.serving_order_id ?? servingOrder(turn.staff.id, last.at, claimed)?.id ?? null
+    if (last.orderId) claimed.add(last.orderId)
   }
   return kept.reverse()
 })
@@ -358,7 +364,7 @@ async function loadOrders() {
   const request = ordersGuard.next()
   const [open, done] = await Promise.all([
     api.POST('/api/ops/list_open_orders', { body: {} }),
-    api.POST('/api/ops/list_orders', { body: { limit: 200 } })
+    api.POST('/api/ops/list_orders', { body: { limit: 100 } })
   ])
   if (!request() || !open.data) return
   orders.value = [...open.data.items, ...(done.data?.items ?? [])]
@@ -370,10 +376,12 @@ async function loadOrders() {
   }
 }
 
-function servingOrder(staffId: string, since: string) {
+// 接客之后开的、他在单上、还没被别人认走的挂单里，最早开的那张。
+function servingOrder(staffId: string, since: string, claimed: Set<string | null>) {
+  const from = Date.parse(since)
   return orders.value
-    .filter(o => o.status === 'open' && o.opened_at >= since && o.items.some(i => !i.removed_at && i.positions.some(p => p.staff_id === staffId)))
-    .sort((a, b) => a.opened_at.localeCompare(b.opened_at))[0] ?? null
+    .filter(o => o.status === 'open' && !claimed.has(o.id) && Date.parse(o.opened_at) >= from && o.items.some(i => !i.removed_at && i.positions.some(p => p.staff_id === staffId)))
+    .sort((a, b) => Date.parse(a.opened_at) - Date.parse(b.opened_at))[0] ?? null
 }
 
 function orderOf(id: string | null) {
@@ -568,7 +576,7 @@ function onMembersSaved() {
       <template v-else-if="rotation">
         <!-- 一排椅子（样稿 04）：按轮牌顺序，轮到的描黑边；没到岗的排在后面，淡一层。 -->
         <div class="chairs">
-          <ol v-if="onDuty.length" class="contents" data-testid="on-duty">
+          <ol v-if="onDuty.length" class="contents" role="list" data-testid="on-duty">
             <li
               v-for="(t, i) in onDuty"
               :key="t.staff.id"
@@ -594,7 +602,7 @@ function onMembersSaved() {
               <div class="mt-2 flex items-center gap-3">
                 <PersonAvatar :name="t.staff.name" size="md" />
                 <div class="min-w-0">
-                  <p class="truncate text-base font-semibold" :data-testid="t === nextUp ? 'next-up' : undefined">{{ who(t.staff) }}</p>
+                  <p class="truncate text-base font-semibold" :title="t.staff.name" :data-testid="t === nextUp ? 'next-up' : undefined">{{ who(t.staff) }}</p>
                   <p class="truncate text-meta text-muted tabular-nums">{{ tallyText(t.staff.id) }}</p>
                 </div>
               </div>
@@ -613,13 +621,13 @@ function onMembersSaved() {
               </div>
             </li>
           </ol>
-          <ul v-if="offDuty.length" class="contents" data-testid="off-duty">
+          <ul v-if="offDuty.length" class="contents" role="list" data-testid="off-duty">
             <li v-for="s in offDuty" :key="s.id" class="chair chair-off" :data-staff="s.name">
               <p class="flex h-7 items-center text-meta text-dimmed">不在牌上</p>
               <div class="mt-2 flex items-center gap-3">
                 <PersonAvatar :name="s.name" size="md" />
                 <div class="min-w-0">
-                  <p class="truncate text-base font-semibold text-muted">{{ who(s) }}</p>
+                  <p class="truncate text-base font-semibold text-muted" :title="s.name">{{ who(s) }}</p>
                   <p class="text-meta text-dimmed">还没到岗</p>
                 </div>
               </div>
@@ -644,10 +652,10 @@ function onMembersSaved() {
               <span class="w-12 shrink-0 text-end text-meta text-dimmed tabular-nums">{{ formatAttendanceTime(r.at) }}</span>
               <span class="rail" aria-hidden="true"><i /></span>
               <PersonAvatar :name="r.staff.name" size="sm" />
-              <span class="min-w-0 truncate">
+              <span class="min-w-0 truncate" :title="`${r.staff.name} ${roundText(r).who} ${roundText(r).items}`">
                 {{ who(r.staff) }} {{ roundText(r).who }}<span v-if="roundText(r).items" class="ms-2 text-muted">{{ roundText(r).items }}</span>
               </span>
-              <span class="tag bg-tag-gray">{{ r.designated ? '点' : '轮' }}</span>
+              <span class="tag bg-tag-gray"><span class="sr-only">{{ r.designated ? '点客' : '轮到的' }}</span><span aria-hidden="true">{{ r.designated ? '点' : '轮' }}</span></span>
             </li>
           </ol>
           <p v-else class="text-meta text-dimmed">今天还没有人接客。</p>

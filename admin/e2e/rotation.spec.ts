@@ -191,3 +191,25 @@ test('门店按项目记半轮时，队列设置里能选记半轮的项目，�
     await setRule(before)
   }
 })
+
+test('今天的轮次写出接的是哪位顾客：结账后照样写，点客记在「点」里', async ({ page }) => {
+  const { token, queue, staff: [a, b] } = await makeQueue(2)
+  for (const s of [a!, b!]) await api(token, 'join_rotation', { queue_id: queue.id, staff_id: s.id })
+  const positions = await api<{ items: { id: string }[] }>(token, 'list_positions', {})
+  const position = positions.items[0] ?? await api<{ id: string }>(token, 'create_position', { name: '发型师' })
+  const item = await api<{ id: string, name: string }>(token, 'create_item', { name: `轮次剪${uniqueSuffix()}`.slice(0, 12), price: '60.00', discountable: true, labor_fee_amount: null, labor_fee_percent: null, positions: [{ position_id: position.id, required: true }], level_prices: [] })
+  const customerName = `轮次客${uniqueSuffix()}`.slice(0, 12)
+  const customer = await api<{ customer: { id: string } }>(token, 'create_customer', { name: customerName, phone: `13${String(Date.now()).slice(-9)}` })
+  const order = await api<{ id: string, net: string }>(token, 'open_order', { customer_id: customer.customer.id, gender: 'female', designated: true, items: [{ item_id: item.id, staff: [{ slot: 1, staff_id: b!.id }] }] })
+  await api(token, 'assign_turn', { queue_id: queue.id, staff_id: b!.id, designated: true, order_id: order.id })
+  await api(token, 'checkout_orders', { orders: [{ order_id: order.id, payments: [{ method: 'cash', amount: order.net }] }] })
+
+  await login(page, owner.account, owner.password)
+  await page.goto(`/rotation?queue=${queue.id}`)
+  const rounds = page.getByTestId('rotation-rounds')
+  await expect(rounds.locator('li')).toHaveCount(1)
+  await expect(rounds).toContainText(`${b!.name} 接 ${customerName}`)
+  await expect(rounds).toContainText(item.name)
+  await expect(onDuty(page, b!.name)).toContainText('今天 1 位 · 点 1')
+  await expect(onDuty(page, b!.name)).toContainText('等着')
+})

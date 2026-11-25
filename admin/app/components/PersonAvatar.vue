@@ -4,7 +4,7 @@
 // size：sm 24px 用在窄行，默认 30px，md 44px 用在轮牌的椅子卡片，lg 64px 用在档案页名字上方。
 defineProps<{ name: string, size?: 'sm' | 'md' | 'lg' }>()
 
-const sizeClass = { sm: 'size-6 text-xs', md: 'size-11 text-base', lg: 'size-16 text-figure' }
+const sizeClass = { sm: 'size-6 text-xs', md: 'size-11 text-figure', lg: 'size-16 text-figure' }
 </script>
 
 <template>
