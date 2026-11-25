@@ -4699,6 +4699,8 @@ export interface components {
             visit_count: number;
         };
         CustomerOverviewInput: {
+            /** @description 只看这一位顾客；不填为不限 */
+            customer_id?: string;
             /** Format: int32 */
             limit?: number;
             /** Format: int32 */

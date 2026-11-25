@@ -17,6 +17,7 @@ base AS (
   WHERE cu.store_id=sqlc.arg(store_id)
     AND cu.merged_into IS NULL
     AND cu.phone IS NOT NULL
+    AND (sqlc.narg(customer_id)::uuid IS NULL OR cu.id = sqlc.narg(customer_id))
     AND (sqlc.narg(responsible_staff_id)::uuid IS NULL OR cu.responsible_staff_id = sqlc.narg(responsible_staff_id))
     AND (sqlc.narg(self_id)::uuid IS NULL OR cu.responsible_staff_id = sqlc.narg(self_id))
     AND (sqlc.arg(query)::text = '' OR

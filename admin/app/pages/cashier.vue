@@ -25,6 +25,8 @@ const canCustomer = computed(() => can('customer.view'))
 const panel = useTemplateRef('panel')
 const coupon = useTemplateRef('coupon')
 const unlinkedList = useTemplateRef('unlinkedList')
+// 在做列表每一行：顾客小卡片贴着整行右边弹，不盖住这一行的名字。
+const rowEls = shallowReactive<Record<string, HTMLElement | null>>({})
 const openOrderModal = useTemplateRef('openOrderModal')
 
 // 去掉项目、换员工、改价按权限的数据范围和时间窗口判断，和后端 checkEdit 一致：
@@ -359,10 +361,11 @@ onMounted(init)
           <div
             v-for="order in openOrders"
             :key="order.id"
+            :ref="el => { rowEls[order.id] = el as HTMLElement | null }"
             class="flex items-center gap-1 rounded-md ps-2"
             :class="order.id === selectedOrderID ? 'bg-selected' : 'hover:bg-hover'"
           >
-            <CustomerPeek v-if="canCustomer && identifiedCustomers[order.customer_id]" :customer-id="order.customer_id">
+            <CustomerPeek v-if="canCustomer && identifiedCustomers[order.customer_id]" :customer-id="order.customer_id" :reference="rowEls[order.id]">
               <button type="button" class="grid size-7 shrink-0 place-items-center rounded-full bg-tag-gray text-xs hover:ring-1 hover:ring-(--ui-border-accented)" :aria-label="`看看${customerName(order.customer_id)}`">
                 {{ customerName(order.customer_id).slice(0, 1) }}
               </button>

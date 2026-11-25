@@ -24,7 +24,9 @@ const customerOverviewNewDays = 30
 
 // CustomerOverviewInput 是顾客概览列表的筛选、排序和翻页参数。
 type CustomerOverviewInput struct {
-	Query              string     `json:"query,omitempty"`
+	Query string `json:"query,omitempty"`
+	// CustomerID 只看这一位顾客；不填为不限。
+	CustomerID         *uuid.UUID `json:"customer_id,omitempty" doc:"只看这一位顾客；不填为不限"`
 	ResponsibleStaffID *uuid.UUID `json:"responsible_staff_id,omitempty"`
 	Segment            string     `json:"segment,omitempty" enum:"all,today,due,balance,new,sleeping" doc:"分组：all 全部，today 今天要来，due 该回来了，balance 卡里有余额，new 30 天新客，sleeping 沉睡"`
 	Sort               string     `json:"sort,omitempty" enum:"last_visit,overdue,spend,created" doc:"排序：last_visit 最近到店，overdue 超期天数，spend 累计消费，created 建档时间"`
@@ -175,7 +177,7 @@ func listCustomerOverview(ctx context.Context, env ops.Env, in *CustomerOverview
 	}
 	params := dbgen.ListCustomerOverviewParams{
 		Sort: sort, RowOffset: in.Offset, RowLimit: limit, StoreID: env.Caller.StoreID,
-		ResponsibleStaffID: in.ResponsibleStaffID, SelfID: self, Query: in.Query,
+		CustomerID: in.CustomerID, ResponsibleStaffID: in.ResponsibleStaffID, SelfID: self, Query: in.Query,
 		Today: pgDate(today), Now: pgTime(env.Now), Segment: segment,
 		TodayStart: pgTime(start), TodayEnd: pgTime(end),
 		StaleDays: customerOverviewStaleDays, NewDays: customerOverviewNewDays,
