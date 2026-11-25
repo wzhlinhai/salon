@@ -4,6 +4,8 @@ const props = defineProps<{
   expected: string
   methods?: { label: string, value: string }[]
   resetKey?: number
+  // 收银台用：方式按钮和金额框都放大到 44 高，应收已经在上面用大字写了，这里不再重复。
+  counter?: boolean
 }>()
 const payments = defineModel<Payment[]>({ default: () => [] })
 const touched = defineModel<boolean>('touched', { default: false })
@@ -53,13 +55,13 @@ function remove(index: number) {
 
 <template>
   <div class="space-y-2" data-testid="sale-payments">
-    <div class="flex items-baseline justify-between">
+    <div v-if="!counter" class="flex items-baseline justify-between">
       <p class="text-sm font-semibold text-highlighted">收款方式</p>
       <p class="text-meta text-muted tabular-nums">应收合计 {{ yuanFixed(expected) }}</p>
     </div>
     <div v-for="(payment, index) in payments" :key="index" class="flex flex-wrap items-center gap-2" :class="index ? 'border-t border-default pt-2' : ''" data-testid="payment-row">
-      <MethodPicker v-model="payment.method" :items="methods" @pick="change" />
-      <UInput v-model="payment.amount" aria-label="金额" inputmode="decimal" class="min-w-32 flex-1 tabular-nums" @update:model-value="change">
+      <MethodPicker v-model="payment.method" :items="methods" :counter="counter" @pick="change" />
+      <UInput v-model="payment.amount" aria-label="金额" inputmode="decimal" :size="counter ? 'lg' : 'md'" class="min-w-32 flex-1 tabular-nums" @update:model-value="change">
         <template #leading><span class="text-meta text-muted">¥</span></template>
       </UInput>
       <UButton color="neutral" variant="ghost" icon="i-lucide-x" aria-label="删除" @click="remove(index)" />
