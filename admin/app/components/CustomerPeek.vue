@@ -33,7 +33,7 @@ watch(open, async (value) => {
         <p v-else-if="failed || !glance" class="text-muted">取不到这位顾客的资料</p>
         <template v-else>
           <div class="flex items-center gap-3">
-            <span class="grid size-10 shrink-0 place-items-center rounded-full bg-tag-gray text-base" aria-hidden="true">{{ (glance.customer.name || '散').slice(0, 1) }}</span>
+            <span class="grid size-10 shrink-0 place-items-center rounded-full bg-tag-gray text-figure" aria-hidden="true">{{ (glance.customer.name || '散').slice(0, 1) }}</span>
             <div class="min-w-0">
               <p class="truncate text-base font-semibold">{{ glance.customer.name || '未识别' }}</p>
               <p class="truncate text-meta text-muted tabular-nums">

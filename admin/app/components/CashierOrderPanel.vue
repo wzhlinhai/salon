@@ -55,9 +55,11 @@ const glanceGuard = useRequestGuard()
 const identified = computed(() => !!order.value && props.identifiedCustomers[order.value.customer_id] !== false)
 const headName = computed(() => order.value ? (identified.value ? props.customerName(order.value.customer_id) : '散客') : '')
 const initial = computed(() => identified.value ? headName.value.slice(0, 1) : '散')
+// 只用这张单顾客的那份：换单后新顾客的还没取回来时，不拿上一位的配方和余额顶着。
+const orderGlance = computed(() => order.value && glance.value?.customer.id === order.value.customer_id ? glance.value : null)
 const headMeta = computed(() => {
   if (!order.value) return ''
-  const g = glance.value?.customer.id === order.value.customer_id ? glance.value : null
+  const g = orderGlance.value
   return [
     order.value.gender === 'male' ? '男客' : '女客',
     g?.customer.phone,
@@ -68,7 +70,7 @@ const headMeta = computed(() => {
 async function loadHead() {
   const target = order.value
   const current = glanceGuard.next()
-  if (!target || !props.identifiedCustomers[target.customer_id]) {
+  if (!target || props.identifiedCustomers[target.customer_id] === false) {
     glance.value = null
     return
   }
@@ -78,7 +80,8 @@ async function loadHead() {
   if (current() && order.value?.customer_id === target.customer_id) glance.value = data
 }
 
-watch(() => order.value?.customer_id, () => void loadHead())
+// 名字（是否散客）是页面异步查的，查清后再取一次。
+watch(() => [order.value?.customer_id, order.value && props.identifiedCustomers[order.value.customer_id]], () => void loadHead())
 
 // 卡折扣：应收减去试算后的实收（团购、次卡另列）。
 const discountTotal = computed(() => order.value && preview.value ? Math.max(0, cents(order.value.receivable) - cents(preview.value.net)) : 0)
@@ -515,13 +518,13 @@ defineExpose({ select, clear, refresh, voided })
 </script>
 
 <template>
-  <!-- 当前单照样稿 02 排成一张账：顾客头、项目一行一个、虚线分开，应收用宋体大字，付款方式一排按钮，结账整条。站着用，控件都是 44 高。 -->
+  <!-- 当前单照样稿 02 排成一张账：顾客头、项目一行一个、虚线分开，应收用宋体大字，付款方式一排按钮，结账整条。站着点的付款区控件 44 高。 -->
   <section data-testid="selected-order" class="max-w-120">
     <p v-if="orderLoading && !order" class="py-8 text-sm text-muted">加载中…</p>
     <EmptyState v-else-if="!order" class="rounded-card bg-side" art="receipt" title="还没选单" hint="从左边选一张在做的单，或扫码开单" />
     <template v-else>
       <header class="flex items-center gap-4 border-b border-dashed border-default pb-5">
-        <span class="grid size-16 shrink-0 place-items-center rounded-full bg-tag-gray font-serif text-title" aria-hidden="true">{{ initial }}</span>
+        <span class="grid size-16 shrink-0 place-items-center rounded-full bg-tag-gray font-serif text-figure" aria-hidden="true">{{ initial }}</span>
         <div class="min-w-0 flex-1">
           <h2 class="flex flex-wrap items-center gap-2 text-figure font-semibold">
             <span class="truncate">{{ headName }}</span>
@@ -559,6 +562,7 @@ defineExpose({ select, clear, refresh, voided })
                 @update:model-value="value => changeStaff(item, position.slot, String(value === NONE ? '' : value))"
               />
               <span v-else class="text-muted">{{ staffName(position.staff_id) }}</span>
+              <!-- 必填只在还没填人时提醒，填上了就不占位置。 -->
               <span v-if="position.required && !position.staff_id" class="tag bg-tag-yellow">必填</span>
             </template>
             <!-- 用次卡、改价、去掉跟在同一行，改价和去掉悬停才出来；不另起一行，免得每个项目下面空一截。 -->
@@ -610,24 +614,25 @@ defineExpose({ select, clear, refresh, voided })
             </div>
           </div>
         </template>
+        <p v-if="preview && (discountTotal || groupbuyTotal || countTotal)" class="text-meta text-muted tabular-nums">原价 {{ yuanFixed(order.receivable) }} · 折后 {{ yuanFixed(preview.net) }}</p>
         <div class="flex items-baseline justify-between pt-2">
-          <span class="text-sm">应收</span>
+          <span class="text-sm">要收</span>
           <!-- 试算回来之前写单上的实收（灰），回来后才是要收的钱（cash-expected）。 -->
           <span v-if="preview" class="font-serif text-title font-semibold tabular-nums">¥<span data-testid="cash-expected">{{ expectedCash }}</span></span>
-          <span v-else class="font-serif text-title font-semibold text-dimmed tabular-nums">¥{{ order.net }}</span>
+          <span v-else class="font-serif text-title font-semibold text-dimmed tabular-nums">{{ yuanFixed(order.net) }}</span>
         </div>
         <template v-if="preview">
           <p v-if="groupbuyTotal" class="text-meta text-muted">团购支付由系统按关联的团购券生成，不需要在这里填写。</p>
           <PaymentEditor v-model="payments" v-model:touched="paymentsTouched" counter :expected="expectedCash" :methods="paymentMethods" :reset-key="paymentResetKey" />
           <div class="flex gap-2">
             <UButton size="lg" color="neutral" variant="outline" class="px-5" :disabled="busy" @click="hold">挂起</UButton>
-            <UButton size="lg" block class="flex-1" aria-label="结账" :loading="busy" :disabled="previewLoading || actionSaving || orderLoading || busy" @click="checkout">结账 {{ yuanFixed(expectedCash) }}</UButton>
+            <UButton size="lg" block class="flex-1" data-testid="checkout" :loading="busy" :disabled="previewLoading || actionSaving || orderLoading || busy" @click="checkout">结账 {{ yuanFixed(expectedCash) }}</UButton>
           </div>
         </template>
       </div>
 
-      <p v-if="glance?.formula" class="mt-8 text-meta text-muted" data-testid="order-formula">
-        配方记在顾客档案里：{{ glance.formula.formula }}（{{ monthDay(glance.formula.date) }} {{ glance.formula.item }}）。
+      <p v-if="orderGlance?.formula" class="mt-8 text-meta text-muted" data-testid="order-formula">
+        配方记在顾客档案里：{{ orderGlance.formula.formula }}（{{ monthDay(orderGlance.formula.date) }} {{ orderGlance.formula.item }}）。
         <NuxtLink :to="`/customers?id=${order.customer_id}`" class="text-default underline underline-offset-4 hover:no-underline">改配方</NuxtLink>
       </p>
     </template>

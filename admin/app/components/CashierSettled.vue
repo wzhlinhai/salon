@@ -19,6 +19,7 @@ const { can } = useMe()
 const orders = ref<Order[]>([])
 const total = ref(0)
 const loading = ref(false)
+const failed = ref(false)
 const listGuard = useRequestGuard()
 // 撤单授权窗口没开时 void_order 的拒绝原因，见 backend/internal/orders/void.go。
 const NEEDS_PASSWORD = '请先输入登录密码开启撤单授权窗口'
@@ -29,6 +30,7 @@ async function load() {
   try {
     const { data, error } = await api.POST('/api/ops/list_orders', { body: {} })
     if (!current()) return
+    failed.value = !data
     if (!data) {
       toast.add({ title: errorText(error), color: 'error' })
       return
@@ -48,8 +50,10 @@ const expanded = ref(false)
 const summary = computed(() => {
   if (loading.value && !orders.value.length) return '今天结了…'
   const paid = orders.value.filter(order => order.status === 'paid')
+  if (failed.value && !orders.value.length) return '取不到今天结的单'
   if (!total.value) return '今天还没结账'
-  if (total.value > orders.value.length) return `今天结了 ${total.value} 单`
+  // total 含撤掉的单，所以这里说「张单」不说「结了」。
+  if (total.value > orders.value.length) return `今天 ${total.value} 张单`
   return `今天结了 ${paid.length} 单 · ${yuan(money(paid.reduce((sum, order) => sum + cents(order.net), 0)))}`
 })
 onMounted(load)
