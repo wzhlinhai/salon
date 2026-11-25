@@ -31,13 +31,14 @@ base AS (
   WHERE cu.store_id=$4
     AND cu.merged_into IS NULL
     AND cu.phone IS NOT NULL
-    AND ($5::uuid IS NULL OR cu.responsible_staff_id = $5)
+    AND ($5::uuid IS NULL OR cu.id = $5)
     AND ($6::uuid IS NULL OR cu.responsible_staff_id = $6)
-    AND ($7::text = '' OR
+    AND ($7::uuid IS NULL OR cu.responsible_staff_id = $7)
+    AND ($8::text = '' OR
       CASE
-        WHEN $7::text ~ '^[0-9]{11}$' THEN cu.phone = $7
-        WHEN $7::text ~ '^[0-9]{4}$' THEN right(cu.phone, 4) = $7
-        ELSE strpos(lower(coalesce(cu.name, '')), lower($7)) > 0
+        WHEN $8::text ~ '^[0-9]{11}$' THEN cu.phone = $8
+        WHEN $8::text ~ '^[0-9]{4}$' THEN right(cu.phone, 4) = $8
+        ELSE strpos(lower(coalesce(cu.name, '')), lower($8)) > 0
       END)
 ),
 paid_orders AS (
@@ -66,7 +67,7 @@ valid_cards AS (
   JOIN base b ON b.id=c.customer_id
   JOIN LATERAL (SELECT principal_after,bonus_after FROM card_ledger WHERE card_id=c.id AND store_id=$4 ORDER BY at DESC,id DESC LIMIT 1) l ON true
   WHERE c.store_id=$4 AND c.status='active'
-    AND (c.expires_on IS NULL OR c.expires_on >= $8::date)
+    AND (c.expires_on IS NULL OR c.expires_on >= $9::date)
 ),
 balances AS (
   SELECT customer_id,sum(principal_after+bonus_after) AS stored_balance
@@ -84,7 +85,7 @@ next_appointments AS (
   FROM appointments a
   JOIN base b ON b.id=a.customer_id
   WHERE a.store_id=$4 AND a.kind='appointment'
-    AND a.status IN ('pending','confirmed') AND a.starts_at >= $9::timestamptz
+    AND a.status IN ('pending','confirmed') AND a.starts_at >= $10::timestamptz
   ORDER BY a.customer_id,a.starts_at,a.id
 ),
 metrics AS (
@@ -92,7 +93,7 @@ metrics AS (
          COALESCE(v.visit_count,0)::int AS visit_count,
          v.first_visit_date,
          v.last_visit_date,
-         CASE WHEN v.last_visit_date IS NULL THEN NULL ELSE ($8::date-v.last_visit_date)::int END AS days_since_last_visit,
+         CASE WHEN v.last_visit_date IS NULL THEN NULL ELSE ($9::date-v.last_visit_date)::int END AS days_since_last_visit,
          CASE WHEN v.distinct_dates >= 2 THEN round((v.last_visit_date-v.first_visit_date)::numeric/(v.distinct_dates-1))::int END AS cycle_days
   FROM base b LEFT JOIN visits v ON v.customer_id=b.id
 ),
@@ -113,19 +114,19 @@ filtered AS (
   LEFT JOIN balances ba ON ba.customer_id=e.id
   LEFT JOIN card_counts cc ON cc.customer_id=e.id
   LEFT JOIN next_appointments na ON na.customer_id=e.id
-  WHERE CASE $10::text
+  WHERE CASE $11::text
     WHEN 'all' THEN true
     WHEN 'today' THEN EXISTS (
       SELECT 1 FROM appointments a
       WHERE a.store_id=$4 AND a.kind='appointment'
         AND a.status IN ('pending','confirmed','completed')
         AND a.customer_id=e.id
-        AND a.starts_at >= $11::timestamptz AND a.starts_at < $12::timestamptz)
-    WHEN 'due' THEN e.overdue_days > 0 AND e.days_since_last_visit <= $13::int AND na.id IS NULL
+        AND a.starts_at >= $12::timestamptz AND a.starts_at < $13::timestamptz)
+    WHEN 'due' THEN e.overdue_days > 0 AND e.days_since_last_visit <= $14::int AND na.id IS NULL
     WHEN 'balance' THEN COALESCE(ba.stored_balance,0) > 0 OR COALESCE(cc.count_remaining,0) > 0
-    WHEN 'new' THEN e.first_visit_date BETWEEN ($8::date-($14::int-1)) AND $8::date
+    WHEN 'new' THEN e.first_visit_date BETWEEN ($9::date-($15::int-1)) AND $9::date
       AND NOT EXISTS (SELECT 1 FROM imported i WHERE i.root_id=e.id)
-    WHEN 'sleeping' THEN e.visit_count >= 1 AND e.days_since_last_visit > $13::int
+    WHEN 'sleeping' THEN e.visit_count >= 1 AND e.days_since_last_visit > $14::int
     ELSE false
   END
 )
@@ -158,6 +159,7 @@ type ListCustomerOverviewParams struct {
 	RowOffset          int32
 	RowLimit           int32
 	StoreID            uuid.UUID
+	CustomerID         *uuid.UUID
 	ResponsibleStaffID *uuid.UUID
 	SelfID             *uuid.UUID
 	Query              string
@@ -206,6 +208,7 @@ func (q *Queries) ListCustomerOverview(ctx context.Context, arg ListCustomerOver
 		arg.RowOffset,
 		arg.RowLimit,
 		arg.StoreID,
+		arg.CustomerID,
 		arg.ResponsibleStaffID,
 		arg.SelfID,
 		arg.Query,

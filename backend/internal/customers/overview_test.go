@@ -662,6 +662,67 @@ func TestCustomerOverview(t *testing.T) {
 	}
 }
 
+func TestCustomerOverviewCustomerID(t *testing.T) {
+	f := overviewShop(t)
+	owner := f.MustCaller(f.Owner)
+	today := f.create(map[string]any{"name": "今天到店客", "phone": "13800000040"})
+	f.ids["customer_id_today"] = aID(today)
+	f.call("assign_customer_responsible", map[string]any{"customer_ids": []any{today["id"]}, "staff_id": f.Res.OwnerID}, 200)
+	f.order("customer_id_today", f.today, overviewLine{item: f.itemA, staff: []uuid.UUID{f.staffA}})
+
+	for _, ch := range f.Channels() {
+		all := f.list(ch, owner, map[string]any{"limit": 100})
+		want := findOverview(t, all, "cycle", f.ids)
+		got := f.list(ch, owner, map[string]any{"customer_id": f.ids["cycle"].String()})
+		if got["total"].(float64) != 1 || len(got["items"].([]any)) != 1 {
+			t.Fatalf("%s customer filter = %v", ch.Name, got)
+		}
+		if !reflect.DeepEqual(got["items"].([]any)[0], want) {
+			t.Fatalf("%s customer filter row = %v, want %v", ch.Name, got["items"].([]any)[0], want)
+		}
+
+		self := f.MustCaller(f.tokenB)
+		self.Permissions = map[ops.Permission]ops.Grant{perm.CustomerView: {Scope: ops.ScopeSelf}}
+		scoped := f.list(ch, self, map[string]any{"customer_id": f.ids["cycle"].String()})
+		if scoped["total"].(float64) != 0 || len(scoped["items"].([]any)) != 0 {
+			t.Fatalf("%s scoped customer filter = %v", ch.Name, scoped)
+		}
+
+		merged := f.list(ch, owner, map[string]any{"customer_id": f.ids["merged_away"].String()})
+		if merged["total"].(float64) != 0 || len(merged["items"].([]any)) != 0 {
+			t.Fatalf("%s merged customer filter = %v", ch.Name, merged)
+		}
+
+		otherStore := f.list(ch, owner, map[string]any{"customer_id": f.ids["other_store"].String()})
+		if otherStore["total"].(float64) != 0 || len(otherStore["items"].([]any)) != 0 {
+			t.Fatalf("%s other-store customer filter = %v", ch.Name, otherStore)
+		}
+
+		base := f.list(ch, owner, map[string]any{"segment": "balance", "limit": 100})
+		if base["total"].(float64) <= 1 || len(base["items"].([]any)) <= 1 {
+			t.Fatalf("%s balance baseline = %v", ch.Name, base)
+		}
+
+		mismatch := f.list(ch, owner, map[string]any{"customer_id": f.ids["cards"].String(), "segment": "balance"})
+		if mismatch["total"].(float64) != 1 || len(mismatch["items"].([]any)) != 1 {
+			t.Fatalf("%s customer segment match = %v", ch.Name, mismatch)
+		}
+		if gotID := mismatch["items"].([]any)[0].(map[string]any)["customer"].(map[string]any)["id"]; gotID != f.ids["cards"].String() {
+			t.Fatalf("%s customer segment row = %v", ch.Name, gotID)
+		}
+
+		sleeping := f.list(ch, owner, map[string]any{"customer_id": f.ids["cards"].String(), "segment": "sleeping"})
+		if sleeping["total"].(float64) != 0 || len(sleeping["items"].([]any)) != 0 {
+			t.Fatalf("%s segment mismatch = %v", ch.Name, sleeping)
+		}
+
+		mismatch = f.list(ch, owner, map[string]any{"customer_id": f.ids["customer_id_today"].String(), "segment": "sleeping"})
+		if mismatch["total"].(float64) != 0 || len(mismatch["items"].([]any)) != 0 {
+			t.Fatalf("%s segment mismatch = %v", ch.Name, mismatch)
+		}
+	}
+}
+
 func assertOverviewSort(t *testing.T, ch optest.Channel, sortKey string, body map[string]any) {
 	t.Helper()
 	items := body["items"].([]any)
