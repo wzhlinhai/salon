@@ -51,7 +51,6 @@ function begin(target: Draft) {
       customerName.value = ''
       customerState.value = p.customer_id ? 'unread' : 'none'
       rows.value = (p.items ?? []).map(i => ({ item_id: i.item_id, staff: Object.fromEntries((i.staff ?? []).map(s => [s.slot, s.staff_id])) }))
-      if (!rows.value.length) rows.value = [{ item_id: '', staff: {} }]
     } else {
       const p = target.params as CustomerParams
       name.value = p.name ?? ''

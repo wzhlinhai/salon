@@ -495,6 +495,10 @@ async function checkout() {
   const countInputs: components['schemas']['PaymentInput'][] = countPayments.value.map(payment => ({
     method: 'count', card_id: payment.card_id, order_item_id: payment.order_item_id, amount: payment.amount
   }))
+  // 结好后的提示条要写的：谁、收了多少；认出的顾客带一步「记配方」去档案（样稿 19）。
+  const doneName = identified.value ? headName.value : '散客'
+  const doneTotal = preview.value.net
+  const doneCustomer = identified.value && can('customer.view') ? target.customer_id : ''
   const current = orderGuard.hold()
   busy.value = true
   try {
@@ -507,7 +511,11 @@ async function checkout() {
       return
     }
     clear()
-    toast.add({ title: '结账成功', color: 'success' })
+    toast.add({
+      title: `${doneName}结好了 ${yuanFixed(doneTotal)}`,
+      color: 'success',
+      actions: doneCustomer ? [{ label: '记配方', color: 'neutral', variant: 'link', onClick: () => void navigateTo(`/customers/${doneCustomer}`) }] : undefined
+    })
     emit('checked-out', data.items[0]?.checkout_id)
   } finally {
     busy.value = false
