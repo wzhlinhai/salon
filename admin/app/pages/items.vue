@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'settings.manage', title: '项目与价格', description: '店里做的项目，各级别的价格和服务时长。开单和预约都从这里选。', art: 'scissors' })
+definePageMeta({ permission: 'settings.manage', title: '项目与价格', description: '价格按员工级别分，没列的级别用标准价。', art: 'scissors' })
 type Item = components['schemas']['Item']
 type Level = components['schemas']['Level']
 type Position = components['schemas']['Position']
 type ItemCategory = components['schemas']['ItemCategory']
 const api = useApi()
 const toast = useToast()
+const { can } = useMe()
 const items = ref<Item[]>([])
 const levels = ref<Level[]>([])
 const cardTypes = ref<components['schemas']['CardType'][]>([])
@@ -42,7 +43,22 @@ async function load() {
   }
 }
 
-onMounted(load)
+// 本月每个项目做了几次（要 report.view）：补充信息，取不到就不写。
+const times = ref(new Map<string, number>())
+
+async function loadTimes() {
+  if (!can('report.view')) return
+  const settings = await api.POST('/api/ops/get_settings', { body: {} })
+  const today = settings.data?.business_date
+  if (!today) return
+  const r = await api.POST('/api/ops/get_item_report', { body: { from: `${today.slice(0, 8)}01`, to: today } })
+  if (r.data) times.value = new Map(r.data.rows.map(row => [row.item_id, row.times]))
+}
+
+onMounted(() => {
+  load()
+  loadTimes()
+})
 
 const editor = useModalForm()
 const { open, saving } = editor
@@ -118,17 +134,52 @@ async function save() {
   })
 }
 
-// 照参考图 fresha 服务菜单：按类别分组，类别按设置里的顺序，未归类放最后。
+// 名册（样稿 07）：页签是类别，按类别分组，类别按设置里的顺序，未归类放最后；停用的收在最底下一行。
+const tab = ref('all')
+const search = ref('')
+const showInactive = ref(false)
+const levelNames = computed(() => new Map(levels.value.map(l => [l.id, l.name])))
+const matches = (item: Item) => !search.value.trim() || item.name.includes(search.value.trim())
+const inactive = computed(() => items.value.filter(i => !i.active && matches(i)))
+
 const groups = computed(() => {
   const order = new Map(categories.value.map((c, index) => [c.id, index]))
   const map = new Map<string, { key: string, name: string, rank: number, items: Item[] }>()
   for (const item of items.value) {
     const key = item.category?.id ?? 'none'
+    if (!item.active || !matches(item) || (tab.value !== 'all' && tab.value !== key)) continue
     if (!map.has(key)) map.set(key, { key, name: item.category?.name ?? '未归类', rank: order.get(key) ?? Number.MAX_SAFE_INTEGER, items: [] })
     map.get(key)!.items.push(item)
   }
   return [...map.values()].sort((a, b) => a.rank - b.rank)
 })
+
+// 页签：全部 + 有在用项目的类别。
+const tabs = computed(() => {
+  const used = new Map<string, string>()
+  for (const item of items.value) if (item.active) used.set(item.category?.id ?? 'none', item.category?.name ?? '未归类')
+  const order = new Map(categories.value.map((c, index) => [c.id, index]))
+  return [
+    { key: 'all', label: '全部' },
+    ...[...used].sort((a, b) => (order.get(a[0]) ?? Number.MAX_SAFE_INTEGER) - (order.get(b[0]) ?? Number.MAX_SAFE_INTEGER)).map(([key, label]) => ({ key, label }))
+  ]
+})
+watch(tabs, (list) => {
+  if (!list.some(t => t.key === tab.value)) tab.value = 'all'
+})
+
+// 名字下一句话：时长、各级别价、卖品和不常见的设置、本月做了几次。
+function itemMeta(item: Item) {
+  const count = times.value.get(item.id)
+  return [
+    item.duration_minutes ? `约 ${item.duration_minutes} 分钟` : '',
+    ...item.level_prices.map(l => `${levelNames.value.get(l.level_id) ?? '级别'} ${yuan(l.price)}`),
+    item.kind === 'goods' ? '卖品' : '',
+    item.kind === 'service' && !item.bookable ? '不能预约' : '',
+    item.discountable ? '' : '不打折',
+    count ? `本月${item.kind === 'goods' ? '卖了' : '做了'} ${count} 次` : ''
+  ].filter(Boolean).join(' · ')
+}
 </script>
 
 <template>
@@ -136,28 +187,52 @@ const groups = computed(() => {
     <PageActions>
       <UButton size="sm" icon="i-lucide-plus" @click="openEditor(null)">新建项目</UButton>
     </PageActions>
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <ViewTabs v-model="tab" :items="tabs" label="项目类别" />
+      <UInput v-model="search" icon="i-lucide-search" variant="ghost" :placeholder="search ? '' : '项目名'" aria-label="搜索项目" class="ms-auto w-40" />
+    </div>
     <ListSkeleton v-if="loading && !items.length" />
     <EmptyState v-else-if="!items.length" art="scissors" title="还没有项目" hint="点右上角新建项目，填上价格和服务时长，开单和预约就能选它" />
+    <EmptyState v-else-if="!groups.length && search.trim()" title="没有找到这个项目" hint="换个名字试试" />
     <section v-for="group in groups" :key="group.key" :data-category="group.name">
-      <div class="sec">{{ group.name }}<span class="ms-2 font-normal text-dimmed">{{ group.items.length }}</span></div>
-      <div class="overflow-x-auto">
-        <div
+      <h2 class="mb-1 text-meta text-muted">{{ group.name }}<span class="ms-2">{{ group.items.length }} 个</span></h2>
+      <div class="divide-y divide-default">
+        <button
           v-for="item in group.items"
           :key="item.id"
+          type="button"
           :data-item="item.name"
-          class="group/row flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-default px-3 py-2 text-sm first:border-t-0 hover:bg-hover"
-          :class="item.active ? '' : 'text-dimmed'"
+          class="-mx-3 flex w-[calc(100%+1.5rem)] items-center gap-3 rounded-card px-3 py-3 text-start hover:bg-hover"
+          @click="openEditor(item)"
         >
-          <div class="flex min-w-40 flex-1 items-center gap-2">
-            <span class="font-medium">{{ item.name }}</span>
-            <span v-if="item.kind === 'goods'" class="tag bg-tag-gray">卖品</span>
-            <span v-if="!item.discountable" class="tag bg-tag-gray">不打折项目</span>
-            <span v-if="!item.active" class="tag bg-tag-gray">停用</span>
-          </div>
-          <span class="w-36 text-muted">{{ item.duration_minutes ? `${item.duration_minutes} 分钟` : '时长未设置' }} · {{ item.bookable ? '可预约' : '不可预约' }}</span>
-          <span class="w-24 text-right font-medium tabular-nums">{{ yuanFixed(item.price) }}</span>
-          <UButton size="sm" color="neutral" variant="ghost" class="opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100" @click="openEditor(item)">编辑</UButton>
-        </div>
+          <span class="block min-w-0 flex-1">
+            <span class="block font-medium">{{ item.name }}</span>
+            <span class="block truncate text-meta text-muted">{{ itemMeta(item) || '没设时长' }}</span>
+          </span>
+          <span class="block shrink-0 text-right">
+            <span class="block tabular-nums">{{ yuan(item.price) }}</span>
+            <span class="block text-meta text-muted">标准价</span>
+          </span>
+        </button>
+      </div>
+    </section>
+    <section v-if="inactive.length" data-testid="inactive-items">
+      <UButton color="neutral" variant="ghost" size="sm" class="-mx-2 text-muted" :trailing-icon="showInactive ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" :aria-expanded="showInactive" @click="showInactive = !showInactive">已停用 {{ inactive.length }} 个</UButton>
+      <div v-if="showInactive" class="divide-y divide-default">
+        <button
+          v-for="item in inactive"
+          :key="item.id"
+          type="button"
+          :data-item="item.name"
+          class="-mx-3 flex w-[calc(100%+1.5rem)] items-center gap-3 rounded-card px-3 py-3 text-start text-muted hover:bg-hover"
+          @click="openEditor(item)"
+        >
+          <span class="block min-w-0 flex-1">
+            <span class="block">{{ item.name }} <span class="tag bg-tag-gray">停用</span></span>
+            <span class="block truncate text-meta">{{ itemMeta(item) || '没设时长' }}</span>
+          </span>
+          <span class="block shrink-0 tabular-nums">{{ yuan(item.price) }}</span>
+        </button>
       </div>
     </section>
     <UModal v-model:open="open" :title="editing ? '编辑项目' : '新建项目'" description="开单和预约按这里的价格、时长和岗位来" :ui="{ content: 'sm:max-w-[600px]' }">
