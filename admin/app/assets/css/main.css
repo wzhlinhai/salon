@@ -3,8 +3,9 @@
 @import "./fonts.css";
 
 /* 视觉照 Notion 现在的界面（2026-11 实测公开页的计算样式，记录在 DESIGN.md「Notion 实测值」）：
-   内容区纯白、侧栏暖灰、墨色 #2c2c2b、细线 #f0efed、低饱和标签色、墨色主按钮（店主 2026-11-23 选定，不用 Notion 蓝）。AI 不另起颜色。 */
-@theme {
+   内容区纯白、侧栏暖灰、墨色 #2c2c2b、细线 #f0efed、低饱和标签色、墨色主按钮（店主 2026-11-23 选定，不用 Notion 蓝）。AI 不另起颜色。
+   写成 static：插画（SpotArt）在 SVG 里用 var(--color-tag-*) 画色块，工具类扫不到；不加 static，没被类名用到的标签色（绿、蓝、紫）会被裁掉，色块就没了。 */
+@theme static {
   --color-page: #ffffff;
   --color-side: #f7f7f5;
   --color-ai-soft: #f1f1ef;
