@@ -13,10 +13,10 @@ async function search(page: Page, query: string) {
 
 async function create(page: Page, name: string, number: string) {
   await page.getByRole('button', { name: '新建顾客', exact: true }).click()
-  const form = page.getByRole('dialog', { name: '新建顾客', exact: true })
+  const form = page.getByRole('dialog', { name: '新顾客', exact: true })
   await form.getByLabel('手机号', { exact: true }).fill(number)
-  await form.getByLabel('姓名', { exact: true }).fill(name)
-  await form.getByRole('button', { name: '保存', exact: true }).click()
+  await form.getByLabel('怎么称呼', { exact: true }).fill(name)
+  await form.getByRole('button', { name: '只建档', exact: true }).click()
   await expect(page.getByTestId('customer-profile')).toBeVisible()
 }
 
@@ -368,8 +368,9 @@ test('老板管理顾客来源，发型师只读且新建时不列停用来源',
   await expect(card.getByRole('button', { name: '添加', exact: true })).toHaveCount(0)
   await page.goto('/customers')
   await page.getByRole('button', { name: '新建顾客', exact: true }).click()
-  await page.getByLabel('顾客来源', { exact: true }).click()
-  await expect(page.getByRole('option', { name, exact: true })).toHaveCount(0)
+  const sources = page.getByRole('dialog', { name: '新顾客', exact: true }).getByRole('group', { name: '怎么来的' })
+  await expect(sources.getByRole('button').first()).toBeVisible()
+  await expect(sources.getByRole('button', { name, exact: true })).toHaveCount(0)
 })
 
 test('切换顾客后丢弃迟到的详情，编辑仍预填当前顾客', async ({ page }) => {

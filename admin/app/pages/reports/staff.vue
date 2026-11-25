@@ -158,9 +158,7 @@ function signed(amount: string, reversal: boolean) {
   <div class="space-y-4">
     <ReportRangeBar v-if="today" v-model="range" :today="today" day-only />
 
-    <EmptyState v-if="failed && !report" class="box" icon="i-lucide-circle-alert" title="报表没有读出来" hint="检查网络后再试一次">
-      <UButton color="neutral" variant="outline" @click="retry">重试</UButton>
-    </EmptyState>
+    <LoadError v-if="failed && !report" title="报表没有读出来" hint="检查网络后再试一次" @retry="retry" />
 
     <template v-if="report">
       <p v-if="self" class="text-meta text-muted">只显示你自己的业绩。</p>
@@ -235,9 +233,7 @@ function signed(amount: string, reversal: boolean) {
             <template v-else>提成合计 {{ yuan(picked.commission_total) }}</template>
           </p>
 
-          <EmptyState v-if="detailFailed" icon="i-lucide-circle-alert" title="明细没有读出来" hint="检查网络后再试一次">
-            <UButton color="neutral" variant="outline" @click="openDetail(picked)">重试</UButton>
-          </EmptyState>
+          <LoadError v-if="detailFailed" title="明细没有读出来" hint="检查网络后再试一次" @retry="openDetail(picked)" />
           <template v-else-if="tab === 'performance'">
             <EmptyState v-if="!entries.length && !detailLoading" title="这段时间没有业绩" />
             <ul v-else class="divide-y divide-default text-sm" data-testid="staff-performance-list">

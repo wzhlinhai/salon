@@ -74,28 +74,44 @@ async function init() {
   await loadOrders()
   await nextTick()
   await loadUnlinked()
+  if (!await openFromQuery()) focusScan()
+}
+
+// 网址带 ?open= 时直接开单：walkin 是散客；customer 是从顾客档案或全局搜索来，为这位顾客开单，「照这个开单」还带着上次的项目。
+// 已经在收银页时从全局搜索再来一次，页面不重新挂载，所以也盯着网址。开了单返回 true。
+async function openFromQuery() {
+  const current = initGuard.hold()
   if (route.query.open === 'walkin') {
     // 去掉参数，刷新或后退回来不会再弹一次开单。
     await router.replace({ query: { ...route.query, open: undefined } })
     openOrderBegin(null)
-    return
+    return true
   }
-  // 从顾客档案来：为这位顾客开单，「照这个开单」还带着上次的项目。
   if (route.query.open === 'customer' && typeof route.query.customer === 'string') {
+    // 手上这张还没开完时不盖掉它，说一声。
+    if (openOrderModal.value?.open) {
+      await router.replace({ query: { ...route.query, open: undefined, customer: undefined, items: undefined } })
+      toast.add({ title: '手上这张还没开完', description: '先开好或取消，再给下一位开', color: 'warning' })
+      return true
+    }
     const customerID = route.query.customer
     const itemIDs = typeof route.query.items === 'string' ? route.query.items.split(',').filter(Boolean) : []
     await router.replace({ query: { ...route.query, open: undefined, customer: undefined, items: undefined } })
     const res = await api.POST('/api/ops/get_customer', { body: { id: customerID } })
-    if (!current()) return
+    if (!current()) return true
     if (!res.data) {
       toast.add({ title: errorText(res.error), color: 'error' })
-      return
+      return true
     }
     openOrderModal.value?.begin(res.data, null, null, itemIDs)
-    return
+    return true
   }
-  focusScan()
+  return false
 }
+
+watch(() => route.query.open, (open) => {
+  if (open && businessDate.value) void openFromQuery()
+})
 
 // —— 挂单列表 ——
 const openOrders = ref<Order[]>([])

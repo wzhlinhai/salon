@@ -109,9 +109,7 @@ function cell(value: string) {
 
 <template>
   <div class="space-y-4">
-    <EmptyState v-if="failed && !summary" class="box" icon="i-lucide-circle-alert" title="欠款没有读出来" hint="检查网络后再试一次">
-      <UButton color="neutral" variant="outline" @click="load">重试</UButton>
-    </EmptyState>
+    <LoadError v-if="failed && !summary" title="欠款没有读出来" hint="检查网络后再试一次" @retry="load" />
 
     <template v-if="summary">
       <ReportBrief :parts="brief" />

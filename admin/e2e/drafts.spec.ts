@@ -26,7 +26,7 @@ function card(page: Page, id: string) {
 }
 
 function aiPanel(page: Page) {
-  return page.getByRole('dialog', { name: '吩咐 AI' })
+  return page.getByRole('dialog', { name: '问 AI' })
 }
 
 // 从右下角的 AI 按钮打开面板（已打开就直接说），在面板里说一句。
@@ -227,7 +227,7 @@ test('修改开单草稿：表单带出顾客、项目和各岗位的人，只�
 test('Ctrl K：输入页面名回车仍打开页面，说一句话回车交给 AI', async ({ page }) => {
   await page.route('**/api/ai/chat', route => route.fulfill({ json: { reply: '收到。', sources: [], drafts: [] } }))
   await login(page, owner.account, owner.password)
-  const input = page.getByPlaceholder('搜索顾客、页面，或说一句话交给 AI…')
+  const input = page.getByPlaceholder('找顾客、员工、页面，或说一句话交给 AI')
 
   await page.keyboard.press('Control+k')
   await input.fill('收银')
@@ -240,7 +240,7 @@ test('Ctrl K：输入页面名回车仍打开页面，说一句话回车交给 A
 
   await page.keyboard.press('Control+k')
   await input.fill('明天下午谁有空')
-  await expect(page.locator('[role=option][data-highlighted]')).toHaveText('吩咐 AI：明天下午谁有空')
+  await expect(page.locator('[role=option][data-highlighted]')).toHaveText('问 AI：明天下午谁有空')
   await expect(async () => {
     if (await input.isVisible()) await input.press('Enter')
     await expect(aiPanel(page).getByText('收到。')).toBeVisible({ timeout: 1000 })
@@ -321,9 +321,9 @@ test('AI 还在回上一句时说的话放进输入框；清空对话后迟到�
   // 关掉面板，从 Ctrl K 又交给 AI 一句：上一句还没回完，这句放进面板输入框，不丢。
   await page.keyboard.press('Escape')
   await page.keyboard.press('Control+k')
-  const search = page.getByPlaceholder('搜索顾客、页面，或说一句话交给 AI…')
+  const search = page.getByPlaceholder('找顾客、员工、页面，或说一句话交给 AI')
   await search.fill('第二句')
-  await expect(page.locator('[role=option][data-highlighted]')).toHaveText('吩咐 AI：第二句')
+  await expect(page.locator('[role=option][data-highlighted]')).toHaveText('问 AI：第二句')
   await expect(async () => {
     if (await search.isVisible()) await search.press('Enter')
     await expect(panel.getByTestId('ai-input')).toHaveValue('第二句', { timeout: 1000 })

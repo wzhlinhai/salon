@@ -12,6 +12,8 @@ type StaffOption = components['schemas']['StaffOption']
 
 const api = useApi()
 const toast = useToast()
+const route = useRoute()
+const router = useRouter()
 const { can } = useMe()
 
 const SLOT_MINUTES = 15
@@ -201,7 +203,27 @@ async function loadOptions() {
   staff.value = staffResult.data.staff
   items.value = itemsResult.data.items
   day.value = businessDate.value
+  await bookFromQuery()
 }
+
+// 全局搜索「给某某约时间」带着 ?book=<顾客>：照顶栏「新建预约」开弹窗，顾客已经选好。
+// 已经在预约页时页面不重新挂载，所以也盯着网址；预约窗口已经开着时只换顾客，填了一半的时间、项目留着。
+async function bookFromQuery() {
+  const customerID = route.query.book
+  if (typeof customerID !== 'string') return
+  await router.replace({ query: { ...route.query, book: undefined } })
+  const res = await api.POST('/api/ops/get_customer', { body: { id: customerID } })
+  if (!res.data) {
+    toast.add({ title: errorText(res.error), color: 'error' })
+    return
+  }
+  if (!bookingOpen.value) newBooking()
+  if (bookingOpen.value) pickCustomer(res.data)
+}
+
+watch(() => route.query.book, (book) => {
+  if (book && businessDate.value) void bookFromQuery()
+})
 
 async function loadDay() {
   if (!day.value) return

@@ -19,7 +19,6 @@ const items = ref<Overview[]>([])
 const total = ref(0)
 const segments = ref<Segments | null>(null)
 const staff = ref<components['schemas']['StaffOption'][]>([])
-const sources = ref<components['schemas']['CustomerSource'][]>([])
 const query = ref('')
 const segment = ref<SegmentKey>('all')
 const sort = ref<SortKey>('last_visit')
@@ -121,19 +120,11 @@ async function loadSegments() {
 }
 
 async function loadOptions() {
-  const [s, c] = await Promise.all([
-    api.POST('/api/ops/list_staff_options', { body: {} }),
-    api.POST('/api/ops/list_customer_sources', { body: {} })
-  ])
+  const s = await api.POST('/api/ops/list_staff_options', { body: {} })
   if (s.data) {
     staff.value = s.data.staff
   } else {
     toast.add({ title: errorText(s.error), color: 'error' })
-  }
-  if (c.data) {
-    sources.value = c.data.items
-  } else {
-    toast.add({ title: errorText(c.error), color: 'error' })
   }
 }
 
@@ -284,65 +275,8 @@ function clearSelectionOnEscape(event: KeyboardEvent) {
 onMounted(() => document.addEventListener('keydown', clearSelectionOnEscape))
 onBeforeUnmount(() => document.removeEventListener('keydown', clearSelectionOnEscape))
 
-// 新建顾客
+// 新建顾客（样稿 L6）：只问手机号、怎么称呼、怎么来的，在 NewCustomerModal 里。
 const createOpen = ref(false)
-const creating = ref(false)
-const profile = reactive({
-  phone: '',
-  name: '',
-  gender: NONE,
-  source: NONE,
-  note: ''
-})
-const sourceItems = computed(() => [
-  { label: '不设来源', value: NONE },
-  ...sources.value.filter(s => s.active).map(s => ({ label: s.name, value: s.id }))
-])
-const genderItems = [
-  { label: '未填写', value: NONE },
-  { label: '男', value: 'male' },
-  { label: '女', value: 'female' }
-]
-
-function openCreate() {
-  Object.assign(profile, {
-    phone: '',
-    name: '',
-    gender: NONE,
-    source: NONE,
-    note: ''
-  })
-  createOpen.value = true
-}
-
-async function create() {
-  if (creating.value) return
-  creating.value = true
-  try {
-    const res = await api.POST('/api/ops/create_customer', {
-      body: {
-        phone: profile.phone || undefined,
-        name: profile.name || undefined,
-        gender: profile.gender === NONE ? undefined : profile.gender as 'male' | 'female',
-        source_id: profile.source === NONE ? undefined : profile.source,
-        note: profile.note || undefined
-      }
-    })
-    if (!res.data) {
-      done(res.error, null, '')
-      return
-    }
-    toast.add({
-      title: res.data.existed ? '这个手机号已有档案' : '顾客已新建',
-      color: res.data.existed ? 'info' : 'success'
-    })
-    createOpen.value = false
-    openDetail(res.data.customer.id)
-    reload()
-  } finally {
-    creating.value = false
-  }
-}
 
 // 顾客档案是整页 /customers/<id>；旧网址 /customers?id=<id> 转过去，修改记录分页保留。
 function openDetail(id: string) {
@@ -406,7 +340,7 @@ async function handover() {
 <template>
   <div class="space-y-4">
     <PageActions>
-      <UButton v-if="can('customer.edit')" size="sm" icon="i-lucide-plus" @click="openCreate">新建顾客</UButton>
+      <UButton v-if="can('customer.edit')" size="sm" icon="i-lucide-plus" @click="createOpen = true">新建顾客</UButton>
     </PageActions>
 
     <!-- 样稿 05、L3：页签就是常用分组；右边只放「搜索 筛选 ···」；用了的筛选写成一行能删的小签，人数跟在后面。 -->
@@ -517,36 +451,7 @@ async function handover() {
         </button>
       </div>
     </div>
-    <UModal v-model:open="createOpen" title="新建顾客">
-      <template #body>
-        <div class="space-y-5">
-          <div class="grid grid-cols-2 gap-4">
-            <UFormField label="手机号">
-              <UInput v-model="profile.phone" type="tel" class="w-full" />
-            </UFormField>
-            <UFormField label="姓名">
-              <UInput v-model="profile.name" class="w-full" />
-            </UFormField>
-          </div>
-          <div class="grid grid-cols-2 gap-4">
-            <UFormField label="性别">
-              <USelect v-model="profile.gender" :items="genderItems" class="w-full" />
-            </UFormField>
-            <UFormField label="顾客来源">
-              <USelect v-model="profile.source" :items="sourceItems" class="w-full" />
-            </UFormField>
-          </div>
-          <UFormField label="备注">
-            <UTextarea v-model="profile.note" class="w-full" />
-          </UFormField>
-        </div>
-      </template>
-      <template #footer>
-        <ModalActions @cancel="createOpen = false">
-          <UButton :loading="creating" @click="create">保存</UButton>
-        </ModalActions>
-      </template>
-    </UModal>
+    <NewCustomerModal v-model:open="createOpen" />
     <UModal v-if="can('customer.assign')" v-model:open="assignOpen" title="交给别人负责" :description="`选中的 ${selected.length} 位顾客交给谁负责。`">
       <template #body>
         <UFormField label="负责人">

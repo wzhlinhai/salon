@@ -117,7 +117,7 @@ const customerLine = computed(() => {
   return [c.phone, c.preferences].filter(Boolean).join(' · ')
 })
 
-defineExpose({ begin })
+defineExpose({ begin, open })
 </script>
 
 <!-- 大表单弹窗（样稿 18）：顶上浅底一条写顾客，中间挑项目、选做的人，底栏左边几项多久、右边合计和开单。 -->
