@@ -655,7 +655,7 @@ test('同一顾客的两张同日挂单合并成一张', async ({ page }) => {
   await page.goto('/cashier')
   await page.locator(`[data-order-id="${first.id}"]`).click()
   const hint = page.getByTestId('merge-hint')
-  await expect(hint).toContainText('还有 1 张同日挂单（¥88.00）')
+  await expect(hint).toContainText('还有 1 张同日挂单 ¥88，可以并成一张')
   await hint.getByRole('button', { name: '合并到这张' }).click()
   await expect(page.locator(`[data-order-id="${second.id}"]`)).toHaveCount(0)
   await expect(hint).toHaveCount(0)

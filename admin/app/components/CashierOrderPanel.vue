@@ -536,7 +536,7 @@ defineExpose({ select, clear, refresh, voided })
       </header>
 
       <div v-if="canOrderEdit && mergeableOrders.length" class="mt-4 flex items-center gap-2 rounded-md bg-notice px-3 py-2 text-sm" role="status" data-testid="merge-hint">
-        <span>这位顾客还有 {{ mergeableOrders.length }} 张同日挂单（{{ yuanFixed(money(mergeableOrders.reduce((sum, o) => sum + cents(o.receivable), 0))) }}），可以并成一张结账</span>
+        <span>还有 {{ mergeableOrders.length }} 张同日挂单 {{ yuan(money(mergeableOrders.reduce((sum, o) => sum + cents(o.receivable), 0))) }}，可以并成一张</span>
         <UButton size="sm" color="neutral" variant="outline" class="ms-auto shrink-0" :loading="actionSaving" :disabled="busy" @click="mergeOrders">合并到这张</UButton>
       </div>
 
