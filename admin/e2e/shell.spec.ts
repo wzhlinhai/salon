@@ -80,6 +80,8 @@ test('页面骨架：正文顶上统一插画加标题，设置类页面居中�
     await page.goto(item.to)
     await expect(header.getByRole('heading', { level: 1, name: item.label, exact: true })).toBeVisible()
     await expect(header.getByTestId('page-art')).toBeVisible()
+    // 插画背后的色块要真有颜色：标签色变量没输出时 fill 落空，只剩网点。
+    expect(await header.getByTestId('page-art').evaluate(svg => getComputedStyle(svg.querySelector('path')!).fill)).not.toBe('none')
     arts.add((await header.getByTestId('page-art').getAttribute('data-art'))!)
   }
   expect(arts.size).toBe(pages.length)
