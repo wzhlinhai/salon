@@ -2163,6 +2163,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_service_history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 列出一位顾客每次来做的服务和服务记录 */
+        post: operations["list_service_history"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_setting_changes": {
         parameters: {
             query?: never;
@@ -2616,6 +2633,23 @@ export interface paths {
         put?: never;
         /** 手工录入团购平台某月结算额 */
         post: operations["record_groupbuy_settlement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/record_service": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 记下一次服务做成什么样、配方和顾客反馈 */
+        post: operations["record_service"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3243,7 +3277,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 修改顾客姓名、性别、来源与备注 */
+        /** 修改顾客姓名、性别、来源、备注、发质、喜好与忌讳 */
         post: operations["update_customer_profile"];
         delete?: never;
         options?: never;
@@ -4564,13 +4598,19 @@ export interface components {
             active_safety_labels: components["schemas"]["SafetyLabel"][];
             /** Format: date-time */
             created_at: string;
+            /** @description 忌讳，最多 200 字 */
+            dislikes: string | null;
             gender: string | null;
+            /** @description 发质，最多 40 字 */
+            hair_texture: string | null;
             id: string;
             merged_into: string;
             name: string | null;
             note: string | null;
             phone: string | null;
             phone_masked: boolean;
+            /** @description 喜好，最多 200 字 */
+            preferences: string | null;
             responsible: components["schemas"]["CustomerRef"];
             source: components["schemas"]["CustomerRef"];
             unidentified: boolean;
@@ -5543,6 +5583,16 @@ export interface components {
             to: string;
         };
         ListRotationQueuesInput: Record<string, never>;
+        ListServiceHistoryInput: {
+            customer_id: string;
+            /**
+             * Format: int32
+             * @description 不填为 20
+             */
+            limit?: number;
+            /** Format: int32 */
+            offset?: number;
+        };
         ListSettingChangesInput: {
             /** @description 上一页最后一条的 ID，只看比它更早的；不填为最新一页 */
             before_id?: string;
@@ -6260,6 +6310,19 @@ export interface components {
             status: "active" | "refunded";
             upgraded_to?: components["schemas"]["CardUpgradeType"];
         };
+        RecordServiceInput: {
+            /**
+             * @description 顾客反馈：satisfied=满意，neutral=一般，unsatisfied=不满意
+             * @enum {string}
+             */
+            feedback?: "satisfied" | "neutral" | "unsatisfied";
+            /** @description 配方，最多 500 字 */
+            formula?: string;
+            order_id: string;
+            order_item_id: string;
+            /** @description 做成什么样，最多 500 字 */
+            result?: string;
+        };
         RecordSettlementInput: {
             amount: string;
             month: string;
@@ -6574,6 +6637,49 @@ export interface components {
             id: string;
             level_name: string | null;
             name: string;
+        };
+        ServiceHistory: {
+            items: components["schemas"]["ServiceHistoryItem"][];
+            /** Format: int64 */
+            total: number;
+        };
+        ServiceHistoryItem: {
+            /** Format: date */
+            business_date: string;
+            category: components["schemas"]["ItemCategoryRef"] | null;
+            item: components["schemas"]["ServiceItemRef"];
+            order_id: string;
+            order_item_id: string;
+            record: components["schemas"]["ServiceRecord"] | null;
+            /** @description 按岗位顺序的员工，空岗位不列 */
+            staff: components["schemas"]["ServiceStaff"][];
+        };
+        ServiceItemRef: {
+            id: string;
+            name: string;
+        };
+        ServiceRecord: {
+            /** Format: date-time */
+            created_at: string;
+            /** @enum {string|null} */
+            feedback: "satisfied" | "neutral" | "unsatisfied" | null;
+            formula: string | null;
+            id: string;
+            order_id: string;
+            order_item_id: string;
+            /** @description 最后一次写的人 */
+            recorded_by: string;
+            result: string | null;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ServiceStaff: {
+            /** @description 员工 ID */
+            id: string;
+            /** @description 员工姓名 */
+            name: string;
+            /** @description 岗位名 */
+            position: string;
         };
         SetBaseSalaryInput: {
             amount: string;
@@ -6930,11 +7036,17 @@ export interface components {
             threshold: string;
         };
         UpdateCustomerProfileInput: {
+            /** @description 忌讳，最多 200 字 */
+            dislikes?: string;
             /** @enum {string} */
             gender?: "male" | "female";
+            /** @description 发质，最多 40 字 */
+            hair_texture?: string;
             id: string;
             name?: string;
             note?: string;
+            /** @description 喜好，最多 200 字 */
+            preferences?: string;
             source_id?: string;
         };
         UpdateCustomerSourceInput: {
@@ -11257,6 +11369,39 @@ export interface operations {
             };
         };
     };
+    list_service_history: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListServiceHistoryInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceHistory"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     list_setting_changes: {
         parameters: {
             query?: never;
@@ -12135,6 +12280,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Settlement"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    record_service: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordServiceInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceRecord"];
                 };
             };
             /** @description Error */

@@ -41,6 +41,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/redpackets"
 	"github.com/wzhlinhai/salon/backend/internal/reports"
 	"github.com/wzhlinhai/salon/backend/internal/rotation"
+	"github.com/wzhlinhai/salon/backend/internal/servicerecords"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
 	"github.com/wzhlinhai/salon/backend/internal/stores"
@@ -140,6 +141,7 @@ func New(pool *pgxpool.Pool, cfg Config) (*echo.Echo, *ops.Registry) {
 	redpackets.Register(reg)
 	cards.Register(reg)
 	customers.Register(reg)
+	servicerecords.Register(reg)
 	miniprogram.Register(reg)
 	dataio.Register(reg)
 	settings.Register(reg)

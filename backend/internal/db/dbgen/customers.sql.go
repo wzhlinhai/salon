@@ -46,7 +46,7 @@ const createCustomer = `-- name: CreateCustomer :one
 INSERT INTO customers (tenant_id, store_id, name, phone, gender, source_id, note, created_by, created_by_customer)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (tenant_id, phone) WHERE phone IS NOT NULL AND merged_into IS NULL DO NOTHING
-RETURNING id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer
+RETURNING id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer, hair_texture, preferences, dislikes
 `
 
 type CreateCustomerParams struct {
@@ -88,6 +88,9 @@ func (q *Queries) CreateCustomer(ctx context.Context, arg CreateCustomerParams) 
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.CreatedByCustomer,
+		&i.HairTexture,
+		&i.Preferences,
+		&i.Dislikes,
 	)
 	return i, err
 }
@@ -96,7 +99,7 @@ const createCustomerAsCustomer = `-- name: CreateCustomerAsCustomer :one
 INSERT INTO customers (id, tenant_id, store_id, name, phone, created_by_customer)
 VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (tenant_id, phone) WHERE phone IS NOT NULL AND merged_into IS NULL DO NOTHING
-RETURNING id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer
+RETURNING id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer, hair_texture, preferences, dislikes
 `
 
 type CreateCustomerAsCustomerParams struct {
@@ -133,6 +136,9 @@ func (q *Queries) CreateCustomerAsCustomer(ctx context.Context, arg CreateCustom
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.CreatedByCustomer,
+		&i.HairTexture,
+		&i.Preferences,
+		&i.Dislikes,
 	)
 	return i, err
 }
@@ -204,7 +210,7 @@ func (q *Queries) CreateCustomerSource(ctx context.Context, arg CreateCustomerSo
 }
 
 const findCustomerByPhone = `-- name: FindCustomerByPhone :one
-SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer FROM customers WHERE phone = $1 AND merged_into IS NULL
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer, hair_texture, preferences, dislikes FROM customers WHERE phone = $1 AND merged_into IS NULL
 `
 
 func (q *Queries) FindCustomerByPhone(ctx context.Context, phone *string) (Customer, error) {
@@ -224,12 +230,15 @@ func (q *Queries) FindCustomerByPhone(ctx context.Context, phone *string) (Custo
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.CreatedByCustomer,
+		&i.HairTexture,
+		&i.Preferences,
+		&i.Dislikes,
 	)
 	return i, err
 }
 
 const findStoreCustomerByPhone = `-- name: FindStoreCustomerByPhone :one
-SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer FROM customers
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer, hair_texture, preferences, dislikes FROM customers
 WHERE store_id = $1 AND phone = $2
 ORDER BY (merged_into IS NULL) DESC, created_at DESC, id
 LIMIT 1
@@ -257,12 +266,15 @@ func (q *Queries) FindStoreCustomerByPhone(ctx context.Context, arg FindStoreCus
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.CreatedByCustomer,
+		&i.HairTexture,
+		&i.Preferences,
+		&i.Dislikes,
 	)
 	return i, err
 }
 
 const getCustomer = `-- name: GetCustomer :one
-SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer FROM customers WHERE id = $1
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer, hair_texture, preferences, dislikes FROM customers WHERE id = $1
 `
 
 func (q *Queries) GetCustomer(ctx context.Context, id uuid.UUID) (Customer, error) {
@@ -282,6 +294,9 @@ func (q *Queries) GetCustomer(ctx context.Context, id uuid.UUID) (Customer, erro
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.CreatedByCustomer,
+		&i.HairTexture,
+		&i.Preferences,
+		&i.Dislikes,
 	)
 	return i, err
 }
@@ -334,7 +349,7 @@ func (q *Queries) GetCustomerLoginByOpenID(ctx context.Context, arg GetCustomerL
 }
 
 const getCustomers = `-- name: GetCustomers :many
-SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer FROM customers WHERE store_id=$1 AND id=ANY($2::uuid[])
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer, hair_texture, preferences, dislikes FROM customers WHERE store_id=$1 AND id=ANY($2::uuid[])
 `
 
 type GetCustomersParams struct {
@@ -365,6 +380,9 @@ func (q *Queries) GetCustomers(ctx context.Context, arg GetCustomersParams) ([]C
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.CreatedByCustomer,
+			&i.HairTexture,
+			&i.Preferences,
+			&i.Dislikes,
 		); err != nil {
 			return nil, err
 		}
@@ -504,7 +522,7 @@ func (q *Queries) ListCustomerViewStaff(ctx context.Context, ids []uuid.UUID) ([
 }
 
 const lockCardOpeningCustomer = `-- name: LockCardOpeningCustomer :one
-SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer FROM customers WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer, hair_texture, preferences, dislikes FROM customers WHERE store_id=$1 AND id=$2 FOR NO KEY UPDATE
 `
 
 type LockCardOpeningCustomerParams struct {
@@ -529,12 +547,15 @@ func (q *Queries) LockCardOpeningCustomer(ctx context.Context, arg LockCardOpeni
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.CreatedByCustomer,
+		&i.HairTexture,
+		&i.Preferences,
+		&i.Dislikes,
 	)
 	return i, err
 }
 
 const lockCustomer = `-- name: LockCustomer :one
-SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer FROM customers WHERE id = $1 FOR NO KEY UPDATE
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer, hair_texture, preferences, dislikes FROM customers WHERE id = $1 FOR NO KEY UPDATE
 `
 
 func (q *Queries) LockCustomer(ctx context.Context, id uuid.UUID) (Customer, error) {
@@ -554,6 +575,9 @@ func (q *Queries) LockCustomer(ctx context.Context, id uuid.UUID) (Customer, err
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.CreatedByCustomer,
+		&i.HairTexture,
+		&i.Preferences,
+		&i.Dislikes,
 	)
 	return i, err
 }
@@ -599,7 +623,7 @@ func (q *Queries) LockCustomerSource(ctx context.Context, id uuid.UUID) (Custome
 }
 
 const lockResponsibleCustomers = `-- name: LockResponsibleCustomers :many
-SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer FROM customers
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer, hair_texture, preferences, dislikes FROM customers
 WHERE responsible_staff_id = $1 AND merged_into IS NULL
 ORDER BY id FOR NO KEY UPDATE
 `
@@ -627,6 +651,9 @@ func (q *Queries) LockResponsibleCustomers(ctx context.Context, responsibleStaff
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.CreatedByCustomer,
+			&i.HairTexture,
+			&i.Preferences,
+			&i.Dislikes,
 		); err != nil {
 			return nil, err
 		}
@@ -718,7 +745,8 @@ func (q *Queries) RevokeSafetyLabel(ctx context.Context, arg RevokeSafetyLabelPa
 const saveCustomer = `-- name: SaveCustomer :exec
 UPDATE customers
 SET name = $2, phone = $3, gender = $4, source_id = $5,
-    responsible_staff_id = $6, note = $7, merged_into = $8
+    responsible_staff_id = $6, note = $7, merged_into = $8,
+    hair_texture = $9, preferences = $10, dislikes = $11
 WHERE id = $1
 `
 
@@ -731,6 +759,9 @@ type SaveCustomerParams struct {
 	ResponsibleStaffID *uuid.UUID
 	Note               *string
 	MergedInto         *uuid.UUID
+	HairTexture        *string
+	Preferences        *string
+	Dislikes           *string
 }
 
 func (q *Queries) SaveCustomer(ctx context.Context, arg SaveCustomerParams) error {
@@ -743,12 +774,15 @@ func (q *Queries) SaveCustomer(ctx context.Context, arg SaveCustomerParams) erro
 		arg.ResponsibleStaffID,
 		arg.Note,
 		arg.MergedInto,
+		arg.HairTexture,
+		arg.Preferences,
+		arg.Dislikes,
 	)
 	return err
 }
 
 const searchCustomers = `-- name: SearchCustomers :many
-SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer FROM customers
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer, hair_texture, preferences, dislikes FROM customers
 WHERE merged_into IS NULL
     AND ($1::boolean OR phone IS NOT NULL)
     AND ($2::uuid IS NULL OR responsible_staff_id = $2)
@@ -802,6 +836,9 @@ func (q *Queries) SearchCustomers(ctx context.Context, arg SearchCustomersParams
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.CreatedByCustomer,
+			&i.HairTexture,
+			&i.Preferences,
+			&i.Dislikes,
 		); err != nil {
 			return nil, err
 		}
@@ -814,7 +851,7 @@ func (q *Queries) SearchCustomers(ctx context.Context, arg SearchCustomersParams
 }
 
 const shareCustomer = `-- name: ShareCustomer :one
-SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer FROM customers WHERE store_id=$1 AND id=$2 FOR SHARE
+SELECT id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer, hair_texture, preferences, dislikes FROM customers WHERE store_id=$1 AND id=$2 FOR SHARE
 `
 
 type ShareCustomerParams struct {
@@ -839,6 +876,9 @@ func (q *Queries) ShareCustomer(ctx context.Context, arg ShareCustomerParams) (C
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.CreatedByCustomer,
+		&i.HairTexture,
+		&i.Preferences,
+		&i.Dislikes,
 	)
 	return i, err
 }

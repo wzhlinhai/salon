@@ -117,6 +117,7 @@ filtered AS (
 )
 SELECT f.id,f.tenant_id,f.store_id,f.name,f.phone,f.gender,f.source_id,
        f.responsible_staff_id,f.note,f.merged_into,f.created_by,f.created_at,f.created_by_customer,
+       f.hair_texture,f.preferences,f.dislikes,
        f.visit_count,
        COALESCE(f.first_visit_date::text,'')::text AS first_visit_date,
        COALESCE(f.last_visit_date::text,'')::text AS last_visit_date,

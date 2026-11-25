@@ -460,6 +460,9 @@ type Customer struct {
 	CreatedBy          *uuid.UUID
 	CreatedAt          pgtype.Timestamptz
 	CreatedByCustomer  *uuid.UUID
+	HairTexture        *string
+	Preferences        *string
+	Dislikes           *string
 }
 
 type CustomerLogin struct {
@@ -1009,6 +1012,19 @@ type SalePayment struct {
 	BusinessDate pgtype.Date
 	CreatedBy    uuid.UUID
 	CreatedAt    pgtype.Timestamptz
+}
+
+type ServiceRecord struct {
+	TenantID    uuid.UUID
+	StoreID     uuid.UUID
+	ID          uuid.UUID
+	OrderItemID uuid.UUID
+	Result      *string
+	Formula     *string
+	Feedback    *string
+	RecordedBy  uuid.UUID
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
 }
 
 type SettingChange struct {

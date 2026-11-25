@@ -27,7 +27,7 @@ imported AS (
   JOIN import_batch_records r ON r.tenant_id=f.tenant_id AND r.store_id=$4 AND r.kind='customer' AND r.entity_id=f.customer_id
 ),
 base AS (
-  SELECT cu.id, cu.tenant_id, cu.store_id, cu.name, cu.phone, cu.gender, cu.source_id, cu.responsible_staff_id, cu.note, cu.merged_into, cu.created_by, cu.created_at, cu.created_by_customer FROM customers cu
+  SELECT cu.id, cu.tenant_id, cu.store_id, cu.name, cu.phone, cu.gender, cu.source_id, cu.responsible_staff_id, cu.note, cu.merged_into, cu.created_by, cu.created_at, cu.created_by_customer, cu.hair_texture, cu.preferences, cu.dislikes FROM customers cu
   WHERE cu.store_id=$4
     AND cu.merged_into IS NULL
     AND cu.phone IS NOT NULL
@@ -88,7 +88,7 @@ next_appointments AS (
   ORDER BY a.customer_id,a.starts_at,a.id
 ),
 metrics AS (
-  SELECT b.id, b.tenant_id, b.store_id, b.name, b.phone, b.gender, b.source_id, b.responsible_staff_id, b.note, b.merged_into, b.created_by, b.created_at, b.created_by_customer,
+  SELECT b.id, b.tenant_id, b.store_id, b.name, b.phone, b.gender, b.source_id, b.responsible_staff_id, b.note, b.merged_into, b.created_by, b.created_at, b.created_by_customer, b.hair_texture, b.preferences, b.dislikes,
          COALESCE(v.visit_count,0)::int AS visit_count,
          v.first_visit_date,
          v.last_visit_date,
@@ -97,13 +97,13 @@ metrics AS (
   FROM base b LEFT JOIN visits v ON v.customer_id=b.id
 ),
 enriched AS (
-  SELECT m.id, m.tenant_id, m.store_id, m.name, m.phone, m.gender, m.source_id, m.responsible_staff_id, m.note, m.merged_into, m.created_by, m.created_at, m.created_by_customer, m.visit_count, m.first_visit_date, m.last_visit_date, m.days_since_last_visit, m.cycle_days,
+  SELECT m.id, m.tenant_id, m.store_id, m.name, m.phone, m.gender, m.source_id, m.responsible_staff_id, m.note, m.merged_into, m.created_by, m.created_at, m.created_by_customer, m.hair_texture, m.preferences, m.dislikes, m.visit_count, m.first_visit_date, m.last_visit_date, m.days_since_last_visit, m.cycle_days,
          CASE WHEN m.cycle_days IS NOT NULL AND m.days_since_last_visit-m.cycle_days > 0
               THEN m.days_since_last_visit-m.cycle_days END AS overdue_days
   FROM metrics m
 ),
 filtered AS (
-  SELECT e.id, e.tenant_id, e.store_id, e.name, e.phone, e.gender, e.source_id, e.responsible_staff_id, e.note, e.merged_into, e.created_by, e.created_at, e.created_by_customer, e.visit_count, e.first_visit_date, e.last_visit_date, e.days_since_last_visit, e.cycle_days, e.overdue_days,
+  SELECT e.id, e.tenant_id, e.store_id, e.name, e.phone, e.gender, e.source_id, e.responsible_staff_id, e.note, e.merged_into, e.created_by, e.created_at, e.created_by_customer, e.hair_texture, e.preferences, e.dislikes, e.visit_count, e.first_visit_date, e.last_visit_date, e.days_since_last_visit, e.cycle_days, e.overdue_days,
          COALESCE(sp.total_spend,0) AS total_spend,
          COALESCE(ba.stored_balance,0) AS stored_balance,
          COALESCE(cc.count_remaining,0)::bigint AS count_remaining,
@@ -131,6 +131,7 @@ filtered AS (
 )
 SELECT f.id,f.tenant_id,f.store_id,f.name,f.phone,f.gender,f.source_id,
        f.responsible_staff_id,f.note,f.merged_into,f.created_by,f.created_at,f.created_by_customer,
+       f.hair_texture,f.preferences,f.dislikes,
        f.visit_count,
        COALESCE(f.first_visit_date::text,'')::text AS first_visit_date,
        COALESCE(f.last_visit_date::text,'')::text AS last_visit_date,
@@ -183,6 +184,9 @@ type ListCustomerOverviewRow struct {
 	CreatedBy          *uuid.UUID
 	CreatedAt          pgtype.Timestamptz
 	CreatedByCustomer  *uuid.UUID
+	HairTexture        *string
+	Preferences        *string
+	Dislikes           *string
 	VisitCount         int32
 	FirstVisitDate     string
 	LastVisitDate      string
@@ -234,6 +238,9 @@ func (q *Queries) ListCustomerOverview(ctx context.Context, arg ListCustomerOver
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.CreatedByCustomer,
+			&i.HairTexture,
+			&i.Preferences,
+			&i.Dislikes,
 			&i.VisitCount,
 			&i.FirstVisitDate,
 			&i.LastVisitDate,

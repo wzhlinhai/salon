@@ -92,6 +92,15 @@ func registerMerge(r *ops.Registry) {
 				if keep.Note == nil || *keep.Note == "" {
 					keep.Note = merged.Note
 				}
+				if keep.HairTexture == nil || *keep.HairTexture == "" {
+					keep.HairTexture = merged.HairTexture
+				}
+				if keep.Preferences == nil || *keep.Preferences == "" {
+					keep.Preferences = merged.Preferences
+				}
+				if keep.Dislikes == nil || *keep.Dislikes == "" {
+					keep.Dislikes = merged.Dislikes
+				}
 				merged.MergedInto = &keep.ID
 				for _, ref := range customerReferences {
 					if err := ref.move(ctx, env.Q, merged.ID, keep.ID); err != nil {

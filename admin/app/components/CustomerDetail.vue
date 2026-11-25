@@ -116,7 +116,11 @@ async function saveProfile() {
       name: profile.name || undefined,
       gender: profile.gender === NONE ? undefined : profile.gender as 'male' | 'female',
       source_id: profile.source === NONE ? undefined : profile.source,
-      note: profile.note || undefined
+      note: profile.note || undefined,
+      // 资料是整体替换，这页还不改发质、喜好、忌讳，原样带回去免得被清空。
+      hair_texture: customer.value?.hair_texture ?? undefined,
+      preferences: customer.value?.preferences ?? undefined,
+      dislikes: customer.value?.dislikes ?? undefined
     }
   }), '资料已保存')) {
     editing.value = false
