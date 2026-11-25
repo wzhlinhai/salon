@@ -80,7 +80,6 @@ test('店长首页的接下来把今天做完的收成一行，写营业额，�
   await login(page, manager.account, manager.password)
   const done = page.getByTestId('next-done')
   await expect(done).toHaveText(/做完 \d+ 位 · ¥[\d,]+/)
-  await expect(page.getByTestId('home-punch')).toHaveCount(0)
   await done.getByRole('link').click()
   await expect(page).toHaveURL(/\/reports\/business$/)
 })

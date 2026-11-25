@@ -17,14 +17,16 @@ async function load() {
   const current = guard.next()
   const queues = await api.POST('/api/ops/list_rotation_queues', { body: {} })
   if (!current()) return
-  const queue = queues.data?.entries.find(row => row.active && (!props.staffId || row.members.some(member => member.staff.id === props.staffId)))
+  // 一次失败留着旧的，不让整块闪没。
+  if (!queues.data) return
+  const queue = queues.data.entries.find(row => row.active && (!props.staffId || row.members.some(member => member.staff.id === props.staffId)))
   if (!queue) {
     rotation.value = null
     return
   }
   const { data } = await api.POST('/api/ops/get_rotation', { body: { queue_id: queue.id } })
-  if (!current()) return
-  rotation.value = data ?? null
+  if (!current() || !data) return
+  rotation.value = data
 }
 
 watch(() => props.staffId, load, { immediate: true })
@@ -70,7 +72,7 @@ function doing(turn: Turn) {
         v-for="turn in turns"
         :key="turn.staff.id"
         data-testid="floor-row"
-        class="flex min-h-10 items-center gap-2 text-sm"
+        class="flex min-h-11 items-center gap-2 text-sm"
       >
         <span class="grid size-6 shrink-0 place-items-center rounded-full bg-tag-gray text-xs" aria-hidden="true">{{ turn.staff.name.slice(0, 1) }}</span>
         <span class="min-w-0 truncate" :class="turn.staff.id === props.staffId && 'font-semibold'">{{ turn.staff.name }}<template v-if="turn.staff.id === props.staffId">（我）</template></span>

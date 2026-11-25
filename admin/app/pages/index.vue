@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 首页（样稿 01）：只回答「接下来两个小时」。左边是接下来的时间线，右边是在店里的人和等人确认的 AI 草稿。
-// 管店、收银、派轮牌的人看全店；其余员工看自己的那一条，加上打卡和今天的业绩提成。
+// 管店、收银、派轮牌的人看全店；其余员工看自己的那一条，加上今天的业绩提成。有打卡权限的没打卡时最上面提醒一句。
 definePageMeta({ title: '首页' })
 
 const toast = useToast()
@@ -69,10 +69,10 @@ onMounted(async () => {
 
     <div class="grid gap-12 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div class="flex min-w-0 flex-col gap-8">
-        <template v-if="!wholeStore && can('attendance.clock')">
+        <template v-if="can('attendance.clock')">
           <div v-if="!todayClockIn" class="flex items-center gap-4 rounded-card bg-notice px-4 py-4">
             <p class="text-sm font-semibold">今天还没打卡<small class="block text-meta font-normal text-muted">上班先打卡，迟到、早退按门店的班次算</small></p>
-            <UButton data-testid="home-punch" size="lg" class="ms-auto px-8" :loading="punching" @click="punch">打卡</UButton>
+            <UButton data-testid="home-punch" size="lg" class="ms-auto shrink-0 px-8" :loading="punching" @click="punch">打卡</UButton>
           </div>
           <p v-else class="-mt-4 text-meta text-muted">
             <span data-testid="home-punch-time" class="tag bg-tag-gray tabular-nums">已打卡 {{ clockTime(todayClockIn) }}</span>

@@ -17,6 +17,8 @@ const api = useApi()
 const { can } = useMe()
 const TIME_ZONE = 'Asia/Shanghai'
 const WINDOW = 2 * 60 * 60_000
+// 开始超过 90 分钟还没开单的，多半不来了：不再挂在时间线上提醒打电话。
+const STALE = 90 * 60_000
 
 const entries = ref<Appointment[]>([])
 const walkIns = ref<Walkin[]>([])
@@ -40,7 +42,8 @@ async function load() {
   ])
   if (!current()) return
   if (!list.data) {
-    failed.value = errorText(list.error)
+    // 拿过一次就留着旧的，一次失败不把整条时间线换成报错。
+    if (!loaded.value) failed.value = errorText(list.error)
     return
   }
   failed.value = ''
@@ -53,12 +56,18 @@ async function load() {
   void loadFormulas()
 }
 
+// 正在取的顾客，下一分钟的刷新不再重发；取失败的不记，下一分钟再试。
+const fetching = new Set<string>()
+
 async function loadFormulas() {
   if (!can('customer.view')) return
-  const ids = rows.value.filter(row => row.near && row.customerId && !(row.customerId in formulas.value)).map(row => row.customerId!)
+  const ids = rows.value.filter(row => row.near && row.customerId && !(row.customerId in formulas.value) && !fetching.has(row.customerId)).map(row => row.customerId!)
   await Promise.all([...new Set(ids)].map(async (id) => {
+    fetching.add(id)
     const { data } = await api.POST('/api/ops/list_service_history', { body: { customer_id: id, limit: 10 } })
-    const hit = data?.items.find(item => item.record?.formula)
+    fetching.delete(id)
+    if (!data) return
+    const hit = data.items.find(item => item.record?.formula)
     formulas.value[id] = hit ? { date: hit.business_date, item: hit.item.name, formula: hit.record!.formula! } : null
   }))
 }
@@ -66,14 +75,26 @@ async function loadFormulas() {
 watch(() => [props.date, props.staffId], load, { immediate: true })
 
 let timer: ReturnType<typeof setInterval> | undefined
+
+// 切回这个标签页时马上走钟、重取，不等下一个整分钟。
+function onVisible() {
+  if (document.visibilityState !== 'visible') return
+  now.value = Date.now()
+  void load()
+}
+
 onMounted(() => {
   // 每分钟走一次钟，并重新取一次数据：前台平板常开，到店、开单要自己更新。
   timer = setInterval(() => {
     now.value = Date.now()
     if (document.visibilityState === 'visible') void load()
   }, 60_000)
+  document.addEventListener('visibilitychange', onVisible)
 })
-onBeforeUnmount(() => clearInterval(timer))
+onBeforeUnmount(() => {
+  clearInterval(timer)
+  document.removeEventListener('visibilitychange', onVisible)
+})
 
 function clock(value: string | number) {
   return new Date(value).toLocaleTimeString('zh-CN', { timeZone: TIME_ZONE, hour: 'numeric', minute: '2-digit', hour12: false })
@@ -87,6 +108,7 @@ function monthDay(date: string) {
 interface Row {
   key: string
   at: number
+  iso: string
   time: string
   who: string
   title: string
@@ -109,6 +131,7 @@ function appointmentRow(entry: Appointment): Row {
   const base = {
     key: entry.id,
     at: new Date(entry.starts_at).getTime(),
+    iso: entry.starts_at,
     time: clock(entry.starts_at),
     who: entry.staff.name,
     items: entry.items.map(item => item.name).join(' · '),
@@ -133,13 +156,18 @@ const open = computed(() => entries.value.filter(entry => entry.status === 'pend
 
 const rows = computed<Row[]>(() => {
   const list = open.value
-    .filter(entry => new Date(entry.starts_at).getTime() <= now.value + WINDOW || entry.order_id)
+    .filter((entry) => {
+      if (entry.order_id) return true
+      const start = new Date(entry.starts_at).getTime()
+      return start <= now.value + WINDOW && start > now.value - STALE
+    })
     .map(appointmentRow)
   for (const walk of walkIns.value) {
     const left = -minutesFrom(walk.ends_at)
     list.push({
       key: `walk-${walk.order_id}`,
       at: new Date(walk.starts_at).getTime(),
+      iso: walk.starts_at,
       time: clock(walk.starts_at),
       who: walk.staff.name,
       title: '散客',
@@ -235,32 +263,35 @@ const empty = computed(() => loaded.value && !rows.value.length && !done.value &
         <span v-else class="body text-sm text-muted">{{ done }}</span>
       </li>
       <template v-for="(row, index) in rows" :key="row.key">
-        <li v-if="index === nowIndex" class="now" aria-hidden="true">
-          <span class="time text-ink-red">{{ clock(now) }}</span>
-          <i />
+        <li v-if="index === nowIndex" class="now">
+          <span class="time"><span class="sr-only">现在 </span><time :datetime="new Date(now).toISOString()">{{ clock(now) }}</time></span>
+          <i aria-hidden="true" />
         </li>
         <li class="row" data-testid="next-row" :data-state="row.state">
-          <span class="time">{{ row.time }}</span>
+          <span class="time"><time :datetime="row.iso">{{ row.time }}</time></span>
           <span class="rail"><i class="dot" :class="row.state === 'serving' && 'dot-on'" /></span>
           <div class="body min-w-0">
             <p class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm" :class="row.state === 'hold' && 'text-muted'">
               <span v-if="!props.staffId" class="grid size-5 shrink-0 place-items-center rounded-full bg-tag-gray text-xs" :title="row.who" aria-hidden="true">{{ row.who.slice(0, 1) }}</span>
               <span v-if="!props.staffId" class="sr-only">{{ row.who }}：</span>
+              <span v-if="row.state === 'serving'" class="sr-only">正在做：</span>
               <span class="font-medium">{{ row.title }}</span>
               <span v-if="row.items">{{ row.items }}</span>
               <span v-if="row.tag" class="tag bg-tag-yellow">{{ row.tag }}</span>
+              <!-- 没有第二行（散客、占位）时，还要多久跟在名字后面，一位只占一行。 -->
+              <span v-if="row.remain && !detail(row)" class="text-meta text-muted">{{ row.remain }}</span>
             </p>
-            <p v-if="detail(row) || row.remain" class="mt-1 flex flex-wrap gap-x-4 text-meta text-muted">
-              <span v-if="detail(row)">{{ detail(row) }}</span>
+            <p v-if="detail(row)" class="mt-1 flex flex-wrap gap-x-4 text-meta text-muted">
+              <span>{{ detail(row) }}</span>
               <span v-if="row.remain">{{ row.remain }}</span>
             </p>
             <p v-if="row.note" class="said mt-1 text-sm text-toned">{{ row.note }}</p>
           </div>
         </li>
       </template>
-      <li v-if="nowIndex === rows.length && rows.length" class="now" aria-hidden="true">
-        <span class="time text-ink-red">{{ clock(now) }}</span>
-        <i />
+      <li v-if="nowIndex === rows.length && rows.length" class="now">
+        <span class="time"><span class="sr-only">现在 </span><time :datetime="new Date(now).toISOString()">{{ clock(now) }}</time></span>
+        <i aria-hidden="true" />
       </li>
       <li v-if="later" class="row" data-testid="next-later">
         <span class="time">之后</span>
@@ -320,6 +351,9 @@ const empty = computed(() => loaded.value && !rows.value.length && !done.value &
 .now {
   align-items: center;
   margin: -8px 0 8px;
+}
+.now .time {
+  color: var(--color-ink-red);
 }
 .now i {
   grid-column: 2 / 4;
