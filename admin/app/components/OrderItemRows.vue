@@ -32,17 +32,19 @@ function isPicked(id: string) {
   return picked.value.some(r => r.item_id === id)
 }
 
+// 再点一下只去掉这个项目的最后一行：同一项目搜进来两次时，另一行和已选的人留着。
 function toggle(id: string) {
-  rows.value = isPicked(id)
-    ? rows.value.filter(r => r.item_id !== id)
-    : [...rows.value.filter(r => r.item_id), { item_id: id, staff: {} }]
+  const last = picked.value.findLast(r => r.item_id === id)
+  rows.value = last
+    ? rows.value.filter(r => r !== last)
+    : [...picked.value, { item_id: id, staff: {} }]
 }
 
 const searchOptions = computed(() => props.items.map(i => ({ label: `${i.name}（${i.price}）`, value: i.id })))
 const searchPick = ref<string | undefined>()
 watch(searchPick, (id) => {
   if (!id) return
-  rows.value = [...rows.value.filter(r => r.item_id), { item_id: id, staff: {} }]
+  rows.value = [...picked.value, { item_id: id, staff: {} }]
   searchPick.value = undefined
 })
 
@@ -54,8 +56,8 @@ function positionLabel(position: components['schemas']['ItemPosition']) {
   return positionNames.value.get(position.position_id) ?? `岗位 ${position.slot}`
 }
 
-function remove(index: number) {
-  rows.value = rows.value.filter((_, i) => i !== index)
+function remove(row: OrderItemRow) {
+  rows.value = rows.value.filter(r => r !== row)
 }
 </script>
 
@@ -94,8 +96,8 @@ function remove(index: number) {
     <div v-if="picked.length">
       <p class="mb-1 text-meta text-muted">谁来做</p>
       <div class="divide-y divide-default border-b border-default">
-        <template v-for="(row, index) in rows" :key="index">
-          <div v-if="row.item_id" class="flex flex-wrap items-center gap-x-4 gap-y-2 py-2" data-testid="order-item-row" :data-item="itemOf(row.item_id)?.name">
+        <template v-for="(row, index) in picked" :key="index">
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-2 py-2" data-testid="order-item-row" :data-item="itemOf(row.item_id)?.name">
             <span class="w-32 truncate font-medium">{{ itemOf(row.item_id)?.name }}</span>
             <div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2">
               <span v-if="!positionsOf(row.item_id).length" class="text-meta text-dimmed">不用选人</span>
@@ -113,7 +115,7 @@ function remove(index: number) {
               </span>
             </div>
             <span class="tabular-nums">{{ yuan(itemOf(row.item_id)?.price ?? 0) }}</span>
-            <UButton size="sm" variant="ghost" color="neutral" icon="i-lucide-x" :aria-label="`去掉${itemOf(row.item_id)?.name ?? ''}`" @click="remove(index)" />
+            <UButton size="sm" variant="ghost" color="neutral" icon="i-lucide-x" :aria-label="`去掉${itemOf(row.item_id)?.name ?? ''}`" @click="remove(row)" />
           </div>
         </template>
       </div>
