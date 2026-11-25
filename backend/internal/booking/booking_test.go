@@ -563,6 +563,21 @@ func TestCustomerResolution(t *testing.T) {
 	reject(t, s.HTTP(t, &stylist, "create_appointment", map[string]any{"staff_id": s.staff, "customer_phone": "13800000077", "starts_at": s.at(0, "17:00")}), http.StatusConflict, "这个手机号已有档案，但不在你能查看的范围内")
 }
 
+func TestScopedAppointmentCustomerAssignsResponsible(t *testing.T) {
+	s := openBooking(t)
+	caller := s.MustCaller(s.MustLogin("stylist-a", "password-stylist-a"))
+	caller.Permissions = map[ops.Permission]ops.Grant{perm.BookingManage: {}, perm.CustomerView: {Scope: ops.ScopeSelf}}
+	r := s.HTTP(t, &caller, "create_appointment", map[string]any{"customer_phone": "13800000099", "staff_id": s.staff, "starts_at": s.at(1, "13:00")})
+	if r.Status != http.StatusOK {
+		t.Fatal(r)
+	}
+	customerID := r.Body["customer"].(map[string]any)["id"]
+	got := s.HTTP(t, &caller, "get_customer", map[string]any{"id": customerID})
+	if got.Status != http.StatusOK || got.Body["responsible"].(map[string]any)["id"] != caller.StaffID.String() {
+		t.Fatal(got)
+	}
+}
+
 func TestBookingReferenceRejections(t *testing.T) {
 	s := openBooking(t)
 	closed := s.createItem("停用项目", "10", 30, true)

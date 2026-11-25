@@ -192,6 +192,32 @@ func TestPhoneDedupeRespectsCustomerView(t *testing.T) {
 	}
 }
 
+func TestImportedCustomerResponsibleVisibleToScopedImporter(t *testing.T) {
+	f := open(t)
+	restricted := f.MustCaller(f.Owner)
+	restricted.Permissions = map[ops.Permission]ops.Grant{perm.DataImport: {}, perm.CustomerView: {Scope: ops.ScopeSelf}}
+	preview := f.upload(f.Owner, customerOnlyWorkbook(t, [][]string{{"C1", "导入新顾客", "13700138888", "女"}}), "scope-import.xlsx")
+	if preview.Status != http.StatusOK {
+		t.Fatal(preview)
+	}
+	r := f.HTTP(t, &restricted, "commit_import", map[string]any{"batch_id": preview.Body["id"]})
+	if r.Status != http.StatusOK {
+		t.Fatal(r)
+	}
+	row := rowsBySheet(t, r.Body, "顾客")[0]
+	customerID := row["entity_id"].(string)
+	if row["action"] != "created" {
+		t.Fatal(row)
+	}
+	if n := f.count("SELECT count(*) FROM customers WHERE id=$1 AND responsible_staff_id=$2", customerID, restricted.StaffID); n != 1 {
+		t.Fatalf("imported customer responsible rows = %d", n)
+	}
+	got := f.HTTP(t, &restricted, "get_customer", map[string]any{"id": customerID})
+	if got.Status != http.StatusOK || got.Body["responsible"].(map[string]any)["id"] != restricted.StaffID.String() {
+		t.Fatal(got)
+	}
+}
+
 func detailRows(detail *dataio.ImportBatchDetail) []map[string]any {
 	out := make([]map[string]any, 0, len(detail.Rows))
 	for _, row := range detail.Rows {

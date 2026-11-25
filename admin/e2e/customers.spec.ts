@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { api, apiLogin, customerAction, hire, login, owner } from './helpers'
+import { api, apiLogin, customerAction, hire, login, owner, uniqueSuffix } from './helpers'
 
 let phoneSequence = Date.now() % 100000000
 const phone = () => `138${String(++phoneSequence).padStart(8, '0')}`
@@ -38,6 +38,52 @@ test('前台重复手机号打开同一位顾客，不再新建', async ({ page 
   await expect(page.getByText('这个手机号已有档案', { exact: true })).toBeVisible()
   await expect(page).toHaveURL(firstURL)
   await expect(page.getByTestId('customer-profile')).toContainText(name)
+})
+
+test('只看自己负责顾客的员工新建顾客后能打开档案、直接开单，别人的号码不跳转', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const suffix = uniqueSuffix()
+  const role = await api<{ id: string }>(token, 'create_role', {
+    name: `只看自己${suffix}`,
+    permissions: [{ permission: 'customer.view', scope: 'self' }, { permission: 'customer.edit' }, { permission: 'order.create' }]
+  })
+  const staff = await api<{ id: string, name: string }>(token, 'create_staff', { name: `只看自己${suffix}`, number: suffix, role_ids: [role.id] })
+  const account = `scoped-${suffix}`
+  const password = `password-${suffix}`
+  await api(token, 'set_staff_login', { staff_id: staff.id, login_account: account, password })
+  const others = phone()
+  await api(token, 'create_customer', { name: `别人的顾客${suffix}`, phone: others })
+  await login(page, account, password)
+
+  // 顾客页「新建顾客」→「只建档」：建完就是自己负责的，档案打得开。
+  await page.goto('/customers')
+  await create(page, `自己建的${suffix}`, phone())
+  await expect(page.getByTestId('customer-profile').getByRole('heading', { name: `自己建的${suffix}`, exact: true })).toBeVisible()
+  await expect(page.getByTestId('customer-profile')).toContainText(`负责人 ${staff.name}`)
+
+  // Ctrl K「用这个号新建」→ 回车「建好，开单」：开单弹窗带着这位顾客。
+  const fresh = phone()
+  await page.keyboard.press('Control+k')
+  const dialog = page.getByRole('dialog', { name: '搜索' })
+  await dialog.getByPlaceholder('找顾客、员工、页面，或说一句话交给 AI').fill(fresh)
+  await dialog.getByRole('option', { name: `用 ${fresh.slice(0, 3)} ${fresh.slice(3, 7)} ${fresh.slice(7)} 新建顾客` }).click()
+  const form = page.getByRole('dialog', { name: '新顾客' })
+  await form.getByLabel('怎么称呼', { exact: true }).fill(`搜索建的${suffix}`)
+  await form.getByLabel('怎么称呼', { exact: true }).press('Enter')
+  await expect(page).toHaveURL(/\/cashier/)
+  await expect(page.getByRole('dialog', { name: '开单' })).toContainText(`搜索建的${suffix}`)
+  await page.getByRole('dialog', { name: '开单' }).getByRole('button', { name: '取消', exact: true }).click()
+
+  // 号码已有档案但不归自己负责（老板建的、没设负责人）：说清楚看不到，弹窗留着，不跳转、不新建。
+  await page.goto('/customers')
+  await page.getByRole('button', { name: '新建顾客', exact: true }).click()
+  const again = page.getByRole('dialog', { name: '新顾客', exact: true })
+  await again.getByLabel('手机号', { exact: true }).fill(others)
+  await again.getByLabel('怎么称呼', { exact: true }).fill('重复建档')
+  await again.getByRole('button', { name: '只建档', exact: true }).click()
+  await expect(page.getByText('这个手机号已有档案，但不在你能查看的范围内', { exact: true })).toBeVisible()
+  await expect(again).toBeVisible()
+  await expect(page).toHaveURL('/customers')
 })
 
 test('前台看到完整手机号，发型师看到打码号码', async ({ page }) => {

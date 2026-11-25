@@ -186,6 +186,21 @@ func TestCustomerProtection(t *testing.T) {
 	}
 }
 
+func TestScopedOrderUnidentifiedCustomerAssignsResponsible(t *testing.T) {
+	s := open(t)
+	staffID, token := s.Hire("开单员工", "003", "order-self")
+	caller := s.MustCaller(token)
+	caller.Permissions = map[ops.Permission]ops.Grant{perm.OrderCreate: {}, perm.CustomerView: {Scope: ops.ScopeSelf}}
+	r := s.HTTP(t, &caller, "open_order", s.opening())
+	if r.Status != 200 {
+		t.Fatal(r)
+	}
+	got := s.HTTP(t, &caller, "get_customer", map[string]any{"id": r.Body["customer_id"]})
+	if got.Status != 200 || got.Body["responsible"].(map[string]any)["id"] != staffID.String() {
+		t.Fatal(got)
+	}
+}
+
 func TestPrices(t *testing.T) {
 	s := open(t)
 	noSlots := id(s.call("create_item", s.itemInput("无岗位", 0), 200)["id"])

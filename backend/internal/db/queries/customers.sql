@@ -14,8 +14,8 @@ UPDATE customer_sources SET name = $2, active = $3 WHERE id = $1
 RETURNING *;
 
 -- name: CreateCustomer :one
-INSERT INTO customers (tenant_id, store_id, name, phone, gender, source_id, note, created_by, created_by_customer)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO customers (tenant_id, store_id, name, phone, gender, source_id, note, created_by, created_by_customer, responsible_staff_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 ON CONFLICT (tenant_id, phone) WHERE phone IS NOT NULL AND merged_into IS NULL DO NOTHING
 RETURNING *;
 

@@ -221,5 +221,14 @@ func canView(caller ops.Caller, row dbgen.Customer) bool {
 	return err == nil && (self == nil || (row.ResponsibleStaffID != nil && *row.ResponsibleStaffID == *self))
 }
 
+// NewCustomerResponsible 返回新建顾客时要记的负责人：查看范围为"本人"时记调用者，否则不指派。
+func NewCustomerResponsible(caller ops.Caller) *uuid.UUID {
+	ok, self := caller.ScopeFilter(perm.CustomerView)
+	if !ok || self == nil {
+		return nil
+	}
+	return &caller.StaffID
+}
+
 // CanView 判断调用者是否有权查看顾客，供关联顾客的业务操作共用。
 func CanView(caller ops.Caller, row dbgen.Customer) bool { return canView(caller, row) }
