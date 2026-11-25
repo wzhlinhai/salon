@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import type { TableColumn, TableRow } from '@nuxt/ui'
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'payroll.manage', title: '工资表', description: '按月算出每人的底薪、提成和扣款，核对无误后锁定。', art: 'coins' })
+// 工资表（样稿 15）：页头写「10 月工资」，顶上一句话说一共多少、比上个月、谁缺卡；下面一张明细，点一行看提成从哪来。
+definePageMeta({ permission: 'payroll.manage', title: '工资表', art: 'coins' })
 type Schema = components['schemas']
 type Line = Schema['PayrollLine']
 const api = useApi()
 const toast = useToast()
+const { can } = useMe()
+const crumbTitle = useState('page-crumb-title', () => '')
 const months = ref<Schema['PayrollMonth'][]>([])
 const month = ref('')
 const payroll = ref<Schema['Payroll']>()
@@ -26,20 +28,80 @@ function monthLabel(value: string) {
 const monthItems = computed(() => months.value.map(m => ({ value: m.month, label: monthLabel(m.month) + (m.locked ? '（已锁定）' : '') })))
 const status = computed(() => months.value.find(m => m.month === month.value))
 const staffItems = computed(() => salaries.value.map(s => ({ value: s.staff.id, label: s.staff.name + (s.active ? '' : '（离职）') })))
+// 金额列（样稿 15）：底薪、项目提成、销售提成、实发总在；耗卡、手工费、保底补差、加减项这个月有人有数才出现。
 const amountColumns = [
-  ['applied_amount', '底薪/保底'], ['base_pay', '底薪部分'], ['item_commission', '项目'], ['consume_commission', '耗卡'],
-  ['labor_commission', '手工费'], ['sale_commission', '销售'], ['commission_total', '提成合计'], ['guarantee_top_up', '保底补差'], ['adjustments_total', '加减项'], ['total', '应发']
+  { key: 'base_pay', label: '底薪', always: true },
+  { key: 'item_commission', label: '项目提成', always: true },
+  { key: 'consume_commission', label: '耗卡提成', always: false },
+  { key: 'labor_commission', label: '手工费', always: false },
+  { key: 'sale_commission', label: '销售提成', always: true },
+  { key: 'guarantee_top_up', label: '保底补差', always: false },
+  { key: 'adjustments_total', label: '加减项', always: false }
 ] as const
-// 手工费本店不用：这个月没有一个人有手工费提成时不显示这一列。
-const columns = computed<TableColumn<Line>[]>(() => [
-  { accessorKey: 'staff', header: '员工' }, { accessorKey: 'mode', header: '计薪方式' },
-  ...amountColumns.filter(([key]) => key !== 'labor_commission' || (payroll.value?.lines ?? []).some(l => Number(l.labor_commission) !== 0)).map(([accessorKey, header]) => ({ accessorKey, header, meta: { class: { th: 'text-right', td: (cell: { getValue: () => unknown }) => `text-right tabular-nums${Number(cell.getValue()) === 0 ? ' text-dimmed' : ''}` } } }))
-])
-const rows = computed<Line[]>(() => payroll.value?.lines.length ? [...payroll.value.lines, { ...payroll.value.totals, staff: { id: '__total__', name: '合计' }, active: true, mode: 'base' }] : [])
+const lines = computed(() => payroll.value?.lines ?? [])
+const shownColumns = computed(() => amountColumns.filter(c => c.always || lines.value.some(l => !zeroText(l[c.key]))))
 
-function selectRow(_event: Event, row: TableRow<Line>) {
-  if (row.original.staff.id === '__total__') return
-  selected.value = row.original.staff
+// 表身金额：零写「—」，负数写「−¥50」。
+function money(value: string) {
+  const n = Number(value)
+  return n < 0 ? `−${yuan(-n)}` : yuanCell(value)
+}
+
+// 考勤缺卡：有考勤权限才取，取不到就不标。
+const attendance = ref(new Map<string, number>())
+
+async function loadAttendance(target: string) {
+  if (!can('attendance.manage')) return
+  const { data } = await api.POST('/api/ops/list_attendance_summary', { body: { month: target } })
+  if (data && month.value === target) attendance.value = new Map(data.entries.filter(e => e.missing_count > 0).map(e => [e.staff.id, e.missing_count]))
+}
+
+// 上个月的工资表，用来比一比：有上个月才取。
+const previous = ref<Schema['Payroll']>()
+
+function previousMonth(value: string) {
+  const [y, m] = value.split('-').map(Number)
+  return new Date(Date.UTC(y!, m! - 2, 1)).toISOString().slice(0, 7)
+}
+
+async function loadPrevious(target: string) {
+  const before = previousMonth(target)
+  if (!months.value.some(m => m.month === before)) return
+  const { data } = await api.POST('/api/ops/get_payroll', { body: { month: before } })
+  if (data && month.value === target) previous.value = data
+}
+
+// 顶上一句话：几个人一共多少，比上个月多少、主要是谁；有人缺卡，提醒锁定前看一下。
+const brief = computed(() => {
+  const p = payroll.value
+  if (!p || !p.lines.length) return []
+  const { parts, say, bold } = briefWriter()
+  say(`${p.lines.length} 个人一共 `)
+  bold(yuan(p.totals.total))
+  const before = previous.value
+  if (before?.lines.length) {
+    const diff = (cents(p.totals.total) - cents(before.totals.total)) / 100
+    if (diff) {
+      say(`，比 ${Number(before.month.slice(5))} 月${diff > 0 ? '多' : '少'} `)
+      bold(yuan(Math.abs(diff)))
+      const last = new Map(before.lines.map(l => [l.staff.id, cents(l.total)]))
+      const mover = p.lines.map(l => ({ name: l.staff.name, change: (cents(l.total) - (last.get(l.staff.id) ?? 0)) / 100 }))
+        .sort((x, y) => Math.abs(y.change) - Math.abs(x.change))[0]
+      if (mover && Math.sign(mover.change) === Math.sign(diff) && Math.abs(mover.change) >= Math.abs(diff) / 2) say(`，主要是${mover.name}${mover.change > 0 ? '多了' : '少了'} ${yuan(Math.abs(mover.change))}`)
+    } else say(`，和 ${Number(before.month.slice(5))} 月一样`)
+  }
+  say('。')
+  const missing = p.lines.filter(l => attendance.value.has(l.staff.id))
+  if (missing.length) {
+    bold(missing.map(l => `${l.staff.name}缺卡 ${attendance.value.get(l.staff.id)} 次`).join('，'))
+    say(p.locked ? '。' : '，锁定前看一下。')
+  }
+  if (p.locked) say(`已锁定（${p.locked_by?.name ?? ''} ${p.locked_at ? formatStamp(p.locked_at) : ''}），之后有错只能在以后的月份用加减项更正。`)
+  return parts
+})
+
+function openLine(line: Line) {
+  selected.value = line.staff
   detailOpen.value = true
 }
 
@@ -64,6 +126,8 @@ async function reload() {
       api.POST('/api/ops/list_base_salaries', { body: { month: targetMonth } })
     ])
     if (!current()) return
+    void loadAttendance(targetMonth)
+    void loadPrevious(targetMonth)
     if (p.data) payroll.value = p.data
     else toast.add({ title: errorText(p.error), color: 'error' })
     if (s.data) salaries.value = s.data.entries
@@ -156,7 +220,10 @@ async function lock() {
   })
 }
 
-watch(month, () => {
+watch(month, (value) => {
+  crumbTitle.value = value ? `${Number(value.slice(5))} 月工资` : ''
+  previous.value = undefined
+  attendance.value = new Map()
   payroll.value = undefined
   salaries.value = []
   detailOpen.value = false
@@ -166,38 +233,80 @@ watch(month, () => {
   void reload()
 })
 onMounted(reloadMonths)
+onBeforeUnmount(() => {
+  crumbTitle.value = ''
+})
 </script>
 
 <template>
-  <div class="space-y-4">
-    <PageActions v-if="payroll && !payroll.locked">
-      <UDropdownMenu :items="moreItems" :content="{ align: 'end' }">
+  <div class="space-y-6">
+    <PageActions>
+      <USelect v-model="month" aria-label="结算月" :items="monthItems" size="sm" class="min-w-36" />
+      <UDropdownMenu v-if="payroll && !payroll.locked" :items="moreItems" :content="{ align: 'end' }">
         <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-ellipsis" aria-label="更多操作" />
       </UDropdownMenu>
-      <UButton size="sm" icon="i-lucide-lock" :disabled="!status?.lockable" @click="askLock">锁定本月</UButton>
+      <UButton v-if="payroll && !payroll.locked" size="sm" :disabled="!status?.lockable" @click="askLock">核对无误，锁定</UButton>
     </PageActions>
-    <div class="flex flex-wrap items-center gap-2">
-      <USelect v-model="month" aria-label="结算月" :items="monthItems" class="min-w-36" />
-      <span v-if="payroll?.locked" class="tag bg-tag-gray">已锁定</span>
-      <span v-else class="tag bg-tag-gray">未锁定</span>
-      <span v-if="payroll?.locked" class="text-meta text-muted">{{ payroll.locked_by?.name }} · {{ payroll.locked_at ? new Date(payroll.locked_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '' }}</span>
-      <span v-else-if="payroll && !status?.lockable" class="text-meta text-muted">月份结束且之前的月份都已锁定后才能锁定</span>
+
+    <ReportBrief v-if="brief.length" :parts="brief" data-testid="payroll-brief" />
+    <div class="flex flex-wrap items-center gap-2 text-meta text-muted">
+      <template v-if="payroll?.locked">
+        <span class="tag bg-tag-gray">已锁定</span>
+        <span>{{ payroll.locked_by?.name }} · {{ payroll.locked_at ? new Date(payroll.locked_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '' }}</span>
+      </template>
+      <template v-else-if="payroll">
+        <span>未锁定</span>
+        <span v-if="!status?.lockable">月份结束且之前的月份都已锁定后才能锁定</span>
+      </template>
     </div>
-    <div class="overflow-x-auto">
-      <UTable :data="rows" :columns="columns" :loading="loading" :aria-busy="loading" data-testid="payroll-table" :ui="{ tr: 'has-[[data-total]]:bg-lane has-[[data-total]]:font-semibold' }" @select="selectRow">
-        <template #staff-cell="{ row }">
-          <span :data-total="row.original.staff.id === '__total__' ? '' : undefined" class="font-medium">{{ row.original.staff.name }}</span><span v-if="!row.original.active" class="text-dimmed">（离职）</span>
-        </template>
-        <template #mode-cell="{ row }"><span class="text-muted">{{ row.original.staff.id === '__total__' ? '' : row.original.mode === 'base' ? '底薪 + 提成' : '保底' }}</span></template>
-        <template #applied_amount-cell="{ row }">{{ row.original.staff.id === '__total__' ? '' : row.original.applied_amount }}</template>
-        <template #empty>
-          <EmptyState v-if="!loading" art="calendar" title="本月还没有员工工资" hint="点右上角 ··· 设置底薪或保底，开单后的提成会自动算进来" />
-        </template>
-        <template #loading>
-          <ListSkeleton />
-        </template>
-      </UTable>
-    </div>
+
+    <section data-testid="payroll-table" :aria-busy="loading">
+      <h2 class="sec">明细<span class="font-normal text-dimmed">点一行看每笔提成从哪来</span></h2>
+      <ListSkeleton v-if="loading && !payroll" />
+      <EmptyState v-else-if="payroll && !payroll.lines.length" art="calendar" title="本月还没有员工工资" hint="点右上角 ··· 设置底薪或保底，开单后的提成会自动算进来" />
+      <div v-else-if="payroll" class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-default text-sm text-muted">
+              <th scope="col" class="px-3 py-2 text-start font-normal">员工</th>
+              <th v-for="c in shownColumns" :key="c.key" scope="col" class="px-3 py-2 text-end font-normal whitespace-nowrap">{{ c.label }}</th>
+              <th scope="col" class="px-3 py-2 text-end font-normal">实发</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-default">
+            <tr
+              v-for="line in payroll.lines"
+              :key="line.staff.id"
+              class="cursor-pointer row-hover"
+              :class="attendance.has(line.staff.id) ? 'bg-notice' : ''"
+              @click="openLine(line)"
+            >
+              <td class="px-3 py-2">
+                <div class="flex items-center gap-2">
+                  <PersonAvatar :name="line.staff.name" size="sm" />
+                  <button type="button" class="font-medium" @click.stop="openLine(line)">{{ line.staff.name }}</button>
+                  <span v-if="!line.active" class="tag bg-tag-gray">离职</span>
+                  <span v-if="attendance.has(line.staff.id)" class="tag bg-tag-red">缺卡 {{ attendance.get(line.staff.id) }} 次</span>
+                </div>
+              </td>
+              <td v-for="c in shownColumns" :key="c.key" class="px-3 py-2 text-end tabular-nums whitespace-nowrap" :class="Number(line[c.key]) < 0 ? 'text-ink-red' : zeroText(line[c.key]) ? 'text-dimmed' : ''" :data-col="c.key">
+                <template v-if="c.key === 'base_pay' && line.mode === 'guarantee'"><span class="text-dimmed">保底 {{ yuan(line.applied_amount) }}</span></template>
+                <template v-else>{{ money(line[c.key]) }}</template>
+              </td>
+              <td class="px-3 py-2 text-end font-semibold tabular-nums" :class="Number(line.total) < 0 ? 'text-ink-red' : ''" data-col="total">{{ money(line.total) }}</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="border-t border-default font-semibold" data-testid="payroll-totals">
+              <td class="px-3 py-2">合计</td>
+              <td v-for="c in shownColumns" :key="c.key" class="px-3 py-2 text-end tabular-nums whitespace-nowrap" :data-col="c.key">{{ money(payroll.totals[c.key]) }}</td>
+              <td class="px-3 py-2 text-end tabular-nums" data-col="total">{{ money(payroll.totals.total) }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
+
     <USlideover v-model:open="detailOpen" :modal="false" :title="`${selected?.name ?? ''} · ${monthLabel(month)}`">
       <template #body>
         <PayrollDetail v-if="selected && payroll" :key="`${month}:${selected.id}`" ref="detail" :month="month" :staff-id="selected.id" :locked="payroll.locked" @changed="reload" />
@@ -224,7 +333,7 @@ onMounted(reloadMonths)
     <UModal v-model:open="lockOpen" :title="`锁定 ${monthLabel(lockMonth)}`">
       <template #body>
         <p>锁定后本月的提成和工资表不再变化，也不能再设置底薪或增删加减项。锁定不能撤销，之后发现错误只能在以后的月份用加减项更正。</p>
-        <p class="mt-3">全店应发 {{ lockTotal }}</p>
+        <p class="mt-3">全店应发 {{ yuan(lockTotal) }}</p>
       </template>
       <template #footer>
         <ModalActions @cancel="lockOpen = false">

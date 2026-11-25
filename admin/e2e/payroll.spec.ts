@@ -3,6 +3,7 @@ import { expect, test, type Page, type Locator } from '@playwright/test'
 import type { components } from '../app/utils/api'
 import { api, apiLogin, hire, login, navLabels, owner, uniqueSuffix } from './helpers'
 import preparePayroll from './payroll.setup'
+import { yuan } from '../app/utils/money'
 
 type Schema = components['schemas']
 
@@ -31,7 +32,7 @@ async function payrollAction(page: Page, name: string) {
 }
 
 function row(page: Page, name: string) {
-  return page.locator('[data-testid="main-panel"] tbody tr').filter({ has: page.getByRole('cell', { name, exact: true, includeHidden: true }) })
+  return page.locator('[data-testid="payroll-table"] tbody tr').filter({ has: page.getByRole('button', { name, exact: true, includeHidden: true }) })
 }
 
 async function adjustment(page: Page, staff: string, name: string, amount: string) {
@@ -45,16 +46,23 @@ async function adjustment(page: Page, staff: string, name: string, amount: strin
   await expect(dialog).toHaveCount(0)
 }
 
+// 合计行的实发等于各行实发之和。金额写成 ¥1,234.5、−¥50，零写「—」。
 async function assertTotal(page: Page) {
-  const values = await page.locator('[data-testid="main-panel"] tbody tr').evaluateAll(rows => rows.map(r => r.querySelector('td:last-child')?.textContent?.trim() ?? ''))
-  const total = values.pop()
+  const table = page.getByTestId('payroll-table')
+  const values = await table.locator('tbody td[data-col="total"]').allInnerTexts()
+  const total = await table.locator('tfoot td[data-col="total"]').innerText()
   const cents = (value: string) => {
-    const negative = value.startsWith('-')
-    const [yuan, fen] = value.replace(/^-/, '').split('.')
-    const amount = Number(yuan) * 100 + Number(fen)
-    return negative ? -amount : amount
+    const text = value.trim()
+    if (text === '—') return 0
+    const amount = Math.round(Number(text.replace(/[−\-¥,]/g, '')) * 100)
+    return /^[−-]/.test(text) ? -amount : amount
   }
-  expect(cents(total!)).toBe(values.reduce((sum, value) => sum + cents(value), 0))
+  expect(cents(total)).toBe(values.reduce((sum, value) => sum + cents(value), 0))
+}
+
+// 实发那一格。
+function pay(page: Page, name: string) {
+  return row(page, name).locator('td[data-col="total"]')
 }
 
 test('老板设置底薪和加减项', async ({ page }) => {
@@ -73,12 +81,11 @@ test('老板设置底薪和加减项', async ({ page }) => {
   await adjustment(page, staff.name, '奖励', '200')
   await adjustment(page, staff.name, '更正', '-50')
   const staffRow = row(page, staff.name)
-  await expect(staffRow.locator('td').nth(1)).toHaveText('保底')
-  await expect(staffRow.locator('td').nth(2)).toHaveText('3000.00')
-  await expect(staffRow.locator('td').nth(3)).toHaveText('0.00')
-  await expect(staffRow.locator('td').nth(8)).toHaveText('3000.00')
-  await expect(staffRow.locator('td').nth(9)).toHaveText('150.00')
-  await expect(staffRow.locator('td').last()).toHaveText('3150.00')
+  await expect(staffRow.locator('td[data-col="base_pay"]')).toHaveText('保底 ¥3,000')
+  await expect(staffRow.locator('td[data-col="item_commission"]')).toHaveText('—')
+  await expect(staffRow.locator('td[data-col="guarantee_top_up"]')).toHaveText('¥3,000')
+  await expect(staffRow.locator('td[data-col="adjustments_total"]')).toHaveText('¥150')
+  await expect(staffRow.locator('td[data-col="total"]')).toHaveText('¥3,150')
   await assertTotal(page)
   await staffRow.click()
   const entry = page.getByTestId('payroll-adjustment').filter({ hasText: '更正' })
@@ -88,7 +95,7 @@ test('老板设置底薪和加减项', async ({ page }) => {
   await expect(confirmation).toBeVisible()
   await confirmation.getByRole('button', { name: '确认删除', exact: true }).click()
   await expect(entry).toHaveCount(0)
-  await expect(staffRow.locator('td').last()).toHaveText('3200.00')
+  await expect(staffRow.locator('td[data-col="total"]')).toHaveText('¥3,200')
   await assertTotal(page)
 })
 
@@ -112,7 +119,7 @@ test('工资表保存断网和拒绝后可以重试', async ({ page }) => {
   await expect(save).toBeEnabled()
   await save.click()
   await expect(dialog).toHaveCount(0)
-  await expect(row(page, staff.name).locator('td').last()).toHaveText('1.00')
+  await expect(pay(page, staff.name)).toHaveText(yuan('1.00'))
 })
 
 test('发型师没有工资表权限', async ({ page }) => {
@@ -175,7 +182,7 @@ test.describe('工资表全店数据 @payroll-store', () => {
     await login(page, owner.account, owner.password)
     await page.goto('/payroll')
     const staffRow = row(page, staff.name)
-    await expect(staffRow.locator('td').nth(4)).toHaveText('10.00')
+    await expect(staffRow.locator('td[data-col="item_commission"]')).toHaveText('¥10')
     await staffRow.click()
     await expect(page.getByTestId('payroll-commission')).toContainText(`${today} · 项目业绩 · 10.00`)
     await expect(page.getByTestId('payroll-commission')).toContainText(`实收（折后价） 100.00 · 10.00% · 方案第 ${version.version} 版`)
@@ -190,29 +197,29 @@ test.describe('工资表全店数据 @payroll-store', () => {
     const previous = new Date(Date.UTC(y!, m! - 2, 1)).toISOString().slice(0, 7)
     await login(page, owner.account, owner.password)
     await page.goto('/payroll')
-    await expect(page.getByRole('button', { name: '锁定本月', exact: true })).toBeDisabled()
+    await expect(page.getByRole('button', { name: '核对无误，锁定', exact: true })).toBeDisabled()
     await expect(page.getByText('月份结束且之前的月份都已锁定后才能锁定', { exact: true })).toBeVisible()
     await choose(page, page, '结算月', label(previous))
     await adjustment(page, staff.name, '上月更正', '123')
-    const total = await row(page, '合计').locator('td').last().innerText()
-    await page.getByRole('button', { name: '锁定本月', exact: true }).click()
+    const total = await page.getByTestId('payroll-totals').locator('td[data-col="total"]').innerText()
+    await page.getByRole('button', { name: '核对无误，锁定', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: `锁定 ${label(previous)}`, exact: true })
     await expect(dialog).toContainText(`全店应发 ${total}`)
     await expect(dialog).toContainText('锁定不能撤销')
     await dialog.getByRole('button', { name: '取消', exact: true }).click()
     await expect(page.getByText('未锁定', { exact: true })).toBeVisible()
-    await page.getByRole('button', { name: '锁定本月', exact: true }).click()
+    await page.getByRole('button', { name: '核对无误，锁定', exact: true }).click()
     const oldError = await deferOperation(page, 'lock_payroll_month', { failure: '旧锁月失败' })
     await dialog.getByRole('button', { name: '确认锁定', exact: true }).click()
     await oldError.pending
     await dialog.getByRole('button', { name: '取消', exact: true }).click()
     await choose(page, page, '结算月', label(month))
-    await expect(row(page, staff.name).locator('td').last()).toHaveText('2.00')
+    await expect(pay(page, staff.name)).toHaveText(yuan('2.00'))
     await oldError.finish()
     await discardedResponse(page)
     expect(await page.getByText('旧锁月失败', { exact: true }).count()).toBe(0)
     await choose(page, page, '结算月', label(previous))
-    await page.getByRole('button', { name: '锁定本月', exact: true }).click()
+    await page.getByRole('button', { name: '核对无误，锁定', exact: true }).click()
     await page.route('**/api/ops/lock_payroll_month', route => route.fulfill({ status: 409, contentType: 'application/problem+json', json: { detail: '锁月暂时拒绝' } }), { times: 1 })
     await dialog.getByRole('button', { name: '确认锁定', exact: true }).click()
     await expect(page.getByText('锁月暂时拒绝', { exact: true })).toBeVisible()
@@ -222,7 +229,7 @@ test.describe('工资表全店数据 @payroll-store', () => {
     await oldSuccess.pending
     await dialog.getByRole('button', { name: '取消', exact: true }).click()
     await choose(page, page, '结算月', label(month))
-    await expect(row(page, staff.name).locator('td').last()).toHaveText('2.00')
+    await expect(pay(page, staff.name)).toHaveText(yuan('2.00'))
     const salary = await salaryEditor(page, staff.name, '88')
     const refreshed = page.waitForResponse(r => r.url().endsWith('/api/ops/list_payroll_months'))
     await oldSuccess.finish()
@@ -230,13 +237,13 @@ test.describe('工资表全店数据 @payroll-store', () => {
     await discardedResponse(page)
     await expect(salary).toBeVisible()
     await expect(page.getByText('未锁定', { exact: true })).toBeVisible()
-    await expect(row(page, staff.name).locator('td').last()).toHaveText('2.00')
+    await expect(pay(page, staff.name)).toHaveText(yuan('2.00'))
     expect(await page.getByText('已锁定', { exact: true }).count()).toBe(0)
     await salary.getByRole('button', { name: '关闭', exact: true }).click()
     await choose(page, page, '结算月', `${label(previous)}（已锁定）`)
     await expect(page.getByText('已锁定', { exact: true })).toBeVisible()
     await expect(page.getByText(/^王老板 · /)).toBeVisible()
-    for (const name of ['更多操作', '锁定本月']) await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0)
+    for (const name of ['更多操作', '核对无误，锁定']) await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0)
     await row(page, staff.name).click()
     await expect(page.getByTestId('payroll-adjustment')).toContainText('上月更正')
     await expect(page.getByTestId('payroll-detail').getByRole('button', { name: '删除', exact: true })).toHaveCount(0)
@@ -272,13 +279,13 @@ test('工资表月份切走再切回丢弃旧工资表', async ({ page }) => {
   await choose(page, page, '结算月', label(previous.month))
   await api(token, 'add_payroll_adjustment', { month, staff_id: staff.id, name: '更新', amount: '2' })
   await choose(page, page, '结算月', label(month))
-  await expect(row(page, staff.name).locator('td').last()).toHaveText('3.00')
+  await expect(pay(page, staff.name)).toHaveText(yuan('3.00'))
   const response = page.waitForResponse(r => r.url().endsWith('/api/ops/get_payroll') && r.request().postDataJSON().month === month)
   release()
   await (await response).finished()
   // eslint-disable-next-line no-restricted-syntax -- 丢弃旧响应没有状态变化，等待回调执行。
   await page.waitForTimeout(500)
-  await expect(row(page, staff.name).locator('td').last()).toHaveText('3.00')
+  await expect(pay(page, staff.name)).toHaveText(yuan('3.00'))
 })
 
 async function salaryEditor(page: Page, staffName: string, amount = '77.77') {
@@ -335,10 +342,10 @@ test('上月底薪迟到保存刷新当前月', async ({ page }) => {
   await delayed.pending
   await dialog.getByRole('button', { name: '关闭', exact: true }).click()
   await choose(page, page, '结算月', label(month))
-  await expect(row(page, staff.name).locator('td').nth(2)).toHaveText('0.00')
+  await expect(row(page, staff.name).locator('td[data-col="base_pay"]')).toHaveText('—')
   await delayed.finish()
-  await expect(row(page, staff.name).locator('td').nth(2)).toHaveText('1234.56')
-  await expect(row(page, staff.name).locator('td').last()).toHaveText('1234.66')
+  await expect(row(page, staff.name).locator('td[data-col="base_pay"]')).toHaveText('¥1,234.56')
+  await expect(pay(page, staff.name)).toHaveText(yuan('1234.66'))
   await assertTotal(page)
 })
 
@@ -359,7 +366,7 @@ for (const fails of [false, true]) {
     if (fails) await discardedResponse(page)
     else {
       await (await refreshed!).finished()
-      await expect(row(page, a.name).locator('td').last()).toHaveText('77.77')
+      await expect(pay(page, a.name)).toHaveText(yuan('77.77'))
     }
     await expect(dialog).toBeVisible()
     await expect(dialog.getByLabel('金额', { exact: true })).toHaveValue('88.88')
@@ -379,7 +386,7 @@ test('工资加载断网后结束加载并可换月重试', async ({ page }) => 
   await expect(page.getByTestId('payroll-table')).toHaveAttribute('aria-busy', 'false')
   await choose(page, page, '结算月', label(months.entries[1]!.month))
   await choose(page, page, '结算月', label(month))
-  await expect(row(page, staff.name).locator('td').last()).toHaveText('0.20')
+  await expect(pay(page, staff.name)).toHaveText(yuan('0.20'))
   await expect(page.getByTestId('payroll-table')).toHaveAttribute('aria-busy', 'false')
 })
 
@@ -498,7 +505,7 @@ test('加减项迟到保存刷新匹配的当前明细', async ({ page }) => {
   await expect(page.getByTestId('payroll-detail')).not.toContainText('迟到加项')
   await delayed.finish()
   await expect(page.getByTestId('payroll-detail')).toContainText('迟到加项 +0.10')
-  await expect(row(page, staff.name).locator('td').last()).toHaveText('1.10')
+  await expect(pay(page, staff.name)).toHaveText(yuan('1.10'))
 })
 
 test('月份列表迟到错误不提示到其他页面', async ({ page }) => {
