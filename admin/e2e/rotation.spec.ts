@@ -40,7 +40,7 @@ test('前台按到岗、轮牌接客、点客、撤销、跳过和休息走完�
   await expect(page.getByTestId('next-up')).toHaveText(b!.name)
 
   await onDuty(page, c!.name).getByRole('button', { name: '点客' }).click()
-  await expect(onDuty(page, c!.name)).toContainText('服务中 · 点客')
+  await expect(onDuty(page, c!.name)).toContainText('在做 · 点客')
   await onDuty(page, c!.name).getByRole('button', { name: '撤销接客' }).click()
   await expect(onDuty(page, c!.name)).toHaveAttribute('data-status', 'waiting')
 
@@ -74,6 +74,12 @@ test('前台按到岗、轮牌接客、点客、撤销、跳过和休息走完�
   await expect(events).toContainText(`${c!.name} 临时休息 15 分钟`)
   await expect(events).toContainText(`${c!.name} 撤销接客，不算一轮`)
   await expect(events).toContainText(`${a!.name} 轮牌接客`)
+  // 今天的轮次只记真接了的：撤销掉的点客不算，椅子上的计数跟着。
+  const rounds = page.getByTestId('rotation-rounds')
+  await expect(rounds.locator('li')).toHaveCount(1)
+  await expect(rounds).toContainText(`${a!.name} 接客`)
+  await expect(onDuty(page, a!.name)).toContainText('今天 1 位 · 轮 1')
+  await expect(onDuty(page, c!.name)).toContainText('今天还没接')
 })
 
 test('调整顺序要写原因，盖牌后不能点客、取消盖牌恢复，离岗回到未到岗', async ({ page }) => {
@@ -184,4 +190,29 @@ test('门店按项目记半轮时，队列设置里能选记半轮的项目，�
     await api(token, 'set_half_turn_items', { item_ids: [] })
     await setRule(before)
   }
+})
+
+test('今天的轮次写出接的是哪位顾客：结账后照样写，点客记在「点」里', async ({ page }) => {
+  const { token, queue, staff: [a, b] } = await makeQueue(2)
+  for (const s of [a!, b!]) await api(token, 'join_rotation', { queue_id: queue.id, staff_id: s.id })
+  const positions = await api<{ items: { id: string }[] }>(token, 'list_positions', {})
+  const position = positions.items[0] ?? await api<{ id: string }>(token, 'create_position', { name: '发型师' })
+  const item = await api<{ id: string, name: string }>(token, 'create_item', { name: `轮次剪${uniqueSuffix()}`.slice(0, 12), price: '60.00', discountable: true, labor_fee_amount: null, labor_fee_percent: null, positions: [{ position_id: position.id, required: true }], level_prices: [] })
+  const customerName = `轮次客${uniqueSuffix()}`.slice(0, 12)
+  const customer = await api<{ customer: { id: string } }>(token, 'create_customer', { name: customerName, phone: `13${String(Date.now()).slice(-9)}` })
+  const order = await api<{ id: string, net: string }>(token, 'open_order', { customer_id: customer.customer.id, gender: 'female', designated: true, items: [{ item_id: item.id, staff: [{ slot: 1, staff_id: b!.id }] }] })
+  await api(token, 'assign_turn', { queue_id: queue.id, staff_id: b!.id, designated: true, order_id: order.id })
+  await api(token, 'checkout_orders', { orders: [{ order_id: order.id, payments: [{ method: 'cash', amount: order.net }] }] })
+
+  await login(page, owner.account, owner.password)
+  await page.goto(`/rotation?queue=${queue.id}`)
+  const rounds = page.getByTestId('rotation-rounds')
+  await expect(rounds.locator('li')).toHaveCount(1)
+  await expect(rounds).toContainText(`${b!.name} 接 ${customerName}`)
+  await expect(rounds).toContainText(item.name)
+  await expect(onDuty(page, b!.name)).toContainText('今天 1 位 · 点 1')
+  await expect(onDuty(page, b!.name)).toContainText('等着')
+  // 点顾客名弹小卡片。
+  await rounds.getByRole('button', { name: customerName }).click()
+  await expect(page.getByTestId('customer-peek')).toContainText(customerName)
 })
