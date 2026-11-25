@@ -308,6 +308,9 @@ onBeforeUnmount(() => {
     </section>
 
     <USlideover v-model:open="detailOpen" :modal="false" :title="`${selected?.name ?? ''} · ${monthLabel(month)}`">
+      <template #title>
+        <span class="flex items-center gap-3"><PersonAvatar v-if="selected" :name="selected.name" />{{ selected?.name ?? '' }} · {{ monthLabel(month) }}</span>
+      </template>
       <template #body>
         <PayrollDetail v-if="selected && payroll" :key="`${month}:${selected.id}`" ref="detail" :month="month" :staff-id="selected.id" :locked="payroll.locked" @changed="reload" />
       </template>

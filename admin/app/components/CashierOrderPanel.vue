@@ -289,6 +289,20 @@ function repriceBegin(item: OrderItem) {
   })
 }
 
+// 改价快捷（样稿 20）：照现在的价打 9 折、8 折，抹掉个位的零头；四舍五入到元，和现价一样的不出。
+const repricePresets = computed(() => {
+  const base = repriceItem.value ? cents(repriceItem.value.price) : 0
+  if (!base) return []
+  const whole = (tenths: number) => Math.round(base * tenths / 1000) * 100
+  return [
+    { label: '9 折', value: whole(9) },
+    { label: '8 折', value: whole(8) },
+    { label: '抹零', value: Math.floor(base / 1000) * 1000 }
+  ]
+    .filter(p => p.value > 0 && p.value !== base)
+    .map(p => ({ label: `${p.label} ${yuan(money(p.value))}`, value: money(p.value) }))
+})
+
 async function saveReprice() {
   const target = order.value
   const item = repriceItem.value
@@ -666,16 +680,18 @@ defineExpose({ select, clear, refresh, voided })
     </template>
   </UModal>
 
-  <UModal v-model:open="repriceOpen" title="改价" :description="repriceItem?.item_name">
+  <UModal v-model:open="repriceOpen" title="改价" :description="repriceItem ? `${repriceItem.item_name} · ${repriceItem.price_source === 'manual' ? '现在' : '原价'} ${yuan(repriceItem.price)}` : undefined">
     <template #body>
       <div class="space-y-5">
-        <UFormField label="新价格"><UInput v-model="repricePrice" inputmode="decimal" aria-label="新价格" /></UFormField>
-        <UFormField label="原因"><UInput v-model="repriceReason" aria-label="改价原因" /></UFormField>
+        <UFormField label="改成">
+          <AmountField v-model="repricePrice" label="新价格" :presets="repricePresets" />
+        </UFormField>
+        <UFormField label="为什么"><UInput v-model="repriceReason" aria-label="改价原因" placeholder="比如：老顾客，上次颜色掉得快" class="w-full" /></UFormField>
       </div>
     </template>
     <template #footer>
       <ModalActions @cancel="repriceOpen = false">
-        <UButton :loading="repriceSaving" @click="saveReprice">保存</UButton>
+        <UButton :loading="repriceSaving" @click="saveReprice">改成 {{ yuan(repricePrice) }}</UButton>
       </ModalActions>
     </template>
   </UModal>

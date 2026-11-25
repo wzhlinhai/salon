@@ -71,6 +71,13 @@ async function cardEdit(card: CustomerCard | null) {
   })
 }
 
+// 充值弹窗（样稿 20）：卡面上先写充完的余额，旁边一笔一笔算给顾客看；描述写卡打几折。
+const rechargeAfter = computed(() => cardTarget.value ? cents(cardTarget.value.principal) + cents(cardTarget.value.bonus) + cents(cardPrincipal.value) + cents(cardBonus.value) : 0)
+const rechargeNote = computed(() => {
+  const type = cardTarget.value && cardTypes.value.find(t => t.id === cardTarget.value!.card_type_id)
+  return type?.discount_percent && Number(type.discount_percent) < 100 ? `储值 ${Number(type.discount_percent) / 10} 折` : undefined
+})
+
 async function cardSave() {
   const id = props.id
   const isRecharge = !!cardTarget.value
@@ -558,11 +565,28 @@ onMounted(cardLoad)
       </ModalActions>
     </template>
   </UModal>
-  <UModal v-model:open="cardModal" :title="cardTarget ? '充值' : '开卡'">
+  <UModal v-model:open="cardModal" :title="cardTarget ? `充值 · ${cardTarget.card_type_name}` : '开卡'" :description="rechargeNote">
     <template #body>
       <div class="space-y-5">
         <UFormField v-if="!cardTarget" label="卡类型"><USelect v-model="cardCardType" :items="cardTypes.map(t => ({ label: t.name, value: t.id }))" class="w-full" /></UFormField>
-        <div v-if="cardTarget || openingType?.kind !== 'count'" class="grid grid-cols-2 gap-4">
+        <div v-if="cardTarget" class="flex items-center gap-4" data-testid="recharge-preview">
+          <div class="card-face w-44 shrink-0 bg-tag-pink">
+            <p class="text-meta text-muted">充完余额</p>
+            <p class="figure tabular-nums">{{ yuan(money(rechargeAfter)) }}</p>
+          </div>
+          <div class="space-y-1 text-meta text-muted tabular-nums">
+            <p>现在 {{ yuan(money(cents(cardTarget.principal) + cents(cardTarget.bonus))) }}</p>
+            <p>充 {{ yuan(cardPrincipal) }}<template v-if="cents(cardBonus)"> 送 {{ yuan(cardBonus) }}</template></p>
+            <p>= {{ yuan(money(rechargeAfter)) }}</p>
+          </div>
+        </div>
+        <UFormField v-if="cardTarget" label="充多少">
+          <AmountField v-model="cardPrincipal" label="本金" />
+        </UFormField>
+        <div v-if="cardTarget" class="grid grid-cols-2 gap-4">
+          <UFormField label="赠送金"><UInput v-model="cardBonus" inputmode="decimal" class="w-full" /></UFormField>
+        </div>
+        <div v-else-if="openingType?.kind !== 'count'" class="grid grid-cols-2 gap-4">
           <UFormField label="本金"><UInput v-model="cardPrincipal" inputmode="decimal" class="w-full" /></UFormField>
           <UFormField label="赠送金"><UInput v-model="cardBonus" inputmode="decimal" class="w-full" /></UFormField>
         </div>
@@ -573,7 +597,7 @@ onMounted(cardLoad)
     </template>
     <template #footer>
       <ModalActions @cancel="cardModal = false">
-        <UButton :loading="cardSaving" :disabled="cardOptionsLoading || !cardSales.length || (!cardTarget && !cardCardType)" @click="cardSave">保存</UButton>
+        <UButton :loading="cardSaving" :disabled="cardOptionsLoading || !cardSales.length || (!cardTarget && !cardCardType)" @click="cardSave">{{ cardTarget ? `收 ${yuan(cardPrincipal)}` : '保存' }}</UButton>
       </ModalActions>
     </template>
   </UModal>

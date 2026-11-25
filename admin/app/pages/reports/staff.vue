@@ -224,6 +224,9 @@ function signed(amount: string, reversal: boolean) {
       :title="picked?.staff ? `${picked.staff.name} 的业绩和提成` : ''"
       :description="`${range.from} 至 ${range.to}；冲回是撤单或售后在那天写的负数。`"
     >
+      <template #title>
+        <span class="flex items-center gap-3"><PersonAvatar v-if="picked?.staff" :name="picked.staff.name" />{{ picked?.staff ? `${picked.staff.name} 的业绩和提成` : '' }}</span>
+      </template>
       <template #body>
         <div v-if="picked" class="space-y-5" data-testid="staff-detail">
           <MethodPicker v-model="tab" :items="tabs" label="明细类别" />

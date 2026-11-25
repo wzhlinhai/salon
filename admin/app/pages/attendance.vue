@@ -307,6 +307,9 @@ onMounted(async () => {
         </UTable>
       </div>
       <USlideover v-model:open="detailOpen" :modal="false" :title="`${selected?.staff.name ?? ''} · ${monthLabel(month)}`">
+        <template #title>
+          <span class="flex items-center gap-3"><PersonAvatar v-if="selected" :name="selected.staff.name" />{{ selected?.staff.name ?? '' }} · {{ monthLabel(month) }}</span>
+        </template>
         <template #body>
           <AttendanceDetail
             v-if="selected"
