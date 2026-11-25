@@ -8,7 +8,12 @@ const route = useRoute()
 const { me, can } = useMe()
 const isLogin = computed(() => route.path === '/login')
 const sidebarCollapsed = ref(false)
-const pageTitle = computed(() => String(route.meta.title || '首页'))
+// 详情页（顾客档案）用自己取到的名字做顶栏标题，换页时清掉。
+const pageCrumbTitle = useState('page-crumb-title', () => '')
+watch(() => route.path, () => {
+  pageCrumbTitle.value = ''
+})
+const pageTitle = computed(() => pageCrumbTitle.value || String(route.meta.title || '首页'))
 
 const { pending: pendingDrafts, load: loadDrafts, reset: resetDrafts } = useDrafts()
 const { ask: askAi, reset: resetAi, open: aiOpen } = useAiChat()
@@ -57,7 +62,7 @@ function isActive(to: string) {
 }
 
 // 页面骨架（DESIGN.md）：首页有自己的问候，其余页面正文顶上统一一个大标题；宽度按页面元数据分两档。
-const showPageHeader = computed(() => route.path !== '/')
+const showPageHeader = computed(() => route.path !== '/' && !route.meta.bare)
 // 底部留出右下角 AI 按钮的位置，页面滚到底时最后一行不被压住；工作台页（预约）自己管高度，不留。
 const pageWidth = computed(() => [
   route.meta.width === 'narrow' ? 'mx-auto w-full max-w-[800px]' : 'w-full',
@@ -71,8 +76,12 @@ const pageIcon = computed(() => {
   if (route.path === '/drafts') return DRAFTS_ICON
   return navItems.find(item => isActive(item.to))?.icon ?? ''
 })
-// 二级页（目前只有各张报表）在顶栏前面放上一级的链接，点了回入口。
-const parentCrumb = computed(() => route.path.startsWith('/reports/') ? { to: '/reports', label: '报表' } : null)
+// 二级页（各张报表、顾客档案）在顶栏前面放上一级的链接，点了回入口。
+const parentCrumb = computed(() => {
+  if (route.path.startsWith('/reports/')) return { to: '/reports', label: '报表' }
+  if (route.path.startsWith('/customers/')) return { to: '/customers', label: '顾客' }
+  return null
+})
 
 // 侧栏顶上的门店名，第一个字做标志；设置页改名后同一份状态跟着变。
 const storeName = useState('store-name', () => '')
@@ -159,7 +168,7 @@ const searchGroups = computed(() => {
       items: customerResults.value.map(customer => ({
         label: `${customer.name || '未识别顾客'}${customer.phone ? ` · ${customer.phone}` : ''}`,
         icon: 'i-lucide-contact',
-        onSelect: () => navigateTo({ path: '/customers', query: { id: customer.id } })
+        onSelect: () => navigateTo(`/customers/${customer.id}`)
       }))
     })
   }

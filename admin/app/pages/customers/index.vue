@@ -11,7 +11,6 @@ const api = useApi()
 const toast = useToast()
 const { can } = useMe()
 const route = useRoute()
-const router = useRouter()
 const NONE = 'none'
 const PAGE = 50
 
@@ -255,21 +254,13 @@ async function create() {
   }
 }
 
-// 顾客详情
-const detailID = computed(() => typeof route.query.id === 'string' ? route.query.id : '')
-
-// 详情右栏的分页也写在网址里（?tab=cards），换顾客时回到概览。
-const detailTab = computed({
-  get: () => typeof route.query.tab === 'string' ? route.query.tab : 'overview',
-  set: tab => router.replace({ query: { ...route.query, tab: tab === 'overview' ? undefined : tab } })
-})
-
+// 顾客档案是整页 /customers/<id>；旧网址 /customers?id=<id> 转过去，修改记录分页保留。
 function openDetail(id: string) {
-  router.replace({ query: { ...route.query, id, tab: undefined } })
+  navigateTo(`/customers/${id}`)
 }
 
-function closeDetail() {
-  router.replace({ query: { ...route.query, id: undefined, tab: undefined } })
+if (typeof route.query.id === 'string') {
+  await navigateTo({ path: `/customers/${route.query.id}`, query: route.query.tab === 'logs' ? { tab: 'logs' } : {} }, { replace: true })
 }
 
 // 分配负责人
@@ -433,7 +424,6 @@ async function handover() {
       <span class="tabular-nums">第 {{ offset / PAGE + 1 }} 页，共 {{ Math.ceil(total / PAGE) }} 页</span>
       <UButton color="neutral" variant="ghost" trailing-icon="i-lucide-chevron-right" :disabled="offset + PAGE >= total || loading" @click="changePage(1)">下一页</UButton>
     </div>
-    <CustomerDetail v-if="detailID" :id="detailID" v-model:tab="detailTab" :sources="sources" :overview="items.find(row => row.customer.id === detailID)" @close="closeDetail" @open="openDetail" @changed="reload" />
     <UModal v-model:open="createOpen" title="新建顾客">
       <template #body>
         <div class="space-y-5">

@@ -633,7 +633,7 @@ defineExpose({ select, clear, refresh, voided })
 
       <p v-if="orderGlance?.formula" class="mt-8 text-meta text-muted" data-testid="order-formula">
         配方记在顾客档案里：{{ orderGlance.formula.formula }}（{{ monthDay(orderGlance.formula.date) }} {{ orderGlance.formula.item }}）。
-        <NuxtLink :to="`/customers?id=${order.customer_id}`" class="text-default underline underline-offset-4 hover:no-underline">改配方</NuxtLink>
+        <NuxtLink :to="`/customers/${order.customer_id}`" class="text-default underline underline-offset-4 hover:no-underline">改配方</NuxtLink>
       </p>
     </template>
   </section>

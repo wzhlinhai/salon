@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { api, apiLogin, hire, login, owner, uniqueSuffix } from './helpers'
+import { api, apiLogin, customerAction, hire, login, owner, uniqueSuffix } from './helpers'
 import { addDays } from '../app/utils/datetime'
 
 // 「今天结了」默认收成一行，要看结过的单先点开。
@@ -695,7 +695,7 @@ test('未识别顾客没有挂账；挂账结账后在顾客详情收还款', as
   await page.getByRole('button', { name: /^结账 ¥/ }).click()
   await expect(page.locator(`[data-order-id="${order.id}"]`)).toHaveCount(0)
 
-  await page.goto(`/customers?id=${customer.id}&tab=debts`)
+  await page.goto(`/customers/${customer.id}`)
   const debts = page.getByTestId('debts')
   await expect(debts).toContainText('未还 ¥88.00')
   await debts.getByRole('button', { name: '收还款' }).click()
@@ -738,13 +738,14 @@ test('今日已结的收款记录：现金登记退款要填原因', async ({ pa
   expect(saved.items.map(c => c.status)).toEqual(['refunded'])
 })
 
-test('顾客详情登记历史欠款，登记后能收还款', async ({ page }) => {
+test('顾客档案从 ··· 登记历史欠款，登记后出现欠款并能收还款', async ({ page }) => {
   const { customer } = await seed()
   await login(page, owner.account, owner.password)
-  await page.goto(`/customers?id=${customer.id}&tab=debts`)
+  await page.goto(`/customers/${customer.id}`)
   const debts = page.getByTestId('debts')
-  await expect(debts).toContainText('没有欠款')
-  await debts.getByRole('button', { name: '登记历史欠款' }).click()
+  await expect(page.getByTestId('customer-profile')).toBeVisible()
+  await expect(debts).toHaveCount(0)
+  await customerAction(page, '登记历史欠款')
   const dialog = page.getByRole('dialog', { name: '登记历史欠款' })
   await expect(dialog.getByRole('button', { name: '登记' })).toBeDisabled()
   await dialog.getByLabel('欠款金额').fill('120.00')

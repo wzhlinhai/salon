@@ -84,29 +84,27 @@ async function registerHistory() {
 }
 
 onMounted(load)
+defineExpose({ editHistory })
 </script>
 
 <template>
-  <section data-testid="debts">
-    <div v-if="(totals && Number(totals.outstanding) > 0) || can('data.import_export')" class="sec mt-0! flex items-center">
-      <span v-if="totals && Number(totals.outstanding) > 0" class="font-normal text-ink-orange tabular-nums">未还 {{ yuanFixed(totals.outstanding) }}</span>
-      <UButton v-if="can('data.import_export')" size="sm" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto -my-1" :disabled="!today" @click="editHistory">登记历史欠款</UButton>
+  <!-- 档案右栏：有欠款才出现；登记历史欠款在页头 ··· 菜单里（defineExpose）。 -->
+  <section v-if="debts.length" data-testid="debts">
+    <div class="flex h-7 items-center gap-2">
+      <h3 class="text-meta text-muted">欠款</h3>
+      <span v-if="totals && Number(totals.outstanding) > 0" class="ms-auto text-sm text-ink-orange tabular-nums">未还 {{ yuanFixed(totals.outstanding) }}</span>
     </div>
-    <div class="box overflow-hidden p-0">
-      <p v-if="loading && !debts.length" class="px-3 py-2 text-sm text-muted">正在读取欠款…</p>
-      <p v-else-if="!debts.length" class="px-3 py-2 text-sm text-muted">没有欠款</p>
-      <div v-for="debt in debts" :key="debt.id" :data-debt="debt.id" class="space-y-1 border-t border-default px-3 py-2 text-sm first:border-t-0" :class="debt.status === 'outstanding' ? '' : 'text-muted'">
-        <p class="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span class="tag bg-tag-gray">{{ debt.kind === 'order' ? '挂账' : '历史欠款' }}</span>
-          <span class="font-medium tabular-nums">{{ yuanFixed(debt.amount) }}</span>
-          <span v-if="debt.status === 'outstanding'" class="tabular-nums text-ink-orange">未还 {{ yuanFixed(debt.outstanding) }}</span>
-          <span v-else class="tag bg-tag-gray">{{ statusNames[debt.status] }}</span>
-          <span class="ms-auto text-meta text-muted">{{ debt.business_date }}</span>
-        </p>
-        <p v-if="debt.note" class="text-meta text-muted">{{ debt.note }}</p>
-        <p v-for="r in debt.repayments" :key="r.id" class="text-meta text-muted tabular-nums">{{ r.business_date }} 还 {{ yuanFixed(r.amount) }} · {{ methodNames[r.method] }}</p>
-        <UButton v-if="can('payment.collect') && debt.status === 'outstanding'" size="sm" color="neutral" variant="ghost" class="-mx-2" :aria-label="`收还款 ${debt.business_date} 未还 ${yuanFixed(debt.outstanding)}`" @click="editRepay(debt)">收还款</UButton>
-      </div>
+    <div v-for="debt in debts" :key="debt.id" :data-debt="debt.id" class="space-y-1 border-t border-default py-2 text-sm first-of-type:border-t-0" :class="debt.status === 'outstanding' ? '' : 'text-muted'">
+      <p class="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span class="tag bg-tag-gray">{{ debt.kind === 'order' ? '挂账' : '历史欠款' }}</span>
+        <span class="font-medium tabular-nums">{{ yuanFixed(debt.amount) }}</span>
+        <span v-if="debt.status === 'outstanding'" class="tabular-nums text-ink-orange">未还 {{ yuanFixed(debt.outstanding) }}</span>
+        <span v-else class="tag bg-tag-gray">{{ statusNames[debt.status] }}</span>
+        <span class="ms-auto text-meta text-muted">{{ debt.business_date }}</span>
+      </p>
+      <p v-if="debt.note" class="text-meta text-muted">{{ debt.note }}</p>
+      <p v-for="r in debt.repayments" :key="r.id" class="text-meta text-muted tabular-nums">{{ r.business_date }} 还 {{ yuanFixed(r.amount) }} · {{ methodNames[r.method] }}</p>
+      <UButton v-if="can('payment.collect') && debt.status === 'outstanding'" size="sm" color="neutral" variant="ghost" class="-mx-2" :aria-label="`收还款 ${debt.business_date} 未还 ${yuanFixed(debt.outstanding)}`" @click="editRepay(debt)">收还款</UButton>
     </div>
   </section>
   <UModal v-model:open="historyOpen" title="登记历史欠款" description="上线前欠下、不关联单的钱。登记后和挂账一样在这里收还款。">
