@@ -81,7 +81,7 @@ test('店长首页的接下来把今天做完的收成一行，写营业额，�
   const done = page.getByTestId('next-done')
   await expect(done).toHaveText(/做完 \d+ 位 · ¥[\d,]+/)
   await done.getByRole('link').click()
-  await expect(page).toHaveURL(/\/reports\/business$/)
+  await expect(page).toHaveURL(/\/reports\/business(\?|$)/)
 })
 
 // 迟到要过去的时间，后端不让约过去的时段：这一条固定浏览器时钟，预约列表和服务记录用假数据，只测首页怎么排、怎么写。
