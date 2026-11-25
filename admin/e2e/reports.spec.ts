@@ -33,9 +33,9 @@ async function seedCheckout() {
 }
 
 // 表格里的数换成分（金额）或整数（单数），合计逐列核对用。
-// 表身的零写成一道短横（yuanCell）。
+// 表身的零写成一道长横（yuanCell）。
 function amount(text: string) {
-  if (text.trim() === '–') return 0
+  if (text.trim() === '—') return 0
   return Math.round(Number(text.replace(/[¥,\s]/g, '')) * 100)
 }
 
@@ -81,7 +81,9 @@ test('店长从报表入口进营业报表：合计等于各行之和，切按�
   const report = await api<{ rows: { period: string, on_site: { method: string, amount: string }[] }[], totals: { service_revenue: string } }>(token, 'get_business_report', { granularity: 'day', from: `${today.slice(0, 7)}-01`, to: today })
   const wechat = report.rows.find(r => r.period === today)!.on_site.find(m => m.method === 'wechat')!.amount
   expect(amount(await todayRow.locator('td[data-col="wechat"]').textContent() ?? '')).toBe(amount(wechat))
-  await expectTotalsAreSums(table, 'business-totals', 10, col => col === 'guest_total')
+  await expectTotalsAreSums(table, 'business-totals', 5, col => col === 'guest_total')
+  // 合计行也要有微信这一列，免得列被藏掉后求和检查不到它。
+  await expect(table.getByTestId('business-totals').locator('td[data-col="wechat"]')).toBeVisible()
   const service = await table.getByTestId('business-totals').locator('td[data-col="service_revenue"]').textContent()
   expect(amount(service ?? '')).toBe(amount(report.totals.service_revenue))
   await expectBriefIsTotal(table, 'business-totals', 'service_revenue')
@@ -90,7 +92,7 @@ test('店长从报表入口进营业报表：合计等于各行之和，切按�
   await page.getByRole('radiogroup', { name: '按日或按月' }).getByRole('radio', { name: '按月' }).click()
   await expect(page).toHaveURL(/g=month/)
   await expect(table.locator(`tbody tr[data-period="${today.slice(0, 7)}"]`)).toBeVisible()
-  await expectTotalsAreSums(table, 'business-totals', 10, col => col === 'guest_total')
+  await expectTotalsAreSums(table, 'business-totals', 5, col => col === 'guest_total')
 
   // 按日超过 92 天：不查，旁边写为什么。
   await page.getByRole('radiogroup', { name: '按日或按月' }).getByRole('radio', { name: '按日' }).click()
@@ -199,12 +201,15 @@ test('店长看卡项报表：今天开的卡记在它的卡类型下，合计�
   await login(page, manager.account, manager.password)
   await page.goto('/reports/cards')
 
+  // 每种卡一行一根条，右边写还剩多少；逐列明细折叠着，对账时展开。
+  await expect(page.getByTestId('card-rows').locator(`[data-card-row="${typeName}"]`)).toContainText('剩 ¥330')
+  await page.getByTestId('card-details').locator('summary').click()
   const table = page.getByTestId('card-table')
   const row = table.locator(`tbody tr[data-card-type="${typeName}"]`)
   await expect(row.locator('td[data-col="open_count"]')).toHaveText('1')
-  await expect(row.locator('td[data-col="open_principal"]')).toHaveText('¥300.00')
-  await expect(row.locator('td[data-col="open_bonus"]')).toHaveText('¥30.00')
-  await expect(row.locator('td[data-col="ending_balance"]')).toHaveText('¥330.00')
+  await expect(row.locator('td[data-col="open_principal"]')).toHaveText('¥300')
+  await expect(row.locator('td[data-col="open_bonus"]')).toHaveText('¥30')
+  await expect(row.locator('td[data-col="ending_balance"]')).toHaveText('¥330')
   await expectTotalsAreSums(table, 'card-totals', 14)
   await expectBriefIsTotal(table, 'card-totals', 'ending_balance')
 })
