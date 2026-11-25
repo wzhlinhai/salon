@@ -132,7 +132,7 @@ func updatePhone(ctx context.Context, env ops.Env, in *CustomerPhoneInput, add b
 
 // CreateUnidentified 为开单创建未识别顾客并记新建日志；由开单权限覆盖，无需 customer.edit 权限。
 func CreateUnidentified(ctx context.Context, env ops.Env, gender string) (uuid.UUID, error) {
-	row, err := env.Q.CreateCustomer(ctx, dbgen.CreateCustomerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Gender: &gender, CreatedBy: &env.Caller.StaffID})
+	row, err := env.Q.CreateCustomer(ctx, dbgen.CreateCustomerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Gender: &gender, CreatedBy: &env.Caller.StaffID, ResponsibleStaffID: NewCustomerResponsible(env.Caller)})
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -175,7 +175,7 @@ func findOrCreate(ctx context.Context, env ops.Env, in customerLookup) (dbgen.Cu
 	if err := checkSource(ctx, env, in.SourceID, nil); err != nil {
 		return dbgen.Customer{}, false, err
 	}
-	row, err := env.Q.CreateCustomer(ctx, dbgen.CreateCustomerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Name: in.Name, Phone: phone, Gender: in.Gender, SourceID: in.SourceID, Note: in.Note, CreatedBy: &env.Caller.StaffID})
+	row, err := env.Q.CreateCustomer(ctx, dbgen.CreateCustomerParams{TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID, Name: in.Name, Phone: phone, Gender: in.Gender, SourceID: in.SourceID, Note: in.Note, CreatedBy: &env.Caller.StaffID, ResponsibleStaffID: NewCustomerResponsible(env.Caller)})
 	if err != nil {
 		return dbgen.Customer{}, false, rowError(err)
 	}
