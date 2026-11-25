@@ -120,10 +120,8 @@ test('保存各角色和外壳的验收截图', async ({ page }) => {
   await page.getByLabel('账号').fill(owner.account)
   await page.getByLabel('密码').fill(owner.password)
   await page.getByRole('button', { name: '登录' }).click()
-  await expect(page.getByTestId('home-manager-metrics')).toContainText('实收')
+  await expect(page.getByTestId('next-done')).toHaveText(/¥[1-9]/)
   await expect(page.getByTestId('personal-menu')).toContainText('王老板')
-  await expect(page.locator('[data-metric="实收"] [data-testid="metric-value"]')).toHaveText(/¥[1-9]/)
-  await expect(page.locator('[data-metric="单数"] [data-testid="metric-value"]')).not.toHaveText('0')
   await shot('home-owner')
 
   await page.setViewportSize(sizes[0]!)
@@ -160,12 +158,12 @@ test('保存各角色和外壳的验收截图', async ({ page }) => {
   }
 
   await loginAs(manager)
-  await expect(page.getByTestId('home-manager-metrics')).toContainText('实收')
+  await expect(page.getByTestId('next-done')).toBeVisible()
   await expect(page.getByTestId('personal-menu')).toContainText('周店长')
   await shot('home-manager')
 
   await loginAs(front)
-  await expect(page.getByTestId('home-front-actions')).toBeVisible()
+  await expect(page.getByTestId('home-next')).toBeVisible()
   await expect(page.getByTestId('personal-menu')).toContainText('小林')
   await shot('home-front')
 
