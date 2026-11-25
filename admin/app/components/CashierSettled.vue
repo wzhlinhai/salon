@@ -62,6 +62,23 @@ function itemNames(order: Order) {
   return order.items.filter(i => !i.removed_at).map(i => i.item_name).join('、') || '无项目'
 }
 
+// 撤单弹窗「撤了以后」（样稿 21）：把这张单的收款、卡、红包、挂账和做的人逐条列出来，让人看清撤掉的是什么。
+function voidEffects(order: Order) {
+  const rows: { label: string, value: string }[] = []
+  const of = (method: Order['payments'][number]['method']) => order.payments.filter(p => p.method === method)
+  const sum = (list: Order['payments']) => yuan(money(list.reduce((total, p) => total + cents(p.amount), 0)))
+  const paid = order.payments.filter(p => ['cash', 'unionpay', 'wechat', 'alipay', 'groupbuy'].includes(p.method))
+  if (paid.length) rows.push({ label: '收款作废', value: paid.map(p => `${performanceMethodNames[p.method as keyof typeof performanceMethodNames] ?? p.method} ${yuan(p.amount)}`).join('，') })
+  if (of('card').length) rows.push({ label: '卡余额退回', value: `+${sum(of('card'))}` })
+  const counts = of('count').reduce((total, p) => total + (p.count ? p.count.paid + p.count.gift : 0), 0)
+  if (counts) rows.push({ label: '次卡退回', value: `+${counts} 次` })
+  if (of('red_packet').length) rows.push({ label: '红包退回', value: sum(of('red_packet')) })
+  if (of('debt').length) rows.push({ label: '挂账作废', value: sum(of('debt')) })
+  const staff = [...new Set(activeItems(order).flatMap(i => i.positions.map(p => p.staff_id)).filter((id): id is string => !!id))]
+  if (staff.length) rows.push({ label: '业绩冲回', value: `${staff.map(id => props.staffName(id)).join('、')}，提成跟着重算` })
+  return rows
+}
+
 // 改人历史一行：项目名加每个变了的岗位「原员工 → 新员工」。
 function changeText(order: Order, change: Order['staff_changes'][number]) {
   const item = order.items.find(i => i.id === change.order_item_id)
@@ -301,21 +318,34 @@ async function submitVoid() {
       </ModalActions>
     </template>
   </UModal>
-  <UModal v-model:open="voidOpen" title="撤单" description="撤单后这张单的收款、业绩全部作废，卡余额、次数和红包退回。">
+  <UModal
+    v-model:open="voidOpen"
+    :title="target ? `撤掉${customerName(target.customer_id)}这一单？` : '撤单'"
+    :description="target ? `${itemNames(target)} · 实收 ${yuanFixed(target.net)}` : undefined"
+  >
     <template #body>
       <div v-if="target" class="space-y-5">
-        <p class="rounded-card bg-side px-3 py-2 text-sm">
-          {{ customerName(target.customer_id) }} · {{ itemNames(target) }} · 实收 {{ yuanFixed(target.net) }}
-        </p>
-        <UFormField label="撤单原因" required><UTextarea v-model="reason" :maxlength="200" placeholder="例如：项目开错了" /></UFormField>
+        <div v-if="voidEffects(target).length" data-testid="void-effects">
+          <p class="mb-1 text-meta text-muted">撤了以后</p>
+          <div class="divide-y divide-default border-b border-default text-sm">
+            <div v-for="row in voidEffects(target)" :key="row.label" class="flex items-baseline justify-between gap-4 py-2">
+              <span class="shrink-0">{{ row.label }}</span>
+              <span class="text-right tabular-nums">{{ row.value }}</span>
+            </div>
+          </div>
+        </div>
+        <UFormField label="撤单原因" required><UTextarea v-model="reason" :maxlength="200" placeholder="比如：项目开错了" /></UFormField>
         <UFormField v-if="needPassword" label="登录密码" required help="撤单要先用你的登录密码开启授权，授权期间再撤单不用重复输入。输错次数和登录共用，错太多会暂时锁定登录">
           <UInput v-model="password" type="password" autocomplete="current-password" class="w-full" />
         </UFormField>
       </div>
     </template>
     <template #footer>
-      <ModalActions @cancel="voidOpen = false">
-        <UButton color="error" :loading="voiding" :disabled="!reason.trim() || (needPassword && !password)" @click="submitVoid">确认撤单</UButton>
+      <ModalActions cancel-label="不撤了" @cancel="voidOpen = false">
+        <template #leading>
+          <span class="text-meta text-muted">撤了不能恢复，操作日志会记下是你撤的</span>
+        </template>
+        <UButton color="error" :loading="voiding" :disabled="!reason.trim() || (needPassword && !password)" @click="submitVoid">撤单</UButton>
       </ModalActions>
     </template>
   </UModal>

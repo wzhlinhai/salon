@@ -108,16 +108,27 @@ export default defineAppConfig({
         error: 'mt-2 text-meta'
       }
     },
-    // 侧滑面板和弹窗同一套：标题栏、按钮栏各一道细线，控件和页面上一样大。
+    // 侧滑面板（样稿 22）：一张拿起来的白纸，标题和正文之间不画线，后面的页面不变暗、能接着点别的行；按钮栏上方一道细线。
     slideover: {
       slots: {
-        content: 'divide-y divide-default sm:ring-0 sm:shadow-lift',
-        header: 'min-h-0 px-6 py-4 sm:px-6',
+        content: 'sm:ring-0 sm:shadow-lift',
+        header: 'min-h-0 px-6 pt-5 pb-0 sm:px-6',
         title: 'text-base font-semibold text-highlighted',
         description: 'mt-1 text-sm text-muted',
         body: 'px-6 py-5 sm:px-6 sm:py-5',
-        footer: 'justify-end gap-2 px-6 py-3 sm:px-6'
+        footer: 'justify-end gap-2 border-t border-default px-6 py-3 sm:px-6'
       }
+    },
+    // 菜单和弹出层（样稿 23）：白纸、拿起来的阴影、卡片圆角，分组之间一道细线；危险项红字放最后一组（各处 items 自己排）。
+    dropdownMenu: {
+      slots: {
+        content: 'rounded-card ring-0 shadow-lift p-1',
+        group: 'p-0',
+        item: 'rounded-md px-2 py-2 text-sm'
+      }
+    },
+    popover: {
+      slots: { content: 'rounded-card ring-0 shadow-lift' }
     },
     // 禁用的实心按钮变成灰底灰字，而不是半透明的主色：半透明看着像"能点但没反应"。
     // 描边按钮照 Notion 的次要按钮：白底深色字、一圈淡灰框，不出现主色框和主色字（没写 color 时默认是 primary）。
