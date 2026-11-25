@@ -42,12 +42,7 @@ async function load() {
   }
 }
 
-// 分组标题的色块和首页、预约表同一套类别色。
-const { load: loadTones, toneOf } = useItemTones()
-onMounted(() => {
-  load()
-  loadTones()
-})
+onMounted(load)
 
 const editor = useModalForm()
 const { open, saving } = editor
@@ -119,7 +114,6 @@ async function save() {
       open.value = false
       toast.add({ title: '已保存', color: 'success' })
       await load()
-      void loadTones()
     } else toast.add({ title: errorText(result.error), color: 'error' })
   })
 }
@@ -145,7 +139,7 @@ const groups = computed(() => {
     <ListSkeleton v-if="loading && !items.length" />
     <EmptyState v-else-if="!items.length" art="scissors" title="还没有项目" hint="点右上角新建项目，填上价格和服务时长，开单和预约就能选它" />
     <section v-for="group in groups" :key="group.key" :data-category="group.name">
-      <div class="sec"><span class="size-2.5 rounded-sm" :class="group.items[0] ? toneOf(group.items[0].id) : 'bg-tag-gray'" aria-hidden="true" />{{ group.name }}<span class="ms-2 font-normal text-dimmed">{{ group.items.length }}</span></div>
+      <div class="sec">{{ group.name }}<span class="ms-2 font-normal text-dimmed">{{ group.items.length }}</span></div>
       <div class="overflow-x-auto">
         <div
           v-for="item in group.items"
@@ -157,7 +151,7 @@ const groups = computed(() => {
           <div class="flex min-w-40 flex-1 items-center gap-1.5">
             <span class="font-medium">{{ item.name }}</span>
             <span v-if="item.kind === 'goods'" class="tag bg-tag-gray">卖品</span>
-            <span v-if="!item.discountable" class="tag bg-tag-orange">不打折项目</span>
+            <span v-if="!item.discountable" class="tag bg-tag-gray">不打折项目</span>
             <span v-if="!item.active" class="tag bg-tag-gray">停用</span>
           </div>
           <span class="w-36 text-muted">{{ item.duration_minutes ? `${item.duration_minutes} 分钟` : '时长未设置' }} · {{ item.bookable ? '可预约' : '不可预约' }}</span>

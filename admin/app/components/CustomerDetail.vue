@@ -483,13 +483,13 @@ onBeforeUnmount(() => {
                 <div>
                   <p class="text-meta text-muted">上次到店</p>
                   <p class="mt-1 text-2xl font-semibold" :class="overview.days_since_last_visit == null && 'text-dimmed'">{{ overview.days_since_last_visit == null ? '没有' : sinceText(overview.days_since_last_visit) }}</p>
-                  <p class="mt-0.5 truncate text-meta" :class="overview.overdue_days ? 'text-ink-orange' : 'text-muted'">{{ overview.overdue_days ? `比平时晚了 ${overview.overdue_days} 天` : overview.first_visit_date ? `首次 ${shortDate(overview.first_visit_date)}` : '' }}</p>
+                  <p class="mt-0.5 truncate text-meta" :class="overview.overdue_days ? 'text-ink-yellow' : 'text-muted'">{{ overview.overdue_days ? `比平时晚了 ${overview.overdue_days} 天` : overview.first_visit_date ? `首次 ${shortDate(overview.first_visit_date)}` : '' }}</p>
                 </div>
               </div>
               <div v-if="overview && (overview.next_appointment || overview.last_visit_date)" class="box divide-y divide-default p-0 text-sm">
                 <p v-if="overview.next_appointment" class="flex items-center gap-3 px-3 py-2.5">
                   <span class="w-16 shrink-0 text-meta text-muted">下次预约</span>
-                  <span class="tag bg-tag-blue tabular-nums">{{ nextText(overview.next_appointment.starts_at) }}</span>
+                  <span class="tag bg-tag-gray tabular-nums">{{ nextText(overview.next_appointment.starts_at) }}</span>
                   <span class="text-muted">{{ overview.next_appointment.staff.name }}</span>
                 </p>
                 <p v-if="overview.last_visit_date" class="flex items-center gap-3 px-3 py-2.5">

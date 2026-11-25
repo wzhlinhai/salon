@@ -14,7 +14,7 @@ const api = useApi()
 const TIME_ZONE = 'Asia/Shanghai'
 
 const entries = ref<Appointment[]>([])
-const { tones: itemTone, load: loadTones } = useItemTones()
+const { categories: itemCategory, load: loadCategories } = useItemCategories()
 const walkIns = ref<Walkin[]>([])
 const hours = ref({ open: '10:00', close: '21:00' })
 const loaded = ref(false)
@@ -29,7 +29,7 @@ async function load() {
   const [list, settings] = await Promise.all([
     api.POST('/api/ops/list_appointments', { body }),
     api.POST('/api/ops/get_settings', { body: { date: props.date } }),
-    loadTones()
+    loadCategories()
   ])
   if (!current()) return
   if (!list.data) {
@@ -103,26 +103,25 @@ function appointmentBlock(entry: Appointment): Block {
   const end = hourOf(entry.ends_at)
   const title = entry.kind === 'block' ? (entry.note || '私约占位') : (entry.customer?.name || '未留名顾客')
   const first = entry.items[0]
-  const look = first ? itemTone.value[first.item_id] : undefined
-  const category = look?.category ?? first?.name ?? ''
+  const category = (first ? itemCategory.value[first.item_id] : undefined) ?? first?.name ?? ''
   const base = { key: entry.id, start, end, title, short: title.slice(0, 1), category }
   if (entry.kind === 'block') return { ...base, category: '占位', state: '', detail: `${hhmm(start)} · 占位`, tone: 'tl-hold' }
-  const color = look?.tone ?? 'bg-tag-gray'
   const late = !entry.order_id && entry.status !== 'completed' && entry.status !== 'no_show'
     ? Math.floor((now.value - new Date(entry.starts_at).getTime()) / 60_000)
     : 0
   let state = statusText[entry.status]
-  let tone = color
+  // 平时全白；正在做的灰底黑框，顾客过了时间没到的黄底（该打个电话），爽约红框（DESIGN.md「颜色只留给有事的东西」）。
+  let tone = 'bg-white'
   if (entry.status === 'completed') {
-    tone = `${color} opacity-45`
+    tone = 'bg-white opacity-45'
   } else if (entry.status === 'no_show') {
-    tone = `${color} ring-alert`
+    tone = 'bg-white ring-alert'
   } else if (entry.order_id) {
     state = '服务中'
-    tone = `${color} ring-serving`
+    tone = 'bg-elevated ring-serving'
   } else if (late > 5) {
     state = `迟到 ${late} 分`
-    tone = `${color} ring-alert late`
+    tone = 'bg-tag-yellow ring-pending late'
   }
   return { ...base, state, detail: [`${category} ${hhmm(start)}`, state].filter(Boolean).join(' · '), tone }
 }
@@ -145,7 +144,7 @@ const lanes = computed(() => {
       category: '散客',
       state: '服务中',
       detail: `${hhmm(start)} · 服务中`,
-      tone: 'bg-tag-gray ring-serving'
+      tone: 'bg-elevated ring-serving'
     })
   }
   const rows = [...map.values()]
@@ -254,8 +253,8 @@ defineExpose({ reload: load })
         >
           <span class="w-24 shrink-0 text-meta text-muted">{{ hhmm(block.start) }}–{{ hhmm(block.end) }}</span>
           <span class="min-w-0 truncate">{{ block.title }}</span>
-          <span class="tag shrink-0" :class="block.tone.split(' ')[0]">{{ block.category }}</span>
-          <span v-if="block.state" class="ms-auto shrink-0 text-meta" :class="block.tone.includes('ring-alert') ? 'text-ink-red' : 'text-muted'">{{ block.state }}</span>
+          <span class="shrink-0 text-meta text-muted">{{ block.category }}</span>
+          <span v-if="block.state" class="ms-auto shrink-0 text-meta" :class="block.tone.includes('ring-alert') ? 'text-ink-red' : block.tone.includes('late') ? 'text-ink-yellow' : 'text-muted'">{{ block.state }}</span>
         </div>
       </div>
     </div>
@@ -272,9 +271,9 @@ defineExpose({ reload: load })
   min-height: 56px;
 }
 .late small {
-  color: var(--color-ink-red);
+  color: var(--color-ink-yellow);
 }
 .tl-hold {
-  background: repeating-linear-gradient(135deg, var(--color-tag-pink) 0 6px, color-mix(in oklab, var(--color-tag-pink) 45%, #fff) 6px 12px);
+  background: repeating-linear-gradient(135deg, #fff 0 6px, var(--color-hatch) 6px 12px);
 }
 </style>

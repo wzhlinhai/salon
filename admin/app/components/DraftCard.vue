@@ -34,8 +34,8 @@ const previewError = computed(() => 'preview_error' in props.draft ? props.draft
 
 const statusBadge = computed(() => {
   switch (current.value.status) {
-    case 'confirmed': return { label: '已确认', tone: 'bg-tag-green' }
-    case 'confirmed_modified': return { label: '改后确认', tone: 'bg-tag-green' }
+    case 'confirmed': return { label: '已确认', tone: 'bg-tag-gray' }
+    case 'confirmed_modified': return { label: '改后确认', tone: 'bg-tag-gray' }
     case 'rejected': return { label: '已拒绝', tone: 'bg-tag-gray' }
     case 'expired': return { label: '已过期', tone: 'bg-tag-gray' }
     default: return { label: '待确认', tone: 'bg-tag-yellow' }

@@ -130,7 +130,7 @@ function summary(g: components['schemas']['GrantSpec']) {
     <section v-for="role in roles" :key="role.id" :data-role="role.name" class="box group/row">
       <div class="flex items-center gap-2">
         <span class="font-medium">{{ role.name }}</span>
-        <span v-if="role.is_owner" class="tag bg-tag-blue">内置 · 全部权限</span>
+        <span v-if="role.is_owner" class="tag bg-tag-gray">内置 · 全部权限</span>
         <span v-else class="text-xs text-dimmed">{{ role.permissions.length }} 项权限</span>
         <div v-if="!role.is_owner" class="ms-auto flex gap-0.5 opacity-0 group-hover/row:opacity-100 focus-within:opacity-100 any-pointer-coarse:opacity-100">
           <UButton size="sm" color="neutral" variant="ghost" @click="openEditor(role)">编辑</UButton>

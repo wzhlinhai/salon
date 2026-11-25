@@ -228,8 +228,8 @@ defineExpose({ verify, clear, forget, locked })
     <div class="flex flex-wrap items-center gap-2">
       <span class="tag bg-tag-gray">{{ platformLabel(couponPlatform || platform) }}</span>
       <span class="font-medium tabular-nums">券码 {{ couponCode }}</span>
-      <span v-if="redemption" data-testid="coupon-status" class="tag" :class="redemption.status === 'redeemed' ? 'bg-tag-green' : 'bg-tag-yellow'">{{ redemption.status }}</span>
-      <span v-else-if="verifyResult" class="tag" :class="verifyResult.status === 'unused' ? 'bg-tag-green' : 'bg-tag-yellow'">{{ verifyResult.status }}</span>
+      <span v-if="redemption" data-testid="coupon-status" class="tag" :class="redemption.status === 'redeemed' ? 'bg-tag-gray' : 'bg-tag-yellow'">{{ redemption.status }}</span>
+      <span v-else-if="verifyResult" class="tag" :class="verifyResult.status === 'unused' ? 'bg-tag-gray' : 'bg-tag-yellow'">{{ verifyResult.status }}</span>
     </div>
 
     <div v-if="verifyResult && !redemption && verifyResult.status === 'unused' && !couponUnknown" class="flex flex-wrap items-center gap-2">
@@ -261,7 +261,7 @@ defineExpose({ verify, clear, forget, locked })
     </template>
 
     <div v-if="redemption && redemption.order_id" class="flex flex-wrap items-center gap-2">
-      <span class="tag bg-tag-green">已关联挂单</span>
+      <span class="tag bg-tag-gray">已关联挂单</span>
       <UButton size="sm" color="neutral" variant="outline" :loading="actionSaving" @click="unlinkCoupon(redemption.id)">解除关联</UButton>
       <UButton size="sm" color="neutral" variant="ghost" @click="clear">完成</UButton>
     </div>

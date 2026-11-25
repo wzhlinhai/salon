@@ -386,7 +386,7 @@ async function handover() {
           <template v-if="row.days_since_last_visit !== null && row.days_since_last_visit !== undefined">
             <p class="flex flex-wrap items-center gap-1.5">
               <span class="tabular-nums">{{ sinceText(row.days_since_last_visit) }}</span>
-              <span v-if="row.overdue_days" class="tag bg-tag-orange">晚了 {{ row.overdue_days }} 天</span>
+              <span v-if="row.overdue_days" class="tag bg-tag-yellow">晚了 {{ row.overdue_days }} 天</span>
             </p>
             <p class="truncate text-meta text-muted" :title="lastVisitMeta(row)">{{ lastVisitMeta(row) }}</p>
           </template>
@@ -416,7 +416,7 @@ async function handover() {
           <p v-else class="text-dimmed">没有</p>
         </div>
         <div class="min-w-0 ps-4">
-          <span v-if="row.next_appointment" class="tag bg-tag-blue tabular-nums">{{ nextText(row.next_appointment.starts_at) }}</span>
+          <span v-if="row.next_appointment" class="tag bg-tag-gray tabular-nums">{{ nextText(row.next_appointment.starts_at) }}</span>
           <p v-if="row.next_appointment" class="mt-0.5 truncate text-meta text-muted" :title="row.next_appointment.staff.name">{{ row.next_appointment.staff.name }}</p>
         </div>
       </div>

@@ -178,7 +178,7 @@ onMounted(reloadMonths)
     </PageActions>
     <div class="flex flex-wrap items-center gap-2">
       <USelect v-model="month" aria-label="结算月" :items="monthItems" class="min-w-36" />
-      <span v-if="payroll?.locked" class="tag bg-tag-green">已锁定</span>
+      <span v-if="payroll?.locked" class="tag bg-tag-gray">已锁定</span>
       <span v-else class="tag bg-tag-gray">未锁定</span>
       <span v-if="payroll?.locked" class="text-meta text-muted">{{ payroll.locked_by?.name }} · {{ payroll.locked_at ? new Date(payroll.locked_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '' }}</span>
       <span v-else-if="payroll && !status?.lockable" class="text-meta text-muted">月份结束且之前的月份都已锁定后才能锁定</span>
