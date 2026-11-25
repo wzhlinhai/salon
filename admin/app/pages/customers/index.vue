@@ -276,12 +276,13 @@ const moreItems = computed(() => [
     : [])
 ])
 
-// Esc 取消批量选择；弹窗开着时 Esc 只关弹窗。
-defineShortcuts({
-  escape: () => {
-    if (selected.value.length && !assignOpen.value && !handoverOpen.value) selected.value = []
-  }
-})
+// Esc 取消批量选择；弹窗开着时 Esc 只关弹窗。不用 defineShortcuts：它命中就 preventDefault，下拉菜单就收不起来了。
+function clearSelectionOnEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape' && !event.defaultPrevented && selected.value.length && !assignOpen.value && !handoverOpen.value) selected.value = []
+}
+
+onMounted(() => document.addEventListener('keydown', clearSelectionOnEscape))
+onBeforeUnmount(() => document.removeEventListener('keydown', clearSelectionOnEscape))
 
 // 新建顾客
 const createOpen = ref(false)
