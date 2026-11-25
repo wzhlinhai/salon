@@ -75,7 +75,7 @@ async function cardEdit(card: CustomerCard | null) {
 const rechargeAfter = computed(() => cardTarget.value ? cents(cardTarget.value.principal) + cents(cardTarget.value.bonus) + cents(cardPrincipal.value) + cents(cardBonus.value) : 0)
 const rechargeNote = computed(() => {
   const type = cardTarget.value && cardTypes.value.find(t => t.id === cardTarget.value!.card_type_id)
-  return type?.discount_percent ? `储值 ${Number(type.discount_percent) / 10} 折` : undefined
+  return type?.discount_percent && Number(type.discount_percent) < 100 ? `储值 ${Number(type.discount_percent) / 10} 折` : undefined
 })
 
 async function cardSave() {

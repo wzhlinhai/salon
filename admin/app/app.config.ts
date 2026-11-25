@@ -123,8 +123,7 @@ export default defineAppConfig({
     dropdownMenu: {
       slots: {
         content: 'rounded-card ring-0 shadow-lift p-1',
-        group: 'p-0',
-        item: 'rounded-md px-2 py-2 text-sm'
+        group: 'p-0'
       }
     },
     popover: {

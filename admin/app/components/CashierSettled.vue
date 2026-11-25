@@ -67,8 +67,10 @@ function voidEffects(order: Order) {
   const rows: { label: string, value: string }[] = []
   const of = (method: Order['payments'][number]['method']) => order.payments.filter(p => p.method === method)
   const sum = (list: Order['payments']) => yuan(money(list.reduce((total, p) => total + cents(p.amount), 0)))
-  const paid = order.payments.filter(p => ['cash', 'unionpay', 'wechat', 'alipay', 'groupbuy'].includes(p.method))
+  const paid = order.payments.filter(p => ['cash', 'unionpay', 'wechat', 'alipay'].includes(p.method))
   if (paid.length) rows.push({ label: '收款作废', value: paid.map(p => `${performanceMethodNames[p.method as keyof typeof performanceMethodNames] ?? p.method} ${yuan(p.amount)}`).join('，') })
+  // 团购券撤单后只解除和这张单的关联，券还能再关联或撤销（payments.releaseGroupbuy），不算作废。
+  if (of('groupbuy').length) rows.push({ label: '团购券放回', value: `${of('groupbuy').length} 张，可以再用` })
   if (of('card').length) rows.push({ label: '卡余额退回', value: `+${sum(of('card'))}` })
   const counts = of('count').reduce((total, p) => total + (p.count ? p.count.paid + p.count.gift : 0), 0)
   if (counts) rows.push({ label: '次卡退回', value: `+${counts} 次` })

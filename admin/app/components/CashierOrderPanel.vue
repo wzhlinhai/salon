@@ -293,10 +293,10 @@ function repriceBegin(item: OrderItem) {
 const repricePresets = computed(() => {
   const base = repriceItem.value ? cents(repriceItem.value.price) : 0
   if (!base) return []
-  const whole = (value: number) => Math.round(value / 100) * 100
+  const whole = (tenths: number) => Math.round(base * tenths / 1000) * 100
   return [
-    { label: '9 折', value: whole(base * 0.9) },
-    { label: '8 折', value: whole(base * 0.8) },
+    { label: '9 折', value: whole(9) },
+    { label: '8 折', value: whole(8) },
     { label: '抹零', value: Math.floor(base / 1000) * 1000 }
   ]
     .filter(p => p.value > 0 && p.value !== base)
