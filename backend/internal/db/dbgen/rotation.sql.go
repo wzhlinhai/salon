@@ -810,6 +810,68 @@ func (q *Queries) LockAllRotationQueues(ctx context.Context, storeID uuid.UUID) 
 	return items, nil
 }
 
+const lockCheckoutRotationTurns = `-- name: LockCheckoutRotationTurns :many
+SELECT t.tenant_id, t.store_id, t.id, t.queue_id, t.business_date, t.staff_id, t.position, t.status, t.half_pending, t.rest_until, t.serving_order_id, t.serving_designated, t.created_at, t.updated_at FROM rotation_turns t
+JOIN orders o ON o.tenant_id = t.tenant_id AND o.store_id = t.store_id AND o.id = $1::uuid
+WHERE t.store_id = $2
+ AND t.status = 'serving'
+ AND (
+  t.serving_order_id = $1::uuid
+  OR (
+   t.serving_order_id IS NULL
+   AND t.staff_id = ANY($3::uuid[])
+   AND o.opened_at >= (
+    SELECT max(e.created_at) FROM rotation_events e
+    WHERE e.store_id = t.store_id AND e.queue_id = t.queue_id AND e.business_date = t.business_date
+     AND e.staff_id = t.staff_id AND e.kind = 'assign'
+   )
+  )
+ )
+ORDER BY t.queue_id, t.business_date, t.position, t.staff_id
+FOR UPDATE OF t
+`
+
+type LockCheckoutRotationTurnsParams struct {
+	OrderID  uuid.UUID
+	StoreID  uuid.UUID
+	StaffIds []uuid.UUID
+}
+
+func (q *Queries) LockCheckoutRotationTurns(ctx context.Context, arg LockCheckoutRotationTurnsParams) ([]RotationTurn, error) {
+	rows, err := q.db.Query(ctx, lockCheckoutRotationTurns, arg.OrderID, arg.StoreID, arg.StaffIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RotationTurn
+	for rows.Next() {
+		var i RotationTurn
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ID,
+			&i.QueueID,
+			&i.BusinessDate,
+			&i.StaffID,
+			&i.Position,
+			&i.Status,
+			&i.HalfPending,
+			&i.RestUntil,
+			&i.ServingOrderID,
+			&i.ServingDesignated,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockRotationHalfItems = `-- name: LockRotationHalfItems :exec
 SELECT pg_advisory_xact_lock(hashtextextended(($1::uuid)::text || '/rotation_half_items', 0))
 `
@@ -926,53 +988,6 @@ func (q *Queries) LockRotationTurns(ctx context.Context, arg LockRotationTurnsPa
 			&i.UpdatedAt,
 			&i.StaffName,
 			&i.StaffNumber,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const lockServingRotationTurnsByOrder = `-- name: LockServingRotationTurnsByOrder :many
-SELECT t.tenant_id, t.store_id, t.id, t.queue_id, t.business_date, t.staff_id, t.position, t.status, t.half_pending, t.rest_until, t.serving_order_id, t.serving_designated, t.created_at, t.updated_at FROM rotation_turns t
-WHERE t.store_id = $1 AND t.status = 'serving' AND t.serving_order_id = $2::uuid
-ORDER BY t.queue_id, t.business_date, t.position, t.staff_id
-FOR UPDATE
-`
-
-type LockServingRotationTurnsByOrderParams struct {
-	StoreID uuid.UUID
-	OrderID uuid.UUID
-}
-
-func (q *Queries) LockServingRotationTurnsByOrder(ctx context.Context, arg LockServingRotationTurnsByOrderParams) ([]RotationTurn, error) {
-	rows, err := q.db.Query(ctx, lockServingRotationTurnsByOrder, arg.StoreID, arg.OrderID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []RotationTurn
-	for rows.Next() {
-		var i RotationTurn
-		if err := rows.Scan(
-			&i.TenantID,
-			&i.StoreID,
-			&i.ID,
-			&i.QueueID,
-			&i.BusinessDate,
-			&i.StaffID,
-			&i.Position,
-			&i.Status,
-			&i.HalfPending,
-			&i.RestUntil,
-			&i.ServingOrderID,
-			&i.ServingDesignated,
-			&i.CreatedAt,
-			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

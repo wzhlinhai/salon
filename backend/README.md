@@ -448,7 +448,7 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 每次改位置都在同一事务里先锁队列行，再按位置和员工 ID 稳定顺序 `FOR UPDATE` 锁住当天全部轮牌行；写回时先把位置整体加一个偏移量，再写成 1..n 的连续位置，避免唯一约束瞬时冲突。并发 `assign_turn` 因此不会把同一名员工分给两位顾客。
 
-结账成功后，`orders` 在同一事务里调用 `rotation.AdvanceAfterCheckout`。它找出这张单上的服务员工，按队列 ID 顺序锁住队列和各行所属营业日的轮牌行；只推进 `serving_order_id` 指向这张单的行，跨营业日也按行自己的营业日推进，规则仍取结账时刻的营业日。点客与否取轮牌行记录的 `serving_designated`，不看单据上的指定标记。点客且 `rotation_designated_takes_turn=no` 时只恢复 waiting、不改变位置，记 advance_designated_no_turn；否则按 `rotation_half_rule` 判断整轮或半轮：整轮直接排到队尾并清除半轮标记；半轮第一次只标记 half_pending、不动位置，第二次才排到队尾并清除标记。按预约记半轮要求前台在结账前完成预约并把这张单关联到预约；只关联待确认或已确认的预约、或结账后才完成，都按整轮。事件写入 order_id 和 designated。单上没有正在服务的员工时不做任何事；撤单不反向推进轮牌（不在本任务范围）。
+结账成功后，`orders` 在同一事务里调用 `rotation.AdvanceAfterCheckout`。它找出这张单上的服务员工，按队列 ID 顺序锁住队列和各行所属营业日的轮牌行；只推进 `serving_order_id` 指向这张单的行，以及接客时没关联单的轮牌；后者由接客之后开的、有这名员工的单里先结账的那张认领（以这名员工在该队列该营业日最近一次接客为准）。跨营业日也按行自己的营业日推进，规则仍取结账时刻的营业日。点客与否取轮牌行记录的 `serving_designated`，不看单据上的指定标记。点客且 `rotation_designated_takes_turn=no` 时只恢复 waiting、不改变位置，记 advance_designated_no_turn；否则按 `rotation_half_rule` 判断整轮或半轮：整轮直接排到队尾并清除半轮标记；半轮第一次只标记 half_pending、不动位置，第二次才排到队尾并清除标记。按预约记半轮要求前台在结账前完成预约并把这张单关联到预约；只关联待确认或已确认的预约、或结账后才完成，都按整轮。事件写入 order_id 和 designated。单上没有正在服务的员工时不做任何事；撤单不反向推进轮牌（不在本任务范围）。
 
 `get_rotation_stats` 从 advance_whole、advance_half 和 advance_designated_no_turn 事件按员工统计点客与轮牌接客数，两者分开合计；同一员工在两个队列服务同一张单只记一次，按员工和单去重。`list_rotation_events` 按日期范围和可选队列返回全部只追加记录；日期范围和统计都不得晚于今天的营业日。`get_rotation` 的轮牌行按批读取，查询数不随队列人数增长。
 

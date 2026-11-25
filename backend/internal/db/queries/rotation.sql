@@ -91,11 +91,25 @@ WHERE t.store_id = @store_id AND t.business_date = @business_date
  AND t.status = 'serving' AND t.staff_id = ANY(sqlc.arg(staff_ids)::uuid[])
 ORDER BY t.queue_id, t.position;
 
--- name: LockServingRotationTurnsByOrder :many
+-- name: LockCheckoutRotationTurns :many
 SELECT t.* FROM rotation_turns t
-WHERE t.store_id = @store_id AND t.status = 'serving' AND t.serving_order_id = sqlc.arg(order_id)::uuid
+JOIN orders o ON o.tenant_id = t.tenant_id AND o.store_id = t.store_id AND o.id = sqlc.arg(order_id)::uuid
+WHERE t.store_id = @store_id
+ AND t.status = 'serving'
+ AND (
+  t.serving_order_id = sqlc.arg(order_id)::uuid
+  OR (
+   t.serving_order_id IS NULL
+   AND t.staff_id = ANY(sqlc.arg(staff_ids)::uuid[])
+   AND o.opened_at >= (
+    SELECT max(e.created_at) FROM rotation_events e
+    WHERE e.store_id = t.store_id AND e.queue_id = t.queue_id AND e.business_date = t.business_date
+     AND e.staff_id = t.staff_id AND e.kind = 'assign'
+   )
+  )
+ )
 ORDER BY t.queue_id, t.business_date, t.position, t.staff_id
-FOR UPDATE;
+FOR UPDATE OF t;
 
 -- name: ShiftRotationTurnPositions :exec
 UPDATE rotation_turns SET position = position + 1000000
