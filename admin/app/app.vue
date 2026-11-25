@@ -76,10 +76,11 @@ const pageIcon = computed(() => {
   if (route.path === '/drafts') return DRAFTS_ICON
   return navItems.find(item => isActive(item.to))?.icon ?? ''
 })
-// 二级页（各张报表、顾客档案）在顶栏前面放上一级的链接，点了回入口。
+// 二级页（各张报表、顾客档案、员工详情）在顶栏前面放上一级的链接，点了回入口。
 const parentCrumb = computed(() => {
   if (route.path.startsWith('/reports/')) return { to: '/reports', label: '报表' }
   if (route.path.startsWith('/customers/')) return { to: '/customers', label: '顾客' }
+  if (route.path.startsWith('/staff/')) return { to: '/staff', label: '员工' }
   return null
 })
 
