@@ -42,6 +42,16 @@ async function load() {
 }
 
 watch(() => props.refreshKey, load)
+
+const expanded = ref(false)
+// 列表只取了最近一批时不知道全天合计，只写单数。
+const summary = computed(() => {
+  if (loading.value && !orders.value.length) return '今天结了…'
+  const paid = orders.value.filter(order => order.status === 'paid')
+  if (!total.value) return '今天还没结账'
+  if (total.value > orders.value.length) return `今天结了 ${total.value} 单`
+  return `今天结了 ${paid.length} 单 · ${yuan(money(paid.reduce((sum, order) => sum + cents(order.net), 0)))}`
+})
 onMounted(load)
 
 function itemNames(order: Order) {
@@ -182,8 +192,19 @@ async function submitVoid() {
 
 <template>
   <section data-testid="settled-orders">
-    <h2 class="sec">今日结账<span class="ms-1 font-normal text-dimmed">{{ total }}</span></h2>
-    <div class="border-y border-default">
+    <!-- 收成一行（样稿 02）：结了几单、收了多少；点开才列明细，撤单、改做的人、收款记录都在明细里。 -->
+    <button
+      type="button"
+      class="flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-muted hover:bg-hover"
+      :aria-expanded="expanded"
+      aria-controls="settled-list"
+      data-testid="settled-toggle"
+      @click="expanded = !expanded"
+    >
+      <span class="tabular-nums">{{ summary }}</span>
+      <UIcon name="i-lucide-chevron-right" class="ms-auto size-4 transition-transform" :class="expanded && 'rotate-90'" aria-hidden="true" />
+    </button>
+    <div v-show="expanded" id="settled-list" class="mt-1 border-y border-default">
       <ListSkeleton v-if="loading && !orders.length" :rows="3" />
       <p v-else-if="!orders.length" class="px-3 py-2 text-sm text-muted">今天还没有结账的单。结过账的单会列在这里，结错了可以撤单。</p>
       <div

@@ -2,6 +2,14 @@ import { expect, test, type Page } from '@playwright/test'
 import { api, apiLogin, hire, login, owner, uniqueSuffix } from './helpers'
 import { addDays } from '../app/utils/datetime'
 
+// 「今天结了」默认收成一行，要看结过的单先点开。
+async function showSettled(page: Page) {
+  const toggle = page.getByTestId('settled-toggle')
+  await expect(toggle).not.toHaveText('今天结了…')
+  if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+}
+
 interface Seed {
   token: string
   suffix: string
@@ -91,6 +99,7 @@ test('扫码开单、现金结账并按设置打印小票', async ({ page }) => 
   await expect(page.getByTestId('receipt-customer')).toContainText('*')
   await expect.poll(() => page.evaluate(() => (window as unknown as { __receiptPrinted?: number }).__receiptPrinted ?? 0)).toBe(1)
   await page.getByTestId('receipt-paper').getByRole('button', { name: '关闭', exact: true }).click()
+  await showSettled(page)
   await expect(page.getByTestId('settled-orders').locator('[data-settled-order]', { hasText: customer.name })).toContainText('¥88.00')
   await expect(page.getByTestId('last-receipt')).toBeVisible()
   await page.getByRole('button', { name: '补打小票' }).click()
@@ -579,6 +588,7 @@ test('发型师能开单加项，看不到结账和团购券，也没有 403 或
   await expect(page.getByText('结账', { exact: true })).toHaveCount(0)
   await expect(page.getByTestId('unlinked-coupons')).toHaveCount(0)
   await expect(page.getByTestId('coupon-panel')).toHaveCount(0)
+  await showSettled(page)
   const paidRow = page.locator(`[data-settled-order="${paid.id}"]`)
   await expect(paidRow).toBeVisible()
   await paidRow.hover()
@@ -649,7 +659,7 @@ test('同一顾客的两张同日挂单合并成一张', async ({ page }) => {
   await hint.getByRole('button', { name: '合并到这张' }).click()
   await expect(page.locator(`[data-order-id="${second.id}"]`)).toHaveCount(0)
   await expect(hint).toHaveCount(0)
-  await expect(page.locator(`[data-order-id="${first.id}"]`)).toContainText('¥176.00')
+  await expect(page.locator(`[data-order-id="${first.id}"]`)).toContainText('¥176')
   await expect(page.locator(`[data-order-item="${item.name}"]`)).toHaveCount(2)
   await expect(page.locator(`[data-order-id="${otherOrder.id}"]`)).toHaveCount(1)
   await expect(page.locator(`[data-order-id="${backfill.id}"]`)).toHaveCount(1)
@@ -706,6 +716,7 @@ test('今日已结的收款记录：现金登记退款要填原因', async ({ pa
   await api(token, 'checkout_orders', { orders: [{ order_id: order.id, payments: [{ method: 'cash', amount: '88.00' }] }] })
   await login(page, owner.account, owner.password)
   await page.goto('/cashier')
+  await showSettled(page)
   const row = page.getByTestId('settled-orders').locator(`[data-settled-order="${order.id}"]`)
 
   await row.hover()
@@ -759,6 +770,7 @@ test('今日已结里撤单；开了授权窗口要先输登录密码', async ({
   const settings = await businessDate(token)
   await login(page, owner.account, owner.password)
   await page.goto('/cashier')
+  await showSettled(page)
   const settled = page.getByTestId('settled-orders')
   const dialog = page.getByRole('dialog', { name: '撤单' })
 
@@ -805,6 +817,7 @@ test('今日已结里改做的人：业绩改记给新员工，单上留改人�
   await api(token, 'checkout_orders', { orders: [{ order_id: order.id, payments: [{ method: 'cash', amount: '88.00' }] }] })
   await login(page, owner.account, owner.password)
   await page.goto('/cashier')
+  await showSettled(page)
   const row = page.getByTestId('settled-orders').locator(`[data-settled-order="${order.id}"]`)
   const dialog = page.getByRole('dialog', { name: '改做的人' })
 

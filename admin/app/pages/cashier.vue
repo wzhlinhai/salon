@@ -95,6 +95,12 @@ function customerName(id: string) {
   return customerNames.value[id] || '未识别'
 }
 
+// 在做列表的第二行：项目 · 做的人（去重，没填的不写）。
+function orderLine(order: Order) {
+  const staff = [...new Set(order.items.filter(i => !i.removed_at).flatMap(i => i.positions.map(p => p.staff_id)).filter(Boolean).map(id => staffName(id)))]
+  return [orderItemNames(order), ...staff].join(' · ')
+}
+
 function staffName(id: string | null | undefined) {
   return staffOptions.value.find(s => s.id === id)?.name || '未填'
 }
@@ -345,31 +351,45 @@ onMounted(init)
          宽屏时挂单、今日结账叠在左栏，当前单占右栏两行；第二行 1fr 吃掉当前单多出的高度，左栏两块之间不留空。 -->
     <div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-[20rem_minmax(0,1fr)] lg:grid-rows-[auto_1fr]">
       <section class="min-w-0 lg:col-start-1 lg:row-start-1">
-        <h2 class="sec">挂单<span class="ms-1 font-normal text-dimmed">{{ openOrders.length }}</span></h2>
-        <div class="border-y border-default" data-testid="open-orders">
+        <h2 class="sec">在做<span class="ms-1 font-normal text-dimmed">{{ openOrders.length }}</span></h2>
+        <div class="space-y-1" data-testid="open-orders">
           <ListSkeleton v-if="ordersLoading && !openOrders.length" :rows="3" />
-          <p v-else-if="!openOrders.length" class="px-3 py-2 text-sm text-muted">暂无挂单。顾客到店开单后会挂在这里，做完再结账。</p>
-          <button
+          <p v-else-if="!openOrders.length" class="py-2 text-sm text-muted">还没有在做的单。顾客到店开单后列在这里，做完再结账。</p>
+          <!-- 一行一位：头像字点开顾客小卡片（样稿 26），其余整行点了选这张单；两个按钮并排，不嵌套。 -->
+          <div
             v-for="order in openOrders"
             :key="order.id"
-            type="button"
-            class="block w-full border-t border-default px-3 py-2 text-left first:border-t-0"
-            :class="order.id === selectedOrderID ? 'bg-selected shadow-[inset_2px_0_0_var(--ui-primary)]' : 'hover:bg-hover'"
-            :aria-current="order.id === selectedOrderID ? 'true' : undefined"
-            :data-order-id="order.id"
-            data-testid="open-order"
-            :disabled="checkoutSaving"
-            @click="selectOrder(order)"
+            class="flex items-center gap-1 rounded-md ps-2"
+            :class="order.id === selectedOrderID ? 'bg-selected' : 'hover:bg-hover'"
           >
-            <div class="flex items-center justify-between gap-2 text-sm">
-              <span class="truncate font-medium" :title="customerName(order.customer_id)">{{ customerName(order.customer_id) }}</span>
-              <span class="font-medium tabular-nums">{{ yuanFixed(order.receivable) }}</span>
-            </div>
-            <div class="mt-0.5 flex items-center gap-2 text-meta text-muted">
-              <span v-if="order.backfill" data-testid="backfill-badge" class="tag bg-tag-yellow">补录 {{ order.business_date }}</span>
-              <span class="truncate" :title="orderItemNames(order)">{{ orderItemNames(order) }}</span>
-            </div>
-          </button>
+            <CustomerPeek v-if="canCustomer && identifiedCustomers[order.customer_id]" :customer-id="order.customer_id">
+              <button type="button" class="grid size-7 shrink-0 place-items-center rounded-full bg-tag-gray text-xs hover:ring-1 hover:ring-(--ui-border-accented)" :aria-label="`看看${customerName(order.customer_id)}`">
+                {{ customerName(order.customer_id).slice(0, 1) }}
+              </button>
+            </CustomerPeek>
+            <span v-else class="grid size-7 shrink-0 place-items-center rounded-full bg-tag-gray text-xs" aria-hidden="true">{{ identifiedCustomers[order.customer_id] === false ? '散' : customerName(order.customer_id).slice(0, 1) }}</span>
+            <button
+              type="button"
+              class="flex min-h-14 min-w-0 flex-1 items-center gap-2 py-2 pe-3 ps-1 text-left"
+              :aria-current="order.id === selectedOrderID ? 'true' : undefined"
+              :data-order-id="order.id"
+              data-testid="open-order"
+              :disabled="checkoutSaving"
+              @click="selectOrder(order)"
+            >
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-sm" :title="customerName(order.customer_id)">{{ identifiedCustomers[order.customer_id] === false ? '散客' : customerName(order.customer_id) }}</span>
+                <span class="mt-0.5 flex items-center gap-2 text-meta text-muted">
+                  <span v-if="order.backfill" data-testid="backfill-badge" class="tag bg-tag-yellow">补录 {{ order.business_date }}</span>
+                  <span class="truncate" :title="orderItemNames(order)">{{ orderLine(order) }}</span>
+                </span>
+              </span>
+              <span class="shrink-0 text-right">
+                <span class="block text-sm tabular-nums">{{ yuan(order.receivable) }}</span>
+                <span class="mt-0.5 block text-xs text-dimmed tabular-nums">{{ clockTime(order.opened_at) }} 开单</span>
+              </span>
+            </button>
+          </div>
         </div>
         <div v-if="canCollect && lastReceipt" class="mt-2 flex items-center gap-2 px-1 text-meta text-muted" data-testid="last-receipt">
           <span>最近一次结账 {{ yuanFixed(lastReceipt.total) }}</span>
