@@ -6,7 +6,6 @@ type Customer = components['schemas']['Customer']
 
 const route = useRoute()
 const { me, can } = useMe()
-const { active: homeSwitcherActive, options: homeSwitcherOptions, selected: homeSwitcherSelected } = useHomeSwitcher()
 const isLogin = computed(() => route.path === '/login')
 const sidebarCollapsed = ref(false)
 const pageTitle = computed(() => String(route.meta.title || '首页'))
@@ -53,17 +52,6 @@ function toggleGroup(group: { label: string, items: typeof navItems }) {
   localStorage.setItem(FOLD_KEY, JSON.stringify(folded.value))
 }
 
-// 首页切换是单选组：方向键在选项间移动并选中，整组只占一个 Tab 位。
-function moveHome(event: KeyboardEvent, step: number) {
-  const options = homeSwitcherOptions.value
-  const index = options.findIndex(option => option.value === homeSwitcherSelected.value)
-  const next = options[(index + step + options.length) % options.length]
-  if (!next) return
-  homeSwitcherSelected.value = next.value
-  const group = (event.currentTarget as HTMLElement).parentElement
-  void nextTick(() => group?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus())
-}
-
 function isActive(to: string) {
   return to === '/' ? route.path === '/' : route.path.startsWith(to)
 }
@@ -83,14 +71,6 @@ const pageIcon = computed(() => {
   if (route.path === '/drafts') return DRAFTS_ICON
   return navItems.find(item => isActive(item.to))?.icon ?? ''
 })
-// 首页「最近访问」：打开侧栏里的页面或某张报表就记一笔（顾客详情由 CustomerDetail 记）；登录信息到了再记，换人不串。
-const { record: recordRecent } = useRecentPages()
-watch([() => route.path, () => me.value?.staff.id], ([path]) => {
-  const item = navItems.find(nav => nav.to !== '/' && isActive(nav.to))
-  if (!item || !path) return
-  const label = path === item.to ? item.label : String(route.meta.title || '')
-  recordRecent({ to: path, label, icon: item.icon })
-}, { immediate: true })
 // 二级页（目前只有各张报表）在顶栏前面放上一级的链接，点了回入口。
 const parentCrumb = computed(() => route.path.startsWith('/reports/') ? { to: '/reports', label: '报表' } : null)
 
@@ -332,34 +312,7 @@ const searchGroups = computed(() => {
               </p>
             </template>
             <template #right>
-              <div id="navbar-actions" class="flex items-center gap-1 text-muted">
-                <div
-                  v-if="homeSwitcherActive"
-                  role="radiogroup"
-                  aria-label="选择首页"
-                  data-testid="home-switcher"
-                  class="inline-flex rounded-md bg-elevated p-0.5"
-                >
-                  <button
-                    v-for="option in homeSwitcherOptions"
-                    :key="option.value"
-                    type="button"
-                    role="radio"
-                    :aria-checked="homeSwitcherSelected === option.value"
-                    :aria-label="option.label"
-                    :tabindex="homeSwitcherSelected === option.value ? 0 : -1"
-                    class="inline-flex min-h-6 items-center rounded-md px-2 text-sm"
-                    :class="homeSwitcherSelected === option.value ? 'bg-white text-default shadow-line' : 'text-muted'"
-                    @click="homeSwitcherSelected = option.value"
-                    @keydown.left.prevent="moveHome($event, -1)"
-                    @keydown.right.prevent="moveHome($event, 1)"
-                    @keydown.up.prevent="moveHome($event, -1)"
-                    @keydown.down.prevent="moveHome($event, 1)"
-                  >
-                    {{ option.short }}
-                  </button>
-                </div>
-              </div>
+              <div id="navbar-actions" class="flex items-center gap-1 text-muted" />
             </template>
           </UDashboardNavbar>
         </template>

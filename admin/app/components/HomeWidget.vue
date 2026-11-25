@@ -1,19 +1,16 @@
 <script setup lang="ts">
-// 首页的组件卡（照 Notion 首页）：白卡，卡内顶上一行灰色小图标加灰字标题，右边可放补充说明或链接。
-defineProps<{ title: string, icon: string }>()
+// 首页的一块（样稿 01）：不套卡片，靠标题和留白分开；标题右边可放一句灰字补充。
+defineProps<{ title: string }>()
 </script>
 
 <template>
-  <section class="min-w-0 rounded-card bg-white shadow-paper">
-    <header class="flex min-h-11 items-center gap-2 px-4 pt-1 text-sm font-medium text-muted">
-      <UIcon :name="icon" class="size-4 shrink-0" aria-hidden="true" />
-      <h2>{{ title }}</h2>
-      <div v-if="$slots.aside" class="ms-auto text-meta font-normal text-dimmed">
+  <section class="min-w-0">
+    <header class="mb-2 flex items-baseline gap-2">
+      <h2 class="text-base font-semibold">{{ title }}</h2>
+      <span v-if="$slots.aside" class="text-meta text-dimmed">
         <slot name="aside" />
-      </div>
+      </span>
     </header>
-    <div class="px-4 pb-4">
-      <slot />
-    </div>
+    <slot />
   </section>
 </template>
