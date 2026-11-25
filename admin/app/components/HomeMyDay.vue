@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-// 个人首页的"我今天"（照原型 K）：本人今天的项目业绩、售卡业绩、提成和单数，业绩和上周同日比。
+// 个人首页的"我今天"：本人今天的项目业绩、售卡业绩、提成和单数，业绩和上周同日比。
 // 点提成从右侧滑出今天每一笔提成怎么算出来的。
 type PerformanceList = components['schemas']['PerformanceList']
 type CommissionList = components['schemas']['CommissionList']
@@ -53,8 +53,7 @@ const orders = computed(() => {
 </script>
 
 <template>
-  <HomeWidget v-if="today" title="我今天" icon="i-lucide-chart-line" data-testid="home-my-day" class="@container">
-    <template #aside>本人数据</template>
+  <HomeWidget v-if="today" title="我今天" data-testid="home-my-day" class="@container">
     <div class="grid grid-cols-2 gap-x-4 gap-y-3 tabular-nums @2xl:grid-cols-4">
       <div>
         <p class="text-xs text-dimmed">业绩</p>
