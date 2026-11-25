@@ -383,14 +383,112 @@ func TestAssignValidatesOrder(t *testing.T) {
 	}
 }
 
-func TestAdvanceRequiresServingOrder(t *testing.T) {
+func viewEntry(view map[string]any, staffID uuid.UUID) map[string]any {
+	for _, entry := range entries(view) {
+		if entry["staff"].(map[string]any)["id"] == staffID.String() {
+			return entry
+		}
+	}
+	return nil
+}
+
+// 认领比较 orders.opened_at 与 assign 事件的 created_at，两者都是 DB clock_timestamp()，测试不能把 opened_at 改成假 env.Now。
+func TestCheckoutClaimsUnlinkedTurn(t *testing.T) {
 	s := openRotation(t)
-	s.join(s.members[0])
-	s.call("assign_turn", map[string]any{"queue_id": s.queue, "staff_id": s.members[0]}, 200)
+	for _, member := range s.members[:3] {
+		s.join(member)
+	}
+	s.call("assign_turn", map[string]any{"queue_id": s.queue}, 200)
 	order := s.openFor(s.members[0], false, s.item)
 	s.pay(order, "100")
-	got := s.entry(s.members[0])
-	if got["status"] != "serving" || got["serving_order_id"] != nil {
+	assertNames(t, s.names(s.today()), []string{"乙", "丙", "甲"})
+	if got := s.entry(s.members[0]); got["status"] != "waiting" || got["position"] != float64(3) || got["serving_order_id"] != nil {
+		t.Fatal(got)
+	}
+	if got := s.event("advance_whole"); got["order_id"] != order.String() || got["designated"] != false {
+		t.Fatal(got)
+	}
+	day := settingsDate(s).Format(settings.DateLayout)
+	stats := s.call("get_rotation_stats", map[string]any{"from": day, "to": day}, 200)
+	if stats["rotation"] != float64(1) {
+		t.Fatal(stats)
+	}
+}
+
+func TestCheckoutClaimsPerQueueAssignment(t *testing.T) {
+	s := openRotation(t)
+	second := s.call("create_rotation_queue", map[string]any{"name": "助理牌"}, 200)
+	secondID := id(second["id"])
+	s.call("set_queue_members", map[string]any{"queue_id": secondID, "staff_ids": []uuid.UUID{s.members[0]}}, 200)
+	s.join(s.members[0])
+	s.call("join_rotation", map[string]any{"queue_id": secondID, "staff_id": s.members[0]}, 200)
+	s.call("assign_turn", map[string]any{"queue_id": s.queue}, 200)
+	order := s.openFor(s.members[0], false, s.item)
+	s.call("assign_turn", map[string]any{"queue_id": secondID}, 200)
+	s.pay(order, "100")
+	if got := viewEntry(s.call("get_rotation", map[string]any{"queue_id": s.queue}, 200), s.members[0]); got["status"] != "waiting" || got["serving_order_id"] != nil {
+		t.Fatal(got)
+	}
+	if got := viewEntry(s.call("get_rotation", map[string]any{"queue_id": secondID}, 200), s.members[0]); got["status"] != "serving" || got["serving_order_id"] != nil {
+		t.Fatal(got)
+	}
+	day := settingsDate(s).Format(settings.DateLayout)
+	firstEvents := s.call("list_rotation_events", map[string]any{"queue_id": s.queue, "from": day, "to": day}, 200)
+	found := false
+	for _, raw := range firstEvents["entries"].([]any) {
+		event := raw.(map[string]any)
+		if event["kind"] == "advance_whole" && event["order_id"] == order.String() {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("queue A was not advanced", firstEvents)
+	}
+	secondEvents := s.call("list_rotation_events", map[string]any{"queue_id": secondID, "from": day, "to": day}, 200)
+	for _, raw := range secondEvents["entries"].([]any) {
+		if raw.(map[string]any)["kind"] == "advance_whole" {
+			t.Fatal("queue B advanced", secondEvents)
+		}
+	}
+}
+
+func TestCheckoutClaimsPerBusinessDateAssignment(t *testing.T) {
+	s := openRotation(t)
+	s.join(s.members[0])
+	day := settingsDate(s)
+	s.call("assign_turn", map[string]any{"queue_id": s.queue}, 200)
+	order := s.openFor(s.members[0], false, s.item)
+	s.Advance(24 * time.Hour)
+	s.join(s.members[0])
+	s.call("assign_turn", map[string]any{"queue_id": s.queue, "staff_id": s.members[0]}, 200)
+	s.pay(order, "100")
+	if got := viewEntry(s.rotate(day), s.members[0]); got["status"] != "waiting" || got["serving_order_id"] != nil {
+		t.Fatal(got)
+	}
+	if got := viewEntry(s.today(), s.members[0]); got["status"] != "serving" || got["serving_order_id"] != nil {
+		t.Fatal(got)
+	}
+	events := s.events(day, day)
+	found := false
+	for _, event := range events {
+		if event["kind"] == "advance_whole" && event["order_id"] == order.String() {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("business-day turn was not advanced", events)
+	}
+}
+
+func TestCheckoutDoesNotClaimBeforeAssignment(t *testing.T) {
+	s := openRotation(t)
+	for _, member := range s.members[:3] {
+		s.join(member)
+	}
+	order := s.openFor(s.members[0], false, s.item)
+	s.call("assign_turn", map[string]any{"queue_id": s.queue, "staff_id": s.members[0]}, 200)
+	s.pay(order, "100")
+	if got := s.entry(s.members[0]); got["status"] != "serving" || got["serving_order_id"] != nil {
 		t.Fatal(got)
 	}
 	day := settingsDate(s).Format(settings.DateLayout)
@@ -398,6 +496,88 @@ func TestAdvanceRequiresServingOrder(t *testing.T) {
 	if stats["total"] != float64(0) {
 		t.Fatal(stats)
 	}
+}
+
+func TestCheckoutClaimsAfterLatestAssignment(t *testing.T) {
+	s := openRotation(t)
+	for _, member := range s.members[:3] {
+		s.join(member)
+	}
+	s.call("assign_turn", map[string]any{"queue_id": s.queue}, 200)
+	first := s.openFor(s.members[0], false, s.item)
+	s.call("release_turn", map[string]any{"queue_id": s.queue, "staff_id": s.members[0]}, 200)
+	s.call("assign_turn", map[string]any{"queue_id": s.queue, "staff_id": s.members[0]}, 200)
+	s.pay(first, "100")
+	if got := s.entry(s.members[0]); got["status"] != "serving" || got["serving_order_id"] != nil {
+		t.Fatalf("order opened before latest assign claimed the turn: %v", got)
+	}
+	second := s.openFor(s.members[0], false, s.item)
+	s.pay(second, "100")
+	if got := s.entry(s.members[0]); got["status"] != "waiting" || got["serving_order_id"] != nil {
+		t.Fatal(got)
+	}
+	if got := s.event("advance_whole"); got["order_id"] != second.String() {
+		t.Fatal(got)
+	}
+}
+
+func TestCheckoutClaimsOnlyOrderStaff(t *testing.T) {
+	s := openRotation(t)
+	for _, member := range s.members[:3] {
+		s.join(member)
+	}
+	s.call("assign_turn", map[string]any{"queue_id": s.queue}, 200)
+	s.call("assign_turn", map[string]any{"queue_id": s.queue}, 200)
+	order := s.openFor(s.members[0], false, s.item)
+	s.pay(order, "100")
+	if got := s.entry(s.members[0]); got["status"] != "waiting" {
+		t.Fatal(got)
+	}
+	if got := s.entry(s.members[1]); got["status"] != "serving" || got["serving_order_id"] != nil {
+		t.Fatal(got)
+	}
+	day := settingsDate(s).Format(settings.DateLayout)
+	stats := s.call("get_rotation_stats", map[string]any{"from": day, "to": day}, 200)
+	if stats["rotation"] != float64(1) {
+		t.Fatal(stats)
+	}
+}
+
+func TestCheckoutClaimsDesignatedRules(t *testing.T) {
+	t.Run("designated no turn", func(t *testing.T) {
+		s := openRotation(t)
+		for _, member := range s.members[:3] {
+			s.join(member)
+		}
+		s.setSetting("rotation_designated_takes_turn", "no")
+		s.call("assign_turn", map[string]any{"queue_id": s.queue, "staff_id": s.members[0], "designated": true}, 200)
+		order := s.openFor(s.members[0], true, s.item)
+		s.pay(order, "100")
+		assertNames(t, s.names(s.today()), []string{"甲", "乙", "丙"})
+		if got := s.entry(s.members[0]); got["status"] != "waiting" || got["position"] != float64(1) {
+			t.Fatal(got)
+		}
+		if got := s.event("advance_designated_no_turn"); got["designated"] != true || got["order_id"] != order.String() {
+			t.Fatal(got)
+		}
+	})
+	t.Run("half turn", func(t *testing.T) {
+		s := openRotation(t)
+		for _, member := range s.members[:3] {
+			s.join(member)
+		}
+		s.setSetting("rotation_half_rule", "by_price")
+		s.setSetting("rotation_half_price_below", 150)
+		s.call("assign_turn", map[string]any{"queue_id": s.queue}, 200)
+		order := s.openFor(s.members[0], false, s.item)
+		s.pay(order, "100")
+		if got := s.entry(s.members[0]); got["status"] != "waiting" || got["position"] != float64(1) || got["half_pending"] != true {
+			t.Fatal(got)
+		}
+		if got := s.event("advance_half"); got["order_id"] != order.String() {
+			t.Fatal(got)
+		}
+	})
 }
 
 func TestCheckoutWithoutServingStaffIsNoop(t *testing.T) {

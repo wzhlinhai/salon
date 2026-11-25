@@ -14,16 +14,18 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
-// AdvanceAfterCheckout 在收银成功后推进这张单上的服务员工：点客按设置决定占轮，整轮或半轮按设置排到队尾。
+// AdvanceAfterCheckout 在收银成功后推进这张单上的服务员工：点客按设置决定占轮，整轮或半轮按设置排到队尾；接客时没关联单的轮牌，由接客之后开的、有这名员工的单里先结账的那张认领。
 func AdvanceAfterCheckout(ctx context.Context, env ops.Env, orderID uuid.UUID) error {
 	rows, err := env.Q.OrderServiceStaff(ctx, dbgen.OrderServiceStaffParams{StoreID: env.Caller.StoreID, OrderID: orderID})
 	if err != nil {
 		return err
 	}
 	staffIDs := make(map[uuid.UUID]bool, len(rows))
+	staffList := make([]uuid.UUID, 0, len(rows))
 	for _, id := range rows {
 		if id != nil {
 			staffIDs[*id] = true
+			staffList = append(staffList, *id)
 		}
 	}
 	if len(staffIDs) == 0 {
@@ -60,7 +62,7 @@ func AdvanceAfterCheckout(ctx context.Context, env ops.Env, orderID uuid.UUID) e
 	for _, queue := range queues {
 		queueByID[queue.ID] = queue
 	}
-	serving, err := env.Q.LockServingRotationTurnsByOrder(ctx, dbgen.LockServingRotationTurnsByOrderParams{StoreID: env.Caller.StoreID, OrderID: orderID})
+	serving, err := env.Q.LockCheckoutRotationTurns(ctx, dbgen.LockCheckoutRotationTurnsParams{StoreID: env.Caller.StoreID, OrderID: orderID, StaffIds: staffList})
 	if err != nil {
 		return err
 	}
@@ -77,7 +79,7 @@ func AdvanceAfterCheckout(ctx context.Context, env ops.Env, orderID uuid.UUID) e
 			seen[key] = map[uuid.UUID]bool{}
 			order = append(order, key)
 		}
-		if !staffIDs[row.StaffID] {
+		if row.ServingOrderID != nil && !staffIDs[row.StaffID] {
 			continue
 		}
 		if seen[key][row.StaffID] {
@@ -98,7 +100,7 @@ func AdvanceAfterCheckout(ctx context.Context, env ops.Env, orderID uuid.UUID) e
 				continue
 			}
 			turn := &turns[index]
-			if turn.turn.Status != StatusServing || turn.turn.ServingOrderID == nil || *turn.turn.ServingOrderID != orderID {
+			if turn.turn.Status != StatusServing {
 				continue
 			}
 			from := turn.turn.Position
