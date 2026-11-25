@@ -372,7 +372,7 @@ async function handover() {
           </span>
           <span v-else class="grid size-9 shrink-0 place-items-center rounded-full bg-tag-gray font-semibold" aria-hidden="true">{{ displayName(row.customer).slice(0, 1) }}</span>
           <div class="min-w-0">
-            <p class="flex flex-wrap items-center gap-1.5">
+            <p class="flex flex-wrap items-center gap-2">
               <button type="button" class="min-w-0 text-start font-semibold break-all hover:underline" @click.stop="openDetail(row.customer.id)">{{ displayName(row.customer) }}</button>
               <span v-for="label in row.customer.active_safety_labels" :key="label.id" class="tag bg-tag-red">{{ labelNames[label.kind] || '安全标签' }}</span>
             </p>
@@ -384,7 +384,7 @@ async function handover() {
         </div>
         <div class="min-w-0">
           <template v-if="row.days_since_last_visit !== null && row.days_since_last_visit !== undefined">
-            <p class="flex flex-wrap items-center gap-1.5">
+            <p class="flex flex-wrap items-center gap-2">
               <span class="tabular-nums">{{ sinceText(row.days_since_last_visit) }}</span>
               <span v-if="row.overdue_days" class="tag bg-tag-yellow">晚了 {{ row.overdue_days }} 天</span>
             </p>

@@ -27,7 +27,7 @@ function move(event: KeyboardEvent, step: number) {
 </script>
 
 <template>
-  <div role="radiogroup" :aria-label="label" class="flex flex-wrap gap-1.5">
+  <div role="radiogroup" :aria-label="label" class="flex flex-wrap gap-2">
     <UButton
       v-for="m in items"
       :key="m.value"

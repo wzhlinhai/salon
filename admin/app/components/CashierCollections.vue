@@ -78,11 +78,11 @@ async function submitChange() {
   <UModal v-model:open="open" title="收款记录" description="结账时按收款方式自动登记，撤单时自动撤销。这里的退款、撤销只改收款记录，不改单的实收和业绩；退钱给顾客请走撤单或售后。">
     <template #body>
       <div class="space-y-4">
-        <p class="rounded-card bg-side px-3 py-2.5 text-sm">{{ summary }}</p>
+        <p class="rounded-card bg-side px-3 py-2 text-sm">{{ summary }}</p>
         <div data-testid="collections" class="box overflow-hidden p-0">
           <ListSkeleton v-if="loading && !items.length" :rows="2" />
-          <p v-else-if="!items.length" class="px-3 py-2.5 text-sm text-muted">这张单没有收款记录（卡扣、团购和红包不登记收款）</p>
-          <div v-for="c in items" :key="c.id" :data-collection="c.id" class="border-t border-default px-3 py-2.5 text-sm first:border-t-0">
+          <p v-else-if="!items.length" class="px-3 py-2 text-sm text-muted">这张单没有收款记录（卡扣、团购和红包不登记收款）</p>
+          <div v-for="c in items" :key="c.id" :data-collection="c.id" class="border-t border-default px-3 py-2 text-sm first:border-t-0">
             <p class="flex flex-wrap items-center gap-x-3 gap-y-1">
               <span>{{ channelNames[c.channel] ?? c.channel }}</span>
               <span class="font-medium tabular-nums">{{ yuanFixed(c.amount) }}</span>
@@ -90,7 +90,7 @@ async function submitChange() {
               <span class="ms-auto text-meta text-muted tabular-nums">{{ formatStamp(c.updated_at) }}</span>
             </p>
             <p v-if="c.external_ref" class="mt-0.5 text-meta text-muted">流水号 {{ c.external_ref }}</p>
-            <div v-if="can('payment.collect') && (canRefund(c) || canCancel(c))" class="mt-1 -mx-1.5 flex gap-1">
+            <div v-if="can('payment.collect') && (canRefund(c) || canCancel(c))" class="mt-1 -mx-2 flex gap-1">
               <UButton v-if="canRefund(c)" size="sm" color="neutral" variant="ghost" :aria-label="`登记退款 ${yuanFixed(c.amount)}`" @click="editChange(c, 'refund')">登记退款</UButton>
               <UButton v-if="canCancel(c)" size="sm" color="neutral" variant="ghost" :aria-label="`撤销收款 ${yuanFixed(c.amount)}`" @click="editChange(c, 'cancel')">撤销</UButton>
             </div>

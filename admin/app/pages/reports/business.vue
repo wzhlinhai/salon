@@ -165,11 +165,11 @@ function cell(value: string | number) {
           <table class="w-full text-sm tabular-nums" data-testid="business-table">
             <thead class="border-b border-default text-sm text-muted">
               <tr>
-                <th rowspan="2" scope="col" class="sticky left-0 bg-page px-3 py-1.5 text-left font-normal">{{ report.granularity === 'day' ? '日期' : '月份' }}</th>
+                <th rowspan="2" scope="col" class="sticky left-0 bg-page px-3 py-2 text-left font-normal">{{ report.granularity === 'day' ? '日期' : '月份' }}</th>
                 <th rowspan="2" scope="col" class="px-3 text-right font-normal whitespace-nowrap">实收</th>
                 <th rowspan="2" scope="col" class="px-3 text-right font-normal whitespace-nowrap">办卡充值</th>
-                <th :colspan="onSiteColumns.length" scope="colgroup" class="border-l border-default px-3 pt-1.5 text-center font-normal">现场收款</th>
-                <th :colspan="nonSiteColumns.length" scope="colgroup" class="border-l border-default px-3 pt-1.5 text-center font-normal">非现场</th>
+                <th :colspan="onSiteColumns.length" scope="colgroup" class="border-l border-default px-3 pt-2 text-center font-normal">现场收款</th>
+                <th :colspan="nonSiteColumns.length" scope="colgroup" class="border-l border-default px-3 pt-2 text-center font-normal">非现场</th>
                 <th rowspan="2" scope="col" class="border-l border-default px-3 text-right font-normal whitespace-nowrap">挂账还款</th>
                 <th rowspan="2" scope="col" class="px-3 text-right font-normal whitespace-nowrap">售后退款</th>
                 <th rowspan="2" scope="col" class="px-3 text-right font-normal whitespace-nowrap">客数</th>
@@ -177,14 +177,14 @@ function cell(value: string | number) {
                 <th rowspan="2" scope="col" class="px-3 text-right font-normal whitespace-nowrap">撤单</th>
               </tr>
               <tr>
-                <th v-for="(c, i) in onSiteColumns" :key="c.method" scope="col" class="px-3 py-1.5 text-right font-normal whitespace-nowrap" :class="!i && 'border-l border-default'">{{ c.label }}</th>
-                <th v-for="(c, i) in nonSiteColumns" :key="c.method" scope="col" class="px-3 py-1.5 text-right font-normal whitespace-nowrap" :class="!i && 'border-l border-default'">{{ c.label }}</th>
+                <th v-for="(c, i) in onSiteColumns" :key="c.method" scope="col" class="px-3 py-2 text-right font-normal whitespace-nowrap" :class="!i && 'border-l border-default'">{{ c.label }}</th>
+                <th v-for="(c, i) in nonSiteColumns" :key="c.method" scope="col" class="px-3 py-2 text-right font-normal whitespace-nowrap" :class="!i && 'border-l border-default'">{{ c.label }}</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="row in rows" :key="row.period" class="row-hover border-t border-default" :data-period="row.period">
                 <th scope="row" class="sticky left-0 bg-page px-3 py-2 text-left font-normal whitespace-nowrap">
-                  {{ row.period }}<span v-if="report.granularity === 'day'" class="ms-1.5 text-xs text-dimmed">{{ weekdayOf(row.period) }}</span>
+                  {{ row.period }}<span v-if="report.granularity === 'day'" class="ms-2 text-xs text-dimmed">{{ weekdayOf(row.period) }}</span>
                 </th>
                 <td class="px-3 text-right font-medium whitespace-nowrap" :class="cell(row.service_revenue)" data-col="service_revenue">{{ yuanCell(row.service_revenue) }}</td>
                 <td class="px-3 text-right whitespace-nowrap" :class="cell(row.sales_revenue)" data-col="sales_revenue">{{ yuanCell(row.sales_revenue) }}</td>

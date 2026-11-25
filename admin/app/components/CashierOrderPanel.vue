@@ -495,7 +495,7 @@ defineExpose({ select, clear, refresh, voided })
           <div
             v-for="item in order.items.filter(i => !i.removed_at)"
             :key="item.id"
-            class="group/row space-y-2 border-t border-default px-3 py-2.5 text-sm first:border-t-0"
+            class="group/row space-y-2 border-t border-default px-3 py-2 text-sm first:border-t-0"
             :data-order-item="item.item_name"
           >
             <div class="flex items-center gap-2">
@@ -536,7 +536,7 @@ defineExpose({ select, clear, refresh, voided })
         <div v-if="canGroupbuy && order.groupbuy.length" data-testid="order-groupbuy">
           <h2 class="sec">关联团购券</h2>
           <div class="box overflow-hidden p-0">
-            <div v-for="coupon in order.groupbuy" :key="coupon.redemption_id" class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0">
+            <div v-for="coupon in order.groupbuy" :key="coupon.redemption_id" class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-default px-3 py-2 text-sm first:border-t-0">
               <span class="font-medium">{{ coupon.deal_name }}</span>
               <span class="tag bg-tag-gray">{{ platformLabel(coupon.platform) }}</span>
               <span class="text-muted tabular-nums">购买价 {{ coupon.purchase_price }} · 门店标价 {{ coupon.store_price }}</span>
@@ -553,7 +553,7 @@ defineExpose({ select, clear, refresh, voided })
           <span v-if="previewLoading" class="text-meta text-muted">试算中…</span>
         </div>
         <USelect v-model="selectedCardID" :items="[{ label: '不使用卡', value: NONE }, ...cardItems]" class="w-full" aria-label="计价卡" @update:model-value="previewCheckout" />
-        <dl class="space-y-1.5 border-t border-default pt-3 text-sm tabular-nums">
+        <dl class="space-y-2 border-t border-default pt-3 text-sm tabular-nums">
           <div class="flex justify-between"><dt class="text-muted">应收</dt><dd>{{ yuanFixed(order.receivable) }}</dd></div>
           <div class="flex justify-between"><dt class="text-muted">实收</dt><dd>{{ yuanFixed(preview?.net ?? order.net) }}</dd></div>
           <template v-if="preview">
@@ -561,7 +561,7 @@ defineExpose({ select, clear, refresh, voided })
             <div v-if="countTotal" class="flex justify-between"><dt class="text-muted">次卡抵扣</dt><dd>-{{ yuanFixed(countTotal / 100) }}</dd></div>
             <div class="flex items-baseline justify-between border-t border-default pt-2 font-semibold">
               <dt>现场补差</dt>
-              <dd class="text-xl">¥<span data-testid="cash-expected">{{ expectedCash }}</span></dd>
+              <dd class="figure">¥<span data-testid="cash-expected">{{ expectedCash }}</span></dd>
             </div>
           </template>
         </dl>

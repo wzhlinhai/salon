@@ -69,18 +69,18 @@ function offText(differences: components['schemas']['MethodDifference'][]) {
       <table class="w-full">
         <thead>
           <tr class="border-b border-default text-meta text-muted">
-            <th class="py-1.5 text-start font-normal">方式</th>
-            <th class="py-1.5 text-end font-normal">系统</th>
-            <th class="py-1.5 text-end font-normal">实际</th>
-            <th class="py-1.5 text-end font-normal">差异</th>
+            <th class="py-2 text-start font-normal">方式</th>
+            <th class="py-2 text-end font-normal">系统</th>
+            <th class="py-2 text-end font-normal">实际</th>
+            <th class="py-2 text-end font-normal">差异</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-default">
           <tr v-for="d in detail.current.differences" :key="d.method">
-            <td class="py-1.5">{{ d.method === 'cash' ? '现金清点' : d.label }}</td>
-            <td class="py-1.5 text-end tabular-nums" :class="zeroText(d.system) ? 'text-dimmed' : ''">{{ yuanFixed(d.system) }}</td>
-            <td class="py-1.5 text-end tabular-nums" :class="zeroText(d.actual) ? 'text-dimmed' : ''">{{ yuanFixed(d.actual) }}</td>
-            <td class="py-1.5 text-end tabular-nums">
+            <td class="py-2">{{ d.method === 'cash' ? '现金清点' : d.label }}</td>
+            <td class="py-2 text-end tabular-nums" :class="zeroText(d.system) ? 'text-dimmed' : ''">{{ yuanFixed(d.system) }}</td>
+            <td class="py-2 text-end tabular-nums" :class="zeroText(d.actual) ? 'text-dimmed' : ''">{{ yuanFixed(d.actual) }}</td>
+            <td class="py-2 text-end tabular-nums">
               <span v-if="Number(d.difference) === 0" class="text-dimmed">对上了</span>
               <span v-else class="font-medium text-ink-red">{{ signed(d.difference) }}</span>
             </td>
@@ -93,7 +93,7 @@ function offText(differences: components['schemas']['MethodDifference'][]) {
     <section v-else class="space-y-2" data-testid="close-preview">
       <div class="sec">系统应收</div>
       <ul class="divide-y divide-default border-y border-default">
-        <li v-for="l in figures.on_site" :key="l.method" class="flex justify-between py-1.5">
+        <li v-for="l in figures.on_site" :key="l.method" class="flex justify-between py-2">
           <span>{{ l.label }}</span>
           <span class="tabular-nums" :class="zeroText(l.amount) ? 'text-dimmed' : ''">{{ yuanFixed(l.amount) }}</span>
         </li>

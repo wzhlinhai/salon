@@ -109,9 +109,9 @@ onMounted(load)
       <UButton v-if="can('card.sell') && !merged" size="sm" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto" @click="editIssue">发放红包</UButton>
     </div>
     <div class="box overflow-hidden p-0">
-      <p v-if="loading" class="px-3 py-2.5 text-sm text-muted">正在读取红包…</p>
-      <p v-else-if="!packets.length" class="px-3 py-2.5 text-sm text-muted">暂无红包</p>
-      <div v-for="packet in packets" :key="packet.id" :data-red-packet="packet.id" class="group/row space-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0" :class="packet.status === 'available' ? '' : 'text-muted'">
+      <p v-if="loading" class="px-3 py-2 text-sm text-muted">正在读取红包…</p>
+      <p v-else-if="!packets.length" class="px-3 py-2 text-sm text-muted">暂无红包</p>
+      <div v-for="packet in packets" :key="packet.id" :data-red-packet="packet.id" class="group/row space-y-1 border-t border-default px-3 py-2 text-sm first:border-t-0" :class="packet.status === 'available' ? '' : 'text-muted'">
         <p class="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span class="tag bg-tag-gray">{{ packet.kind === 'sold' ? '卖' : '送' }}</span>
           <span class="font-medium tabular-nums"><span class="font-normal text-muted">面额</span> {{ yuanFixed(packet.face_value) }}</span>
@@ -121,7 +121,7 @@ onMounted(load)
         <p v-if="packet.price" class="text-meta text-muted">售价 {{ yuanFixed(packet.price) }} · 业绩归属人：{{ packet.sales_staff.map(s => s.name).join('、') }}</p>
         <p v-if="packet.order_id" class="text-meta text-muted">已用单据 {{ packet.order_id }} · 抵扣 {{ yuanFixed(packet.used_amount) }}</p>
         <p v-if="packet.revoke_reason" class="text-meta text-muted">撤回原因：{{ packet.revoke_reason }}</p>
-        <UButton v-if="can('card.adjust') && (packet.status === 'available' || packet.status === 'expired')" size="sm" color="error" variant="ghost" class="-mx-1.5" @click="editRevoke(packet)">撤回</UButton>
+        <UButton v-if="can('card.adjust') && (packet.status === 'available' || packet.status === 'expired')" size="sm" color="error" variant="ghost" class="-mx-2" @click="editRevoke(packet)">撤回</UButton>
       </div>
     </div>
   </section>

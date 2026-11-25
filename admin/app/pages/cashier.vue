@@ -348,12 +348,12 @@ onMounted(init)
         <h2 class="sec">挂单<span class="ms-1 font-normal text-dimmed">{{ openOrders.length }}</span></h2>
         <div class="border-y border-default" data-testid="open-orders">
           <ListSkeleton v-if="ordersLoading && !openOrders.length" :rows="3" />
-          <p v-else-if="!openOrders.length" class="px-3 py-2.5 text-sm text-muted">暂无挂单。顾客到店开单后会挂在这里，做完再结账。</p>
+          <p v-else-if="!openOrders.length" class="px-3 py-2 text-sm text-muted">暂无挂单。顾客到店开单后会挂在这里，做完再结账。</p>
           <button
             v-for="order in openOrders"
             :key="order.id"
             type="button"
-            class="block w-full border-t border-default px-3 py-2.5 text-left first:border-t-0"
+            class="block w-full border-t border-default px-3 py-2 text-left first:border-t-0"
             :class="order.id === selectedOrderID ? 'bg-selected shadow-[inset_2px_0_0_var(--ui-primary)]' : 'hover:bg-hover'"
             :aria-current="order.id === selectedOrderID ? 'true' : undefined"
             :data-order-id="order.id"
@@ -365,7 +365,7 @@ onMounted(init)
               <span class="truncate font-medium" :title="customerName(order.customer_id)">{{ customerName(order.customer_id) }}</span>
               <span class="font-medium tabular-nums">{{ yuanFixed(order.receivable) }}</span>
             </div>
-            <div class="mt-0.5 flex items-center gap-1.5 text-meta text-muted">
+            <div class="mt-0.5 flex items-center gap-2 text-meta text-muted">
               <span v-if="order.backfill" data-testid="backfill-badge" class="tag bg-tag-yellow">补录 {{ order.business_date }}</span>
               <span class="truncate" :title="orderItemNames(order)">{{ orderItemNames(order) }}</span>
             </div>

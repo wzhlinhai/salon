@@ -4,7 +4,7 @@ defineProps<{ title: string, icon: string }>()
 </script>
 
 <template>
-  <section class="min-w-0 rounded-card bg-white shadow-card">
+  <section class="min-w-0 rounded-card bg-white shadow-paper">
     <header class="flex min-h-11 items-center gap-2 px-4 pt-1 text-sm font-medium text-muted">
       <UIcon :name="icon" class="size-4 shrink-0" aria-hidden="true" />
       <h2>{{ title }}</h2>

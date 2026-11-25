@@ -7,7 +7,7 @@ defineProps<{ label: string }>()
 <template>
   <div role="group" :aria-label="label">
     <div class="text-sm font-semibold text-highlighted">{{ label }}</div>
-    <div class="mt-2 flex min-w-0 flex-col gap-2.5">
+    <div class="mt-2 flex min-w-0 flex-col gap-2">
       <slot />
     </div>
   </div>

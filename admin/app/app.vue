@@ -218,11 +218,11 @@ const searchGroups = computed(() => {
         :max-size="20"
         :collapsed-size="4.5"
         class="bg-side"
-        :ui="{ header: 'h-auto px-2 pt-2 pb-1.5', body: 'side-scroll gap-px px-2 py-0 text-muted', footer: 'px-2 pb-3 pt-2' }"
+        :ui="{ header: 'h-auto px-2 pt-2 pb-2', body: 'side-scroll gap-px px-2 py-0 text-muted', footer: 'px-2 pb-3 pt-2' }"
       >
         <template #header="{ collapsed }">
-          <div class="flex min-h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 font-semibold" :class="collapsed ? 'justify-center px-0' : ''">
-            <span class="grid size-[22px] shrink-0 place-items-center rounded-sm bg-inverted text-xs text-white" aria-hidden="true">{{ storeName.slice(0, 1) || '店' }}</span>
+          <div class="flex min-h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 py-2 font-semibold" :class="collapsed ? 'justify-center px-0' : ''">
+            <span class="grid size-[22px] shrink-0 place-items-center rounded-md bg-inverted text-xs text-white" aria-hidden="true">{{ storeName.slice(0, 1) || '店' }}</span>
             <span v-if="!collapsed" data-testid="store-name" class="truncate">{{ storeName }}</span>
           </div>
         </template>
@@ -239,7 +239,7 @@ const searchGroups = computed(() => {
             <UIcon name="i-lucide-search" class="side-icon" aria-hidden="true" />
             <template v-if="!collapsed">
               <span class="truncate">搜索</span>
-              <kbd class="ms-auto font-mono text-2xs text-dimmed">Ctrl K</kbd>
+              <kbd class="ms-auto font-mono text-xs text-dimmed">Ctrl K</kbd>
             </template>
           </button>
           <NuxtLink
@@ -261,7 +261,7 @@ const searchGroups = computed(() => {
               <button
                 v-if="!collapsed"
                 type="button"
-                class="group/fold flex items-center gap-1 rounded-md px-2 pt-3.5 pb-1 text-start text-xs font-medium text-dimmed hover:text-muted"
+                class="group/fold flex items-center gap-1 rounded-md px-2 pt-4 pb-1 text-start text-xs font-medium text-dimmed hover:text-muted"
                 :class="holdsActive(group) ? 'cursor-default' : ''"
                 :aria-expanded="groupOpen(group)"
                 :aria-disabled="holdsActive(group) || undefined"
@@ -322,10 +322,10 @@ const searchGroups = computed(() => {
                 size="sm"
                 class="me-0.5 text-muted"
               />
-              <p class="flex min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-sm text-muted">
+              <p class="flex min-w-0 items-center gap-1 rounded-md px-2 py-0.5 text-sm text-muted">
                 <UIcon v-if="pageIcon" :name="pageIcon" class="size-4 shrink-0" aria-hidden="true" />
                 <template v-if="parentCrumb">
-                  <NuxtLink :to="parentCrumb.to" class="rounded hover:text-default hover:underline" data-testid="parent-crumb">{{ parentCrumb.label }}</NuxtLink>
+                  <NuxtLink :to="parentCrumb.to" class="rounded-md hover:text-default hover:underline" data-testid="parent-crumb">{{ parentCrumb.label }}</NuxtLink>
                   <span class="text-dimmed" aria-hidden="true">/</span>
                 </template>
                 <span class="truncate">{{ pageTitle }}</span>
@@ -348,8 +348,8 @@ const searchGroups = computed(() => {
                     :aria-checked="homeSwitcherSelected === option.value"
                     :aria-label="option.label"
                     :tabindex="homeSwitcherSelected === option.value ? 0 : -1"
-                    class="inline-flex min-h-6 items-center rounded px-2.5 text-sm"
-                    :class="homeSwitcherSelected === option.value ? 'bg-white text-default shadow-raised' : 'text-muted'"
+                    class="inline-flex min-h-6 items-center rounded-md px-2 text-sm"
+                    :class="homeSwitcherSelected === option.value ? 'bg-white text-default shadow-line' : 'text-muted'"
                     @click="homeSwitcherSelected = option.value"
                     @keydown.left.prevent="moveHome($event, -1)"
                     @keydown.right.prevent="moveHome($event, 1)"
@@ -393,7 +393,7 @@ const searchGroups = computed(() => {
         aria-label="吩咐 AI"
         title="吩咐 AI"
         data-testid="ai-fab"
-        class="fixed right-5 bottom-5 z-40 grid size-12 place-items-center rounded-full bg-white text-default shadow-float transition-colors hover:bg-side"
+        class="fixed right-5 bottom-5 z-40 grid size-12 place-items-center rounded-full bg-white text-default shadow-lift transition-colors hover:bg-side"
         @click="aiOpen = true"
       >
         <AiMark class="size-8" />

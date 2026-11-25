@@ -88,10 +88,10 @@ async function save() {
         v-for="deal in deals"
         :key="deal.id"
         :data-deal="deal.name"
-        class="group/row flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0 hover:bg-hover"
+        class="group/row flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-default px-3 py-2 text-sm first:border-t-0 hover:bg-hover"
         :class="deal.active ? '' : 'text-dimmed'"
       >
-        <div class="flex min-w-48 flex-1 items-center gap-1.5">
+        <div class="flex min-w-48 flex-1 items-center gap-2">
           <span class="font-medium">{{ deal.name }}</span>
           <span class="tag bg-tag-gray">{{ platformLabel(deal.platform) }}</span>
           <span v-if="!deal.active" class="tag bg-tag-gray">停用</span>

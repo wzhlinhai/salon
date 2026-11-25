@@ -10,7 +10,7 @@ const shownArt = computed(() => route.meta.art ? undefined : props.art)
 </script>
 
 <template>
-  <div class="flex flex-col items-center gap-1.5 px-4 py-12 text-center" data-testid="empty-state">
+  <div class="flex flex-col items-center gap-2 px-4 py-12 text-center" data-testid="empty-state">
     <SpotArt v-if="shownArt" :name="shownArt" class="mb-2 w-36" />
     <UIcon v-else-if="icon && !art" :name="icon" class="mb-1 size-6 text-dimmed" aria-hidden="true" />
     <p class="font-medium">{{ title }}</p>

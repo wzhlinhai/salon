@@ -121,7 +121,7 @@ function sealNow() {
 
       <div v-else-if="done" class="flex flex-col items-center gap-4 py-2 text-center" data-testid="close-done">
         <UIcon name="i-lucide-circle-check" class="size-12 text-muted" aria-hidden="true" />
-        <p class="text-lead font-semibold">{{ offLines.length ? `有 ${offLines.length} 项对不上` : '都对上了' }}</p>
+        <p class="text-sm font-semibold">{{ offLines.length ? `有 ${offLines.length} 项对不上` : '都对上了' }}</p>
         <ul class="w-full divide-y divide-default border-y border-default text-start">
           <li v-for="d in done.differences" :key="d.method" class="flex items-center justify-between px-1 py-2">
             <span>{{ d.label }}</span>

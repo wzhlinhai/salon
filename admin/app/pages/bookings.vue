@@ -652,7 +652,7 @@ function actorLabel(actor: Actor) {
         <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" aria-label="前一天" @click="moveDay(-1)" />
         <UButton icon="i-lucide-chevron-right" color="neutral" variant="ghost" aria-label="后一天" @click="moveDay(1)" />
       </div>
-      <h2 class="text-lg font-semibold" data-testid="booking-day-title">{{ dayTitle }}</h2>
+      <h2 class="text-base font-semibold" data-testid="booking-day-title">{{ dayTitle }}</h2>
       <span v-if="day && day === businessDate" class="tag bg-tag-gray">今天</span>
       <UButton v-else color="neutral" variant="outline" size="sm" @click="goToday">今天</UButton>
       <DateInput v-model="day" size="sm" aria-label="营业日" class="ms-2 w-36" />
@@ -662,7 +662,7 @@ function actorLabel(actor: Actor) {
 
     <div v-if="businessDate" ref="grid" class="box h-[calc(100dvh-19.5rem)] min-h-96 overflow-auto p-0" data-booking-grid>
       <div v-if="dayEmpty" class="pointer-events-none sticky top-16 left-0 z-30 flex h-0 justify-center">
-        <p class="h-fit rounded-md bg-white px-3 py-1.5 text-meta text-muted shadow-card" data-testid="booking-day-empty">这天还没有预约。点空白时段，或右上角「新建预约」</p>
+        <p class="h-fit rounded-md bg-white px-3 py-2 text-meta text-muted shadow-paper" data-testid="booking-day-empty">这天还没有预约。点空白时段，或右上角「新建预约」</p>
       </div>
       <div class="flex min-w-max">
         <div class="w-14 shrink-0">
@@ -671,7 +671,7 @@ function actorLabel(actor: Actor) {
             <div
               v-for="slot in hourSlots"
               :key="slot.minutes"
-              class="absolute right-2 text-2xs text-dimmed tabular-nums"
+              class="absolute right-2 text-xs text-dimmed tabular-nums"
               :class="slot.top === 0 ? 'translate-y-0.5' : '-translate-y-1/2'"
               :style="{ top: `${slot.top}px` }"
             >
@@ -705,7 +705,7 @@ function actorLabel(actor: Actor) {
               v-for="entry in visibleEntries(person.id)"
               :key="entry.id"
               type="button"
-              class="absolute inset-x-1 z-10 flex flex-col justify-start overflow-hidden rounded-tag px-1.5 py-0.5 text-left text-xs text-ink"
+              class="absolute inset-x-1 z-10 flex flex-col justify-start overflow-hidden rounded-md px-2 py-0.5 text-left text-xs text-ink"
               :class="entryClass(entry)"
               :style="entryStyle(entry)"
               :data-entry="entry.id"
@@ -736,12 +736,12 @@ function actorLabel(actor: Actor) {
             type="button"
             :aria-label="choice.label"
             :aria-describedby="`chooser-${choice.label}`"
-            class="flex w-full items-center gap-4 rounded-md px-4 py-3.5 text-left ring-1 ring-accented ring-inset hover:bg-hover focus-visible:outline-0 focus-visible:ring-inverted"
+            class="flex w-full items-center gap-4 rounded-md px-4 py-4 text-left ring-1 ring-accented ring-inset hover:bg-hover focus-visible:outline-0 focus-visible:ring-inverted"
             @click="choice.pick"
           >
             <UIcon :name="choice.icon" class="size-5 shrink-0 text-muted" aria-hidden="true" />
             <span class="min-w-0 flex-1">
-              <span class="block text-[15px] font-semibold text-highlighted">{{ choice.label }}</span>
+              <span class="block text-sm font-semibold text-highlighted">{{ choice.label }}</span>
               <span :id="`chooser-${choice.label}`" class="mt-0.5 block text-sm text-muted">{{ choice.hint }}</span>
             </span>
             <UIcon name="i-lucide-chevron-right" class="size-4 shrink-0 text-dimmed" aria-hidden="true" />

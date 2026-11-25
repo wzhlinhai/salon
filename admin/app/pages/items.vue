@@ -145,10 +145,10 @@ const groups = computed(() => {
           v-for="item in group.items"
           :key="item.id"
           :data-item="item.name"
-          class="group/row flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-default px-3 py-2.5 text-sm first:border-t-0 hover:bg-hover"
+          class="group/row flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-default px-3 py-2 text-sm first:border-t-0 hover:bg-hover"
           :class="item.active ? '' : 'text-dimmed'"
         >
-          <div class="flex min-w-40 flex-1 items-center gap-1.5">
+          <div class="flex min-w-40 flex-1 items-center gap-2">
             <span class="font-medium">{{ item.name }}</span>
             <span v-if="item.kind === 'goods'" class="tag bg-tag-gray">卖品</span>
             <span v-if="!item.discountable" class="tag bg-tag-gray">不打折项目</span>
@@ -185,7 +185,7 @@ const groups = computed(() => {
               <UButton :disabled="index === positionRows.length - 1" icon="i-lucide-arrow-down" color="neutral" variant="ghost" aria-label="下移" @click="move(index, 1)" />
               <UButton color="error" variant="ghost" icon="i-lucide-x" aria-label="移除岗位" @click="positionRows.splice(index, 1)" />
             </div>
-            <UButton color="neutral" icon="i-lucide-plus" class="-ms-2.5 self-start" variant="ghost" @click="positionRows.push({ position_id: positions.find(p => p.active)?.id ?? '', required: false, share_percent: '' })">添加岗位</UButton>
+            <UButton color="neutral" icon="i-lucide-plus" class="-ms-2 self-start" variant="ghost" @click="positionRows.push({ position_id: positions.find(p => p.active)?.id ?? '', required: false, share_percent: '' })">添加岗位</UButton>
           </FieldGroup>
           <FieldGroup label="级别价">
             <div v-for="(row, index) in levelRows" :key="index" class="flex items-center gap-2" data-testid="level-row">
@@ -193,7 +193,7 @@ const groups = computed(() => {
               <UInput v-model="row.price" :aria-label="`级别价${index + 1}`" inputmode="decimal" class="w-32" />
               <UButton color="error" variant="ghost" icon="i-lucide-x" aria-label="移除级别价" @click="levelRows.splice(index, 1)" />
             </div>
-            <UButton color="neutral" icon="i-lucide-plus" class="-ms-2.5 self-start" variant="ghost" @click="levelRows.push({ level_id: levels.find(l => l.active)?.id ?? '', price: '0.00' })">添加级别价</UButton>
+            <UButton color="neutral" icon="i-lucide-plus" class="-ms-2 self-start" variant="ghost" @click="levelRows.push({ level_id: levels.find(l => l.active)?.id ?? '', price: '0.00' })">添加级别价</UButton>
           </FieldGroup>
           <FieldGroup label="会员价">
             <div v-for="(row, index) in memberRows" :key="index" class="flex items-center gap-2" data-testid="member-row">
@@ -201,7 +201,7 @@ const groups = computed(() => {
               <UInput v-model="row.price" :aria-label="`会员价${index + 1}`" inputmode="decimal" class="w-32" />
               <UButton color="error" variant="ghost" icon="i-lucide-x" aria-label="移除会员价" @click="memberRows.splice(index, 1)" />
             </div>
-            <UButton color="neutral" icon="i-lucide-plus" class="-ms-2.5 self-start" variant="ghost" @click="memberRows.push({ card_type_id: cardTypes.find(t => t.active)?.id ?? '', price: '0.00' })">添加会员价</UButton>
+            <UButton color="neutral" icon="i-lucide-plus" class="-ms-2 self-start" variant="ghost" @click="memberRows.push({ card_type_id: cardTypes.find(t => t.active)?.id ?? '', price: '0.00' })">添加会员价</UButton>
           </FieldGroup>
           <USwitch v-if="editing" v-model="active" label="启用项目" />
         </div>

@@ -75,7 +75,7 @@ function cell(value: string) {
           <table class="w-full text-sm tabular-nums" data-testid="debt-table">
             <thead class="border-b border-default text-sm text-muted">
               <tr>
-                <th scope="col" class="px-3 py-1.5 text-left font-normal">来源</th>
+                <th scope="col" class="px-3 py-2 text-left font-normal">来源</th>
                 <th scope="col" class="px-3 text-right font-normal">欠款</th>
                 <th scope="col" class="px-3 text-right font-normal">已还</th>
                 <th scope="col" class="px-3 text-right font-normal">未还</th>

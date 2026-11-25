@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
+@import "./fonts.css";
 
 /* 视觉照 Notion 现在的界面（2026-11 实测公开页的计算样式，记录在 DESIGN.md「Notion 实测值」）：
    内容区纯白、侧栏暖灰、墨色 #2c2c2b、细线 #f0efed、低饱和标签色、墨色主按钮（店主 2026-11-23 选定，不用 Notion 蓝）。AI 不另起颜色。 */
@@ -40,26 +41,26 @@
   --color-notice: #fbf3db;
   --color-hatch: #f6f6f4;
 
-  /* 字号：在 Tailwind 的 xs(12) sm(14) 之外只加这几级。 */
-  --text-2xs: 11px;
+  /* 档位锁死（.dev/taste/tokens.md，DESIGN.md「档位」）：档外的值不许出现，scripts/check-tokens.mjs 在 CI 里拦。
+     字号 6 档：标题 32 text-title · 数字 20 text-figure · 区块 16 text-base · 正文 14 text-sm · 次要 13 text-meta · 注 12 text-xs。 */
   --text-meta: 13px;
-  --text-lead: 15px;
-  /* 标题是中文，不收字距：方块字本来就满格，收紧会挤。只有纯数字的 text-hero 收紧。 */
-  --text-greet: 26px;
+  --text-figure: 20px;
+  --text-figure--line-height: 1.3;
   --text-title: 32px;
   --text-title--line-height: 1.2;
-  --text-hero: 40px;
-  --text-hero--letter-spacing: -0.03em;
 
-  /* 圆角只有三级：标签 4、按钮输入框和悬停块 6（--ui-radius，rounded-md）、装东西的块 10（卡片、看板列、弹层、浅底块）。 */
-  --radius-tag: 4px;
-  --radius-card: 10px;
+  /* 三种字体各管一件事：宋体给标题和大数字（印出来的账本），文楷给手写的东西（顾客说的话、店员手记），其余全是系统黑体。 */
+  --font-serif: "Ledger Serif", "Noto Serif SC", "Source Han Serif SC", "Songti SC", SimSun, serif;
+  --font-hand: "Ledger Hand", "LXGW WenKai", "Kaiti SC", KaiTi, STKaiti, serif;
 
-  /* 投影：卡片用 1px 细线加一点点影子；浮层再深一档。 */
+  /* 圆角两档加胶囊：控件 6（--ui-radius，rounded-md），纸 12（rounded-card），胶囊和头像 rounded-full。 */
+  --radius-card: 12px;
+
+  /* 只有实物是纸，纸有两种：平放的纸 shadow-paper（小票、发型卡、卡面），拿起来的纸 shadow-lift（弹窗、菜单、侧滑、浮条）。
+     其余只用细线 shadow-line 或留白分开。 */
   --shadow-line: 0 0 0 1px rgba(42, 28, 0, 0.07);
-  --shadow-card: rgba(25, 25, 25, 0.027) 0 4px 12px, rgba(25, 25, 25, 0.02) 0 1px 2px, rgba(42, 28, 0, 0.07) 0 0 0 1px;
-  --shadow-float: rgba(25, 25, 25, 0.027) 0 8px 12px, rgba(25, 25, 25, 0.027) 0 2px 6px, rgba(42, 28, 0, 0.07) 0 0 0 1px;
-  --shadow-raised: 0 1px 2px rgba(15, 15, 15, 0.1);
+  --shadow-paper: 0 0 0 1px rgba(42, 28, 0, 0.07), 0 6px 16px rgba(25, 25, 25, 0.04);
+  --shadow-lift: 0 0 0 1px rgba(15, 15, 15, 0.08), 0 12px 40px rgba(15, 15, 15, 0.16);
 }
 
 :root {
@@ -86,21 +87,31 @@
   --ui-border-inverted: #2c2c2b;
 }
 
-/* 字体只用系统自带的，不打包网页字体（中文字体动辄几 MB）。数字和英文排在前面，中文字体只补汉字。
-   Windows 11 的 Segoe UI Variable 分 Text（小字号）和 Display（大标题）两种光学尺寸：正文用 Text，小字不发虚；
-   大标题用 Display。微软雅黑先取 UI 版，行高为界面收紧过，混排时不把行撑高。 */
+/* 界面文字用系统黑体。数字和英文排在前面，中文字体只补汉字。微软雅黑先取 UI 版，行高为界面收紧过。
+   宋体和文楷是自托管的切片字体（public/fonts，按 unicode-range 只下载用到的字），见 fonts.css。 */
 body {
   color: #2c2c2b;
   font: 14px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
-:is(.text-title, .text-hero, .text-greet) {
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+/* 页面标题一律宋体 600。 */
+h1 {
+  font-family: var(--font-serif);
+  font-weight: 600;
 }
-/* 楷体点缀（DESIGN.md 字）：只用在首页问候和登录标题，像手写的一句招呼。用系统自带的楷体（Windows 楷体、macOS 楷体-简），
-   不打包字体；楷体没有粗体，字重保持常规。写在上一条后面，同为普通样式，才盖得过标题的字体。 */
-.font-kai {
-  font-family: KaiTi, STKaiti, "Kaiti SC", "AR PL UKai CN", serif;
+
+/* 大数字：宋体 20 档，等宽数字。 */
+@utility figure {
+  font-family: var(--font-serif);
+  font-size: var(--text-figure);
+  line-height: 1.3;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 手写的东西：顾客说的话、店员手记。文楷只有常规字重。 */
+@utility said {
+  font-family: var(--font-hand);
   font-weight: 400;
 }
 
@@ -114,14 +125,14 @@ body {
 @utility box {
   background: #fff;
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-card);
-  padding: 14px 16px;
+  box-shadow: var(--shadow-paper);
+  padding: 16px;
 }
 
 /* 指标条：不包卡片，上下各一条细线，数字直接放在页面上。 */
 @utility stats {
   border-block: 1px solid var(--color-line);
-  padding: 14px 0;
+  padding: 16px 0;
 }
 
 /* 区块标题：照 Notion 页内标题，黑色半粗；右边可跟一句灰色说明（说明自己写 font-normal text-dimmed）。 */
@@ -140,7 +151,7 @@ body {
   }
 }
 
-/* 照 Notion 页面属性：左列灰字属性名 160px，右列值，每行 34px，没有分隔线。 */
+/* 照 Notion 页面属性：左列灰字属性名 160px，右列值，每行 36px，没有分隔线。 */
 @utility props {
   display: grid;
   grid-template-columns: minmax(0, 160px) minmax(0, 1fr);
@@ -150,7 +161,7 @@ body {
   & > dt {
     display: flex;
     align-items: center;
-    min-height: 34px;
+    min-height: 36px;
     padding: 0 6px;
     color: var(--ui-text-muted);
   }
@@ -158,7 +169,7 @@ body {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    min-height: 34px;
+    min-height: 36px;
     padding: 0 6px;
     color: var(--ui-text);
   }
@@ -192,13 +203,13 @@ body {
   }
 }
 
-/* Notion 标签：20px 高、4px 圆角。 */
+/* 标签：20px 高，控件圆角。 */
 @utility tag {
   display: inline-flex;
   align-items: center;
   height: 20px;
-  padding: 0 6px;
-  border-radius: var(--radius-tag);
+  padding: 0 8px;
+  border-radius: var(--ui-radius);
   font-size: 12px;
   white-space: nowrap;
   color: #2c2c2b;

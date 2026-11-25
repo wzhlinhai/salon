@@ -179,7 +179,7 @@ function signed(amount: string, reversal: boolean) {
           <table class="w-full text-sm tabular-nums" data-testid="staff-table">
             <thead class="border-b border-default text-sm text-muted">
               <tr>
-                <th scope="col" class="sticky left-0 bg-page px-3 py-1.5 text-left font-normal">员工</th>
+                <th scope="col" class="sticky left-0 bg-page px-3 py-2 text-left font-normal">员工</th>
                 <th v-for="c in shownMoneyColumns" :key="c.key" scope="col" class="px-3 text-right font-normal whitespace-nowrap">{{ c.label }}</th>
                 <th v-for="(c, i) in guestColumns" :key="c.key" scope="col" class="px-3 text-right font-normal whitespace-nowrap" :class="!i && 'border-l border-default'">{{ c.label }}</th>
                 <th scope="col" class="px-3 text-right font-normal whitespace-nowrap">服务项次</th>
@@ -238,7 +238,7 @@ function signed(amount: string, reversal: boolean) {
           <template v-else-if="tab === 'performance'">
             <EmptyState v-if="!entries.length && !detailLoading" title="这段时间没有业绩" />
             <ul v-else class="divide-y divide-default text-sm" data-testid="staff-performance-list">
-              <li v-for="e in entries" :key="e.id" class="py-2.5">
+              <li v-for="e in entries" :key="e.id" class="py-2">
                 <p class="flex items-center gap-2">
                   <span class="font-medium">{{ commissionSourceNames[e.kind] }}</span>
                   <span class="truncate text-muted">{{ e.item_name ?? performanceMethodNames[e.method] }}</span>
@@ -257,7 +257,7 @@ function signed(amount: string, reversal: boolean) {
           <template v-else>
             <EmptyState v-if="!commissions.length && !detailLoading" title="这段时间没有提成" />
             <ul v-else class="divide-y divide-default text-sm" data-testid="staff-commission-list">
-              <li v-for="c in commissions" :key="c.id" class="py-2.5">
+              <li v-for="c in commissions" :key="c.id" class="py-2">
                 <p class="flex items-center gap-2">
                   <span class="font-medium">{{ commissionSourceNames[c.source] }}</span>
                   <span v-if="c.explanation.origin.item" class="truncate text-muted">{{ c.explanation.origin.item.name }}</span>
