@@ -17,6 +17,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/perm"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
+	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 
 // Register 声明欠款查询、还款、历史欠款登记和对账操作。
@@ -27,6 +28,7 @@ func Register(r *ops.Registry) {
 		return RegisterHistoricalDebt(ctx, env, in)
 	}})
 	ops.Register(r, ops.Operation[DebtSummaryInput, Summary]{Name: "debt_summary", Summary: "本店挂账、历史欠款、已还及未还对账", Kind: ops.Read, Permission: perm.ReportView, AI: ops.AIDirect, Handle: debtSummary})
+	ops.Register(r, ops.Operation[OutstandingDebtsInput, OutstandingDebtList]{Name: "list_outstanding_debts", Summary: "列出本店还没还清的欠款，按欠款日期从早到晚", Kind: ops.Read, Permission: perm.ReportView, AlsoRequires: []ops.Permission{perm.CustomerView}, AI: ops.AIDirect, Handle: listOutstandingDebts})
 }
 
 // RecordOrderDebt 在调用者事务中为单上的一笔挂账登记欠款。
@@ -107,6 +109,73 @@ func listCustomerDebts(ctx context.Context, env ops.Env, in *ListCustomerDebtsIn
 		outstanding = outstanding.AddProduct(d.Outstanding, 1)
 	}
 	out.Totals = Totals{Amount: amount.Format(), Repaid: repaid.Format(), Outstanding: outstanding.Format()}
+	return out, nil
+}
+
+func listOutstandingDebts(ctx context.Context, env ops.Env, _ *OutstandingDebtsInput) (*OutstandingDebtList, error) {
+	rows, err := env.Q.ListOutstandingDebts(ctx, env.Caller.StoreID)
+	if err != nil {
+		return nil, err
+	}
+	out := &OutstandingDebtList{Items: []OutstandingDebt{}}
+	if len(rows) == 0 {
+		return out, nil
+	}
+	items, err := views(ctx, env, rows)
+	if err != nil {
+		return nil, err
+	}
+	customerIDs := make([]uuid.UUID, 0, len(rows))
+	orderIDs := []uuid.UUID{}
+	staffIDs := []uuid.UUID{}
+	for _, row := range rows {
+		customerIDs = append(customerIDs, row.CustomerID)
+		if row.OrderID != nil {
+			orderIDs = append(orderIDs, *row.OrderID)
+		}
+		staffIDs = append(staffIDs, row.RecordedBy)
+	}
+	customerRows, err := env.Q.GetCustomers(ctx, dbgen.GetCustomersParams{StoreID: env.Caller.StoreID, Ids: customerIDs})
+	if err != nil {
+		return nil, err
+	}
+	customerByID := make(map[uuid.UUID]dbgen.Customer, len(customerRows))
+	for _, c := range customerRows {
+		customerByID[c.ID] = c
+	}
+	itemNames := map[uuid.UUID][]string{}
+	lines, err := env.Q.ListDebtOrderItemNames(ctx, dbgen.ListDebtOrderItemNamesParams{StoreID: env.Caller.StoreID, OrderIds: orderIDs})
+	if err != nil {
+		return nil, err
+	}
+	for _, line := range lines {
+		itemNames[line.OrderID] = append(itemNames[line.OrderID], line.ItemName)
+	}
+	recorders, err := staff.References(ctx, env.Q, env.Caller.StoreID, staffIDs)
+	if err != nil {
+		return nil, err
+	}
+	for i, row := range rows {
+		c, ok := customerByID[row.CustomerID]
+		if !ok || !customers.CanView(env.Caller, c) {
+			continue
+		}
+		d := items[i]
+		names := []string{}
+		if d.Kind == "order" && d.OrderID != nil {
+			if listed := itemNames[*d.OrderID]; listed != nil {
+				names = listed
+			}
+		}
+		out.Items = append(out.Items, OutstandingDebt{
+			ID: d.ID, Kind: d.Kind, BusinessDate: d.BusinessDate,
+			Amount: d.Amount, Repaid: d.Repaid, Outstanding: d.Outstanding,
+			Note: d.Note, OrderID: d.OrderID,
+			Customer:   OutstandingDebtCustomer{ID: c.ID, Name: c.Name},
+			RecordedBy: recorders[d.RecordedBy],
+			ItemNames:  names,
+		})
+	}
 	return out, nil
 }
 

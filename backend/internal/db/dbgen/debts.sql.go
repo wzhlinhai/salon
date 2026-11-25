@@ -172,6 +172,42 @@ func (q *Queries) ListCustomerDebts(ctx context.Context, arg ListCustomerDebtsPa
 	return items, nil
 }
 
+const listDebtOrderItemNames = `-- name: ListDebtOrderItemNames :many
+SELECT order_id,item_name FROM order_items
+WHERE store_id=$1 AND order_id=ANY($2::uuid[]) AND removed_at IS NULL
+ORDER BY order_id,added_at,id
+`
+
+type ListDebtOrderItemNamesParams struct {
+	StoreID  uuid.UUID
+	OrderIds []uuid.UUID
+}
+
+type ListDebtOrderItemNamesRow struct {
+	OrderID  uuid.UUID
+	ItemName string
+}
+
+func (q *Queries) ListDebtOrderItemNames(ctx context.Context, arg ListDebtOrderItemNamesParams) ([]ListDebtOrderItemNamesRow, error) {
+	rows, err := q.db.Query(ctx, listDebtOrderItemNames, arg.StoreID, arg.OrderIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDebtOrderItemNamesRow
+	for rows.Next() {
+		var i ListDebtOrderItemNamesRow
+		if err := rows.Scan(&i.OrderID, &i.ItemName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDebtRepayments = `-- name: ListDebtRepayments :many
 SELECT tenant_id, store_id, id, debt_id, amount, method, business_date, repaid_by, at FROM debt_repayments WHERE store_id=$1 AND debt_id=ANY($2::uuid[]) ORDER BY id
 `
@@ -199,6 +235,46 @@ func (q *Queries) ListDebtRepayments(ctx context.Context, arg ListDebtRepayments
 			&i.Method,
 			&i.BusinessDate,
 			&i.RepaidBy,
+			&i.At,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOutstandingDebts = `-- name: ListOutstandingDebts :many
+SELECT d.tenant_id, d.store_id, d.id, d.customer_id, d.amount, d.business_date, d.order_id, d.order_payment_id, d.note, d.recorded_by, d.at FROM debts d
+WHERE d.store_id=$1
+  AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.store_id=$1 AND o.id=d.order_id AND o.status='voided')
+  AND d.amount > COALESCE((SELECT sum(r.amount) FROM debt_repayments r WHERE r.store_id=$1 AND r.debt_id=d.id), 0)
+ORDER BY d.business_date,d.id
+`
+
+func (q *Queries) ListOutstandingDebts(ctx context.Context, storeID uuid.UUID) ([]Debt, error) {
+	rows, err := q.db.Query(ctx, listOutstandingDebts, storeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Debt
+	for rows.Next() {
+		var i Debt
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.StoreID,
+			&i.ID,
+			&i.CustomerID,
+			&i.Amount,
+			&i.BusinessDate,
+			&i.OrderID,
+			&i.OrderPaymentID,
+			&i.Note,
+			&i.RecordedBy,
 			&i.At,
 		); err != nil {
 			return nil, err

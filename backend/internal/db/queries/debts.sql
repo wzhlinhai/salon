@@ -32,3 +32,15 @@ SELECT * FROM debts WHERE store_id=$1 AND order_id=$2 ORDER BY id FOR NO KEY UPD
 
 -- name: VoidedDebts :many
 SELECT d.id FROM debts d JOIN orders o ON o.id=d.order_id WHERE d.store_id=$1 AND d.id=ANY(sqlc.arg(debt_ids)::uuid[]) AND o.status='voided';
+
+-- name: ListOutstandingDebts :many
+SELECT d.* FROM debts d
+WHERE d.store_id=$1
+  AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.store_id=$1 AND o.id=d.order_id AND o.status='voided')
+  AND d.amount > COALESCE((SELECT sum(r.amount) FROM debt_repayments r WHERE r.store_id=$1 AND r.debt_id=d.id), 0)
+ORDER BY d.business_date,d.id;
+
+-- name: ListDebtOrderItemNames :many
+SELECT order_id,item_name FROM order_items
+WHERE store_id=sqlc.arg(store_id) AND order_id=ANY(sqlc.arg(order_ids)::uuid[]) AND removed_at IS NULL
+ORDER BY order_id,added_at,id;
