@@ -174,7 +174,7 @@ function signed(amount: string, reversal: boolean) {
 
       <section>
         <div class="sec">明细<span class="ms-auto font-normal text-dimmed">点一行看每笔业绩和提成</span></div>
-        <EmptyState v-if="!rows.length" class="box" art="chart" title="这段时间没有业绩" hint="结账、开卡充值后这里会有数" />
+        <EmptyState v-if="!rows.length" art="chart" title="这段时间没有业绩" hint="结账、开卡充值后这里会有数" />
         <div v-else class="overflow-x-auto">
           <table class="w-full text-sm tabular-nums" data-testid="staff-table">
             <thead class="border-b border-default text-sm text-muted">
