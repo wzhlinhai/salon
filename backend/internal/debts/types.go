@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/wzhlinhai/salon/backend/internal/money"
+	"github.com/wzhlinhai/salon/backend/internal/staff"
 )
 
 // Debt 是一笔欠款及其从早到晚的还款。
@@ -78,4 +79,33 @@ type Summary struct {
 	Order            Totals `json:"order"`
 	Historical       Totals `json:"historical"`
 	OutstandingCount int64  `json:"outstanding_count"`
+}
+
+// OutstandingDebtsInput 是本店未还清欠款列表的空参数。
+type OutstandingDebtsInput struct{}
+
+// OutstandingDebtList 是本店未还清欠款，按欠款日期从早到晚。
+type OutstandingDebtList struct {
+	Items []OutstandingDebt `json:"items"`
+}
+
+// OutstandingDebt 是一笔未还清欠款及顾客、登记人和单上项目。
+type OutstandingDebt struct {
+	ID           uuid.UUID               `json:"id"`
+	Kind         string                  `json:"kind" enum:"order,historical"`
+	BusinessDate string                  `json:"business_date" format:"date"`
+	Amount       money.Amount            `json:"amount"`
+	Repaid       money.Amount            `json:"repaid"`
+	Outstanding  money.Amount            `json:"outstanding"`
+	Note         *string                 `json:"note" nullable:"true"`
+	OrderID      *uuid.UUID              `json:"order_id" nullable:"true"`
+	Customer     OutstandingDebtCustomer `json:"customer"`
+	RecordedBy   staff.Ref               `json:"recorded_by"`
+	ItemNames    []string                `json:"item_names"`
+}
+
+// OutstandingDebtCustomer 是欠款所属顾客的 id 和姓名。
+type OutstandingDebtCustomer struct {
+	ID   uuid.UUID `json:"id"`
+	Name *string   `json:"name" nullable:"true"`
 }

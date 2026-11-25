@@ -1976,6 +1976,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_outstanding_debts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 列出本店还没还清的欠款，按欠款日期从早到晚 */
+        post: operations["list_outstanding_debts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_payroll_adjustments": {
         parameters: {
             query?: never;
@@ -5976,6 +5993,29 @@ export interface components {
             reason: string;
             voided_by: string;
         };
+        OutstandingDebt: {
+            amount: string;
+            /** Format: date */
+            business_date: string;
+            customer: components["schemas"]["OutstandingDebtCustomer"];
+            id: string;
+            item_names: string[];
+            /** @enum {string} */
+            kind: "order" | "historical";
+            note: string | null;
+            order_id: string | null;
+            outstanding: string;
+            recorded_by: components["schemas"]["Ref"];
+            repaid: string;
+        };
+        OutstandingDebtCustomer: {
+            id: string;
+            name: string | null;
+        };
+        OutstandingDebtList: {
+            items: components["schemas"]["OutstandingDebt"][];
+        };
+        OutstandingDebtsInput: Record<string, never>;
         Override: {
             category_id?: string;
             fixed_amount?: string;
@@ -10995,6 +11035,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderPage"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_outstanding_debts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutstandingDebtsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutstandingDebtList"];
                 };
             };
             /** @description Error */
