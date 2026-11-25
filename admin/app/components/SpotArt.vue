@@ -11,22 +11,22 @@ const tones: Record<SpotArtName, { tone: string, x: number, y: number }> = {
   chair: { tone: 'orange', x: 52, y: 52 },
   receipt: { tone: 'green', x: 50, y: 54 },
   chart: { tone: 'blue', x: 50, y: 56 },
-  card: { tone: 'purple', x: 50, y: 54 },
-  calendar: { tone: 'orange', x: 50, y: 54 },
+  card: { tone: 'purple', x: 32, y: 68 },
+  calendar: { tone: 'orange', x: 34, y: 66 },
   comb: { tone: 'yellow', x: 50, y: 56 },
   dryer: { tone: 'blue', x: 52, y: 54 },
   bowl: { tone: 'brown', x: 48, y: 60 },
   roller: { tone: 'purple', x: 50, y: 54 },
   mirror: { tone: 'green', x: 50, y: 50 },
   curl: { tone: 'pink', x: 50, y: 54 },
-  register: { tone: 'green', x: 50, y: 58 },
+  register: { tone: 'green', x: 30, y: 66 },
   clock: { tone: 'yellow', x: 52, y: 54 },
   coins: { tone: 'yellow', x: 50, y: 58 },
-  ticket: { tone: 'red', x: 52, y: 56 },
+  ticket: { tone: 'red', x: 36, y: 68 },
   phone: { tone: 'pink', x: 54, y: 54 },
   tag: { tone: 'purple', x: 50, y: 56 },
   key: { tone: 'blue', x: 50, y: 52 },
-  sign: { tone: 'orange', x: 52, y: 58 }
+  sign: { tone: 'orange', x: 36, y: 74 }
 }
 
 // 不规则色块：绕中心一圈 9 个点，半径随种子起伏，再用二次曲线连圆。种子取名字，每次画出来一样。
