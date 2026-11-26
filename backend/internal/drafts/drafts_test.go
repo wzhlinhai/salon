@@ -428,7 +428,7 @@ func TestDraftStorage(t *testing.T) {
 
 func TestDraftPrivacy(t *testing.T) {
 	s := optest.OpenShop(t)
-	role := call(t, s, s.Owner, "create_role", map[string]any{"name": "起草无完整手机", "permissions": []any{map[string]any{"permission": "customer.edit"}}}).Body["id"].(string)
+	role := call(t, s, s.Owner, "create_role", map[string]any{"name": "起草无完整手机", "permissions": []any{map[string]any{"permission": "customer.edit"}, map[string]any{"permission": "customer.view"}}}).Body["id"].(string)
 	_, token := s.Hire("员工", "002", "masked", uuid.MustParse(role))
 	c := s.MustCaller(token)
 	r := s.AI(t, c, "create_customer", map[string]any{"phone": "13812345678"})
