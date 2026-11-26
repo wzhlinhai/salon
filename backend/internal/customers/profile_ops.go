@@ -49,11 +49,8 @@ type CustomerPhoneInput struct {
 func registerProfiles(r *ops.Registry) {
 	ops.Register(r, ops.Operation[CreateCustomerInput, CreateCustomerResult]{
 		Name: "create_customer", Summary: "按手机号查找或新建顾客，无手机号则建未识别顾客", Kind: ops.Write,
-		Permission: perm.CustomerEdit, AI: ops.AIDraft,
+		Permission: perm.CustomerEdit, AlsoRequires: []ops.Permission{perm.CustomerView}, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *CreateCustomerInput) (*CreateCustomerResult, error) {
-			if ok, _ := env.Caller.ScopeFilter(perm.CustomerView); !ok {
-				return nil, ops.Rule("新建顾客还需要「看顾客档案」权限")
-			}
 			row, existed, err := findOrCreate(ctx, env, customerLookup{Name: in.Name, Phone: in.Phone, Gender: in.Gender, SourceID: in.SourceID, Note: in.Note})
 			if err != nil {
 				return nil, err
@@ -67,7 +64,7 @@ func registerProfiles(r *ops.Registry) {
 	})
 	ops.Register(r, ops.Operation[UpdateCustomerProfileInput, Customer]{
 		Name: "update_customer_profile", Summary: "修改顾客姓名、性别、来源、备注、发质、喜好与忌讳", Kind: ops.Write,
-		Permission: perm.CustomerEdit, AI: ops.AIDraft,
+		Permission: perm.CustomerEdit, AlsoRequires: []ops.Permission{perm.CustomerView}, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *UpdateCustomerProfileInput) (*Customer, error) {
 			return changeOne(ctx, env, "update_customer_profile", in.ID, func(row *dbgen.Customer) error {
 				if err := checkSource(ctx, env, in.SourceID, row.SourceID); err != nil {
@@ -87,14 +84,14 @@ func registerProfiles(r *ops.Registry) {
 
 	ops.Register(r, ops.Operation[CustomerPhoneInput, Customer]{
 		Name: "add_customer_phone", Summary: "给还没有手机号的顾客补上手机号", Kind: ops.Write,
-		Permission: perm.CustomerEdit, AI: ops.AIDraft,
+		Permission: perm.CustomerEdit, AlsoRequires: []ops.Permission{perm.CustomerView}, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *CustomerPhoneInput) (*Customer, error) {
 			return updatePhone(ctx, env, in, true)
 		},
 	})
 	ops.Register(r, ops.Operation[CustomerPhoneInput, Customer]{
 		Name: "change_customer_phone", Summary: "修改顾客已有的手机号", Kind: ops.Write,
-		Permission: perm.CustomerMerge, AI: ops.AIDraft,
+		Permission: perm.CustomerMerge, AlsoRequires: []ops.Permission{perm.CustomerView}, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *CustomerPhoneInput) (*Customer, error) {
 			return updatePhone(ctx, env, in, false)
 		},
@@ -123,6 +120,9 @@ func updatePhone(ctx context.Context, env ops.Env, in *CustomerPhoneInput, add b
 		}
 		found, err := env.Q.FindCustomerByPhone(ctx, phone)
 		if err == nil && found.ID != row.ID {
+			if !canView(env.Caller, found) {
+				return ops.Rule("这个手机号已有档案，但不在你能查看的范围内")
+			}
 			return ops.Rule("这个手机号已属于另一位顾客，可以合并这两位顾客")
 		}
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
