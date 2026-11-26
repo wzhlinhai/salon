@@ -27,14 +27,15 @@ const PathPrefix = "/api/ops/"
 var namePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
 type entry struct {
-	name         string
-	summary      string
-	kind         Kind
-	permission   Permission
-	alsoRequires []Permission
-	ai           AIMode
-	phased       bool
-	locking      bool
+	name              string
+	summary           string
+	kind              Kind
+	permission        Permission
+	alsoRequires      []Permission
+	draftViewRequires []Permission
+	ai                AIMode
+	phased            bool
+	locking           bool
 	// call 把 JSON 参数解码为 I 并执行操作，返回 *O。
 	call func(ctx context.Context, env Env, args []byte) (any, error)
 }
@@ -57,7 +58,7 @@ func NewRegistry(pool *pgxpool.Pool, api huma.API, now func() time.Time) *Regist
 
 // Register 声明一个操作，并生成它的 HTTP 接口。声明不合规时 panic，在启动时暴露错误。
 func Register[I, O any](r *Registry, op Operation[I, O]) {
-	if err := validate(op.Name, op.Kind, op.Permission, op.AI, op.Handle != nil); err != nil {
+	if err := validate(op.Name, op.Kind, op.Permission, op.AI, op.DraftViewRequires, op.Handle != nil); err != nil {
 		panic(fmt.Sprintf("ops: invalid operation %q: %v", op.Name, err))
 	}
 	if err := validateInputDefaults(reflect.TypeFor[I]()); err != nil {
@@ -72,14 +73,15 @@ func Register[I, O any](r *Registry, op Operation[I, O]) {
 		panic(fmt.Sprintf("ops: duplicate operation %q", op.Name))
 	}
 	e := &entry{
-		name:         op.Name,
-		summary:      op.Summary,
-		kind:         op.Kind,
-		permission:   op.Permission,
-		alsoRequires: append([]Permission{}, op.AlsoRequires...),
-		ai:           op.AI,
-		phased:       op.Phased,
-		locking:      op.Locking,
+		name:              op.Name,
+		summary:           op.Summary,
+		kind:              op.Kind,
+		permission:        op.Permission,
+		alsoRequires:      append([]Permission{}, op.AlsoRequires...),
+		draftViewRequires: append([]Permission{}, op.DraftViewRequires...),
+		ai:                op.AI,
+		phased:            op.Phased,
+		locking:           op.Locking,
 		call: func(ctx context.Context, env Env, args []byte) (any, error) {
 			in := new(I)
 			if err := json.Unmarshal(args, in); err != nil {
@@ -115,7 +117,7 @@ func Register[I, O any](r *Registry, op Operation[I, O]) {
 	})
 }
 
-func validate(name string, kind Kind, perm Permission, ai AIMode, hasHandler bool) error {
+func validate(name string, kind Kind, perm Permission, ai AIMode, draftView []Permission, hasHandler bool) error {
 	switch {
 	case !namePattern.MatchString(name):
 		return errors.New("name must match " + namePattern.String())
@@ -129,6 +131,8 @@ func validate(name string, kind Kind, perm Permission, ai AIMode, hasHandler boo
 		return errors.New("write operations cannot be executed by AI directly; use AIDraft or AINone (ADR-0004)")
 	case ai == AIManageDraft && (kind != Write || (name != "create_draft" && name != "update_draft_params" && name != "reject_draft")):
 		return errors.New("draft control mode is reserved for draft metadata operations")
+	case len(draftView) > 0 && ai != AIDraft:
+		return errors.New("draft view requirements are only allowed on AIDraft operations")
 	case !hasHandler:
 		return errors.New("handler is required")
 	}

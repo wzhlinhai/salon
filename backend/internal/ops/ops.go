@@ -212,6 +212,8 @@ type Operation[I, O any] struct {
 	Permission Permission
 	// AlsoRequires 是除 Permission 之外还必须同时拥有的权限。
 	AlsoRequires []Permission
-	AI           AIMode
-	Handle       func(ctx context.Context, env Env, in *I) (*O, error)
+	// DraftViewRequires 是非发起人查看这项操作的草稿还需要的权限，用于参数带着执行本身不要求查看的资料的操作。
+	DraftViewRequires []Permission
+	AI                AIMode
+	Handle            func(ctx context.Context, env Env, in *I) (*O, error)
 }

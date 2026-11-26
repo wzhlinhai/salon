@@ -38,6 +38,7 @@ func TestInvalidDeclarationsPanicAtRegistration(t *testing.T) {
 		"missing kind":                    {func(o *ops.Operation[in, out]) { o.Kind = 0 }, "kind must be"},
 		"missing AI mode":                 {func(o *ops.Operation[in, out]) { o.AI = 0 }, "AI mode is required"},
 		"write executed by AI directly":   {func(o *ops.Operation[in, out]) { o.Kind = ops.Write }, "cannot be executed by AI directly"},
+		"draft view on non-draft op":      {func(o *ops.Operation[in, out]) { o.DraftViewRequires = []ops.Permission{"other.view"} }, "draft view requirements are only allowed on AIDraft operations"},
 		"missing handler":                 {func(o *ops.Operation[in, out]) { o.Handle = nil }, "handler is required"},
 	}
 	for name, c := range cases {

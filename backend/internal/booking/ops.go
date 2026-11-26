@@ -21,7 +21,7 @@ import (
 
 // Register 声明预约、私约占位及其查询操作。
 func Register(r *ops.Registry) {
-	ops.Register(r, ops.Operation[CreateAppointmentInput, Appointment]{Name: "create_appointment", Summary: "前台代顾客预约，直接已确认", Kind: ops.Write, Permission: perm.BookingManage, AI: ops.AIDraft, Handle: createAppointment})
+	ops.Register(r, ops.Operation[CreateAppointmentInput, Appointment]{Name: "create_appointment", Summary: "前台代顾客预约，直接已确认", Kind: ops.Write, Permission: perm.BookingManage, DraftViewRequires: []ops.Permission{perm.CustomerView}, AI: ops.AIDraft, Handle: createAppointment})
 	ops.Register(r, ops.Operation[RescheduleAppointmentInput, Appointment]{Name: "reschedule_appointment", Summary: "改约：修改预约时间或发型师", Kind: ops.Write, Permission: perm.BookingManage, AI: ops.AIDraft, Handle: rescheduleAppointment})
 	ops.Register(r, ops.Operation[CancelAppointmentInput, Appointment]{Name: "cancel_appointment", Summary: "取消预约并选择原因", Kind: ops.Write, Permission: perm.BookingManage, AI: ops.AIDraft, Handle: cancelAppointment})
 	ops.Register(r, ops.Operation[AppointmentStatusInput, Appointment]{Name: "confirm_appointment", Summary: "确认待确认的预约", Kind: ops.Write, Permission: perm.BookingManage, AI: ops.AIDraft, Handle: confirmAppointment})

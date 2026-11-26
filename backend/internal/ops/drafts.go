@@ -99,7 +99,7 @@ func (r *Registry) DraftPermission(name string) (Permission, error) {
 	return e.permission, nil
 }
 
-// DraftVisible 报告非发起人能否看到目标操作的草稿：需要该操作的全部权限，且主权限和每一项附加权限的数据范围都不是本人。
+// DraftVisible 报告非发起人能否看到目标操作的草稿：需要该操作的全部权限、主权限和每一项附加权限的数据范围都不是本人，草稿查看权限也不是本人。
 func (r *Registry) DraftVisible(c Caller, name string) (bool, error) {
 	e, ok := r.ops[name]
 	if !ok || e.ai != AIDraft {
@@ -112,6 +112,14 @@ func (r *Registry) DraftVisible(c Caller, name string) (bool, error) {
 		return false, nil
 	}
 	for _, p := range e.alsoRequires {
+		if c.Grant(p).Scope == ScopeSelf {
+			return false, nil
+		}
+	}
+	for _, p := range e.draftViewRequires {
+		if !c.Has(p) {
+			return false, nil
+		}
 		if c.Grant(p).Scope == ScopeSelf {
 			return false, nil
 		}
