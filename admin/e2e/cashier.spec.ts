@@ -464,7 +464,7 @@ test('结账进行中不能重复结账或切换挂单', async ({ page }) => {
 async function twoItemOrder() {
   const seedData = await seed()
   const other = await seedItem(seedData.token, `${seedData.suffix}b`)
-  const order = await api<{ id: string }>(seedData.token, 'open_order', {
+  const order = await api<{ id: string, items: { id: string, item_id: string }[] }>(seedData.token, 'open_order', {
     customer_id: seedData.customer.id, gender: 'female', designated: false,
     items: [
       { item_id: seedData.item.id, staff: [{ slot: 1, staff_id: seedData.staff.id }] },
@@ -500,6 +500,42 @@ test('项目删除进行中不能结账', async ({ page }) => {
   releaseRemove()
   await expect(page.getByTestId('cash-expected')).toHaveText('88.00')
   await expect(page.getByLabel('扫码或输入手机号、券码')).toBeFocused()
+})
+
+test('去掉点错了可以撤销，按原来的员工和改过的价加回去', async ({ page }) => {
+  const { token, item, staff, order } = await twoItemOrder()
+  const line = order.items.find(i => i.item_id === item.id)!
+  await api(token, 'reprice_order_item', { order_id: order.id, order_item_id: line.id, price: '70.00', reason: '老顾客' })
+  await login(page, owner.account, owner.password)
+  await page.goto('/cashier')
+  await page.locator(`[data-order-id="${order.id}"]`).click()
+  await expect(page.getByTestId('cash-expected')).toHaveText('158.00')
+  await page.locator(`[data-order-item="${item.name}"]`).getByRole('button', { name: '去掉' }).click()
+  await expect(page.getByTestId('cash-expected')).toHaveText('88.00')
+  await expect(page.locator(`[data-order-item="${item.name}"]`)).toHaveCount(0)
+
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  const row = page.locator(`[data-order-item="${item.name}"]`)
+  await expect(row).toHaveCount(1)
+  await expect(page.getByTestId('cash-expected')).toHaveText('158.00')
+  await expect(row).toContainText('改价')
+  await expect(row.getByRole('combobox', { name: `${item.name} 岗位1员工` })).toContainText(staff.name)
+})
+
+test('加项目可以打字搜', async ({ page }) => {
+  const { item, other, order } = await twoItemOrder()
+  await login(page, owner.account, owner.password)
+  await page.goto('/cashier')
+  await page.locator(`[data-order-id="${order.id}"]`).click()
+  await page.getByRole('button', { name: '加项目' }).click()
+  const dialog = page.getByRole('dialog', { name: '加项目' })
+  await dialog.getByRole('button', { name: '加项目' }).click()
+  // 两个项目名一个是另一个加个 b：搜长的只剩它一个。
+  await page.getByPlaceholder('项目名').fill(other.item.name)
+  await expect(page.getByRole('option')).toHaveCount(1)
+  await expect(page.getByRole('option')).toContainText(other.item.name)
+  await page.getByPlaceholder('项目名').fill(item.name)
+  await expect(page.getByRole('option')).toHaveCount(2)
 })
 
 test('项目写成功后先清空旧试算', async ({ page }) => {
@@ -610,7 +646,7 @@ test('发型师能开单加项，看不到结账和团购券，也没有 403 或
 
   await page.getByRole('button', { name: '加项目' }).click()
   const dialog = page.getByRole('dialog', { name: '加项目' })
-  await dialog.getByRole('combobox', { name: '加项目' }).click()
+  await dialog.getByRole('button', { name: '加项目' }).click()
   await page.getByRole('option', { name: new RegExp(item.name) }).click()
   await dialog.getByRole('combobox', { name: '加项目岗位1员工' }).click()
   await page.getByRole('option', { name: staff.name, exact: true }).click()

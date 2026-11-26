@@ -5,6 +5,7 @@ definePageMeta({ permission: 'booking.manage', title: '预约', workbench: true,
 
 type Appointment = components['schemas']['Appointment']
 type AppointmentEvent = components['schemas']['AppointmentEvent']
+type Order = components['schemas']['Order']
 type Actor = components['schemas']['AppointmentActor']
 type Customer = components['schemas']['Customer']
 type Item = components['schemas']['Item']
@@ -656,13 +657,45 @@ async function saveCancel() {
 }
 
 const completeEditor = useModalForm()
-const { open: completeOpen, saving: completeSaving } = completeEditor
+const { open: completeOpen, loading: completeLoading, saving: completeSaving } = completeEditor
 const complete = reactive({ order_id: '' })
+// 关联单不让人手抄单号：列出这位顾客这天已结的单，点一下选上（没有开单权限的人读不到单，只能直接完成）。
+// 「这天」取页面正在看的营业日（预约就是从这天的表里点开的），不按预约时刻折算自然日：凌晨的预约属于前一个营业日。
+const completeOrders = ref<Order[]>([])
+const completeOrdersFailed = ref('')
+
+function loadCompleteOrders(entry: Appointment) {
+  completeOrders.value = []
+  completeOrdersFailed.value = ''
+  const customer = entry.customer
+  if (!customer || !can('order.create') || !day.value) return
+  const businessDate = day.value
+  // 走弹窗自己的读取：关掉后迟到的结果不写回，没读完时「完成预约」也点不动。
+  return completeEditor.load(async (current) => {
+    const { data, error } = await api.POST('/api/ops/list_orders', {
+      body: { customer_id: customer.id, business_date: businessDate, status: 'paid' }
+    })
+    if (!current()) return
+    if (!data) {
+      completeOrdersFailed.value = errorText(error)
+      return
+    }
+    completeOrders.value = data.items
+    // 只有一张时多半就是它，先选上。
+    if (data.items.length === 1 && !complete.order_id) complete.order_id = data.items[0]!.id
+  })
+}
+
+function orderLine(order: Order) {
+  const names = order.items.filter(i => !i.removed_at).map(i => i.item_name).join('、') || '无项目'
+  return `${clockOf(order.opened_at)} 开单 · ${names}`
+}
 
 function askComplete() {
   completeEditor.begin(() => {
     complete.order_id = ''
   })
+  if (detail.value) void loadCompleteOrders(detail.value)
 }
 
 async function saveComplete() {
@@ -670,7 +703,7 @@ async function saveComplete() {
   if (!id) return
   await completeEditor.save(async (current) => {
     const body: components['schemas']['CompleteAppointmentInput'] = { id }
-    if (complete.order_id.trim()) body.order_id = complete.order_id.trim()
+    if (complete.order_id) body.order_id = complete.order_id
     const { data, error } = await api.POST('/api/ops/complete_appointment', { body })
     if (!data) {
       if (current()) toast.add({ title: errorText(error), color: 'error' })
@@ -999,13 +1032,34 @@ function actorLabel(actor: Actor) {
 
     <UModal v-model:open="completeOpen" title="完成预约">
       <template #body>
-        <UFormField label="关联单号" help="可填这张顾客的已结账单号；不填只完成预约">
-          <UInput v-model="complete.order_id" placeholder="单号" aria-label="关联单号" class="w-full" />
-        </UFormField>
+        <div v-if="can('order.create') && detail?.customer" class="space-y-2" data-testid="complete-orders">
+          <p class="text-sm text-muted">关联这天结的单（可不选）</p>
+          <ListSkeleton v-if="completeLoading" :rows="2" />
+          <LoadError v-else-if="completeOrdersFailed" title="这天的单没有读出来" :hint="completeOrdersFailed" @retry="detail && loadCompleteOrders(detail)" />
+          <p v-else-if="!completeOrders.length" class="text-sm text-muted">这位顾客这天还没有结账的单，可以先直接完成。</p>
+          <!-- 至多选一张、再点一下取消：用切换按钮（aria-pressed），不用不能取消的单选。 -->
+          <div v-else role="group" aria-label="关联的单" class="-mx-2">
+            <button
+              v-for="order in completeOrders"
+              :key="order.id"
+              type="button"
+              :aria-pressed="complete.order_id === order.id"
+              :data-order-id="order.id"
+              class="flex w-full items-center gap-3 rounded-md px-2 py-2 text-start text-sm hover:bg-hover focus-visible:outline-2 focus-visible:outline-primary"
+              :class="complete.order_id === order.id ? 'bg-selected' : ''"
+              @click="complete.order_id = complete.order_id === order.id ? '' : order.id"
+            >
+              <UIcon :name="complete.order_id === order.id ? 'i-lucide-circle-check' : 'i-lucide-circle'" class="size-4 shrink-0" :class="complete.order_id === order.id ? 'text-default' : 'text-dimmed'" aria-hidden="true" />
+              <span class="min-w-0 flex-1 truncate">{{ orderLine(order) }}</span>
+              <span class="shrink-0 tabular-nums">{{ yuan(order.net) }}</span>
+            </button>
+          </div>
+        </div>
+        <p v-else class="text-sm text-muted">完成后这条预约记为已完成。</p>
       </template>
       <template #footer>
         <ModalActions @cancel="completeOpen = false">
-          <UButton :loading="completeSaving" @click="saveComplete">完成预约</UButton>
+          <UButton :loading="completeSaving" :disabled="completeLoading" @click="saveComplete">完成预约</UButton>
         </ModalActions>
       </template>
     </UModal>

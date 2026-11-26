@@ -201,19 +201,56 @@ async function saveAddItem() {
   })
 }
 
-async function removeItem(orderItemID: string) {
+// 去掉点错了不用重新找项目、重新填人：提示里给「撤销」，按原来的项目和员工加回去，改过的价也照原价和原因改回。
+async function removeItem(item: OrderItem) {
   const target = order.value
   if (!target || !canOrderEdit.value) return
   const current = actionGuard.next()
   actionSaving.value = true
   try {
-    const { data, error } = await api.POST('/api/ops/remove_order_item', { body: { order_id: target.id, order_item_id: orderItemID } })
+    const { data, error } = await api.POST('/api/ops/remove_order_item', { body: { order_id: target.id, order_item_id: item.id } })
     if (!current()) return
     if (!data) {
       toast.add({ title: errorText(error), color: 'error' })
       return
     }
+    toast.add({
+      title: `去掉了${item.item_name}`,
+      color: 'neutral',
+      actions: [{ label: '撤销', color: 'neutral', variant: 'link', onClick: () => void undoRemove(target.id, item) }]
+    })
     await afterEdit()
+  } finally {
+    if (current()) actionSaving.value = false
+  }
+}
+
+async function undoRemove(orderID: string, item: OrderItem) {
+  if (actionSaving.value) return
+  const current = actionGuard.next()
+  actionSaving.value = true
+  try {
+    // 记下加回去之前已有的行，好认出新加的那一行去改价。
+    const before = new Set(order.value?.id === orderID ? order.value.items.map(i => i.id) : [])
+    const staff = item.positions.filter(p => p.staff_id).map(p => ({ slot: p.slot, staff_id: p.staff_id! }))
+    const { data, error } = await api.POST('/api/ops/add_order_item', { body: { order_id: orderID, item: { item_id: item.item_id, staff } } })
+    if (!data) {
+      toast.add({ title: errorText(error), color: 'error' })
+      return
+    }
+    if (item.price_source === 'manual') {
+      const candidates = data.items.filter(i => !i.removed_at && i.item_id === item.item_id && !before.has(i.id))
+      const added = candidates.length === 1 ? candidates[0] : undefined
+      const repriced = added && item.reprice_reason && canReprice.value
+        ? await api.POST('/api/ops/reprice_order_item', { body: { order_id: orderID, order_item_id: added.id, price: item.price, reason: item.reprice_reason } })
+        : null
+      if (!repriced?.data) {
+        const why = repriced ? `：${errorText(repriced.error)}` : ''
+        toast.add({ title: `${item.item_name}加回来了，按原价算，改过的价没改回${why}`, color: 'error' })
+      }
+    }
+    if (orderId.value === orderID) await afterEdit()
+    else emit('changed')
   } finally {
     if (current()) actionSaving.value = false
   }
@@ -601,7 +638,7 @@ defineExpose({ select, clear, refresh, voided })
                 <span class="ms-auto flex items-center gap-1">
                   <span v-if="canReprice || canOrderEdit" class="flex gap-1 opacity-0 group-hover/row:opacity-100 focus-within:opacity-100 any-pointer-coarse:opacity-100">
                     <UButton v-if="canReprice" size="sm" color="neutral" variant="ghost" @click="repriceBegin(item)">改价</UButton>
-                    <UButton v-if="canOrderEdit" size="sm" color="error" variant="ghost" :loading="actionSaving" @click="removeItem(item.id)">去掉</UButton>
+                    <UButton v-if="canOrderEdit" size="sm" color="error" variant="ghost" :loading="actionSaving" @click="removeItem(item)">去掉</UButton>
                   </span>
                   <span class="w-14 text-right tabular-nums">{{ yuan(item.price) }}</span>
                 </span>
@@ -669,7 +706,17 @@ defineExpose({ select, clear, refresh, voided })
     <template #body>
       <div class="space-y-5">
         <UFormField label="项目">
-          <USelect v-model="addItemID" :items="itemOptions" class="w-full" aria-label="加项目" placeholder="选择项目" @update:model-value="addItemStaff = {}" />
+          <!-- 项目多了下拉翻不到底：可以直接打字搜。 -->
+          <USelectMenu
+            v-model="addItemID"
+            :items="itemOptions"
+            value-key="value"
+            class="w-full"
+            aria-label="加项目"
+            placeholder="选择项目"
+            :search-input="{ placeholder: '项目名' }"
+            @update:model-value="addItemStaff = {}"
+          />
         </UFormField>
         <div v-if="positionsOf(addItemID).length" class="grid grid-cols-2 gap-4">
           <UFormField v-for="position in positionsOf(addItemID)" :key="position.slot" :label="`岗位 ${position.slot}`">

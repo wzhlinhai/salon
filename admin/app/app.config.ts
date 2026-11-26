@@ -148,13 +148,15 @@ export default defineAppConfig({
         root: 'bg-inverted ring-0 shadow-lift rounded-card px-4 py-3',
         title: 'text-inverted',
         description: 'text-inverted/70',
-        close: 'text-inverted/70 hover:text-inverted'
+        close: 'text-inverted/70 hover:text-inverted',
+        // 「撤销」「记配方」这类操作按钮在深底上要反白，默认的灰字看不清。
+        actions: '[&_button]:text-inverted [&_button:hover]:text-inverted/80 [&_button]:underline [&_button]:underline-offset-2'
       },
       variants: {
         color: {
           primary: { icon: 'text-inverted' },
           neutral: { icon: 'text-inverted' },
-          error: { root: 'bg-tag-red', title: 'text-highlighted', description: 'text-muted', close: 'text-muted hover:text-default' }
+          error: { root: 'bg-tag-red', title: 'text-highlighted', description: 'text-muted', close: 'text-muted hover:text-default', actions: '[&_button]:text-highlighted [&_button:hover]:text-default' }
         }
       }
     },
