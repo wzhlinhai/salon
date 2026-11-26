@@ -94,7 +94,7 @@ async function saveSettlement() {
 <template>
   <div class="space-y-4">
     <PageActions v-if="can('closing.daily')">
-      <UButton size="sm" @click="openSettlement">录入结算</UButton>
+      <UButton @click="openSettlement">录入结算</UButton>
     </PageActions>
     <div class="flex flex-wrap items-center gap-2">
       <ViewTabs v-model="platform" :items="platformTabs" label="平台" />

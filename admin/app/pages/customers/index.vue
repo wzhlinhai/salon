@@ -344,7 +344,7 @@ async function handover() {
 <template>
   <div class="space-y-4">
     <PageActions>
-      <UButton v-if="can('customer.edit')" size="sm" @click="createOpen = true">新建顾客</UButton>
+      <UButton v-if="can('customer.edit')" @click="createOpen = true">新建顾客</UButton>
     </PageActions>
 
     <!-- 样稿 05、L3：页签就是常用分组；右边只放「搜索 筛选 ···」；用了的筛选写成一行能删的小签，人数跟在后面。 -->

@@ -58,16 +58,16 @@ function isActive(to: string) {
   return to === '/' ? route.path === '/' : route.path.startsWith(to)
 }
 
-// 页面骨架（DESIGN.md）：首页有自己的问候，其余页面正文顶上统一一个大标题；宽度按页面元数据分两档。
+// 页面骨架（DESIGN.md）：首页有自己的问候，其余页面正文顶上统一一个大标题；宽度按页面元数据分档，但左边缘各页一样，换页时标题不跳。
 const showPageHeader = computed(() => route.path !== '/' && !route.meta.bare)
 // 底部留出右下角 AI 按钮的位置，页面滚到底时最后一行不被压住；工作台页不另留：收银靠面板本身的底部留白，预约格子在自己的滚动区里留。
 const pageWidth = computed(() => [
-  route.meta.width === 'narrow' ? 'mx-auto w-full max-w-[800px]' : 'w-full',
+  route.meta.width === 'narrow' ? 'w-full max-w-[800px]' : 'w-full',
   route.meta.workbench ? '' : 'pb-16'
 ])
-// 大屏两侧留白：宽表和工作台（预约日历、收银）只留 48px，把宽度让给列。
+// 大屏左边一律留 96px，各页标题对齐；宽表和工作台（预约日历、收银）右边只留 48px，把宽度让给列。
 // 工作台页顶距收到 16：首屏要留给排班列和收银单。
-const panelBody = computed(() => `px-4 pt-5 pb-16 sm:px-12 sm:pb-24 ${route.meta.workbench ? 'sm:pt-4' : 'sm:pt-10'} ${route.meta.workbench || route.meta.width === 'wide' ? '' : 'xl:px-24'}`)
+const panelBody = computed(() => `px-4 pt-5 pb-16 sm:px-12 sm:pb-24 xl:ps-24 ${route.meta.workbench ? 'sm:pt-4' : 'sm:pt-10'} ${route.meta.workbench || route.meta.width === 'wide' ? '' : 'xl:pe-24'}`)
 const pageDescription = computed(() => String(route.meta.description || ''))
 
 const pageIcon = computed(() => {
@@ -239,24 +239,22 @@ onBeforeUnmount(() => clearInterval(draftTimer))
                 <span class="truncate">{{ pageTitle }}</span>
               </p>
             </template>
-            <template #right>
-              <div id="navbar-actions" class="flex items-center gap-1 text-muted" />
-            </template>
           </UDashboardNavbar>
         </template>
         <template #body>
           <main :class="pageWidth">
             <!-- 页头：阅读页上画下字；工作台页（收银、预约）插画和标题并排一行，省出约 80px 给下面的列。 -->
-            <!-- 右边的 #title-actions 给 <PageActions at="title"> 用：主操作贴着标题行右下角，窄屏折到说明下面。 -->
-            <header v-if="showPageHeader" class="mb-5 flex flex-wrap items-end gap-x-6 gap-y-3" data-testid="page-header">
-              <div class="min-w-0 flex-1 basis-80">
-                <div :class="route.meta.workbench ? 'flex items-center gap-2' : ''">
-                  <SpotArt v-if="route.meta.art" :name="route.meta.art" class="-ml-1 w-[60px] shrink-0" :class="route.meta.workbench ? '' : 'mb-1'" data-testid="page-art" />
+            <!-- #title-actions 给 <PageActions> 用：主操作和标题同一行、靠右，有没有说明都一样高；窄屏折到标题下面。 -->
+            <header v-if="showPageHeader" class="mb-5" data-testid="page-header">
+              <SpotArt v-if="route.meta.art && !route.meta.workbench" :name="route.meta.art" class="-ml-1 mb-1 w-[60px]" data-testid="page-art" />
+              <div class="flex flex-wrap items-center gap-x-6 gap-y-3">
+                <div class="flex min-w-0 flex-1 basis-80 items-center gap-2">
+                  <SpotArt v-if="route.meta.art && route.meta.workbench" :name="route.meta.art" class="-ml-1 w-[60px] shrink-0" data-testid="page-art" />
                   <h1 class="text-title font-semibold text-balance">{{ pageTitle }}</h1>
                 </div>
-                <p id="page-description" class="mt-2 text-muted text-pretty empty:hidden" data-testid="page-description"><span v-if="pageDescription">{{ pageDescription }}</span></p>
+                <div id="title-actions" class="flex items-center gap-2 empty:hidden" />
               </div>
-              <div id="title-actions" class="flex items-center gap-2 empty:hidden" />
+              <p id="page-description" class="mt-2 text-muted text-pretty empty:hidden" data-testid="page-description"><span v-if="pageDescription">{{ pageDescription }}</span></p>
             </header>
             <NuxtPage />
           </main>

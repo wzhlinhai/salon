@@ -85,7 +85,7 @@ async function save() {
 <template>
   <div class="space-y-4">
     <PageActions>
-      <UButton size="sm" @click="openEditor(null)">新建团购商品</UButton>
+      <UButton @click="openEditor(null)">新建团购商品</UButton>
     </PageActions>
     <p class="text-sm text-muted">平台购买价用于和平台月结账对账；门店标价取所对应项目的标准价。平台创建后不能修改。</p>
     <div class="overflow-x-auto">

@@ -246,11 +246,11 @@ onBeforeUnmount(() => {
 <template>
   <div class="space-y-6">
     <PageActions>
-      <USelect v-model="month" aria-label="结算月" :items="monthItems" size="sm" class="min-w-36" />
+      <USelect v-model="month" aria-label="结算月" :items="monthItems" class="min-w-36" />
       <UDropdownMenu v-if="payroll && !payroll.locked" :items="moreItems" :content="{ align: 'end' }">
-        <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-ellipsis" aria-label="更多操作" />
+        <UButton color="neutral" variant="ghost" icon="i-lucide-ellipsis" aria-label="更多操作" />
       </UDropdownMenu>
-      <UButton v-if="payroll && !payroll.locked" size="sm" :disabled="!status?.lockable" @click="askLock">核对无误，锁定</UButton>
+      <UButton v-if="payroll && !payroll.locked" :disabled="!status?.lockable" @click="askLock">核对无误，锁定</UButton>
     </PageActions>
 
     <ReportBrief v-if="brief.length" :parts="brief" data-testid="payroll-brief" />

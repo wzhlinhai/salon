@@ -368,7 +368,7 @@ function saveUnseal() {
 <template>
   <div class="space-y-6">
     <PageActions>
-      <UButton v-if="primaryLabel" size="sm" :loading="closing" :disabled="loading" @click="primary">{{ primaryLabel }}</UButton>
+      <UButton v-if="primaryLabel" :loading="closing" :disabled="loading" @click="primary">{{ primaryLabel }}</UButton>
     </PageActions>
 
     <div v-if="date" class="flex flex-wrap items-center gap-2">

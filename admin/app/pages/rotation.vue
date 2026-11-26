@@ -552,7 +552,7 @@ function onMembersSaved() {
 
     <PageActions>
       <UDropdownMenu v-if="canOperate" :items="settingsMenu" :content="{ align: 'end' }">
-        <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-ellipsis" aria-label="队列设置" />
+        <UButton color="neutral" variant="ghost" icon="i-lucide-ellipsis" aria-label="队列设置" />
       </UDropdownMenu>
     </PageActions>
 
