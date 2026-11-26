@@ -19,7 +19,7 @@ const model = defineModel<K>({ required: true })
       :title="v.hint || undefined"
       @click="model = v.key"
     >
-      {{ v.label }}<span v-if="v.count !== undefined" class="tabular-nums text-dimmed" :data-testid="testid ? `${testid}-count` : undefined">{{ v.count ?? '' }}</span>
+      {{ v.label }}<span v-if="v.count !== undefined" class="tabular-nums text-muted" :data-testid="testid ? `${testid}-count` : undefined">{{ v.count ?? '' }}</span>
     </button>
   </div>
 </template>

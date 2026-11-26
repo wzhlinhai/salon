@@ -251,8 +251,8 @@ const empty = computed(() => loaded.value && !rows.value.length && !done.value &
       </NuxtLink>
     </header>
 
-    <p v-if="failed" class="text-sm text-muted">{{ failed }}</p>
-    <p v-else-if="empty" class="py-2 text-sm text-dimmed">今天还没有预约。</p>
+    <LoadError v-if="failed" title="今天的预约没有读出来" :hint="failed" @retry="load()" />
+    <p v-else-if="empty" class="py-2 text-sm text-muted">今天还没有预约。</p>
     <ol v-else-if="loaded" class="next tabular-nums">
       <li v-if="done" class="row" data-testid="next-done">
         <span class="time">之前</span>

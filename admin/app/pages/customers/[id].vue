@@ -588,7 +588,7 @@ onBeforeUnmount(() => {
         </UAlert>
 
         <div class="mt-8 grid gap-10 lg:grid-cols-[minmax(0,1fr)_20rem]">
-          <main class="min-w-0 space-y-8">
+          <div class="min-w-0 space-y-8">
             <section data-testid="customer-last">
               <h2 class="sec mt-0!">上次</h2>
               <p v-if="history.loading.value && !visits.length" class="text-sm text-muted">正在读取做过的头发…</p>
@@ -622,14 +622,14 @@ onBeforeUnmount(() => {
               </div>
               <UButton v-if="history.hasMore.value" :loading="history.loading.value" size="sm" color="neutral" variant="ghost" class="mt-2" @click="history.loadMore">加载更多</UButton>
             </section>
-          </main>
+          </div>
 
           <aside class="space-y-8" data-testid="customer-rail">
             <CustomerCards :id="customer.id" :merged="!!customer.merged_into" @changed="loadOverview" />
             <CustomerDebts v-if="!customer.merged_into" :id="customer.id" ref="debts" :today="today" />
             <CustomerRedPackets :id="customer.id" ref="redPackets" :merged="!!customer.merged_into" />
             <section data-testid="customer-memory">
-              <h3 class="flex h-7 items-center text-meta text-muted">记住的事</h3>
+              <h2 class="flex h-7 items-center text-meta text-muted">记住的事</h2>
               <div class="divide-y divide-default text-sm">
                 <div v-for="field in memoryFields" :key="field.key" :data-memory="field.key" class="py-2">
                   <template v-if="memoryEditing === field.key">
@@ -647,7 +647,7 @@ onBeforeUnmount(() => {
               </div>
             </section>
             <section v-if="customer.active_safety_labels.length" data-testid="customer-labels">
-              <h3 class="flex h-7 items-center text-meta text-muted">安全标签</h3>
+              <h2 class="flex h-7 items-center text-meta text-muted">安全标签</h2>
               <div v-for="l in customer.active_safety_labels" :key="l.id" class="group/row flex items-start gap-3 border-t border-default py-2 text-sm first-of-type:border-t-0">
                 <span class="tag bg-tag-red shrink-0">{{ labelNames[l.kind] }}</span>
                 <div class="min-w-0 flex-1 space-y-0.5">
@@ -664,10 +664,7 @@ onBeforeUnmount(() => {
           </aside>
         </div>
       </template>
-      <div v-else-if="loadError" class="space-y-3">
-        <p>{{ loadError }}</p>
-        <UButton variant="outline" @click="load()">重试</UButton>
-      </div>
+      <LoadError v-else-if="loadError" title="顾客档案没有读出来" :hint="loadError" @retry="load()" />
       <p v-else class="text-muted">正在读取顾客档案…</p>
     </div>
     <USlideover v-model:open="logsOpen" title="修改记录">

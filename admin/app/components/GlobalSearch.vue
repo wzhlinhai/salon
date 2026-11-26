@@ -193,7 +193,7 @@ const groups = computed(() => {
   const chosen = customers.value[target.value] ?? customers.value[0]
   if (said.value && chosen) {
     const name = customerName(chosen)
-    if (can('order.create')) actions.push({ label: `给${name}开单`, icon: 'i-lucide-plus', onSelect: () => go({ path: '/cashier', query: { open: 'customer', customer: chosen.customer.id } }) })
+    if (can('order.create')) actions.push({ label: `给${name}开单`, icon: 'i-lucide-receipt-text', onSelect: () => go({ path: '/cashier', query: { open: 'customer', customer: chosen.customer.id } }) })
     if (can('booking.manage')) actions.push({ label: `给${name}约时间`, icon: 'i-lucide-clock', onSelect: () => go({ path: '/bookings', query: { book: chosen.customer.id } }) })
     // 搜到不止一位时，第一行动作的行尾写「Tab 换人」。
     const head = actions[0]

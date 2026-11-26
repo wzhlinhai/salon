@@ -397,7 +397,7 @@ onMounted(cardLoad)
   <!-- 档案右栏的卡（layout.md）：每张有效的卡画成一张卡面，储值卡写余额、次卡写剩几次；退了的收成一行灰字。流水类明细从右侧滑出。 -->
   <section data-testid="customer-cards">
     <div class="flex h-7 items-center gap-2">
-      <h3 class="text-meta text-muted">卡</h3>
+      <h2 class="text-meta text-muted">卡</h2>
       <UButton v-if="can('card.sell') && !props.merged" size="sm" color="neutral" variant="ghost" class="ms-auto -me-2" @click="cardEdit(null)">开卡</UButton>
     </div>
     <p v-if="cardLoading && !cardCards.length" class="text-sm text-muted">正在读取卡…</p>
@@ -418,18 +418,18 @@ onMounted(cardLoad)
             </UDropdownMenu>
           </div>
           <template v-if="card.kind !== 'count'">
-            <p class="mt-3 text-meta text-muted">余额</p>
+            <p class="mt-3 text-meta text-toned">余额</p>
             <p class="figure tabular-nums">{{ yuan((cents(card.principal) + cents(card.bonus)) / 100) }}</p>
-            <p class="text-meta text-muted tabular-nums">本金 {{ yuanFixed(card.principal) }} · 赠送金 {{ yuanFixed(card.bonus) }} · 积分 {{ card.points }}</p>
+            <p class="text-meta text-toned tabular-nums">本金 {{ yuanFixed(card.principal) }} · 赠送金 {{ yuanFixed(card.bonus) }} · 积分 {{ card.points }}</p>
           </template>
           <div v-if="card.items.length" class="mt-3 space-y-0.5">
             <p v-for="item in card.items" :key="item.item_id" data-testid="remaining-counts" class="tabular-nums">
-              {{ item.item_name }} 剩 <span class="figure">{{ item.paid_remaining + item.gift_remaining }}</span> 次<span class="text-meta text-muted"> · 购买 {{ item.paid_remaining }} · 赠送 {{ item.gift_remaining }}</span>
+              {{ item.item_name }} 剩 <span class="figure">{{ item.paid_remaining + item.gift_remaining }}</span> 次<span class="text-meta text-toned"> · 购买 {{ item.paid_remaining }} · 赠送 {{ item.gift_remaining }}</span>
             </p>
-            <p class="text-meta text-muted">次数售价 {{ yuanFixed(card.counts_price) }}</p>
+            <p class="text-meta text-toned">次数售价 {{ yuanFixed(card.counts_price) }}</p>
           </div>
           <div class="mt-2 flex items-center gap-2">
-            <span class="text-meta text-muted">有效期 {{ card.expires_on || '不限' }}</span>
+            <span class="text-meta text-toned">有效期 {{ card.expires_on || '不限' }}</span>
             <UButton v-if="canRecharge(card)" size="sm" color="neutral" variant="outline" class="ms-auto bg-white" @click="cardEdit(card)">充值</UButton>
           </div>
         </template>
@@ -571,7 +571,7 @@ onMounted(cardLoad)
         <UFormField v-if="!cardTarget" label="卡类型"><USelect v-model="cardCardType" :items="cardTypes.map(t => ({ label: t.name, value: t.id }))" class="w-full" /></UFormField>
         <div v-if="cardTarget" class="flex items-center gap-4" data-testid="recharge-preview">
           <div class="card-face w-44 shrink-0 bg-tag-pink">
-            <p class="text-meta text-muted">充完余额</p>
+            <p class="text-meta text-toned">充完余额</p>
             <p class="figure tabular-nums">{{ yuan(money(rechargeAfter)) }}</p>
           </div>
           <div class="space-y-1 text-meta text-muted tabular-nums">

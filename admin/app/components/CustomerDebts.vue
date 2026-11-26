@@ -91,7 +91,7 @@ defineExpose({ editHistory })
   <!-- 档案右栏：有欠款才出现；登记历史欠款在页头 ··· 菜单里（defineExpose）。 -->
   <section v-if="debts.length" data-testid="debts">
     <div class="flex h-7 items-center gap-2">
-      <h3 class="text-meta text-muted">欠款</h3>
+      <h2 class="text-meta text-muted">欠款</h2>
       <span v-if="totals && Number(totals.outstanding) > 0" class="ms-auto text-sm text-ink-orange tabular-nums">未还 {{ yuanFixed(totals.outstanding) }}</span>
     </div>
     <div v-for="debt in debts" :key="debt.id" :data-debt="debt.id" class="space-y-1 border-t border-default py-2 text-sm first-of-type:border-t-0" :class="debt.status === 'outstanding' ? '' : 'text-muted'">

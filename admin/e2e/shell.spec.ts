@@ -148,3 +148,21 @@ test('收起侧栏的按钮在顶栏固定位置，收起和展开时不挪动',
   await toggle.click()
   await expect(toggle).toHaveAttribute('aria-label', '收起侧栏')
 })
+
+test('平板宽度下问 AI 收进顶栏，不在右下角压着内容；宽屏仍是右下角圆钮；正文是 main 地标', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await login(page, owner.account, owner.password)
+  await page.goto('/cashier')
+  await expect(page.getByRole('main')).toHaveCount(1)
+  await expect(page.getByRole('main')).toContainText('收银')
+  await expect(page.getByTestId('ai-fab')).toBeHidden()
+  await page.getByTestId('ai-navbar').click()
+  await expect(page.getByRole('dialog', { name: '问 AI' })).toBeVisible()
+  await expect(page.getByTestId('ai-navbar')).toHaveCount(0)
+
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: '问 AI' })).toHaveCount(0)
+  await page.setViewportSize({ width: 1366, height: 900 })
+  await expect(page.getByTestId('ai-fab')).toBeVisible()
+  await expect(page.getByTestId('ai-navbar')).toBeHidden()
+})

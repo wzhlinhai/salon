@@ -107,7 +107,7 @@ defineExpose({ editIssue })
   <!-- 档案右栏：有红包才出现；发放红包在页头 ··· 菜单里（defineExpose）。 -->
   <section v-if="packets.length" data-testid="red-packets">
     <div class="flex h-7 items-center gap-2">
-      <h3 class="text-meta text-muted">红包</h3>
+      <h2 class="text-meta text-muted">红包</h2>
       <span class="ms-auto text-meta text-dimmed">{{ packets.length }} 个</span>
     </div>
     <div v-for="packet in packets" :key="packet.id" :data-red-packet="packet.id" class="space-y-1 border-t border-default py-2 text-sm first-of-type:border-t-0" :class="packet.status === 'available' ? '' : 'text-muted'">

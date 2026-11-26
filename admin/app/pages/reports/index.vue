@@ -25,10 +25,20 @@ function shortDay(day: string) {
   return `${Number(day.slice(5, 7))}/${Number(day.slice(8, 10))}`
 }
 
+// 营业日都没读到时，本月的数一个也算不出来：原地给「重试」，不留一片空白。
+const failed = ref('')
+const loadGuard = useRequestGuard()
+
 async function load() {
+  const current = loadGuard.next()
   const settings = await api.POST('/api/ops/get_settings', { body: {} })
+  if (!current()) return
   const today = settings.data?.business_date
-  if (!today) return
+  if (!today) {
+    failed.value = errorText(settings.error)
+    return
+  }
+  failed.value = ''
   const range = { from: `${today.slice(0, 7)}-01`, to: today }
   const keys = new Set(visible.value.map(r => r.key))
   const merge = (patch: Partial<MonthFigures>) => {
@@ -99,7 +109,7 @@ async function load() {
     }))
   }
   await Promise.allSettled(jobs)
-  ready.value = true
+  if (current()) ready.value = true
 }
 
 onMounted(() => {
@@ -109,6 +119,7 @@ onMounted(() => {
 
 <template>
   <div>
+    <LoadError v-if="failed" class="mb-6" title="这个月的数没有读出来" :hint="failed" @retry="load()" />
     <ReportBrief v-if="ready" :parts="brief" />
 
     <ReportSpark

@@ -90,7 +90,7 @@ export default defineAppConfig({
         description: 'mt-1 text-sm text-muted',
         body: 'px-6 py-5 sm:px-6 sm:py-5',
         footer: 'justify-end gap-2 px-6 py-3 sm:px-6',
-        close: 'top-4 end-4 text-default focus-visible:outline-0 focus-visible:ring-0 focus-visible:bg-hover'
+        close: 'top-4 end-4 text-default focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-primary'
       },
       variants: {
         // 后面压一层淡墨（样稿 19、21 的 rgba(15,15,15,.32)），不用 Nuxt UI 默认的乳白雾。

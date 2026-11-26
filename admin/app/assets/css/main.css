@@ -18,10 +18,10 @@
   --color-tag-purple: #e8deee;
   --color-tag-pink: #f5e0e9;
   --color-tag-red: #ffe2dd;
-  --color-ink-green: #448361;
-  --color-ink-red: #d44c47;
-  --color-ink-yellow: #cb912f;
-  --color-ink-orange: #d9730d;
+  --color-ink-green: #3f7a5a;
+  --color-ink-red: #be3f3a;
+  --color-ink-yellow: #93661b;
+  --color-ink-orange: #ad5c0a;
   --color-ink: #2c2c2b;
   /* 染发色卡色（DESIGN.md 颜色、图表）：栗棕、亚麻金、靛蓝、橄榄、玫瑰。报表里所有的线、柱、构成条、排名条都用它，按顺序取、不循环。
      2026-11-25 在 oklch 里重调：oklch(0.47 0.11 40)、(0.65 0.125 80)、(0.55 0.11 250)、(0.57 0.12 132)、(0.60 0.13 345)，写成十六进制给 ECharts 读。
@@ -73,14 +73,14 @@
   --ui-radius: 0.375rem;
   --ui-primary: #2c2c2b;
   --ui-ai: #2c2c2b;
-  --ui-success: #448361;
-  --ui-error: #d44c47;
-  --ui-warning: #cb912f;
+  --ui-success: #3f7a5a;
+  --ui-error: #be3f3a;
+  --ui-warning: #93661b;
   --ui-text-highlighted: #2c2c2b;
   --ui-text: #2c2c2b;
   --ui-text-toned: #5f5e5b;
-  --ui-text-muted: #7d7a75;
-  --ui-text-dimmed: #a19e99;
+  --ui-text-muted: #6c6964;
+  --ui-text-dimmed: #7d7a75;
   --ui-bg-muted: #f7f7f5;
   --ui-bg-elevated: #f1f1ef;
   --ui-bg-accented: #e3e2e0;
@@ -282,6 +282,11 @@ input[type="time"] {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+  /* 加载转圈是「还在读」的唯一提示，不是装饰，照样转（转得慢一点）。 */
+  .animate-spin {
+    animation-duration: 1.5s !important;
+    animation-iteration-count: infinite !important;
+  }
 }
 
 /* 私约占位：斜纹表示"这段时间被占着但还没有顾客"。 */
@@ -307,9 +312,14 @@ input[type="time"] {
   select,
   textarea,
   nav a,
+  summary,
   [role="menuitem"],
   [role="option"] {
     min-height: 44px;
+  }
+  /* 只有图标的按钮（··· 菜单、关闭、翻页）宽度也补到 44px，不然高够了还是一根细条。 */
+  button:has(> [data-slot="leadingIcon"]:only-child) {
+    min-width: 44px;
   }
 }
 

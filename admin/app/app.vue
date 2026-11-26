@@ -228,7 +228,7 @@ onBeforeUnmount(() => clearInterval(draftTimer))
                 icon="i-lucide-panel-left"
                 :aria-label="sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
                 size="sm"
-                class="me-0.5 text-muted"
+                class="me-0.5 shrink-0 text-muted"
               />
               <p class="flex min-w-0 items-center gap-1 rounded-md px-2 py-0.5 text-sm text-muted">
                 <UIcon v-if="pageIcon" :name="pageIcon" class="size-4 shrink-0" aria-hidden="true" />
@@ -241,11 +241,25 @@ onBeforeUnmount(() => clearInterval(draftTimer))
             </template>
             <template #right>
               <div id="navbar-actions" class="flex items-center gap-1 text-muted" />
+              <!-- 平板和手机上右下角的圆钮会压住收银、日结底部的按钮和输入框，AI 入口挪到顶栏最右（大屏仍是圆钮）。 -->
+              <UButton
+                v-if="!aiOpen"
+                size="sm"
+                color="neutral"
+                variant="ghost"
+                aria-label="问 AI"
+                title="问 AI"
+                data-testid="ai-navbar"
+                class="shrink-0 xl:hidden"
+                @click="aiOpen = true"
+              >
+                <AiMark class="size-5" />
+              </UButton>
             </template>
           </UDashboardNavbar>
         </template>
         <template #body>
-          <div :class="pageWidth">
+          <main :class="pageWidth">
             <!-- 页头：阅读页上画下字；工作台页（收银、预约）插画和标题并排一行，省出约 80px 给下面的列。 -->
             <header v-if="showPageHeader" class="mb-5" data-testid="page-header">
               <div :class="route.meta.workbench ? 'flex items-center gap-2' : ''">
@@ -255,21 +269,21 @@ onBeforeUnmount(() => clearInterval(draftTimer))
               <p id="page-description" class="mt-2 text-muted text-pretty empty:hidden" data-testid="page-description"><span v-if="pageDescription">{{ pageDescription }}</span></p>
             </header>
             <NuxtPage />
-          </div>
+          </main>
         </template>
       </UDashboardPanel>
 
       <GlobalSearch v-model:open="searchOpen" />
 
       <AiPanel />
-      <!-- 问 AI 的常驻入口（照 Notion 右下角的 AI 按钮）：每一页都在，面板打开时收起。 -->
+      <!-- 问 AI 的常驻入口（照 Notion 右下角的 AI 按钮）：宽屏每一页都在，面板打开时收起；窄于 1280px 时收进顶栏。 -->
       <button
         v-if="!aiOpen"
         type="button"
         aria-label="问 AI"
         title="问 AI"
         data-testid="ai-fab"
-        class="fixed right-5 bottom-5 z-40 grid size-12 place-items-center rounded-full bg-white text-default shadow-lift transition-colors hover:bg-side"
+        class="fixed right-5 bottom-5 z-40 hidden size-12 xl:grid place-items-center rounded-full bg-white text-default shadow-lift transition-colors hover:bg-side"
         @click="aiOpen = true"
       >
         <AiMark class="size-8" />

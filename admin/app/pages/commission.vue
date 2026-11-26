@@ -279,7 +279,7 @@ function changeSource(o: OverrideForm) {
               :class="selected === v.version ? 'bg-selected' : 'hover:bg-hover'"
               @click="selectVersion(v.version)"
             >
-              <td><button type="button" class="text-start font-medium hover:underline" @click.stop="selectVersion(v.version)">版本 {{ v.version }}</button></td>
+              <td><button type="button" class="text-start font-medium whitespace-nowrap hover:underline" @click.stop="selectVersion(v.version)">版本 {{ v.version }}</button></td>
               <td class="tabular-nums">{{ v.effective_from }}</td>
               <td>{{ v.saved_by.name }}</td>
               <td class="text-muted tabular-nums">{{ new Date(v.saved_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</td>
