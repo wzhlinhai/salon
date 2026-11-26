@@ -30,7 +30,7 @@ const kinds = computed(() => [
         <UButton v-if="index > 0" color="error" variant="ghost" @click="value.levels.splice(index, 1)">删除</UButton>
         <span v-else />
       </div>
-      <UButton color="neutral" icon="i-lucide-plus" class="-ms-2 self-start" variant="ghost" @click="value.levels.push({ from: '', percent: '' })">加一档</UButton>
+      <UButton color="neutral" class="-ms-2 self-start" variant="ghost" @click="value.levels.push({ from: '', percent: '' })">加一档</UButton>
     </template>
   </div>
 </template>

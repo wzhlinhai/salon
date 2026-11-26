@@ -183,7 +183,7 @@ const moreItems = computed(() => {
             <section v-if="report" data-testid="staff-month">
               <div class="flex items-center">
                 <h2 class="sec mt-0!">这个月</h2>
-                <NuxtLink :to="`/reports/staff?from=${monthStart}&to=${today}`" class="ms-auto text-meta text-muted hover:underline">业绩明细 ›</NuxtLink>
+                <NuxtLink :to="`/reports/staff?from=${monthStart}&to=${today}`" class="ms-auto inline-flex items-center text-meta text-muted hover:underline">业绩明细<UIcon name="i-lucide-chevron-right" class="size-4" aria-hidden="true" /></NuxtLink>
               </div>
               <p class="text-base tabular-nums">{{ monthSentence }}</p>
             </section>
@@ -205,7 +205,7 @@ const moreItems = computed(() => {
             <section v-if="attendance" data-testid="staff-attendance">
               <h3 class="flex h-7 items-center text-meta text-muted">考勤</h3>
               <p class="text-sm tabular-nums">{{ attendanceSentence }}</p>
-              <NuxtLink to="/attendance" class="mt-1 inline-block text-meta text-muted hover:underline">考勤明细 ›</NuxtLink>
+              <NuxtLink to="/attendance" class="mt-1 inline-flex items-center text-meta text-muted hover:underline">考勤明细<UIcon name="i-lucide-chevron-right" class="size-4" aria-hidden="true" /></NuxtLink>
             </section>
           </aside>
         </div>

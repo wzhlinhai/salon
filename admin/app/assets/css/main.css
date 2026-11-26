@@ -24,13 +24,14 @@
   --color-ink-orange: #d9730d;
   --color-ink: #2c2c2b;
   /* 染发色卡色（DESIGN.md 颜色、图表）：栗棕、亚麻金、靛蓝、橄榄、玫瑰。报表里所有的线、柱、构成条、排名条都用它，按顺序取、不循环。
-     2026-11-24 用 dataviz 校验脚本验过（白底，相邻色）：明度、饱和度、色盲区分度、正常视力区分度都过；亚麻金对白底只有 2.5:1，
-     靠旁边写出的数和明细表补。 */
-  --color-dye-1: #9a4a22;
-  --color-dye-2: #c99a3c;
-  --color-dye-3: #3a78b8;
-  --color-dye-4: #5f8a2e;
-  --color-dye-5: #c0607e;
+     2026-11-25 在 oklch 里重调：oklch(0.47 0.11 40)、(0.65 0.125 80)、(0.55 0.11 250)、(0.57 0.12 132)、(0.60 0.13 345)，写成十六进制给 ECharts 读。
+     对白底都过 3:1（亚麻金 3.29，原来 2.57）；相邻两色正常视力区分度 ≥ 19，红绿色盲 ≥ 11（OKLab ×100）；
+     靛蓝和橄榄在蓝黄色盲下 6.3，靠旁边写出的数和明细表补。 */
+  --color-dye-1: #8d4226;
+  --color-dye-2: #b78520;
+  --color-dye-3: #3a75af;
+  --color-dye-4: #5c8635;
+  --color-dye-5: #b55d92;
   /* 看板列底、悬停、细线、提醒条。 */
   --color-lane: #f4f4f2;
   --color-card-hover: #fcfcfb;
@@ -41,6 +42,8 @@
   --color-selected: rgba(33, 27, 23, 0.076);
   --color-notice: #fbf3db;
   --color-hatch: #f6f6f4;
+  /* 弹窗后面压暗的那层（样稿 19、21）：一层淡墨，不是乳白雾。侧滑后面不压暗（样稿 22）。 */
+  --color-scrim: rgba(15, 15, 15, 0.32);
 
   /* 档位锁死（.dev/taste/tokens.md，DESIGN.md「档位」）：档外的值不许出现，scripts/check-tokens.mjs 在 CI 里拦。
      字号 6 档：标题 32 text-title · 数字 20 text-figure · 区块 16 text-base · 正文 14 text-sm · 次要 13 text-meta · 注 12 text-xs。 */
@@ -132,8 +135,39 @@ h1 {
 
 /* 卡面（顾客档案右栏）：一张实物卡，底色由使用方给（储值卡粉、次卡蓝），卡片圆角。 */
 @utility card-face {
+  position: relative;
+  overflow: hidden;
   border-radius: var(--radius-card);
   padding: 16px;
+  /* 右下角一圈淡墨水印圆环（样稿系统页 .cardface::after），像卡上压的印。 */
+  &::after {
+    content: "";
+    position: absolute;
+    right: -30px;
+    bottom: -40px;
+    width: 130px;
+    height: 130px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(44, 44, 43, 0.12);
+    pointer-events: none;
+  }
+}
+
+/* 小票（样稿系统页 .receipt）：收银的当前单、小票预览。白纸、上边卡片圆角、底边每 16px 一个半径 7 的齿孔。
+   遮罩会把 box-shadow 一起切掉，所以阴影放在外层 receipt-drop 上，用 drop-shadow 跟着齿形画：一道细边加一点平放的投影（同 shadow-paper）。 */
+@utility receipt {
+  background: #fff;
+  border-start-start-radius: var(--radius-card);
+  border-start-end-radius: var(--radius-card);
+  padding: 24px 24px 32px;
+  mask: radial-gradient(circle 7px at 50% 100%, #0000 98%, #000) 0 0 / 16px 100% repeat-x;
+}
+/* 只要齿孔：小票预览（打印纸宽度、内边距另有规定）。 */
+@utility perforated {
+  mask: radial-gradient(circle 7px at 50% 100%, #0000 98%, #000) 0 0 / 16px 100% repeat-x;
+}
+@utility receipt-drop {
+  filter: drop-shadow(0 0 0.5px rgba(42, 28, 0, 0.28)) drop-shadow(0 6px 16px rgba(25, 25, 25, 0.04));
 }
 
 /* 指标条：不包卡片，上下各一条细线，数字直接放在页面上。 */
@@ -220,6 +254,34 @@ h1 {
   font-size: 12px;
   white-space: nowrap;
   color: #2c2c2b;
+}
+/* 黄、红两种提醒签的字随底色同色相加深（oklch 0.45）：比黑字温和，又一眼看出是提醒。对底色 6:1 以上。 */
+.tag.bg-tag-yellow {
+  color: #784a00;
+}
+.tag.bg-tag-red {
+  color: #972620;
+}
+
+/* 输入框里的金额、电话、时间也用等宽数字，和表格里的数对得齐。 */
+input[inputmode="decimal"],
+input[inputmode="numeric"],
+input[type="number"],
+input[type="tel"],
+input[type="time"] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 系统设置了「减少动态效果」时，弹窗、菜单、骨架屏都不做动画。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* 私约占位：斜纹表示"这段时间被占着但还没有顾客"。 */

@@ -66,7 +66,8 @@ const pageWidth = computed(() => [
   route.meta.workbench ? '' : 'pb-16'
 ])
 // 大屏两侧留白：宽表和工作台（预约日历、收银）只留 48px，把宽度让给列。
-const panelBody = computed(() => `px-4 pt-5 pb-16 sm:px-12 sm:pt-10 sm:pb-24 ${route.meta.workbench || route.meta.width === 'wide' ? '' : 'xl:px-24'}`)
+// 工作台页顶距收到 16：首屏要留给排班列和收银单。
+const panelBody = computed(() => `px-4 pt-5 pb-16 sm:px-12 sm:pb-24 ${route.meta.workbench ? 'sm:pt-4' : 'sm:pt-10'} ${route.meta.workbench || route.meta.width === 'wide' ? '' : 'xl:px-24'}`)
 const pageDescription = computed(() => String(route.meta.description || ''))
 
 const pageIcon = computed(() => {
@@ -113,7 +114,7 @@ onBeforeUnmount(() => clearInterval(draftTimer))
 </script>
 
 <template>
-  <UApp :locale="zh_cn" :toaster="{ position: 'bottom-right' }">
+  <UApp :locale="zh_cn" :toaster="{ position: 'bottom-center' }">
     <NuxtPage v-if="isLogin" />
     <!-- 外壳照原型 J：暖灰侧栏（门店名、搜索、待确认、分组导航、本人），一行顶栏（面包屑、首页切换）。 -->
     <UDashboardGroup v-else unit="rem" storage-key="salon-dashboard">
@@ -245,9 +246,12 @@ onBeforeUnmount(() => clearInterval(draftTimer))
         </template>
         <template #body>
           <div :class="pageWidth">
+            <!-- 页头：阅读页上画下字；工作台页（收银、预约）插画和标题并排一行，省出约 80px 给下面的列。 -->
             <header v-if="showPageHeader" class="mb-5" data-testid="page-header">
-              <SpotArt v-if="route.meta.art" :name="route.meta.art" class="mb-1 -ml-1 w-[60px]" data-testid="page-art" />
-              <h1 class="text-title font-semibold text-balance">{{ pageTitle }}</h1>
+              <div :class="route.meta.workbench ? 'flex items-center gap-2' : ''">
+                <SpotArt v-if="route.meta.art" :name="route.meta.art" class="-ml-1 w-[60px] shrink-0" :class="route.meta.workbench ? '' : 'mb-1'" data-testid="page-art" />
+                <h1 class="text-title font-semibold text-balance">{{ pageTitle }}</h1>
+              </div>
               <p id="page-description" class="mt-2 text-muted text-pretty empty:hidden" data-testid="page-description"><span v-if="pageDescription">{{ pageDescription }}</span></p>
             </header>
             <NuxtPage />

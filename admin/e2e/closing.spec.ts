@@ -99,7 +99,8 @@ test('封账到一个月前那天，只有下一天能接着封，老板写原�
   const day = addDays(today, -30)
   const next = addDays(today, -29)
   const later = addDays(today, -28)
-  const sealButton = page.getByRole('button', { name: /封账$/ })
+  // 主按钮写「对完了，封账」或「封账」；不能写成 /封账$/，「去 10-27 撤销封账」的按钮名也以封账结尾。
+  const sealButton = page.getByRole('button', { name: /^(对完了，)?封账$/ })
 
   await login(page, owner.account, owner.password)
   await page.goto(`/closing?date=${day}`)
@@ -118,7 +119,7 @@ test('封账到一个月前那天，只有下一天能接着封，老板写原�
   await expect(page.getByTestId('close-form').getByRole('textbox')).toHaveCount(0)
 
   // 只有紧接着的下一天能封。
-  await page.getByRole('button', { name: `接着封 ${next.slice(5)} ›`, exact: true }).click()
+  await page.getByRole('button', { name: `接着封 ${next.slice(5)}`, exact: true }).click()
   await expect(page.getByTestId('close-date')).toHaveText(dayLabel(next))
   await expect(sealButton).toBeVisible()
   await page.getByRole('button', { name: '后一天', exact: true }).click()
@@ -132,7 +133,7 @@ test('封账到一个月前那天，只有下一天能接着封，老板写原�
   await login(managerPage, manager.account, manager.password)
   await managerPage.goto(`/closing?date=${day}`)
   await expect(managerPage.getByTestId('sealed-through')).toHaveText(`已封账到 ${day}`)
-  await expect(managerPage.getByRole('button', { name: `接着封 ${next.slice(5)} ›`, exact: true })).toBeVisible()
+  await expect(managerPage.getByRole('button', { name: `接着封 ${next.slice(5)}`, exact: true })).toBeVisible()
   await expect(managerPage.getByRole('button', { name: '撤销封账…', exact: true })).toHaveCount(0)
   await managerPage.close()
 

@@ -340,7 +340,7 @@ async function handover() {
 <template>
   <div class="space-y-4">
     <PageActions>
-      <UButton v-if="can('customer.edit')" size="sm" icon="i-lucide-plus" @click="createOpen = true">新建顾客</UButton>
+      <UButton v-if="can('customer.edit')" size="sm" @click="createOpen = true">新建顾客</UButton>
     </PageActions>
 
     <!-- 样稿 05、L3：页签就是常用分组；右边只放「搜索 筛选 ···」；用了的筛选写成一行能删的小签，人数跟在后面。 -->
@@ -354,7 +354,6 @@ async function handover() {
             variant="ghost"
             aria-label="搜索顾客"
             :placeholder="query || searchFocused ? '手机号、后四位或姓名' : '搜索'"
-            class="transition-[width]"
             :class="query ? 'w-56' : 'w-24 focus-within:w-56'"
             @focus="searchFocused = true"
             @blur="searchFocused = false"

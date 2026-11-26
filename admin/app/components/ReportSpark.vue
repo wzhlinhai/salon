@@ -14,15 +14,22 @@ const path = computed(() => {
 const peak = computed(() => {
   const v = props.values
   if (v.length < 2 || Math.max(...v) <= 0) return null
-  return { i: v.indexOf(Math.max(...v)) }
+  const max = Math.max(...v)
+  const i = v.indexOf(max)
+  // 圆点用 HTML 叠在线上：SVG 横向拉伸（preserveAspectRatio none），在里面画圆会变成椭圆。
+  return { i, left: `${i / (v.length - 1) * 100}%`, top: `${(H - 4 - max / Math.max(max, 1) * (H - 12)) / H * 100}%` }
 })
 </script>
 
 <template>
   <figure v-if="path" class="m-0" data-testid="report-spark">
-    <svg :viewBox="`0 0 ${W} ${H}`" class="block h-16 w-full overflow-visible" preserveAspectRatio="none" aria-hidden="true">
-      <path :d="path" fill="none" stroke="var(--color-dye-1)" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round" />
-    </svg>
+    <div class="relative">
+      <svg :viewBox="`0 0 ${W} ${H}`" class="block h-16 w-full overflow-visible" preserveAspectRatio="none" aria-hidden="true">
+        <path :d="path" fill="none" stroke="var(--color-dye-1)" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round" />
+      </svg>
+      <!-- 最高那天：一个色卡色的点，外面一圈白边压在线上。 -->
+      <span v-if="peak" data-testid="spark-peak" class="absolute size-2 -translate-1/2 rounded-full bg-dye-1 ring-2 ring-white" :style="{ left: peak.left, top: peak.top }" aria-hidden="true" />
+    </div>
     <figcaption class="mt-1 flex justify-between text-xs text-dimmed tabular-nums">
       <span>{{ start }}</span>
       <span>{{ caption }}<template v-if="peak && peakLabel"> · 最高 {{ peakLabel(peak.i) }}</template></span>

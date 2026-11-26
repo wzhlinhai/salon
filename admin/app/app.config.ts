@@ -93,6 +93,10 @@ export default defineAppConfig({
         close: 'top-4 end-4 text-default focus-visible:outline-0 focus-visible:ring-0 focus-visible:bg-hover'
       },
       variants: {
+        // 后面压一层淡墨（样稿 19、21 的 rgba(15,15,15,.32)），不用 Nuxt UI 默认的乳白雾。
+        overlay: {
+          true: { overlay: 'bg-scrim' }
+        },
         fullscreen: {
           false: { content: 'rounded-card shadow-lift ring-0' }
         }
@@ -111,18 +115,27 @@ export default defineAppConfig({
     // 侧滑面板（样稿 22）：一张拿起来的白纸，标题和正文之间不画线，后面的页面不变暗、能接着点别的行；按钮栏上方一道细线。
     slideover: {
       slots: {
+        // 后面不变暗（样稿 22）：遮罩还在，点空白处关掉，只是透明。
+        overlay: 'bg-transparent',
         content: 'sm:ring-0 sm:shadow-lift',
         header: 'min-h-0 px-6 pt-5 pb-0 sm:px-6',
         title: 'text-base font-semibold text-highlighted',
         description: 'mt-1 text-sm text-muted',
         body: 'px-6 py-5 sm:px-6 sm:py-5',
         footer: 'justify-end gap-2 border-t border-default px-6 py-3 sm:px-6'
+      },
+      // 样稿 22 的侧滑宽 480，和弹窗默认宽一样。
+      variants: {
+        side: {
+          right: { content: 'sm:max-w-[480px]' }
+        }
       }
     },
     // 菜单和弹出层（样稿 23）：白纸、拿起来的阴影、卡片圆角，分组之间一道细线；危险项红字放最后一组（各处 items 自己排）。
+    // 内边距 8（样稿 .menu padding:8px）：菜单项 6 的圆角加 8 的边，和外面 12 的卡片圆角差不多同心。
     dropdownMenu: {
       slots: {
-        content: 'rounded-card ring-0 shadow-lift p-1',
+        content: 'rounded-card ring-0 shadow-lift p-2',
         group: 'p-0'
       }
     },

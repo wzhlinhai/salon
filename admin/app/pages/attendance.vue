@@ -283,7 +283,7 @@ onMounted(async () => {
         <span class="text-sm text-muted">点一行看这个人每天的打卡</span>
       </div>
       <PageActions>
-        <UButton size="sm" icon="i-lucide-plus" @click="openAddPunch()">补卡</UButton>
+        <UButton size="sm" @click="openAddPunch()">补卡</UButton>
       </PageActions>
       <div class="overflow-x-auto">
         <UTable
@@ -328,7 +328,7 @@ onMounted(async () => {
       <div class="space-y-3">
         <div class="sec">
           班次
-          <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto" @click="openCreateShift">新建班次</UButton>
+          <UButton size="xs" color="neutral" variant="ghost" class="ms-auto" @click="openCreateShift">新建班次</UButton>
         </div>
         <div class="overflow-x-auto">
           <UTable :data="shifts" :columns="shiftColumns" :loading="shiftsLoading" :aria-busy="shiftsLoading" :ui="{ tr: 'group/row' }" data-testid="shifts-table">

@@ -384,8 +384,8 @@ function saveUnseal() {
 
       <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-meta text-muted">
         <span data-testid="sealed-through">{{ sealedThrough ? `已封账到 ${sealedThrough}` : '还没有封账' }}</span>
-        <button v-if="sealedThrough && sealedThrough !== date && can('closing.unseal')" type="button" class="hover:underline" :disabled="busy" @click="go(sealedThrough)">去 {{ sealedThrough.slice(5) }} 撤销封账 ›</button>
-        <button v-if="nextSeal && nextSeal !== date && canSeal(nextSeal)" type="button" class="hover:underline" :disabled="busy" @click="go(nextSeal)">接着封 {{ nextSeal.slice(5) }} ›</button>
+        <button v-if="sealedThrough && sealedThrough !== date && can('closing.unseal')" type="button" class="inline-flex items-center hover:underline" :disabled="busy" @click="go(sealedThrough)">去 {{ sealedThrough.slice(5) }} 撤销封账<UIcon name="i-lucide-chevron-right" class="size-4" aria-hidden="true" /></button>
+        <button v-if="nextSeal && nextSeal !== date && canSeal(nextSeal)" type="button" class="inline-flex items-center hover:underline" :disabled="busy" @click="go(nextSeal)">接着封 {{ nextSeal.slice(5) }}<UIcon name="i-lucide-chevron-right" class="size-4" aria-hidden="true" /></button>
         <UButton v-if="canUnseal" size="xs" color="neutral" variant="ghost" @click="openUnseal">撤销封账…</UButton>
         <span v-if="pendingDays.filter(d => d !== date).length" data-testid="pending-days">
           · 还没日结：

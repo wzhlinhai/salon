@@ -320,7 +320,7 @@ test('团购核销结果未知时查询状态沿用同一个幂等键', async ({
   await expect.poll(() => queryKey).toBe(redeemKey)
   expect(queryKey).toBe(redeemKey)
   expect(redeemCalls).toBe(1)
-  await expect(page.getByTestId('coupon-status')).toHaveText('unknown')
+  await expect(page.getByTestId('coupon-status')).toHaveText('结果未知')
 })
 
 async function seedCountCard(token: string, suffix: string, customerID: string, staffID: string, itemID: string) {
@@ -382,15 +382,21 @@ test('计价卡试算刷新后保留默认收款行，卡余额支付要选卡',
   await page.goto('/cashier')
   await page.locator(`[data-order-id="${order.id}"]`).click()
   await expect(page.getByTestId('cash-expected')).toHaveText('88.00')
-  const amount = page.getByTestId('sale-payments').getByLabel('金额')
-  await expect(amount).toHaveValue('88.00')
+  // 收款平时收起：一种方式按应收全额收，金额框不露，只写一句付没付清。
+  const paid = page.getByTestId('payment-status')
+  await expect(page.getByTestId('sale-payments').getByLabel('金额')).toHaveCount(0)
+  await expect(paid).toHaveText('✓ 正好付清')
 
+  // 先点了卡余额再选计价卡：重新试算不把付款方式悄悄改回现金。
+  const cardBalance = page.getByTestId('sale-payments').getByRole('radio', { name: '卡余额', exact: true })
+  await cardBalance.click()
   const firstPreview = page.waitForResponse(r => r.url().endsWith('/api/ops/preview_checkout'))
   await page.getByLabel('计价卡').click()
   await page.getByRole('option', { name: new RegExp(cardType.name) }).click()
   await firstPreview
   await expect(page.getByTestId('cash-expected')).toHaveText('88.00')
-  await expect(amount).toHaveValue('88.00')
+  await expect(paid).toHaveText('✓ 正好付清')
+  await expect(cardBalance).toHaveAttribute('aria-checked', 'true')
 
   const secondPreview = page.waitForResponse(r => r.url().endsWith('/api/ops/preview_checkout'))
   await page.getByLabel('计价卡').click()
@@ -713,6 +719,46 @@ test('未识别顾客没有挂账；挂账结账后在顾客详情收还款', as
   await expect(dialog).toHaveCount(0)
   await expect(debts).toContainText('未还 ¥38.00')
   await expect(debts).toContainText('还 ¥50.00 · 微信')
+})
+
+test('收款平时只露付款方式，点「分开付」才填各自金额', async ({ page }) => {
+  const { token, staff, item, customer } = await seed()
+  const order = await api<{ id: string }>(token, 'open_order', { customer_id: customer.id, gender: 'female', designated: false, items: [{ item_id: item.id, staff: [{ slot: 1, staff_id: staff.id }] }] })
+  await page.addInitScript(() => {
+    window.print = () => {}
+  })
+  await login(page, owner.account, owner.password)
+  await page.goto('/cashier')
+  await page.locator(`[data-order-id="${order.id}"]`).click()
+  await expect(page.getByTestId('cash-expected')).toHaveText('88.00')
+  const pay = page.getByTestId('sale-payments')
+  await expect(pay.getByLabel('金额')).toHaveCount(0)
+  await pay.getByRole('radio', { name: '微信', exact: true }).click()
+  await expect(page.getByTestId('payment-status')).toHaveText('✓ 正好付清')
+
+  // 分开付后删到只剩一行：收回一排，按剩下的方式收全额。
+  await pay.getByRole('button', { name: '分开付', exact: true }).click()
+  const rows = pay.getByTestId('payment-row')
+  await expect(rows).toHaveCount(2)
+  await rows.nth(1).getByRole('button', { name: '删除', exact: true }).click()
+  await expect(pay.getByLabel('金额')).toHaveCount(0)
+  await expect(pay.getByRole('radio', { name: '微信', exact: true })).toHaveAttribute('aria-checked', 'true')
+  await expect(page.getByTestId('payment-status')).toHaveText('✓ 正好付清')
+
+  await pay.getByRole('button', { name: '分开付', exact: true }).click()
+  await expect(rows).toHaveCount(2)
+  await expect(rows.nth(0).getByRole('radio', { name: '微信', exact: true })).toHaveAttribute('aria-checked', 'true')
+  await expect(rows.nth(0).getByLabel('金额')).toHaveValue('88.00')
+  await rows.nth(0).getByLabel('金额').fill('50.00')
+  await expect(page.getByTestId('payment-status')).toContainText('还差 ¥38.00')
+  await rows.nth(1).getByLabel('金额').fill('38.00')
+  await expect(page.getByTestId('payment-status')).toHaveText('✓ 正好付清')
+
+  const checkout = page.waitForRequest(r => r.url().endsWith('/api/ops/checkout_orders'))
+  await page.getByRole('button', { name: /^结账 ¥/ }).click()
+  const body = (await checkout).postDataJSON() as { orders: { payments: { method: string, amount: string }[] }[] }
+  expect(body.orders[0]!.payments).toEqual([{ method: 'wechat', amount: '50.00' }, { method: 'cash', amount: '38.00' }])
+  await expect(page.locator(`[data-order-id="${order.id}"]`)).toHaveCount(0)
 })
 
 test('今日已结的收款记录：现金登记退款要填原因', async ({ page }) => {

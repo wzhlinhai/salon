@@ -72,10 +72,14 @@ function option() {
     tooltip: {
       trigger: 'axis' as const,
       axisPointer: { type: 'line' as const, lineStyle: { color: dimmed, width: 1 } },
+      // 提示框和菜单、弹出层同一张拿起来的纸（DESIGN.md 菜单）：卡片圆角、shadow-lift，不要 ECharts 自带的 4px 圆角和灰阴影；
+      // 不出图表边界，跟手快一点。
       backgroundColor: '#fff',
-      borderColor: grid,
-      borderWidth: 1,
-      padding: [8, 10],
+      borderWidth: 0,
+      padding: [8, 12],
+      confine: true,
+      transitionDuration: 0.08,
+      extraCssText: `border-radius:12px;box-shadow:${cssVar('--shadow-lift')};`,
       textStyle: { color: ink, fontSize: 12 },
       formatter: (params: unknown) => {
         const list = (Array.isArray(params) ? params : [params]) as { axisValueLabel: string, seriesName: string, value: number, color: string }[]
@@ -98,7 +102,13 @@ onMounted(() => {
   if (!el.value) return
   chart = init(el.value, undefined, { renderer: 'svg' })
   render()
-  observer = new ResizeObserver(() => chart?.resize())
+  // 拖侧栏时一帧只缩放一次；被收起（宽度 0）时不缩，免得 ECharts 按 0 宽重排。
+  let frame = 0
+  observer = new ResizeObserver((entries) => {
+    if (!entries[0]?.contentRect.width) return
+    cancelAnimationFrame(frame)
+    frame = requestAnimationFrame(() => chart?.resize())
+  })
   observer.observe(el.value)
 })
 

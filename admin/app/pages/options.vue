@@ -150,7 +150,7 @@ async function save(k: typeof kinds[number], o: LevelOrPosition) {
           </div>
           <form class="flex gap-2 px-2 py-2" @submit.prevent="add(k)">
             <UInput v-model="draft[k.key]" variant="ghost" :placeholder="`新${k.title}`" class="flex-1" />
-            <UButton :loading="saving[k.key]" type="submit" size="sm" color="neutral" variant="ghost" icon="i-lucide-plus">添加</UButton>
+            <UButton :loading="saving[k.key]" type="submit" size="sm" color="neutral" variant="ghost">添加</UButton>
           </form>
         </div>
       </section>
@@ -177,7 +177,7 @@ async function save(k: typeof kinds[number], o: LevelOrPosition) {
             <UInput v-model.number="categoryDraft.performance_ratio" type="number" min="0" max="100" class="w-20" aria-label="新类别业绩比例" />
             %
           </label>
-          <UButton :loading="categoryAddSaving" type="submit" size="sm" color="neutral" variant="ghost" icon="i-lucide-plus">添加</UButton>
+          <UButton :loading="categoryAddSaving" type="submit" size="sm" color="neutral" variant="ghost">添加</UButton>
         </form>
       </div>
     </section>

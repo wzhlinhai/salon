@@ -29,7 +29,8 @@ function move(event: KeyboardEvent, step: number) {
 </script>
 
 <template>
-  <div role="radiogroup" :aria-label="label" class="flex flex-wrap gap-2">
+  <!-- 收银台（counter）：大按钮等宽铺满一排，六种付款方式也不掉行。 -->
+  <div role="radiogroup" :aria-label="label" :class="counter ? 'grid w-full auto-cols-fr grid-flow-col gap-2' : 'flex flex-wrap gap-2'">
     <UButton
       v-for="m in items"
       :key="m.value"
@@ -39,7 +40,7 @@ function move(event: KeyboardEvent, step: number) {
       :size="counter ? 'lg' : 'sm'"
       color="neutral"
       :variant="model === m.value ? (counter ? 'solid' : 'soft') : 'outline'"
-      :class="[counter ? 'min-w-18 justify-center' : '', model === m.value && !counter ? 'bg-selected font-medium text-default ring-1 ring-(--ui-border-accented) ring-inset' : '']"
+      :class="[counter ? 'justify-center px-0' : '', model === m.value && !counter ? 'bg-selected font-medium text-default ring-1 ring-(--ui-border-accented) ring-inset' : '']"
       @click="pick(m.value)"
       @keydown.left.prevent="move($event, -1)"
       @keydown.right.prevent="move($event, 1)"
