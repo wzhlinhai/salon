@@ -18,7 +18,7 @@
 | 项 | 实测 | 本系统 |
 |---|---|---|
 | 内容区底色 / 侧栏 | #fff / #f7f7f5 | `bg-page` / `bg-side` |
-| 墨色 / 次要 / 更淡 / 中间灰 | #2c2c2b / #7d7a75 / #a19e99 / #5f5e5b | `text-default` / `text-muted` / `text-dimmed` / `text-toned` |
+| 墨色 / 次要 / 更淡 / 中间灰 | #2c2c2b / #7d7a75 / #a19e99 / #5f5e5b | `text-default` / `text-muted` / `text-dimmed` / `text-toned`；2026-11-26 次要和更淡各调深一档到 #6c6964 / #7d7a75（见「颜色」） |
 | 页面标题 | 32px / 700，行高 1.2，左右各 96px 页边 | `h1.text-title`，宋体 600（2026-11-24 起标题换宋体，见「档位」）；`app.vue` 主区 `xl:px-24` |
 | 页内标题 | 16px 左右 / 600，墨色 | `sec` |
 | 视图页签 | 14px / 500，高 32，padding 6px 12px，圆角 20；选中灰底 rgba(33,27,23,.076)，未选中灰字，无下划线 | `ViewTabs`；`UTabs variant="link"` |
@@ -84,11 +84,13 @@
 | `bg-line` | 9% 暖灰 | 时间轴竖线等画出来的细线 |
 | `bg-notice` | #fbf3db | 需要本人处理的提醒条（如"还没打卡"） |
 | `bg-ai-soft`、`text-ai` | #f1f1ef、#37352f | 只给 AI 标识和指令框的发送按钮。右下角 AI 按钮是白底圆钮加浮起阴影（`shadow-lift`），钮上是 AI 形象 `AiMark`（见「图标」）。AI 不另起颜色，靠「AI 起草」这几个字标明（见「去掉 AI 套路」） |
-| `text-default` / `text-muted` / `text-dimmed` | #2c2c2b / #7d7a75 / #a19e99 | 正文 / 说明 / 更次要的说明、占位、计数 |
+| `text-default` / `text-muted` / `text-dimmed` | #2c2c2b / #6c6964 / #7d7a75 | 正文 / 说明 / 更次要的说明、占位、计数 |
 | `text-ink-red` `text-ink-green` `text-ink-yellow` `text-ink-orange` | Notion 深色字 | 金额涨跌、迟到时长等需要上色的字 |
 | `primary` | #2c2c2b | 主按钮、开关和勾选的选中态、焦点框，和正文墨色同色（2026-11-23 店主选定炭黑，不用 Notion 蓝）。选中项用 `bg-selected` 灰底 |
 | `bg-dye-1` … `bg-dye-5`（`--color-dye-*`） | #8d4226 #b78520 #3a75af #5c8635 #b55d92 | 染发色卡色：栗棕、亚麻金、靛蓝、橄榄、玫瑰。报表里所有的线、柱、构成条、排名条都用它（`ReportChart` 运行时读），按顺序取、不循环，超过 5 个归进「其他」。列表、时间线里的服务不上色（见「取舍」第 2 条）。2026-11-25 用 oklch 重调（L 0.47–0.65，C 0.11–0.13），`.dev/taste/tools/palcheck.mjs` 验过：五色对白底都 ≥ 3:1，相邻色正常视力 ΔE ≥ 19、红绿色盲 ΔE ≥ 11 |
-| `error` / `warning` / `success` | #d44c47 / #cb912f / #448361 | Nuxt UI 组件的 `color` 属性 |
+| `error` / `warning` / `success` | #be3f3a / #93661b / #3f7a5a | Nuxt UI 组件的 `color` 属性 |
+
+灰字和上色的字比 Notion 实测深一档（2026-11-26 店主选定）：店里灯亮、常在平板上看，Notion 的 #7d7a75 在白底只有 4.27:1、#a19e99 只有 2.67:1。现在 `text-muted` 在白底、侧栏、`bg-elevated`、提醒条上都 ≥ 4.8:1，`text-dimmed`（原来的次要灰）白底 4.27:1，只写零值「—」、占位和计数这类有没有都不耽误事的字；四种上色的字白底都 ≥ 4.5:1。卡面（`card-face` 的蓝、粉底）上的小字用 `text-toned`。
 
 Nuxt UI 组件（`UButton`、`UBadge` 等）的 `color` 只用语义名：`primary`、`neutral`、`ai`、`error`、`warning`、`success`。`ai` 现在和深色字同色，留着这个名字是为了以后要换时只改一处。
 

@@ -67,6 +67,10 @@ test('日结昨天，重新日结后留下两版记录 @closing', async ({ page 
   }
   await expect(form.locator('tr[data-method="cash"]')).toContainText(`+${yuan(5)}`)
   await expect(form.locator('tr[data-method="cash"]')).toContainText('写个原因')
+  // 系统记 ¥0、也填了 0 的方式没有差，不挂「写个原因」（昨天只有一笔现金，别的方式都是 0）。
+  const zeroLine = preview.on_site.find(l => l.method !== 'cash' && Number(l.amount) === 0)
+  expect(zeroLine).toBeTruthy()
+  await expect(form.locator(`tr[data-method="${zeroLine!.method}"]`)).not.toContainText('写个原因')
   await expect(page.getByTestId('close-brief')).toContainText(`多了 ${yuan(5)}`)
   await page.getByPlaceholder('对不上的原因，例如：找零少了 5 元').fill('多收了一张五元')
   await closeWithoutSealing(page)

@@ -176,14 +176,14 @@ test('店长看项目报表：今天做的项目在表里，合计等于各行�
   const table = page.getByTestId('item-table')
   const row = table.locator(`tbody tr[data-item="${itemName}"]`)
   await expect(row.locator('td[data-col="times"]')).toHaveText('1')
-  await expect(row.locator('td[data-col="paid"]')).toHaveText('¥66.00')
+  await expect(row.locator('td[data-col="paid"]')).toHaveText('¥66')
   await expectTotalsAreSums(table, 'item-totals', 8)
   await expectBriefIsTotal(table, 'item-totals', 'paid')
 
   // 只看服务：合计改成服务各行在前端相加，这个服务项目还在。
   const kinds = page.getByRole('radiogroup', { name: '项目类型' })
   await kinds.getByRole('radio', { name: '服务' }).click()
-  await expect(row.locator('td[data-col="paid"]')).toHaveText('¥66.00')
+  await expect(row.locator('td[data-col="paid"]')).toHaveText('¥66')
   await expect(table.locator('tbody tr', { has: page.getByText('卖品', { exact: true }) })).toHaveCount(0)
   await expectTotalsAreSums(table, 'item-totals', 8)
   await expectBriefIsTotal(table, 'item-totals', 'paid')

@@ -16,6 +16,7 @@ const performance = ref<Map<string, string> | null>(null)
 const shifts = ref(new Map<string, components['schemas']['Shift'] | null>())
 const loadGuard = useRequestGuard()
 const loading = ref(false)
+const loadError = ref('')
 const editors = useTemplateRef('editors')
 
 async function load() {
@@ -28,9 +29,12 @@ async function load() {
     ])
     if (!request()) return
     if (!s.data || !p.data) {
-      toast.add({ title: errorText(s.error ?? p.error), color: 'error' })
+      // 名册还没读到过时原地给一块「重试」，别只弹提示留一片空白；已经有名册时（刷新失败）弹提示就够。
+      if (staff.value.length) toast.add({ title: errorText(s.error ?? p.error), color: 'error' })
+      else loadError.value = errorText(s.error ?? p.error)
       return
     }
+    loadError.value = ''
     staff.value = s.data.staff
     positions.value = p.data.items
   } finally {
@@ -137,13 +141,14 @@ function shiftText(s: Staff) {
               <p class="truncate text-meta text-muted">{{ rowMeta(s) || '没设级别和角色' }}</p>
             </div>
             <div class="shrink-0 text-right">
-              <p v-if="performance && s.active" class="tabular-nums" data-testid="staff-performance">{{ yuan(performance.get(s.id) ?? 0) }}</p>
+              <p v-if="performance && s.active" class="tabular-nums" :class="zeroText(performance.get(s.id) ?? 0) && 'text-dimmed'" data-testid="staff-performance">{{ yuan(performance.get(s.id) ?? 0) }}</p>
               <p class="text-meta text-muted">{{ [performance && s.active && s.id === labelledId ? '本月业绩' : '', shiftText(s)].filter(Boolean).join(' · ') }}</p>
             </div>
           </NuxtLink>
         </div>
       </section>
       <ListSkeleton v-if="loading && !staff.length" />
+      <LoadError v-else-if="loadError && !staff.length" title="员工名册没有读出来" :hint="loadError" @retry="load()" />
       <template v-else-if="!shown.length">
         <EmptyState v-if="!staff.length" art="chair" title="还没有员工" hint="点右上角新建员工，再开登录账号和角色" />
         <EmptyState v-else :title="search.trim() ? '没有找到这位员工' : filterKey === 'active' ? '没有在职员工' : '没有停用的员工'" :hint="search.trim() ? '换个姓名或编号试试' : undefined" />

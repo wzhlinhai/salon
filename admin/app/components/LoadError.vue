@@ -10,7 +10,7 @@ defineEmits<{ retry: [] }>()
     <span class="grid size-6 shrink-0 place-items-center rounded-full bg-error text-xs font-semibold text-white" aria-hidden="true">!</span>
     <div class="min-w-0 flex-1">
       <p class="font-medium">{{ title }}</p>
-      <p v-if="hint" class="text-meta text-muted">{{ hint }}</p>
+      <p v-if="hint" class="text-meta text-toned">{{ hint }}</p>
     </div>
     <UButton color="neutral" variant="outline" size="sm" class="bg-default" @click="$emit('retry')">重试</UButton>
   </div>

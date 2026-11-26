@@ -139,6 +139,23 @@ test('新建员工断网后恢复并可重试', async ({ page }) => {
   await expect(page.getByText(name, { exact: true })).toBeVisible()
 })
 
+test('员工名册第一次没读出来时原地给重试，点了就出来', async ({ page }) => {
+  await login(page, owner.account, owner.password)
+  let abort = true
+  await page.route('**/api/ops/list_staff', async (route) => {
+    if (abort) {
+      abort = false
+      await route.abort()
+    } else await route.continue()
+  })
+  await page.goto('/staff')
+  const failed = page.getByTestId('load-error')
+  await expect(failed).toContainText('员工名册没有读出来')
+  await failed.getByRole('button', { name: '重试', exact: true }).click()
+  await expect(failed).toHaveCount(0)
+  await expect(page.getByTestId('staff-row').first()).toBeVisible()
+})
+
 test('员工档案可以设置顾客在小程序预约', async ({ page }) => {
   const token = await apiLogin(owner.account, owner.password)
   const suffix = Date.now().toString(36) + Math.random().toString(36).slice(2, 8)

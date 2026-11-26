@@ -165,17 +165,17 @@ function cell(value: string) {
             <tbody>
               <tr v-for="row in rows" :key="row.key" class="border-t border-default" :data-kind="row.key">
                 <th scope="row" class="px-3 py-2 text-left font-normal">{{ row.label }}</th>
-                <td class="px-3 text-right" :class="cell(row.totals.amount)" data-col="amount">{{ yuanFixed(row.totals.amount) }}</td>
-                <td class="px-3 text-right" :class="cell(row.totals.repaid)" data-col="repaid">{{ yuanFixed(row.totals.repaid) }}</td>
-                <td class="px-3 text-right font-medium" :class="cell(row.totals.outstanding)" data-col="outstanding">{{ yuanFixed(row.totals.outstanding) }}</td>
+                <td class="px-3 text-right" :class="cell(row.totals.amount)" data-col="amount">{{ yuanCell(row.totals.amount) }}</td>
+                <td class="px-3 text-right" :class="cell(row.totals.repaid)" data-col="repaid">{{ yuanCell(row.totals.repaid) }}</td>
+                <td class="px-3 text-right font-medium" :class="cell(row.totals.outstanding)" data-col="outstanding">{{ yuanCell(row.totals.outstanding) }}</td>
               </tr>
             </tbody>
             <tfoot class="font-semibold">
               <tr class="border-y border-default" data-testid="debt-totals">
                 <th scope="row" class="px-3 py-2 text-left">合计</th>
-                <td class="px-3 text-right" data-col="amount">{{ yuanFixed(summary.amount) }}</td>
-                <td class="px-3 text-right" data-col="repaid">{{ yuanFixed(summary.repaid) }}</td>
-                <td class="px-3 text-right" data-col="outstanding">{{ yuanFixed(summary.outstanding) }}</td>
+                <td class="px-3 text-right" data-col="amount">{{ yuan(summary.amount) }}</td>
+                <td class="px-3 text-right" data-col="repaid">{{ yuan(summary.repaid) }}</td>
+                <td class="px-3 text-right" data-col="outstanding">{{ yuan(summary.outstanding) }}</td>
               </tr>
             </tfoot>
           </table>

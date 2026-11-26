@@ -172,7 +172,7 @@ const moreItems = computed(() => {
         </header>
 
         <div class="mt-8 grid gap-10 lg:grid-cols-[minmax(0,1fr)_20rem]">
-          <main class="min-w-0 space-y-8">
+          <div class="min-w-0 space-y-8">
             <dl class="grid grid-cols-[6rem_minmax(0,1fr)] gap-y-3 text-sm" data-testid="staff-fields">
               <template v-for="field in fields" :key="field.label">
                 <dt class="text-muted">{{ field.label }}</dt>
@@ -199,21 +199,18 @@ const moreItems = computed(() => {
                 </div>
               </div>
             </section>
-          </main>
+          </div>
 
           <aside class="space-y-8" data-testid="staff-rail">
             <section v-if="attendance" data-testid="staff-attendance">
-              <h3 class="flex h-7 items-center text-meta text-muted">考勤</h3>
+              <h2 class="flex h-7 items-center text-meta text-muted">考勤</h2>
               <p class="text-sm tabular-nums">{{ attendanceSentence }}</p>
               <NuxtLink to="/attendance" class="mt-1 inline-flex items-center text-meta text-muted hover:underline">考勤明细<UIcon name="i-lucide-chevron-right" class="size-4" aria-hidden="true" /></NuxtLink>
             </section>
           </aside>
         </div>
       </template>
-      <div v-else-if="loadError" class="space-y-3">
-        <p>{{ loadError }}</p>
-        <UButton variant="outline" @click="load()">重试</UButton>
-      </div>
+      <LoadError v-else-if="loadError" title="员工档案没有读出来" :hint="loadError" @retry="load()" />
       <p v-else class="text-muted">正在读取员工…</p>
     </div>
 

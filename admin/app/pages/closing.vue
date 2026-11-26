@@ -398,7 +398,7 @@ function saveUnseal() {
         <div class="overflow-x-auto">
           <table class="w-full text-sm" data-testid="close-form">
             <thead>
-              <tr class="border-b border-default text-sm text-muted">
+              <tr class="border-b border-default text-sm whitespace-nowrap text-muted">
                 <th scope="col" class="px-3 py-2 text-start font-normal">方式</th>
                 <th scope="col" class="px-3 py-2 text-end font-normal">系统记的</th>
                 <th scope="col" class="px-3 py-2 text-end font-normal">实际</th>
@@ -408,7 +408,7 @@ function saveUnseal() {
             </thead>
             <tbody class="divide-y divide-default">
               <tr v-for="line in onSite" :key="line.method" :data-method="line.method" :class="(difference(line) ?? 0) !== 0 ? 'bg-notice' : ''">
-                <td class="px-3 py-2">{{ label(line) }}</td>
+                <td class="px-3 py-2 whitespace-nowrap">{{ label(line) }}</td>
                 <td class="px-3 py-2 text-end tabular-nums" :class="zeroText(line.amount) ? 'text-dimmed' : ''">{{ yuan(line.amount) }}</td>
                 <td class="px-3 py-1">
                   <div class="flex justify-end">
@@ -429,11 +429,11 @@ function saveUnseal() {
                 </td>
                 <td class="px-3 py-2">
                   <span v-if="difference(line) === 0 && !zeroText(line.amount)" class="text-ink-green">✓ 对上</span>
-                  <button v-else-if="difference(line) !== null && !sealed" type="button" class="text-muted hover:underline" @click="writeReason">写个原因</button>
+                  <button v-else-if="difference(line) && !sealed" type="button" class="text-muted whitespace-nowrap hover:underline" @click="writeReason">写个原因</button>
                 </td>
               </tr>
               <tr class="font-semibold" data-testid="close-total">
-                <td class="px-3 py-2">现场合计</td>
+                <td class="px-3 py-2 whitespace-nowrap">现场合计</td>
                 <td class="px-3 py-2 text-end tabular-nums">{{ yuan(systemTotal) }}</td>
                 <td class="px-3 py-2 text-end tabular-nums">{{ actualTotal === null ? '' : yuan(actualTotal) }}</td>
                 <td class="px-3 py-2 text-end tabular-nums" :class="totalDifference ? 'text-ink-red' : 'text-dimmed font-normal'">{{ totalDifference ? signedYuan(totalDifference) : '—' }}</td>

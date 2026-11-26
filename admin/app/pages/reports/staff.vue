@@ -197,19 +197,19 @@ function signed(amount: string, reversal: boolean) {
                   <button v-if="row.staff" type="button" class="font-medium hover:underline" @click.stop="openDetail(row)">{{ row.staff.name }}</button>
                   <span v-else class="text-muted" title="结账时没记到员工的业绩，没有个人明细">未分配</span>
                 </th>
-                <td v-for="c in shownMoneyColumns" :key="c.key" class="px-3 text-right whitespace-nowrap" :class="cell(row[c.key])" :data-col="c.key">{{ yuanFixed(row[c.key]) }}</td>
+                <td v-for="c in shownMoneyColumns" :key="c.key" class="px-3 text-right whitespace-nowrap" :class="cell(row[c.key])" :data-col="c.key">{{ yuanCell(row[c.key]) }}</td>
                 <td v-for="(c, i) in guestColumns" :key="c.key" class="px-3 text-right" :class="[cell(row[c.key]), !i && 'border-l border-default']" :data-col="c.key">{{ formatGuest(row[c.key]) }}</td>
                 <td class="px-3 text-right" :class="cell(row.service_item_lines)" data-col="service_item_lines">{{ row.service_item_lines }}</td>
-                <td class="border-l border-default px-3 text-right whitespace-nowrap" :class="cell(row.commission_total)" data-col="commission_total">{{ yuanFixed(row.commission_total) }}</td>
+                <td class="border-l border-default px-3 text-right whitespace-nowrap" :class="cell(row.commission_total)" data-col="commission_total">{{ yuanCell(row.commission_total) }}</td>
               </tr>
             </tbody>
             <tfoot class="font-semibold">
               <tr class="border-y border-default" data-testid="staff-totals">
                 <th scope="row" class="sticky left-0 bg-page px-3 py-2 text-left">合计</th>
-                <td v-for="c in shownMoneyColumns" :key="c.key" class="px-3 text-right whitespace-nowrap" :data-col="c.key">{{ yuanFixed(report.totals[c.key]) }}</td>
+                <td v-for="c in shownMoneyColumns" :key="c.key" class="px-3 text-right whitespace-nowrap" :data-col="c.key">{{ yuan(report.totals[c.key]) }}</td>
                 <td v-for="(c, i) in guestColumns" :key="c.key" class="px-3 text-right" :class="!i && 'border-l border-default'" :data-col="c.key">{{ formatGuest(report.totals[c.key]) }}</td>
                 <td class="px-3 text-right" data-col="service_item_lines">{{ report.totals.service_item_lines }}</td>
-                <td class="border-l border-default px-3 text-right whitespace-nowrap" data-col="commission_total">{{ yuanFixed(report.totals.commission_total) }}</td>
+                <td class="border-l border-default px-3 text-right whitespace-nowrap" data-col="commission_total">{{ yuan(report.totals.commission_total) }}</td>
               </tr>
             </tfoot>
           </table>

@@ -19,12 +19,17 @@ const sources = ref<components['schemas']['CustomerSource'][]>([])
 const saving = ref(false)
 const fromSearch = computed(() => !!props.phone)
 
+// 关了又马上打开时，上一次读来源的回包晚到也不该再弹提示、改列表。
+const sourcesGuard = useRequestGuard()
+
 watch(open, async (value) => {
   if (!value) return
   phoneInput.value = props.phone ?? ''
   name.value = ''
   source.value = ''
+  const current = sourcesGuard.next()
   const res = await api.POST('/api/ops/list_customer_sources', { body: {} })
+  if (!current() || !open.value) return
   if (!res.data) toast.add({ title: '来源没有读出来', description: '先不选来源，进档案再补', color: 'warning' })
   sources.value = res.data?.items.filter(s => s.active) ?? []
 }, { immediate: true })

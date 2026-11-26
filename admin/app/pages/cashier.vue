@@ -329,7 +329,8 @@ onMounted(init)
   <div class="space-y-4">
     <PageActions>
       <span v-if="businessDate" class="text-meta text-muted">营业日 {{ businessDate }}</span>
-      <UButton size="sm" @click="openOrderBegin(pickedCustomer)">开单</UButton>
+      <!-- 每页只一个实心主按钮：选着一张单时主角是小票上的「结账」，顶栏的「开单」退成描边。 -->
+      <UButton size="sm" :color="selectedOrderID ? 'neutral' : 'primary'" :variant="selectedOrderID ? 'outline' : 'solid'" @click="openOrderBegin(pickedCustomer)">开单</UButton>
     </PageActions>
 
     <section v-if="canCustomer || canGroupbuy" class="space-y-3">

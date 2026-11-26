@@ -90,7 +90,7 @@ function cell(value: string | number) {
                 <td class="px-3 text-right text-muted">{{ percent(row.new_customers, report.totals.new_customers) }}</td>
                 <td class="px-3 text-right" :class="cell(row.returning)" data-col="returning">{{ row.returning }}</td>
                 <td class="px-3 text-right text-muted">{{ percent(row.returning, row.new_customers) }}</td>
-                <td class="px-3 text-right whitespace-nowrap" :class="cell(row.revenue)" data-col="revenue">{{ yuanFixed(row.revenue) }}</td>
+                <td class="px-3 text-right whitespace-nowrap" :class="cell(row.revenue)" data-col="revenue">{{ yuanCell(row.revenue) }}</td>
               </tr>
             </tbody>
             <tfoot class="font-semibold">
@@ -100,7 +100,7 @@ function cell(value: string | number) {
                 <td class="px-3 text-right text-muted">{{ report.totals.new_customers ? '100%' : '—' }}</td>
                 <td class="px-3 text-right" data-col="returning">{{ report.totals.returning }}</td>
                 <td class="px-3 text-right text-muted">{{ percent(report.totals.returning, report.totals.new_customers) }}</td>
-                <td class="px-3 text-right whitespace-nowrap" data-col="revenue">{{ yuanFixed(report.totals.revenue) }}</td>
+                <td class="px-3 text-right whitespace-nowrap" data-col="revenue">{{ yuan(report.totals.revenue) }}</td>
               </tr>
             </tfoot>
           </table>

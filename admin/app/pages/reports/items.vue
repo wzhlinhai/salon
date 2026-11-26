@@ -116,7 +116,7 @@ function cell(value: string | number) {
                 </th>
                 <td class="px-3 text-right" :class="cell(row.times)" data-col="times">{{ row.times }}</td>
                 <td class="px-3 text-right" :class="cell(row.designated)" data-col="designated">{{ row.designated }}</td>
-                <td v-for="c in moneyColumns" :key="c.key" class="px-3 text-right whitespace-nowrap" :class="[cell(row[c.key]), c.key === 'paid' && 'font-medium']" :data-col="c.key">{{ yuanFixed(row[c.key]) }}</td>
+                <td v-for="c in moneyColumns" :key="c.key" class="px-3 text-right whitespace-nowrap" :class="[cell(row[c.key]), c.key === 'paid' && 'font-medium']" :data-col="c.key">{{ yuanCell(row[c.key]) }}</td>
               </tr>
             </tbody>
             <tfoot class="font-semibold">
@@ -124,7 +124,7 @@ function cell(value: string | number) {
                 <th scope="row" class="sticky left-0 bg-page px-3 py-2 text-left">合计</th>
                 <td class="px-3 text-right" data-col="times">{{ totals.times }}</td>
                 <td class="px-3 text-right" data-col="designated">{{ totals.designated }}</td>
-                <td v-for="c in moneyColumns" :key="c.key" class="px-3 text-right whitespace-nowrap" :data-col="c.key">{{ yuanFixed(totals[c.key]) }}</td>
+                <td v-for="c in moneyColumns" :key="c.key" class="px-3 text-right whitespace-nowrap" :data-col="c.key">{{ yuan(totals[c.key]) }}</td>
               </tr>
             </tfoot>
           </table>
