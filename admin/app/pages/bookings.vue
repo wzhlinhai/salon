@@ -222,7 +222,8 @@ async function loadOptions() {
   businessDate.value = settingsResult.data.business_date
   staff.value = staffResult.data.staff
   items.value = itemsResult.data.items
-  day.value = businessDate.value
+  // 读的时候人已经换了日期就不拉回今天。
+  if (!day.value) day.value = businessDate.value
   await bookFromQuery()
 }
 

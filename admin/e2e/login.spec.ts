@@ -2,6 +2,9 @@ import { expect, test } from '@playwright/test'
 import { env } from './env'
 import { api, apiLogin, hire, login, owner } from './helpers'
 
+// 见 app/plugins/e2e-hooks.client.ts
+type E2EHooks = { __salonE2E: { getStore: () => Promise<unknown>, loadMe: () => Promise<{ staff: { id: unknown } } | null> } }
+
 test('旧请求的 401 不会清除新登录凭证', async ({ page }) => {
   const employee = await hire('前台')
   const newToken = await apiLogin(employee.account, employee.password)
@@ -20,10 +23,7 @@ test('旧请求的 401 不会清除新登录凭证', async ({ page }) => {
     await route.fulfill({ status: 401, contentType: 'application/json', body: '{"detail":"unauthenticated"}' })
   })
   const oldRequest = page.evaluate(async () => {
-    const modulePath = '/_nuxt/composables/useApi.ts'
-    const { useApi } = await import(modulePath)
-    const app = (window as unknown as { useNuxtApp: () => { runWithContext: <T>(fn: () => T) => T } }).useNuxtApp()
-    await app.runWithContext(() => useApi().POST('/api/ops/get_store', { body: {} }))
+    await (window as unknown as E2EHooks).__salonE2E.getStore()
   })
   await pending
   await page.evaluate(token => localStorage.setItem('salon_token', token), newToken)
@@ -116,26 +116,18 @@ test('换账号后迟到的 get_me 不覆盖当前身份', async ({ page }) => {
       await route.continue()
     }
   })
-  // 页面没有重新读取身份的按钮，直接调用开发服务器导出的现有 composable；不刷新文档，保留在途 A 请求。
-  const oldLoad = page.evaluate(async () => {
-    const modulePath = '/_nuxt/composables/useMe.ts'
-    const { useMe } = await import(modulePath)
-    const app = (window as unknown as { useNuxtApp: () => { runWithContext: <T>(fn: () => T) => T } }).useNuxtApp()
-    return app.runWithContext(() => useMe().load())
-  })
+  // 页面没有重新读取身份的按钮，经 plugins/e2e-hooks.client.ts 直接调 useMe().load()；不刷新文档，保留在途 A 请求。
+  const oldLoad = page.evaluate(() => (window as unknown as E2EHooks).__salonE2E.loadMe())
   await pending
   await page.evaluate(async (token) => {
     localStorage.setItem('salon_token', token)
-    const modulePath = '/_nuxt/composables/useMe.ts'
-    const { useMe } = await import(modulePath)
-    const app = (window as unknown as { useNuxtApp: () => { runWithContext: <T>(fn: () => T) => T } }).useNuxtApp()
-    await app.runWithContext(() => useMe().load())
+    await (window as unknown as E2EHooks).__salonE2E.loadMe()
   }, tokenB)
   await expect(page.getByTestId('home-greeting')).toContainText(identityB.staff.name)
   const response = page.waitForResponse(r => r.url().endsWith('/api/ops/get_me'))
   release()
   await (await response).finished()
-  expect((await oldLoad).staff.id).toBe(identityB.staff.id)
+  expect((await oldLoad)?.staff.id).toBe(identityB.staff.id)
   await expect(page.getByTestId('home-greeting')).toContainText(identityB.staff.name)
 })
 

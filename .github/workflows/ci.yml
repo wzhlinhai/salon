@@ -13,8 +13,30 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  backend:
-    timeout-minutes: 30
+  # 只改了管理后台和文档的 PR 不跑后端两项（后端代码、脚本、CI 配置一改就跑）；推到 main 总是全跑。
+  # PR 检出的是合并提交，和第一个父提交（目标分支）比就是这个 PR 的改动。
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.diff.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      - id: diff
+        run: |
+          if [ "${{ github.event_name }}" != pull_request ] \
+            || git diff --name-only HEAD^1 HEAD | grep -qvE '^admin/|^docs/|\.md$'; then
+            echo backend=true >> "$GITHUB_OUTPUT"
+          else
+            echo backend=false >> "$GITHUB_OUTPUT"
+          fi
+
+  # 后端静态检查和测试分两台并行：测试一项就要七八分钟，检查不必排在它前面。
+  backend-checks:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -40,6 +62,21 @@ jobs:
           working-directory: backend
       - name: sqlc generated code is up to date
         run: go tool sqlc diff
+
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
       - name: go test
         # CI 是全量测试的最终结果：恢复的 Go 缓存里存有旧的测试结果，-count=1 强制每个包真跑。
         run: go test -count=1 ./...
@@ -132,7 +169,8 @@ jobs:
           done
       - run: scripts/dev.sh up
         env:
-          # CI 上 nuxt dev 首次编译较慢。
+          # 用构建好的前端跑：页面不用现编译，也没有开发模式的错误遮罩（页面上一次未处理的网络错误就会盖住整页、挡住点击）。
+          DEV_ADMIN_MODE: preview
           DEV_WAIT_SECONDS: 180
       - run: npx playwright test --project=default --shard=${{ matrix.shard }}/3
         working-directory: admin

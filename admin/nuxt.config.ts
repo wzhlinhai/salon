@@ -4,6 +4,8 @@ const env = (globalThis as unknown as {
   process?: { env: Record<string, string | undefined> }
 }).process?.env
 const devApiTarget = env?.NUXT_DEV_API_TARGET || 'http://127.0.0.1:8080/api'
+// 构建版（scripts/dev.sh 的 DEV_ADMIN_MODE=preview，CI 的 e2e 用）没有 devProxy，构建时写进这条代理规则；平时构建不设，不带代理。
+const previewApiTarget = env?.NUXT_PREVIEW_API_TARGET
 
 export default defineNuxtConfig({
   modules: ['@nuxt/ui', '@nuxt/eslint'],
@@ -22,8 +24,9 @@ export default defineNuxtConfig({
     }
   },
   runtimeConfig: {
-    public: { apiBase: '' }
+    public: { apiBase: '', e2eHooks: !!previewApiTarget }
   },
+  routeRules: previewApiTarget ? { '/api/**': { proxy: `${previewApiTarget}/**` } } : {},
   compatibilityDate: '2026-10-01',
   nitro: {
     devProxy: { '/api': { target: devApiTarget, changeOrigin: true } }

@@ -6,7 +6,8 @@
 #   scripts/dev.sh reset   删除数据库后重新 up（全新数据）
 #   scripts/dev.sh status  显示各部分是否在运行
 #
-# 环境变量：DEV_DB_PORT、DEV_BACKEND_ADDR、DEV_ADMIN_PORT、DEV_WAIT_SECONDS（每一步最多等多少秒，默认 60）、DEV_AI_KEY_FILE（见下）。
+# 环境变量：DEV_DB_PORT、DEV_BACKEND_ADDR、DEV_ADMIN_PORT、DEV_WAIT_SECONDS（每一步最多等多少秒，默认 60）、DEV_AI_KEY_FILE（见下）、
+# DEV_ADMIN_MODE（默认 dev 起 nuxt dev；preview 先构建再起构建版，CI 的 e2e 用：页面不用现编译，也没有开发模式的错误遮罩挡住点击）。
 # 数据库容器名为 salon-dev-db-$DB_PORT，随 DEV_DB_PORT 变化。
 #
 # 进程的 pid 和日志在 .dev/ 下。停止进程只按 pid 文件里的进程组，不按名字匹配。
@@ -194,8 +195,18 @@ up() {
     start_proc backend "$ROOT/backend" "${BACKEND_ADDR##*:}" "$STATE/salon" serve
   wait_for backend curl --max-time 2 -sf "http://$BACKEND_ADDR/healthz"
   if [ ! -d "$ROOT/admin/node_modules" ]; then (cd "$ROOT/admin" && npm install); fi
-  NUXT_DEV_API_TARGET="http://$BACKEND_ADDR/api" \
-    start_proc admin "$ROOT/admin" "$ADMIN_PORT" npx nuxt dev --host localhost --port "$ADMIN_PORT"
+  if [ "${DEV_ADMIN_MODE:-dev}" = preview ]; then
+    if ! proc_running admin; then
+      log "admin:   building (log: $STATE/admin-build.log)"
+      (cd "$ROOT/admin" && NUXT_PREVIEW_API_TARGET="http://$BACKEND_ADDR/api" npx nuxt build) >"$STATE/admin-build.log" 2>&1 \
+        || { tail -n 30 "$STATE/admin-build.log" >&2; exit 1; }
+    fi
+    HOST=localhost PORT="$ADMIN_PORT" \
+      start_proc admin "$ROOT/admin" "$ADMIN_PORT" node .output/server/index.mjs
+  else
+    NUXT_DEV_API_TARGET="http://$BACKEND_ADDR/api" \
+      start_proc admin "$ROOT/admin" "$ADMIN_PORT" npx nuxt dev --host localhost --port "$ADMIN_PORT"
+  fi
   wait_for admin curl --max-time 2 -sf "http://localhost:$ADMIN_PORT/"
   # e2e 测试从这里读取地址和老板账号（admin/e2e/env.ts）。
   printf '{"baseURL":"http://localhost:%s","owner":{"account":"%s","password":"%s"}}\n' \
