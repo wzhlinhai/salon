@@ -178,7 +178,7 @@ async function saveShift() {
     void reloadShifts()
     if (!current()) return
     createShiftOpen.value = false
-    toast.add({ title: '已保存', color: 'success' })
+    toast.add({ title: '已新建班次，可以给员工排上了', color: 'success' })
   })
 }
 
@@ -252,7 +252,7 @@ async function saveAssign() {
     void reloadSummary()
     if (!current()) return
     assignOpen.value = false
-    toast.add({ title: '已保存', color: 'success' })
+    toast.add({ title: '班次已排好', color: 'success' })
   })
 }
 
@@ -412,8 +412,8 @@ onMounted(async () => {
         <p>已经指定的员工照常执行，直到改指定；停用后不能再指定给员工。</p>
       </template>
       <template #footer>
-        <ModalActions @cancel="deactivateOpen = false">
-          <UButton color="error" :loading="deactivateSaving" @click="deactivateShift">确认停用</UButton>
+        <ModalActions cancel-label="不停用了" @cancel="deactivateOpen = false">
+          <UButton color="error" :loading="deactivateSaving" @click="deactivateShift">停用</UButton>
         </ModalActions>
       </template>
     </UModal>

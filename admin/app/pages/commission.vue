@@ -295,7 +295,7 @@ function changeSource(o: OverrideForm) {
         <UButton v-if="versions.hasMore.value" :loading="versions.loading.value" size="sm" color="neutral" variant="ghost" class="m-2" @click="versions.loadMore">加载更多</UButton>
       </div>
     </section>
-    <p v-if="detailLoading" class="text-sm text-muted">加载中</p>
+    <ListSkeleton v-if="detailLoading" :rows="3" />
     <section v-if="detail" data-testid="scheme-detail">
       <div class="sec">版本 {{ detail.version }} · {{ detail.effective_from }} 起执行</div>
       <div class="overflow-x-auto">
@@ -308,7 +308,7 @@ function changeSource(o: OverrideForm) {
                 <thead class="text-left text-sm text-muted"><tr><th v-if="rule.by_position" class="py-1 font-normal">岗位</th><th v-if="rule.by_designated" class="font-normal">指定或非指定</th><th v-if="rule.by_member" class="font-normal">会员或散客</th><th class="font-normal">提成规则</th></tr></thead>
                 <tbody><tr v-for="(cell, index) in rule.cells" :key="index" class="border-t border-default"><td v-if="rule.by_position" class="py-2">{{ cell.position?.name }}</td><td v-if="rule.by_designated">{{ cell.designated ? '指定' : '非指定' }}</td><td v-if="rule.by_member">{{ cell.member ? '会员' : '散客' }}</td><td class="py-2 font-medium tabular-nums">{{ valueText(cell) }}</td></tr></tbody>
               </table>
-              <p class="mt-1 text-xs text-dimmed">未填的格子不计提成。</p>
+              <p class="mt-1 text-xs text-muted">未填的格子不计提成。</p>
             </template>
             <p v-if="!detail.scheme.rules.some(r => r.source === source.value)" class="text-dimmed">不计提成</p>
           </div>
@@ -333,8 +333,7 @@ function changeSource(o: OverrideForm) {
     </section>
     <UModal v-model:open="open" title="修改提成方案" :ui="{ content: 'sm:max-w-5xl' }">
       <template #body>
-        <p v-if="loading">加载中</p>
-        <p v-if="categoryLoading">加载类别中</p>
+        <ListSkeleton v-if="loading || categoryLoading" :rows="2" />
         <div v-if="ready" class="space-y-5">
           <UFormField label="生效日期" help="不能早于今天，也不能早于最新版本；同一天保存多次，取最后保存的。" class="max-w-xs"><DateInput v-model="effectiveFrom" :min="minDate" /></UFormField>
           <section v-for="rule in editRules" :key="rule.source" :data-rule="rule.source" class="space-y-3 rounded-card bg-side p-4">

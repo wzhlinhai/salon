@@ -65,7 +65,7 @@ function doing(turn: Turn) {
   <section v-if="rotation && turns.length" data-testid="home-floor" class="min-w-0">
     <header class="mb-2 flex items-baseline gap-2">
       <h2 class="text-base font-semibold">在店里</h2>
-      <NuxtLink :to="`/rotation?queue=${rotation.queue.id}`" class="text-meta text-dimmed hover:text-default">轮牌顺序</NuxtLink>
+      <NuxtLink :to="`/rotation?queue=${rotation.queue.id}`" class="text-meta text-muted hover:text-default">轮牌顺序</NuxtLink>
     </header>
     <ul class="divide-y divide-default">
       <li

@@ -609,7 +609,7 @@ test('升级规则累计充值、自动升级、补差价升级及转余额流�
   await page.keyboard.press('Escape')
   await recharge.getByRole('button', { name: /^收 ¥/ }).click()
   await expect(recharge).not.toBeVisible()
-  await expect(page.getByText(`充值成功，已自动升级为 ${types[1].name}`, { exact: true })).toBeVisible()
+  await expect(page.getByText(`已充值，自动升级为 ${types[1].name}`, { exact: true })).toBeVisible()
   await expect(shown).toContainText(types[1].name)
   await cardAction(page, shown, '升级记录')
   await expect(page.getByTestId('card-upgrade-entry')).toContainText(`${types[0].name} → ${types[1].name}`)

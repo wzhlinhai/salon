@@ -211,7 +211,7 @@ const moreItems = computed(() => {
         </div>
       </template>
       <LoadError v-else-if="loadError" title="员工档案没有读出来" :hint="loadError" @retry="load()" />
-      <p v-else class="text-muted">正在读取员工…</p>
+      <ListSkeleton v-else :rows="6" />
     </div>
 
     <StaffEditors ref="editors" @changed="reload" />

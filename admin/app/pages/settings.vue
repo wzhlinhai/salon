@@ -234,7 +234,7 @@ onMounted(loadSources)
           </div>
           <div class="flex-1 md:w-64 md:flex-none md:text-right">
             <p>{{ show(s, s.value) }}</p>
-            <p class="text-meta text-dimmed">{{ s.is_default ? '系统默认' : `${s.effective_from} 起` }}</p>
+            <p class="text-meta text-muted">{{ s.is_default ? '系统默认' : `${s.effective_from} 起` }}</p>
             <p v-for="u in s.upcoming" :key="u.effective_from" class="mt-1 text-meta text-muted">
               <span class="tag bg-tag-yellow">已安排</span>
               {{ u.effective_from }} 起改为 {{ show(s, u.value) }}{{ u.is_default ? '（系统默认）' : '' }}

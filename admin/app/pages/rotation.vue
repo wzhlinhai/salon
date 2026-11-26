@@ -613,7 +613,7 @@ function onMembersSaved() {
                 </div>
               </div>
               <p class="mt-3 text-sm" :class="t.status === 'serving' ? 'text-default' : 'text-muted'">
-                {{ doingText(t) }}<span v-if="t.half_pending" class="text-dimmed"> · 已记半轮</span>
+                {{ doingText(t) }}<span v-if="t.half_pending" class="text-muted"> · 已记半轮</span>
               </p>
               <div v-if="canOperate" class="mt-auto flex items-center gap-2 pt-4">
                 <template v-if="t === nextUp">
@@ -629,12 +629,12 @@ function onMembersSaved() {
           </ol>
           <ul v-if="offDuty.length" class="contents" role="list" data-testid="off-duty">
             <li v-for="s in offDuty" :key="s.id" class="chair chair-off" :data-staff="s.name">
-              <p class="flex h-7 items-center text-meta text-dimmed">不在牌上</p>
+              <p class="flex h-7 items-center text-meta text-muted">不在牌上</p>
               <div class="mt-2 flex items-center gap-3">
                 <PersonAvatar :name="s.name" size="md" />
                 <div class="min-w-0">
                   <p class="truncate text-base font-semibold text-muted" :title="s.name">{{ who(s) }}</p>
-                  <p class="text-meta text-dimmed">还没到岗</p>
+                  <p class="text-meta text-muted">还没到岗</p>
                 </div>
               </div>
               <div v-if="canOperate" class="mt-auto pt-4">
@@ -655,7 +655,7 @@ function onMembersSaved() {
           </h2>
           <ol v-if="rounds.length" class="rounds" data-testid="rotation-rounds">
             <li v-for="r in rounds" :key="r.id" class="flex min-h-10 items-center gap-3 text-sm">
-              <span class="w-12 shrink-0 text-end text-meta text-dimmed tabular-nums">{{ formatAttendanceTime(r.at) }}</span>
+              <span class="w-12 shrink-0 text-end text-meta text-muted tabular-nums">{{ formatAttendanceTime(r.at) }}</span>
               <span class="rail" aria-hidden="true"><i /></span>
               <PersonAvatar :name="r.staff.name" size="sm" />
               <span class="min-w-0 truncate" :title="`${r.staff.name} ${roundText(r).who} ${roundText(r).items}`">
@@ -672,17 +672,17 @@ function onMembersSaved() {
               <span class="tag bg-tag-gray"><span class="sr-only">{{ r.designated ? '点客' : '轮到的' }}</span><span aria-hidden="true">{{ r.designated ? '点' : '轮' }}</span></span>
             </li>
           </ol>
-          <p v-else class="text-meta text-dimmed">今天还没有人接客。</p>
+          <p v-else class="text-meta text-muted">今天还没有人接客。</p>
 
           <!-- 跳过、休息、调顺序这些也都记着，收在下面，要查再展开。 -->
           <details v-if="events.length" class="mt-4 text-meta">
-            <summary class="cursor-pointer text-dimmed hover:text-default">全部记录 {{ events.length }} 条</summary>
+            <summary class="cursor-pointer text-muted hover:text-default">全部记录 {{ events.length }} 条</summary>
             <ul class="mt-2 space-y-2" data-testid="rotation-events">
               <li v-for="e in shownEvents" :key="e.id" class="flex gap-3">
-                <span class="w-12 shrink-0 text-end text-dimmed tabular-nums">{{ formatAttendanceTime(e.created_at) }}</span>
+                <span class="w-12 shrink-0 text-end text-muted tabular-nums">{{ formatAttendanceTime(e.created_at) }}</span>
                 <span>
                   <b class="font-medium">{{ who(e.staff) }}</b> {{ eventText(e) }}
-                  <span v-if="e.kind === 'skip' || e.kind === 'drag'" class="text-dimmed"> · {{ who(e.actor) }} 操作</span>
+                  <span v-if="e.kind === 'skip' || e.kind === 'drag'" class="text-muted"> · {{ who(e.actor) }} 操作</span>
                 </span>
               </li>
             </ul>

@@ -89,15 +89,15 @@ async function cardSave() {
       : await api.POST('/api/ops/open_card', { body: { ...body, customer_id: id, card_type_id: cardCardType.value } })
     if (!current()) {
       if (data) {
-        toast.add({ title: isRecharge ? '充值成功' : '开卡成功', color: 'success' })
+        toast.add({ title: isRecharge ? '已充值' : '已开卡', color: 'success' })
         await refreshCards()
       }
       return
     }
     if (data) {
       const upgradedTo = (data as components['schemas']['RechargeResult']).upgraded_to
-      if (upgradedTo) toast.add({ title: `充值成功，已自动升级为 ${upgradedTo.name}`, color: 'success' })
-      else toast.add({ title: cardTarget.value ? '充值成功' : '开卡成功', color: 'success' })
+      if (upgradedTo) toast.add({ title: `已充值，自动升级为 ${upgradedTo.name}`, color: 'success' })
+      else toast.add({ title: cardTarget.value ? '已充值' : '已开卡', color: 'success' })
       cardModal.value = false
       await refreshCards()
     } else toast.add({ title: errorText(error), color: 'error' })
@@ -400,7 +400,7 @@ onMounted(cardLoad)
       <h2 class="text-meta text-muted">卡</h2>
       <UButton v-if="can('card.sell')" size="sm" color="neutral" variant="ghost" class="ms-auto -me-2" @click="cardEdit(null)">开卡</UButton>
     </div>
-    <p v-if="cardLoading && !cardCards.length" class="text-sm text-muted">正在读取卡…</p>
+    <ListSkeleton v-if="cardLoading && !cardCards.length" :rows="2" />
     <p v-else-if="!cardCards.length" class="text-sm text-dimmed">暂无卡</p>
     <div class="space-y-3">
       <div
@@ -447,13 +447,13 @@ onMounted(cardLoad)
     <template #body>
       <div data-testid="card-history" class="contents">
         <div v-if="upgradeCardID" data-testid="card-upgrades" class="space-y-2 text-sm">
-          <p v-if="upgrades.loading.value" class="text-muted">正在读取升级记录…</p>
+          <ListSkeleton v-if="upgrades.loading.value && !upgrades.items.value.length" :rows="2" />
           <p v-for="entry in upgrades.items.value" :key="entry.id" data-testid="card-upgrade-entry">{{ entry.type_before.name }} → {{ entry.type_after.name }} · {{ entry.trigger === 'auto' ? '自动升级' : '手动升级' }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }} · {{ entry.actor.name }}</p>
           <p v-if="!upgrades.loading.value && !upgrades.items.value.length" class="text-muted">暂无升级记录</p>
           <UButton v-if="upgrades.hasMore.value" :loading="upgrades.loading.value" size="sm" color="neutral" variant="ghost" @click="upgrades.loadMore">加载更多</UButton>
         </div>
         <div v-if="pointsCard" data-testid="card-points" class="space-y-2 text-sm">
-          <p v-if="cardPoints.loading.value" class="text-muted">正在读取积分流水…</p>
+          <ListSkeleton v-if="cardPoints.loading.value && !cardPoints.items.value.length" :rows="2" />
           <p v-for="entry in cardPoints.items.value" :key="entry.id" data-testid="card-points-entry">
             {{ ledgerKinds[entry.kind] || entry.kind }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }} · {{ entry.actor.name }}
             积分 {{ entry.before }} + {{ entry.delta }} = {{ entry.after }} <span v-if="entry.reason">· 原因：{{ entry.reason }}</span>
@@ -462,7 +462,7 @@ onMounted(cardLoad)
           <UButton v-if="cardPoints.hasMore.value" :loading="cardPoints.loading.value" size="sm" color="neutral" variant="ghost" @click="cardPoints.loadMore">加载更多</UButton>
         </div>
         <div v-if="countCard" data-testid="card-counts" class="space-y-2 text-sm">
-          <p v-if="cardCounts.loading.value" class="text-muted">正在读取次数流水…</p>
+          <ListSkeleton v-if="cardCounts.loading.value && !cardCounts.items.value.length" :rows="2" />
           <p v-for="entry in cardCounts.items.value" :key="entry.id" data-testid="card-count-entry">
             {{ entry.item.name }} · {{ ledgerKinds[entry.kind] || entry.kind }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }} · {{ entry.actor.name }}
             购买 {{ entry.paid_before }} + {{ entry.paid_delta }} = {{ entry.paid_after }}；赠送 {{ entry.gift_before }} + {{ entry.gift_delta }} = {{ entry.gift_after }}
@@ -471,7 +471,7 @@ onMounted(cardLoad)
           <UButton v-if="cardCounts.hasMore.value" :loading="cardCounts.loading.value" size="sm" color="neutral" variant="ghost" @click="cardCounts.loadMore">加载更多</UButton>
         </div>
         <div v-if="adjustmentCard" data-testid="card-adjustments" class="space-y-2 text-sm">
-          <p v-if="adjustments.loading.value" class="text-muted">正在读取调整记录…</p>
+          <ListSkeleton v-if="adjustments.loading.value && !adjustments.items.value.length" :rows="2" />
           <p v-for="entry in adjustments.items.value" :key="entry.id" data-testid="card-adjustment-entry">
             {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }} · {{ entry.actor.name }} · 原因：{{ entry.reason }}
             <span v-for="change in entry.counts" :key="change.id">{{ change.item.name }}：购买 {{ change.paid_before }} → {{ change.paid_after }}；赠送 {{ change.gift_before }} → {{ change.gift_after }}</span>

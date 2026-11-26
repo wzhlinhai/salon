@@ -128,13 +128,14 @@ async function save() {
     level_prices: levelRows.value.map(l => ({ ...l }))
   }
   await editor.save(async (current) => {
+    const verb = editing.value ? '已改好' : '已新建'
     const result = editing.value
       ? await api.POST('/api/ops/update_item', { body: { ...body, id: editing.value.id, active: active.value } })
       : await api.POST('/api/ops/create_item', { body })
     if (!current()) return
     if (result.data) {
       open.value = false
-      toast.add({ title: '已保存', color: 'success' })
+      toast.add({ title: `${verb}项目「${body.name}」，开单和预约都能选`, color: 'success' })
       await load()
     } else toast.add({ title: errorText(result.error), color: 'error' })
   })

@@ -186,7 +186,7 @@ async function save() {
     void reload()
     if (editingKind === 'adjustment' && month.value === targetMonth && selected.value?.id === staffId) void detail.value?.reloadAdjustments()
     if (!current()) return
-    toast.add({ title: '已保存' })
+    toast.add({ title: editingKind === 'salary' ? '底薪已改，工资表已重算' : '已加上这笔调整，工资表已重算', color: 'success' })
     open.value = false
   })
 }
@@ -220,7 +220,7 @@ async function lock() {
     }
     await reloadMonths()
     if (!current()) return
-    toast.add({ title: '已锁定' })
+    toast.add({ title: '已锁定', color: 'success' })
     lockOpen.value = false
   })
 }

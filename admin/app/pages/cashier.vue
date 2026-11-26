@@ -435,7 +435,7 @@ onMounted(init)
               </span>
               <span class="shrink-0 text-right">
                 <span class="block text-sm tabular-nums">{{ yuan(order.receivable) }}</span>
-                <span class="mt-0.5 block text-xs text-dimmed tabular-nums">{{ clockTime(order.opened_at) }} 开单</span>
+                <span class="mt-0.5 block text-xs text-muted tabular-nums">{{ clockTime(order.opened_at) }} 开单</span>
               </span>
             </button>
           </div>

@@ -200,8 +200,8 @@ async function saveRevoke() {
         <p>撤销 {{ revokeTarget?.business_date }} 的核准？撤销后这一天的异常重新计入统计。</p>
       </template>
       <template #footer>
-        <ModalActions @cancel="revokeOpen = false">
-          <UButton color="error" :loading="revokeSaving" @click="saveRevoke">确认撤销</UButton>
+        <ModalActions cancel-label="不撤了" @cancel="revokeOpen = false">
+          <UButton color="error" :loading="revokeSaving" @click="saveRevoke">撤销</UButton>
         </ModalActions>
       </template>
     </UModal>

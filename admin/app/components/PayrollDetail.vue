@@ -83,8 +83,8 @@ onMounted(() => Promise.all([commissions.reload(), adjustments.reload()]))
     </section>
     <UModal v-model:open="open" :title="`删除加减项「${target?.name ?? ''}」？`">
       <template #footer>
-        <ModalActions @cancel="open = false">
-          <UButton color="error" :loading="saving" @click="remove">确认删除</UButton>
+        <ModalActions cancel-label="不删了" @cancel="open = false">
+          <UButton color="error" :loading="saving" @click="remove">删除</UButton>
         </ModalActions>
       </template>
     </UModal>

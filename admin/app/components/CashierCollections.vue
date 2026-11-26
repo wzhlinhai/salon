@@ -106,8 +106,8 @@ async function submitChange() {
       </UFormField>
     </template>
     <template #footer>
-      <ModalActions @cancel="changeOpen = false">
-        <UButton color="error" :loading="changing" :disabled="action === 'refund' && !reason.trim()" @click="submitChange">{{ action === 'refund' ? '确认退款' : '确认撤销' }}</UButton>
+      <ModalActions :cancel-label="action === 'refund' ? '不退了' : '不撤了'" @cancel="changeOpen = false">
+        <UButton color="error" :loading="changing" :disabled="action === 'refund' && !reason.trim()" @click="submitChange">{{ action === 'refund' ? '退款' : '撤销' }}</UButton>
       </ModalActions>
     </template>
   </UModal>

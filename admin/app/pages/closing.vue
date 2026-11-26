@@ -440,7 +440,7 @@ function saveUnseal() {
                 <td />
               </tr>
               <tr v-for="line in nonSite" :key="line.method" class="text-muted" :data-method="line.method">
-                <td class="px-3 py-2">{{ line.label }}<span class="text-dimmed">（不进钱箱）</span></td>
+                <td class="px-3 py-2">{{ line.label }}<span class="text-muted">（不进钱箱）</span></td>
                 <td class="px-3 py-2 text-end tabular-nums">{{ yuan(line.amount) }}</td>
                 <td class="px-3 py-2 text-end text-dimmed">—</td>
                 <td class="px-3 py-2 text-end text-dimmed">—</td>
@@ -475,7 +475,7 @@ function saveUnseal() {
         <summary class="cursor-pointer text-sm text-muted">日结记录（{{ history.length }} 版）</summary>
         <ol class="mt-2 space-y-2 text-sm">
           <li v-for="v in history" :key="v.id" class="flex flex-col">
-            <span><span class="font-medium">第 {{ v.version }} 版</span><span class="text-dimmed"> · {{ formatStamp(v.created_at) }}</span></span>
+            <span><span class="font-medium">第 {{ v.version }} 版</span><span class="text-muted"> · {{ formatStamp(v.created_at) }}</span></span>
             <span class="text-muted">{{ offText(v.differences) }}</span>
           </li>
         </ol>
