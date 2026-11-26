@@ -395,9 +395,9 @@ test('员工列多到要横着滚时，时间栏钉在左边', async ({ page }) 
   const grid = page.locator('[data-booking-grid]')
   const axis = page.getByTestId('booking-time-axis')
   await expect(axis).toBeVisible()
-  // 把看板压窄，保证员工列放不下、要横着滚。
+  // 把看板压到比「时间栏 + 一列员工」（56 + 160）还窄，库里只有一个员工也要横着滚。
   await grid.evaluate((el) => {
-    el.style.width = '420px'
+    el.style.width = '200px'
   })
   await expect.poll(() => grid.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true)
   await grid.evaluate((el) => {

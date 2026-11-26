@@ -69,9 +69,9 @@ function change() {
 function add() {
   touched.value = true
   const left = cents(props.expected) - total.value
-  // 新加的一行先选一种还没用过的方式，免得「分开付」后冒出两行现金。
+  // 新加的一行先选一种还没用过的方式，免得「分开付」后冒出两行现金；卡余额、挂账要店员自己点，不自动选。
   const used = new Set(payments.value.map(p => p.method))
-  const method = methods.value.find(m => !used.has(m.value))?.value ?? 'cash'
+  const method = methods.value.find(m => !used.has(m.value) && m.value !== 'card' && m.value !== 'debt')?.value ?? 'cash'
   payments.value = [...payments.value, { method, amount: left > 0 ? money(left) : '0.00' }]
 }
 
