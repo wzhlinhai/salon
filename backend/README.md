@@ -73,7 +73,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 ## 顾客档案
 
-修改已有顾客的操作一律经过 `internal/customers` 的 `change`（按 ID 或按负责人选中），由它负责加锁、查看范围、已合并检查、改前改后日志和手机号打码。新建顾客用 `created`。员工新建顾客时（建档、预约按手机号建档、开单建未识别顾客、数据导入新建的顾客），查看范围是"本人"的员工记为这位顾客的负责人，全店范围不指派；按手机号找到已有顾客时不改负责人。新建顾客（create_customer）除顾客建档权限外还要有查看顾客档案的权限，否则拒绝，以免返回调用者看不到的顾客资料。
+修改已有顾客的操作一律经过 `internal/customers` 的 `change`（按 ID 或按负责人选中），由它负责加锁、查看范围、已合并检查、改前改后日志和手机号打码。新建顾客用 `created`。员工新建顾客时（建档、预约按手机号建档、开单建未识别顾客、数据导入新建的顾客），查看范围是"本人"的员工记为这位顾客的负责人，全店范围不指派；按手机号找到已有顾客时不改负责人。建档、改资料、补手机号、改手机号这四个操作的参数带顾客资料，除各自的主权限外用 AlsoRequires 同时要求 customer.view，没有查看权限时按无权限拒绝，AI 也不会为其起草。
 
 顾客概览有两个只读操作：`list_customer_overview` 按分组、搜索、负责人或单个顾客（customer_id）筛选并排序分页返回每位顾客的到店、消费、卡余额和下一次预约；`get_customer_segments` 返回六个分组的人数和提示数字。两者共用同一组基数：未合并、有手机号、本店顾客（门店与查看范围都生效）。客次是这家店 `status='paid'` 的单数；到店间隔（`cycle_days`）只在至少两个不同到店营业日时计算，为 `round((最后到店−首次到店)/(不同营业日数−1))`；超过到店间隔的天数（`overdue_days`）只在结果大于零时返回。累计消费取已结账单有效项目行的实收（价格减折扣），不扣售后退款；卡余额和剩余次数只算本店发行、未退且未过期的卡；关联的订单行、卡流水和次数流水也按本店过滤。分组规则：今天要来按预约开始时间落在今天营业日的日历范围，该回来了要求超期、距上次到店不超过 90 天且没有未来预约，卡里有余额按储值余额或剩余次数大于零，30 天新客按首次结账营业日在最近 30 个营业日内且不是数据导入的历史顾客，沉睡要求距上次到店超过 90 天。90 和 30 是 Go 常量，作为查询参数传入。
 
@@ -539,7 +539,7 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 `internal/drafts` 保存草稿和只追加的事件。工具的可选 `summary`、`utterance` 为草稿元数据，从业务参数中分离后仍按原 schema 校验；也可用 `create_draft` 显式提供 operation、params、utterance、summary。原始参数不可改，修改记录保留前后参数。
 
-`list_drafts`、`get_draft` 仅返回本人发起或当前有目标操作权限的草稿；修改、拒绝采用相同范围。读路径是纯读：`pending` 且 `now >= expires_at` 的草稿在返回时计算为 `expired`（`decided_at` 仍为空），不写状态或事件；期限用 `settings.BusinessDayDeadline` 按创建营业日的结束设置计算。确认、修改、拒绝这张草稿时才持久化过期和 `expired` 事件并返回原来的“草稿已过期，请重新起草”；`create_draft` 也会批量过期本店到期的 pending 草稿。确认锁草稿后重读状态、检查期限、通过 ops 统一路径重新检查确认人的权限及参数，再以确认人身份执行原 Handle；成功后与状态、事件一并提交。业务失败保留 pending。
+`list_drafts`、`get_draft` 仅返回本人发起或当前有目标操作权限的草稿；修改、拒绝采用相同范围。非发起人还要求目标操作的主权限和附加权限都不是「本人」范围。读路径是纯读：`pending` 且 `now >= expires_at` 的草稿在返回时计算为 `expired`（`decided_at` 仍为空），不写状态或事件；期限用 `settings.BusinessDayDeadline` 按创建营业日的结束设置计算。确认、修改、拒绝这张草稿时才持久化过期和 `expired` 事件并返回原来的“草稿已过期，请重新起草”；`create_draft` 也会批量过期本店到期的 pending 草稿。确认锁草稿后重读状态、检查期限、通过 ops 统一路径重新检查确认人的权限及参数，再以确认人身份执行原 Handle；成功后与状态、事件一并提交。业务失败保留 pending。
 
 `draft_dual_confirm` 为 off/on，默认 off，可当天生效；on 时 adjust_card、void_order、refund_card、reprice_order_item 须另一人确认。`audit.Record` 自动把 `Env.DraftID` 写入 audit_log，日志输出 draft_id，get_draft 返回 audit_log_ids。
 

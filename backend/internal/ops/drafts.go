@@ -99,7 +99,7 @@ func (r *Registry) DraftPermission(name string) (Permission, error) {
 	return e.permission, nil
 }
 
-// DraftVisible 报告非发起人能否看到目标操作的草稿：需要该操作的全部权限，且主权限的数据范围不是本人。
+// DraftVisible 报告非发起人能否看到目标操作的草稿：需要该操作的全部权限，且主权限和每一项附加权限的数据范围都不是本人。
 func (r *Registry) DraftVisible(c Caller, name string) (bool, error) {
 	e, ok := r.ops[name]
 	if !ok || e.ai != AIDraft {
@@ -108,7 +108,15 @@ func (r *Registry) DraftVisible(c Caller, name string) (bool, error) {
 	if checkOperationPermission(c, e) != nil {
 		return false, nil
 	}
-	return c.Grant(e.permission).Scope != ScopeSelf, nil
+	if c.Grant(e.permission).Scope == ScopeSelf {
+		return false, nil
+	}
+	for _, p := range e.alsoRequires {
+		if c.Grant(p).Scope == ScopeSelf {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // CheckDraft 校验目标可起草、调用者权限及与工具相同的参数 schema。
