@@ -251,19 +251,19 @@ onMounted(loadSources)
       <h2 class="sec">顾客来源</h2>
       <p class="-mt-1 mb-2 text-meta text-muted">新建顾客时选的「从哪儿来」</p>
       <div class="divide-y divide-default border-y border-default">
-        <div v-for="source in sources" :key="source.id" class="flex items-center gap-2 py-2">
+        <div v-for="source in sources" :key="source.id" class="flex min-h-12 items-center gap-2 px-2 py-2 hover:bg-hover">
           <template v-if="can('settings.manage')">
-            <UInput v-model="source.name" :aria-label="`顾客来源 ${source.name}`" class="flex-1" @change="saveSource(source)" />
-            <USwitch v-model="source.active" :label="source.active ? '启用' : '停用'" @update:model-value="saveSource(source)" />
+            <UInput v-model="source.name" variant="ghost" :aria-label="`顾客来源 ${source.name}`" class="min-w-0 flex-1" :ui="{ base: source.active ? '' : 'text-muted' }" @change="saveSource(source)" />
+            <USwitch v-model="source.active" size="sm" :label="source.active ? '启用' : '停用'" @update:model-value="saveSource(source)" />
           </template>
           <template v-else>
-            <span>{{ source.name }}</span>
+            <span class="px-3">{{ source.name }}</span>
             <span v-if="!source.active" class="tag bg-tag-gray">停用</span>
           </template>
         </div>
-        <form v-if="can('settings.manage')" class="flex gap-2 py-2" @submit.prevent="addSource">
-          <UInput v-model="sourceName" aria-label="新顾客来源" placeholder="新顾客来源" class="flex-1" />
-          <UButton type="submit" size="sm" color="neutral" variant="outline" :loading="sourceSaving">添加</UButton>
+        <form v-if="can('settings.manage')" class="flex min-h-12 items-center gap-2 px-2 py-2" @submit.prevent="addSource">
+          <UInput v-model="sourceName" variant="ghost" icon="i-lucide-plus" aria-label="新顾客来源" placeholder="新顾客来源" class="min-w-0 flex-1" />
+          <UButton v-if="sourceName || sourceSaving" type="submit" size="sm" color="neutral" variant="ghost" :loading="sourceSaving">添加</UButton>
         </form>
       </div>
     </section>
