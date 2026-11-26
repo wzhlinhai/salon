@@ -182,8 +182,8 @@ test('问 AI 各种宽度都在右下角，滚到底时不压住收银单和预�
   await page.setViewportSize({ width: 1024, height: 768 })
   await page.goto('/bookings')
   await expect(fab).toBeVisible()
-  await expect(page.locator('[data-booking-grid] > div.flex')).toBeVisible()
-  await clearOfFab('[data-booking-grid] > div.flex')
+  await expect(page.locator('[data-booking-grid] > div.min-w-max')).toBeVisible()
+  await clearOfFab('[data-booking-grid] > div.min-w-max')
 
   await page.setViewportSize({ width: 1366, height: 900 })
   await expect(fab).toBeVisible()
