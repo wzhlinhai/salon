@@ -124,8 +124,10 @@ test('项目类别可设置业绩比例并停用', async ({ page }) => {
   const row = card.locator(`[data-category-row][data-category-name="${name}"]`)
   await expect(row.getByLabel(`类别 ${name}`, { exact: true })).toHaveValue(name)
   await expect(row.getByLabel(`${name}业绩比例`, { exact: true })).toHaveValue('90')
+  const deactivated = page.waitForResponse(r => r.url().endsWith('/api/ops/update_item_category'))
   await row.getByRole('switch').click()
   await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'false')
+  expect((await deactivated).ok()).toBe(true)
   const result = await api<{ items: { name: string, performance_ratio: number, active: boolean }[] }>(token, 'list_item_categories', {})
   const saved = result.items.find(item => item.name === name)!
   expect(saved.performance_ratio).toBe(90)
