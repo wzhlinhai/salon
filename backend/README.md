@@ -52,7 +52,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
   - HTTP：`POST /api/ops/<操作名>`，请求体就是参数类型。OpenAPI 文档在 `/openapi.json`，`x-permission` 和 `x-ai` 标明所需权限和 AI 调用方式。
   - AI：`Registry.Tools(caller)` 给出该员工能用的工具，参数 schema 取自同一份 OpenAPI 请求体；`Registry.CallTool` 用同一份 schema 校验参数。
 - `Env.Now` 是本次调用的时刻，由 Registry 的时钟在每次调用时读取一次，整个操作只用这一个时刻。
-- 权限检查只在 `ops` 里做：HTTP 和 AI 调用都经过同一条路径，先检查权限，再在调用者租户的事务里执行。操作处理函数里不再检查权限。需要多项权限的操作在 `Operation.AlsoRequires` 里声明附加权限，主权限和每一项附加权限都必须同时满足；HTTP、AI 工具列表、工具调用、起草校验、确认和草稿可见性都按这一份声明检查。
+- 权限检查只在 `ops` 里做：HTTP 和 AI 调用都经过同一条路径，先检查权限，再在调用者租户的事务里执行。操作处理函数里不再检查权限。需要多项权限的操作在 `Operation.AlsoRequires` 里声明附加权限，主权限和每一项附加权限都必须同时满足；HTTP、AI 工具列表、工具调用、起草校验、确认和草稿可见性都按这一份声明检查。参数带着执行本身不要求查看的顾客资料的可起草操作，用 DraftViewRequires 声明非发起人看草稿还需要的权限（如新建预约要求 customer.view），只影响草稿可见性。
 - 写操作只能声明为 `AIDraft`（AI 调用只产生草稿）或 `AINone`（不向 AI 开放），声明为 AI 可直接执行时启动即失败。AI 调用 `AIDraft` 时校验参数与本人权限，只创建待确认草稿，不执行业务写入。
 - `Read` 操作不写任何表：`ops.invoke` 对 `Read` 操作使用可重复读的只读事务，写入会被 PostgreSQL 拒绝，多次查询看到同一快照。报价查询 `quote_item_price` 为保持价格一致会取 `FOR SHARE` 行锁，只读事务不允许加锁，因此用 `Locking` 标记单独放行；它仍不写表。分阶段的 `verify_coupon`（`Read` + `AINone`）按团购协议验券并追加审计，不向 AI 开放。`Read` + `AIDirect` 的操作都是纯读，可以出现在 AI 对话工具集中。
 - 测试用 `optest` 对 HTTP 和 AI 两条路径跑同一组用例。写操作的业务规则在 HTTP 路径上测，另测 AI 路径对 `AIDraft` 创建草稿且业务数据不变，对 `AINone` 仍拒绝。
@@ -539,7 +539,7 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 `internal/drafts` 保存草稿和只追加的事件。工具的可选 `summary`、`utterance` 为草稿元数据，从业务参数中分离后仍按原 schema 校验；也可用 `create_draft` 显式提供 operation、params、utterance、summary。原始参数不可改，修改记录保留前后参数。
 
-`list_drafts`、`get_draft` 仅返回本人发起或当前有目标操作权限的草稿；修改、拒绝采用相同范围。非发起人还要求目标操作的主权限和附加权限都不是「本人」范围。读路径是纯读：`pending` 且 `now >= expires_at` 的草稿在返回时计算为 `expired`（`decided_at` 仍为空），不写状态或事件；期限用 `settings.BusinessDayDeadline` 按创建营业日的结束设置计算。确认、修改、拒绝这张草稿时才持久化过期和 `expired` 事件并返回原来的“草稿已过期，请重新起草”；`create_draft` 也会批量过期本店到期的 pending 草稿。确认锁草稿后重读状态、检查期限、通过 ops 统一路径重新检查确认人的权限及参数，再以确认人身份执行原 Handle；成功后与状态、事件一并提交。业务失败保留 pending。
+`list_drafts`、`get_draft` 仅返回本人发起或当前有目标操作权限的草稿；修改、拒绝采用相同范围。非发起人还要求目标操作的主权限、附加权限和 `DraftViewRequires` 里的权限（如新建预约的 `customer.view`）都不是「本人」范围。读路径是纯读：`pending` 且 `now >= expires_at` 的草稿在返回时计算为 `expired`（`decided_at` 仍为空），不写状态或事件；期限用 `settings.BusinessDayDeadline` 按创建营业日的结束设置计算。确认、修改、拒绝这张草稿时才持久化过期和 `expired` 事件并返回原来的“草稿已过期，请重新起草”；`create_draft` 也会批量过期本店到期的 pending 草稿。确认锁草稿后重读状态、检查期限、通过 ops 统一路径重新检查确认人的权限及参数，再以确认人身份执行原 Handle；成功后与状态、事件一并提交。业务失败保留 pending。
 
 `draft_dual_confirm` 为 off/on，默认 off，可当天生效；on 时 adjust_card、void_order、refund_card、reprice_order_item 须另一人确认。`audit.Record` 自动把 `Env.DraftID` 写入 audit_log，日志输出 draft_id，get_draft 返回 audit_log_ids。
 

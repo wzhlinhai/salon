@@ -916,6 +916,82 @@ func TestDraftCustomerDataScopeVisibility(t *testing.T) {
 	}
 }
 
+func TestAppointmentDraftViewRequiresCustomerView(t *testing.T) {
+	s := optest.OpenShop(t)
+	s.SetNow(time.Date(2026, 11, 19, 12, 0, 0, 0, time.FixedZone("CST", 8*3600)))
+	staff, _ := s.Hire("预约发型师", "005", "appointment-draft-stylist", s.Role("发型师"))
+	draft := s.AI(t, s.MustCaller(s.Owner), "create_appointment", map[string]any{
+		"customer_name": "草稿顾客", "customer_phone": "13800000031",
+		"staff_id": staff, "starts_at": "2026-11-20T15:00:00+08:00",
+	}).Body
+	role := func(name string, permissions []any) string {
+		return call(t, s, s.Owner, "create_role", map[string]any{"name": name, "permissions": permissions}).Body["id"].(string)
+	}
+	booking := func(view ...any) []any {
+		permissions := []any{
+			map[string]any{"permission": "booking.manage", "scope": "store"},
+			map[string]any{"permission": "customer.full_phone"},
+		}
+		return append(permissions, view...)
+	}
+	_, noViewToken := s.Hire("预约无查看", "006", "appointment-no-view", uuid.MustParse(role("预约无查看", booking())))
+	_, selfToken := s.Hire("预约本人查看", "007", "appointment-self-view", uuid.MustParse(role("预约本人查看", booking(map[string]any{"permission": "customer.view", "scope": "self"}))))
+	_, storeToken := s.Hire("预约全店查看", "008", "appointment-store-view", uuid.MustParse(role("预约全店查看", booking(map[string]any{"permission": "customer.view", "scope": "store"}))))
+	for _, tc := range []struct {
+		name    string
+		token   string
+		visible bool
+	}{
+		{"no_view", noViewToken, false},
+		{"self_view", selfToken, false},
+		{"store_view", storeToken, true},
+	} {
+		c := s.MustCaller(tc.token)
+		for _, ch := range s.Channels() {
+			t.Run(tc.name+"/"+ch.Name, func(t *testing.T) {
+				list := ch.Call(t, c, "list_drafts", map[string]any{})
+				if list.Status != 200 {
+					t.Fatal(list)
+				}
+				listed := false
+				for _, item := range list.Body["drafts"].([]any) {
+					listed = listed || item.(map[string]any)["id"] == draft["id"]
+				}
+				got := ch.Call(t, c, "get_draft", id(draft))
+				if tc.visible {
+					if !listed || got.Status != 200 {
+						t.Fatalf("draft should be visible: %v %v", list, got)
+					}
+					return
+				}
+				if listed {
+					t.Fatalf("draft leaked in list: %v", list)
+				}
+				rejected(t, got, 404, "not found")
+				rejected(t, ch.Call(t, c, "update_draft_params", map[string]any{"id": draft["id"], "params": draft["params"], "summary": "越权修改"}), 404, "not found")
+				rejected(t, ch.Call(t, c, "reject_draft", map[string]any{"id": draft["id"], "reason": "越权"}), 404, "not found")
+			})
+		}
+	}
+	for _, tc := range []struct {
+		token    string
+		phone    string
+		startsAt string
+	}{
+		{noViewToken, "13800000041", "2026-11-20T16:00:00+08:00"},
+		{selfToken, "13800000042", "2026-11-20T17:00:00+08:00"},
+	} {
+		r := s.HTTPWithToken(t, tc.token, "create_appointment", map[string]any{
+			"customer_name": "直接预约", "customer_phone": tc.phone,
+			"staff_id": staff, "starts_at": tc.startsAt,
+		})
+		if r.Status != 200 {
+			t.Fatal(r)
+		}
+		rejected(t, s.HTTPWithToken(t, tc.token, "confirm_draft", confirmArgs(draft)), 404, "not found")
+	}
+}
+
 func TestDraftPreviewRequiresCurrentPermission(t *testing.T) {
 	s := optest.OpenShop(t)
 	role := call(t, s, s.Owner, "create_role", map[string]any{"name": "开单人", "permissions": []any{map[string]any{"permission": "order.create"}}}).Body["id"].(string)
