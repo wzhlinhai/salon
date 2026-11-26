@@ -93,16 +93,14 @@ async function saveSettlement() {
 
 <template>
   <div class="space-y-4">
-    <PageActions v-if="can('closing.daily')">
-      <UButton @click="openSettlement">录入结算</UButton>
+    <PageActions>
+      <DateInput v-model="month" month aria-label="结算月" class="w-36" />
+      <UButton v-if="can('closing.daily')" @click="openSettlement">录入结算</UButton>
     </PageActions>
-    <div class="flex flex-wrap items-center gap-2">
-      <ViewTabs v-model="platform" :items="platformTabs" label="平台" />
-      <DateInput v-model="month" month aria-label="结算月" class="ms-auto w-36" />
-    </div>
+    <ViewTabs v-model="platform" :items="platformTabs" label="平台" />
 
     <LoadError v-if="loadError" :title="`${month} 的对账没有读出来`" :hint="loadError" @retry="load()" />
-    <p v-else-if="empty" class="py-6 text-muted">{{ month }} {{ platformTabs.find(p => p.key === platform)?.label }}没有核销的券，也没录入结算。</p>
+    <EmptyState v-else-if="empty" :title="`这个月${platformTabs.find(p => p.key === platform)?.label}没有核销的券`" hint="也还没录入结算" />
     <template v-else-if="data">
       <!-- 照 Notion 的页面属性：左边灰字属性名，右边值，一行 34px。 -->
       <dl class="props tabular-nums" :class="loading ? 'opacity-60' : ''">

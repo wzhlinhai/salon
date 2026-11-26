@@ -13,7 +13,7 @@ const api = useApi()
 const { today, range, report, loading, failed, retry } = useDayReport<ItemReport>((from, to) => api.POST('/api/ops/get_item_report', { body: { from, to } }))
 
 const kind = ref<Kind>('all')
-const kinds: { label: string, value: Kind }[] = [{ label: '全部', value: 'all' }, { label: '服务', value: 'service' }, { label: '卖品', value: 'goods' }]
+const kinds: { label: string, key: Kind }[] = [{ label: '全部', key: 'all' }, { label: '服务', key: 'service' }, { label: '卖品', key: 'goods' }]
 const rows = computed(() => (report.value?.rows ?? []).filter(r => kind.value === 'all' || r.item_kind === kind.value))
 
 type MoneyKey = 'line_price' | 'paid' | 'card_paid' | 'count_paid' | 'groupbuy_paid' | 'performance'
@@ -83,7 +83,7 @@ function cell(value: string | number) {
   <div class="space-y-4">
     <div v-if="today" class="flex flex-wrap items-start justify-between gap-2">
       <ReportRangeBar v-model="range" :today="today" day-only />
-      <MethodPicker v-model="kind" :items="kinds" label="项目类型" />
+      <ViewTabs v-model="kind" :items="kinds" label="项目类型" />
     </div>
 
     <LoadError v-if="failed && !report" title="报表没有读出来" hint="检查网络后再试一次" @retry="retry" />

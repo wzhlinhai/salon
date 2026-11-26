@@ -6,12 +6,21 @@ import type { Granularity, ReportRange } from '~/utils/report'
 const props = defineProps<{ today: string, dayOnly?: boolean }>()
 const range = defineModel<ReportRange>({ required: true })
 
-const granularityItems: { label: string, value: Granularity }[] = [{ label: '按日', value: 'day' }, { label: '按月', value: 'month' }]
+const granularityItems: { label: string, key: Granularity }[] = [{ label: '按日', key: 'day' }, { label: '按月', key: 'month' }]
 const granularity = computed({
   get: () => range.value.granularity,
-  set: value => (range.value = switchGranularity(range.value, value ?? 'day', props.today))
+  set: value => (range.value = switchGranularity(range.value, value, props.today))
 })
 const presets = computed(() => rangePresets(range.value.granularity, props.today))
+// 快捷范围和按日 / 按月同一种视图页签；当前范围不是哪一个快捷范围时都不选中。
+const presetItems = computed(() => presets.value.map(p => ({ key: p.label, label: p.label })))
+const preset = computed({
+  get: () => presets.value.find(p => same(p.range, range.value))?.label ?? '',
+  set: (label: string) => {
+    const p = presets.value.find(x => x.label === label)
+    if (p) range.value = p.range
+  }
+})
 const problem = computed(() => rangeProblem(range.value, props.dayOnly))
 const month = computed(() => range.value.granularity === 'month')
 
@@ -30,26 +39,14 @@ function setTo(value: string) {
 
 <template>
   <div class="space-y-2" data-testid="report-range">
-    <div class="flex flex-wrap items-center gap-2">
-      <MethodPicker v-if="!dayOnly" v-model="granularity" :items="granularityItems" label="按日或按月" />
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <ViewTabs v-if="!dayOnly" v-model="granularity" :items="granularityItems" label="按日或按月" />
       <div class="flex items-center gap-2">
-        <DateInput :key="`from-${range.granularity}`" :model-value="range.from" :month="month" :max="today" size="sm" class="w-36" aria-label="开始" @update:model-value="setFrom" />
+        <DateInput :key="`from-${range.granularity}`" :model-value="range.from" :month="month" :max="today" class="w-36" aria-label="开始" @update:model-value="setFrom" />
         <span class="text-meta text-muted">至</span>
-        <DateInput :key="`to-${range.granularity}`" :model-value="range.to" :month="month" :max="today" size="sm" class="w-36" aria-label="结束" @update:model-value="setTo" />
+        <DateInput :key="`to-${range.granularity}`" :model-value="range.to" :month="month" :max="today" class="w-36" aria-label="结束" @update:model-value="setTo" />
       </div>
-      <div class="flex flex-wrap items-center gap-1" role="group" aria-label="快捷范围">
-        <UButton
-          v-for="p in presets"
-          :key="p.label"
-          size="xs"
-          color="neutral"
-          :variant="same(p.range, range) ? 'soft' : 'ghost'"
-          :aria-pressed="same(p.range, range)"
-          @click="range = p.range"
-        >
-          {{ p.label }}
-        </UButton>
-      </div>
+      <ViewTabs v-model="preset" :items="presetItems" label="快捷范围" />
     </div>
     <p v-if="problem" class="text-meta text-ink-orange" data-testid="range-problem">{{ problem }}</p>
   </div>

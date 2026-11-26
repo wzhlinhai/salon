@@ -282,11 +282,9 @@ onMounted(async () => {
     <UTabs v-model="tab" :items="tabs" :content="false" variant="link" color="neutral" class="w-fit" />
 
     <section v-if="tab === 'monthly'" class="space-y-4">
-      <div class="flex flex-wrap items-center gap-3">
-        <DateInput v-model="month" month :max="currentMonth" aria-label="月份" />
-        <span class="text-sm text-muted">点一行看这个人每天的打卡</span>
-      </div>
+      <p class="text-sm text-muted">点一行看这个人每天的打卡</p>
       <PageActions>
+        <DateInput v-model="month" month :max="currentMonth" aria-label="月份" class="w-36" />
         <UButton @click="openAddPunch()">补卡</UButton>
       </PageActions>
       <div class="overflow-x-auto">
