@@ -148,9 +148,9 @@ async function save(k: typeof kinds[number], o: LevelOrPosition) {
             <UInput v-model="o.name" variant="ghost" :aria-label="`${k.title}名称`" :disabled="saving[o.id]" class="min-w-0 flex-1" :ui="{ base: o.active ? '' : 'text-muted' }" @change="save(k, o)" />
             <USwitch v-model="o.active" size="sm" :loading="saving[o.id]" :label="o.active ? '启用' : '停用'" @update:model-value="save(k, o)" />
           </div>
-          <form class="flex gap-2 px-2 py-2" @submit.prevent="add(k)">
-            <UInput v-model="draft[k.key]" variant="outline" :placeholder="`新${k.title}`" :aria-label="`新${k.title}`" class="min-w-0 flex-1" />
-            <UButton :loading="saving[k.key]" type="submit" size="sm" color="neutral" variant="ghost">添加</UButton>
+          <form class="flex min-h-12 items-center gap-2 px-2 py-2" @submit.prevent="add(k)">
+            <UInput v-model="draft[k.key]" variant="ghost" icon="i-lucide-plus" :placeholder="`新${k.title}`" :aria-label="`新${k.title}`" class="min-w-0 flex-1" />
+            <UButton v-if="draft[k.key] || saving[k.key]" :loading="saving[k.key]" type="submit" size="sm" color="neutral" variant="ghost">添加</UButton>
           </form>
         </div>
       </section>
@@ -170,14 +170,14 @@ async function save(k: typeof kinds[number], o: LevelOrPosition) {
           <USwitch v-if="canManageSettings" v-model="category.active" size="sm" :loading="categorySaving[category.id]" :label="category.active ? '启用' : '停用'" @update:model-value="saveCategory(category)" />
           <span v-else-if="!category.active" class="tag bg-tag-gray">停用</span>
         </div>
-        <form v-if="canManageSettings" class="flex flex-wrap items-center gap-2 px-2 py-2" @submit.prevent="addCategory">
-          <UInput v-model="categoryDraft.name" variant="outline" placeholder="新类别" aria-label="新类别" class="min-w-0 flex-1 basis-40" />
-          <label class="flex items-center gap-2 text-xs text-muted">
+        <form v-if="canManageSettings" class="flex min-h-12 flex-wrap items-center gap-2 px-2 py-2" @submit.prevent="addCategory">
+          <UInput v-model="categoryDraft.name" variant="ghost" icon="i-lucide-plus" placeholder="新类别" aria-label="新类别" class="min-w-0 flex-1 basis-40" />
+          <label v-if="categoryDraft.name || categoryAddSaving" class="flex items-center gap-2 text-xs text-muted">
             业绩比例
             <UInput v-model.number="categoryDraft.performance_ratio" type="number" min="0" max="100" class="w-20" aria-label="新类别业绩比例" />
             %
           </label>
-          <UButton :loading="categoryAddSaving" type="submit" size="sm" color="neutral" variant="ghost">添加</UButton>
+          <UButton v-if="categoryDraft.name || categoryAddSaving" :loading="categoryAddSaving" type="submit" size="sm" color="neutral" variant="ghost">添加</UButton>
         </form>
       </div>
     </section>
