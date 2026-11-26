@@ -51,6 +51,9 @@ func registerProfiles(r *ops.Registry) {
 		Name: "create_customer", Summary: "按手机号查找或新建顾客，无手机号则建未识别顾客", Kind: ops.Write,
 		Permission: perm.CustomerEdit, AI: ops.AIDraft,
 		Handle: func(ctx context.Context, env ops.Env, in *CreateCustomerInput) (*CreateCustomerResult, error) {
+			if ok, _ := env.Caller.ScopeFilter(perm.CustomerView); !ok {
+				return nil, ops.Rule("新建顾客还需要「看顾客档案」权限")
+			}
 			row, existed, err := findOrCreate(ctx, env, customerLookup{Name: in.Name, Phone: in.Phone, Gender: in.Gender, SourceID: in.SourceID, Note: in.Note})
 			if err != nil {
 				return nil, err

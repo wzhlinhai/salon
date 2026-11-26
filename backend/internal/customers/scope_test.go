@@ -45,7 +45,11 @@ func TestCustomerWritesRespectViewScope(t *testing.T) {
 			r := s.HTTP(t, &caller, tc.op, tc.args)
 			assertEqual(t, r.Status, tc.status)
 			if tc.op == "create_customer" {
-				assertEqual(t, r.Body["detail"], "这个手机号已有档案，但不在你能查看的范围内")
+				detail := "这个手机号已有档案，但不在你能查看的范围内"
+				if !scoped {
+					detail = "新建顾客还需要「看顾客档案」权限"
+				}
+				assertEqual(t, r.Body["detail"], detail)
 			}
 			if tc.op == "hand_over_customers" {
 				assertEqual(t, r.Body["detail"], "这位员工负责的顾客里有你无权查看的，不能交接")
@@ -67,7 +71,38 @@ func TestCustomerWritesRespectViewScope(t *testing.T) {
 			assertEqual(t, r.Body["existed"], true)
 		}
 		r := s.HTTP(t, &caller, "create_customer", map[string]any{})
-		assertEqual(t, r.Status, 200)
-		assertEqual(t, r.Body["existed"], false)
+		if scoped {
+			assertEqual(t, r.Status, 200)
+			assertEqual(t, r.Body["existed"], false)
+		} else if r.Status != 409 || r.Body["detail"] != "新建顾客还需要「看顾客档案」权限" {
+			t.Fatalf("got %d %v, want 409 with the view rule", r.Status, r.Body)
+		}
 	}
+}
+
+func TestCreateCustomerRequiresView(t *testing.T) {
+	s := open(t)
+	_, token := s.Hire("建档员工", "002", "create-view")
+	caller := s.MustCaller(token)
+	caller.Permissions = map[ops.Permission]ops.Grant{perm.CustomerEdit: {}}
+	args := map[string]any{"phone": "13800132222", "name": "看不见的顾客"}
+	before := snapshot(t, s)
+	r := s.HTTP(t, &caller, "create_customer", args)
+	if r.Status != 409 || r.Body["detail"] != "新建顾客还需要「看顾客档案」权限" {
+		t.Fatalf("got %d %v, want 409 with the view rule", r.Status, r.Body)
+	}
+	assertEqual(t, snapshot(t, s), before)
+	raw, err := json.Marshal(r.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{"13800132222", "看不见的顾客"} {
+		if strings.Contains(string(raw), secret) {
+			t.Fatalf("create_customer leaked %q in rejection: %s", secret, raw)
+		}
+	}
+	caller.Permissions[perm.CustomerView] = ops.Grant{Scope: ops.ScopeStore}
+	r = s.HTTP(t, &caller, "create_customer", args)
+	assertEqual(t, r.Status, 200)
+	assertEqual(t, r.Body["existed"], false)
 }
