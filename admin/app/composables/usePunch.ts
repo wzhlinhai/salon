@@ -11,7 +11,6 @@ export function usePunch() {
   const { me, can } = useMe()
   const state = useState<PunchState | null>('my-punch-today', () => null)
   const punching = useState<boolean>('my-punch-saving', () => false)
-  const guard = useRequestGuard()
 
   const clockIn = computed(() => {
     const staffId = me.value?.staff.id
@@ -26,13 +25,15 @@ export function usePunch() {
     if (staffId) state.value = { staffId, at }
   }
 
+  // 打卡中的标记全站共用，不能跟着发起的组件走：请求没回来就切页，组件卸载了也要复位、也要记下打卡，
+  // 不然别处一直按不了，回到首页还显示「今天还没打卡」，再点一次就被算成下班。只在换了人登录时丢掉结果。
   async function punch() {
     if (punching.value || !can('attendance.clock')) return
-    const current = guard.next()
+    const staffId = me.value?.staff.id
     punching.value = true
     try {
       const { data, error } = await api.POST('/api/ops/clock_in', { body: {} })
-      if (!current()) return
+      if (me.value?.staff.id !== staffId) return
       if (!data) {
         toast.add({ title: errorText(error), color: 'error' })
         return
@@ -40,7 +41,7 @@ export function usePunch() {
       if (!clockIn.value) remember(data.at)
       toast.add({ title: `已打卡 ${clockTime(data.at)}`, color: 'success' })
     } finally {
-      if (current()) punching.value = false
+      punching.value = false
     }
   }
 

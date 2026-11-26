@@ -12,6 +12,7 @@ const crumbTitle = useState('page-crumb-title', () => '')
 const months = ref<Schema['PayrollMonth'][]>([])
 const month = ref('')
 const payroll = ref<Schema['Payroll']>()
+const loadError = ref('')
 const salaries = ref<Schema['StaffBaseSalary'][]>([])
 const guard = useRequestGuard()
 const monthsGuard = useRequestGuard()
@@ -128,8 +129,12 @@ async function reload() {
     if (!current()) return
     void loadAttendance(targetMonth)
     void loadPrevious(targetMonth)
-    if (p.data) payroll.value = p.data
-    else toast.add({ title: errorText(p.error), color: 'error' })
+    // 这个月的工资表读不出来时原地给「重试」，别只弹提示留一片空白。
+    if (p.data) {
+      loadError.value = ''
+      payroll.value = p.data
+    } else if (payroll.value) toast.add({ title: errorText(p.error), color: 'error' })
+    else loadError.value = errorText(p.error)
     if (s.data) salaries.value = s.data.entries
     else toast.add({ title: errorText(s.error), color: 'error' })
   } finally {
@@ -263,6 +268,7 @@ onBeforeUnmount(() => {
     <section data-testid="payroll-table" :aria-busy="loading">
       <h2 class="sec">明细<span class="font-normal text-dimmed">点一行看每笔提成从哪来</span></h2>
       <ListSkeleton v-if="loading && !payroll" />
+      <LoadError v-else-if="loadError && !payroll" :title="`${month} 的工资表没有读出来`" :hint="loadError" @retry="reload()" />
       <EmptyState v-else-if="payroll && !payroll.lines.length" art="calendar" title="本月还没有员工工资" hint="点右上角 ··· 设置底薪或保底，开单后的提成会自动算进来" />
       <div v-else-if="payroll" class="overflow-x-auto">
         <table class="w-full text-sm">

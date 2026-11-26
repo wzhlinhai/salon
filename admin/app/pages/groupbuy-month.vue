@@ -22,8 +22,12 @@ function currentMonth() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
 
+// 读失败时丢掉上一个平台或月份的对账，原地给「重试」：不然看着的是别的月份的数，却以为是这个月的。
+const loadError = ref('')
+
 async function load() {
   const current = loadGuard.next()
+  loadError.value = ''
   loading.value = true
   try {
     const { data: result, error } = await api.POST('/api/ops/get_groupbuy_month', {
@@ -31,9 +35,11 @@ async function load() {
     })
     if (!current()) return
     if (!result) {
-      toast.add({ title: errorText(error), color: 'error' })
+      data.value = null
+      loadError.value = errorText(error)
       return
     }
+    loadError.value = ''
     data.value = result
   } finally {
     if (current()) loading.value = false
@@ -95,7 +101,8 @@ async function saveSettlement() {
       <DateInput v-model="month" month aria-label="结算月" class="ms-auto w-36" />
     </div>
 
-    <p v-if="empty" class="py-6 text-muted">{{ month }} {{ platformTabs.find(p => p.key === platform)?.label }}没有核销的券，也没录入结算。</p>
+    <LoadError v-if="loadError" :title="`${month} 的对账没有读出来`" :hint="loadError" @retry="load()" />
+    <p v-else-if="empty" class="py-6 text-muted">{{ month }} {{ platformTabs.find(p => p.key === platform)?.label }}没有核销的券，也没录入结算。</p>
     <template v-else-if="data">
       <!-- 照 Notion 的页面属性：左边灰字属性名，右边值，一行 34px。 -->
       <dl class="props tabular-nums" :class="loading ? 'opacity-60' : ''">

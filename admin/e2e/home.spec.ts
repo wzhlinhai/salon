@@ -157,3 +157,30 @@ test('发型师首页的在店里按轮牌顺序列人，写出自己排第几',
   await expect(rows.nth(1)).toContainText(`${me.name}（我）`)
   await expect(rows.nth(1)).toContainText('第 2 位')
 })
+
+test('打卡还没回来就切到别的页，回来后打卡按钮还能按', async ({ page }) => {
+  const stylist = await hire('发型师')
+  await login(page, stylist.account, stylist.password)
+  let release!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let started!: () => void
+  const pending = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  await page.route('**/api/ops/clock_in', async (route) => {
+    started()
+    await blocked
+    await route.abort()
+  }, { times: 1 })
+  await page.getByTestId('home-punch').click()
+  await pending
+  const nav = page.getByTestId('sidebar-nav')
+  await nav.locator('a:not([href="/"])').first().click()
+  await expect(page).not.toHaveURL(/\/$/)
+  release()
+  await expect(page.getByText('网络连接失败，请重试', { exact: true })).toBeVisible()
+  await nav.locator('a[href="/"]').click()
+  await expect(page.getByTestId('home-punch')).toBeEnabled()
+})

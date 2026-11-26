@@ -194,3 +194,14 @@ test('项目岗位比例留存并显示规则错误', async ({ page }) => {
   const result = await api<{ items: { name: string, positions: { share_percent: number | null }[] }[] }>(token, 'list_items', {})
   expect(result.items.find(i => i.name === name)!.positions.map(p => p.share_percent)).toEqual([null, null])
 })
+
+test('项目读不出来时原地给重试，不写「还没有项目」', async ({ page }) => {
+  await login(page, owner.account, owner.password)
+  await page.route('**/api/ops/list_items', route => route.abort(), { times: 1 })
+  await page.goto('/items')
+  const error = page.getByTestId('load-error')
+  await expect(error).toContainText('项目没有读出来')
+  await expect(page.getByText('还没有项目', { exact: true })).toHaveCount(0)
+  await error.getByRole('button', { name: '重试', exact: true }).click()
+  await expect(error).toHaveCount(0)
+})

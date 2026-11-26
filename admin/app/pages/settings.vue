@@ -19,13 +19,22 @@ const changes = useCursorList(async (beforeId) => {
 })
 const settingsGuard = useRequestGuard()
 
+const loadError = ref('')
+
 async function load() {
   const request = settingsGuard.next()
   if (can('audit_log.view')) changes.reload()
-  const { data } = await api.POST('/api/ops/get_settings', { body: {} })
+  const { data, error } = await api.POST('/api/ops/get_settings', { body: {} })
   if (!request()) return
-  today.value = data?.business_date ?? ''
-  settings.value = data?.settings ?? []
+  // 读失败时留着上次读到的设置；一次都没读到过才原地给「重试」，别把设置清空成一张白纸。
+  if (!data) {
+    if (settings.value.length) toast.add({ title: errorText(error), color: 'error' })
+    else loadError.value = errorText(error)
+    return
+  }
+  loadError.value = ''
+  today.value = data.business_date
+  settings.value = data.settings
 }
 
 onMounted(load)
@@ -85,7 +94,20 @@ function openEditor(s: Setting) {
   form.from = today.value
 }
 
+// 保存中按钮转圈、不能再点：网慢时连点会发两次修改，修改记录里多出一版。
+const settingSaving = ref(false)
+
 async function save(reset: boolean) {
+  if (settingSaving.value) return
+  settingSaving.value = true
+  try {
+    await saveSetting(reset)
+  } finally {
+    settingSaving.value = false
+  }
+}
+
+async function saveSetting(reset: boolean) {
   const current = editorGuard.hold()
   const s = editing.value!
   const value = reset ? null : s.kind === 'time_range' ? { open: form.open, close: form.close } : s.kind === 'choice' ? form.choice : s.kind === 'integer' ? Number(form.integer) : s.kind === 'text' ? form.text : form.time
@@ -147,14 +169,23 @@ async function loadSources() {
   }
 }
 
+// 新建等上一次回来再发，回车连按不会建出两个同名来源。
+const sourceSaving = ref(false)
+
 async function addSource() {
-  const { data, error } = await api.POST('/api/ops/create_customer_source', {
-    body: { name: sourceName.value }
-  })
-  if (data) {
-    sourceName.value = ''
-  } else {
-    toast.add({ title: errorText(error), color: 'error' })
+  if (sourceSaving.value) return
+  sourceSaving.value = true
+  try {
+    const { data, error } = await api.POST('/api/ops/create_customer_source', {
+      body: { name: sourceName.value }
+    })
+    if (data) {
+      sourceName.value = ''
+    } else {
+      toast.add({ title: errorText(error), color: 'error' })
+    }
+  } finally {
+    sourceSaving.value = false
   }
   loadSources()
 }
@@ -190,6 +221,8 @@ onMounted(loadSources)
         </div>
       </div>
     </section>
+
+    <LoadError v-if="loadError && !settings.length" title="门店设置没有读出来" :hint="loadError" @retry="load()" />
 
     <section v-for="group in settingGroups" :key="group.label" :data-setting-group="group.label">
       <h2 class="sec">{{ group.label }}</h2>
@@ -230,7 +263,7 @@ onMounted(loadSources)
         </div>
         <form v-if="can('settings.manage')" class="flex gap-2 py-2" @submit.prevent="addSource">
           <UInput v-model="sourceName" aria-label="新顾客来源" placeholder="新顾客来源" class="flex-1" />
-          <UButton type="submit" size="sm" color="neutral" variant="outline">添加</UButton>
+          <UButton type="submit" size="sm" color="neutral" variant="outline" :loading="sourceSaving">添加</UButton>
         </form>
       </div>
     </section>
@@ -286,9 +319,9 @@ onMounted(loadSources)
       <template #footer>
         <ModalActions @cancel="editing = null">
           <template #leading>
-            <UButton color="neutral" variant="ghost" @click="save(true)">恢复系统默认</UButton>
+            <UButton color="neutral" variant="ghost" :disabled="settingSaving" @click="save(true)">恢复系统默认</UButton>
           </template>
-          <UButton @click="save(false)">保存</UButton>
+          <UButton :loading="settingSaving" @click="save(false)">保存</UButton>
         </ModalActions>
       </template>
     </UModal>

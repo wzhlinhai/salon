@@ -24,6 +24,9 @@ export function useDrafts() {
     return staffId && state.value?.staffId === staffId ? state.value.drafts : []
   })
   const pending = computed(() => drafts.value.filter(draft => draft.status === 'pending'))
+  // 本人的列表一次都没读到过时读失败：待确认页原地给「重试」，别写成「没有未处理的草稿」让人以为收件箱空了。
+  const loaded = computed(() => !!me.value && state.value?.staffId === me.value.staff.id)
+  const loadError = useState<string>('drafts-error', () => '')
 
   // quiet：后台定时刷新失败时不弹提示，免得断网时每分钟弹一次。
   async function load(options: { quiet?: boolean } = {}) {
@@ -37,9 +40,11 @@ export function useDrafts() {
     if (current !== generation.value || me.value?.staff.id !== staffId) return
     if (staff.data) names.value = Object.fromEntries(staff.data.staff.map(row => [row.id, row.name]))
     if (!list.data) {
-      if (!options.quiet) toast.add({ title: errorText(list.error), color: 'error' })
+      if (!loaded.value) loadError.value = errorText(list.error)
+      else if (!options.quiet) toast.add({ title: errorText(list.error), color: 'error' })
       return
     }
+    loadError.value = ''
     state.value = { staffId, drafts: list.data.drafts }
   }
 
@@ -47,6 +52,7 @@ export function useDrafts() {
   function reset() {
     generation.value++
     state.value = null
+    loadError.value = ''
   }
 
   function staffName(id: string | null | undefined) {
@@ -54,5 +60,5 @@ export function useDrafts() {
     return names.value[id] ?? '已删除员工'
   }
 
-  return { drafts, pending, load, reset, staffName }
+  return { drafts, pending, loaded, loadError, load, reset, staffName }
 }

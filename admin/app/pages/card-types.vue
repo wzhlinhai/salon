@@ -16,6 +16,9 @@ const countsPrice = computed(() => definition.value.reduce((sum, x) => sum + Mat
 const loading = ref(false)
 const loadGuard = useRequestGuard()
 
+// 一次都没读到过时原地给「重试」，别写成「还没有…」让人以为要重新建；已经有数据（刷新失败）时弹提示就够。
+const loadError = ref('')
+
 async function load() {
   const current = loadGuard.next()
   loading.value = true
@@ -30,8 +33,11 @@ async function load() {
     if (rules.data) upgradeRules.value = rules.data.items
     else toast.add({ title: errorText(rules.error), color: 'error' })
     if (projects.data) catalog.value = projects.data.items
-    if (data) items.value = data.items
-    else toast.add({ title: errorText(error), color: 'error' })
+    if (data) {
+      loadError.value = ''
+      items.value = data.items
+    } else if (items.value.length) toast.add({ title: errorText(error), color: 'error' })
+    else loadError.value = errorText(error)
   } finally {
     if (current()) loading.value = false
   }
@@ -140,6 +146,7 @@ async function saveRule() {
       <div v-if="items.length" class="sec mt-0!"><span class="font-normal text-dimmed">{{ items.length }} 种</span></div>
       <div class="overflow-x-auto">
         <ListSkeleton v-if="loading && !items.length" :rows="3" />
+        <LoadError v-else-if="loadError && !items.length" title="卡类型没有读出来" :hint="loadError" @retry="load()" />
         <EmptyState v-else-if="!items.length" art="card" title="还没有卡类型" hint="点右上角新建储值卡、次卡或套餐" />
         <div
           v-for="item in items"

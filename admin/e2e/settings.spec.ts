@@ -282,3 +282,30 @@ test('老板改门店名，侧栏跟着变；店长看不到修改', async ({ pa
   await expect(page.locator('[data-setting=store_name]')).toContainText(original)
   await expect(page.getByRole('button', { name: '修改门店名' })).toHaveCount(0)
 })
+
+test('保存设置时连点只改一次', async ({ page }) => {
+  await login(page, owner.account, owner.password)
+  await page.goto('/settings')
+  await page.locator('[data-setting=business_day_end]').getByRole('button', { name: '修改' }).click()
+  const tomorrow = await page.getByLabel('生效日期').getAttribute('min')
+    .then(d => new Date(Date.parse(d! + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10))
+  await page.getByLabel('时间', { exact: true }).fill('02:30')
+  await page.getByLabel('生效日期').fill(tomorrow)
+  let release!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let calls = 0
+  await page.route('**/api/ops/change_setting', async (route) => {
+    calls++
+    await blocked
+    await route.continue()
+  })
+  const save = page.getByRole('dialog', { name: '修改营业日结束时间', exact: true }).getByRole('button', { name: '保存', exact: true })
+  await save.dispatchEvent('click')
+  await expect(save).toBeDisabled()
+  await save.dispatchEvent('click')
+  release()
+  await expect(page.getByText(`${tomorrow} 起改为 02:30`)).toBeVisible()
+  expect(calls).toBe(1)
+})

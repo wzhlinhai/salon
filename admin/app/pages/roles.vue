@@ -10,6 +10,7 @@ const toast = useToast()
 const { me } = useMe()
 
 const roles = ref<Role[]>([])
+const loadError = ref('')
 const catalogue = ref<Def[]>([])
 
 const loadGuard = useRequestGuard()
@@ -21,10 +22,13 @@ async function load() {
     api.POST('/api/ops/list_permissions', { body: {} })
   ])
   if (!request()) return
+  // 一次都没读到过时原地给「重试」，别只弹提示留一片空白；已经有角色（刷新失败）时弹提示就够。
   if (!r.data || !p.data) {
-    toast.add({ title: errorText(r.error ?? p.error), color: 'error' })
+    if (roles.value.length) toast.add({ title: errorText(r.error ?? p.error), color: 'error' })
+    else loadError.value = errorText(r.error ?? p.error)
     return
   }
+  loadError.value = ''
   roles.value = r.data?.roles ?? []
   catalogue.value = p.data?.permissions ?? []
 }
@@ -143,6 +147,7 @@ function summary(g: components['schemas']['GrantSpec']) {
       <UButton size="sm" @click="openEditor(null)">新建角色</UButton>
     </PageActions>
 
+    <LoadError v-if="loadError && !roles.length" title="角色没有读出来" :hint="loadError" @retry="load()" />
     <section v-for="role in roles" :key="role.id" :data-role="role.name" class="box group/row">
       <div class="flex items-center gap-2">
         <span class="font-medium">{{ role.name }}</span>

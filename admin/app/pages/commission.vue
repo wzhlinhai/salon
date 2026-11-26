@@ -36,7 +36,10 @@ const todayGuard = useRequestGuard()
 const versions = useCursorList(async (beforeId) => {
   const { data, error } = await api.POST('/api/ops/list_commission_scheme_versions', { body: { before_version: beforeId ? Number(beforeId) : undefined, limit: LOG_PAGE_SIZE } })
   return { data: data?.versions.map(v => ({ ...v, id: String(v.version) })), error }
-})
+}, { inlineError: true })
+// 读失败原地给「重试」：写成「还没有提成方案」，店长会以为方案丢了要重建。
+const settingsError = ref('')
+const loadError = computed(() => settingsError.value || (versions.items.value.length ? '' : versions.error.value))
 
 async function selectVersion(version: number) {
   selectionRevision++
@@ -62,9 +65,10 @@ async function reload(version?: number) {
   ])
   if (!current()) return
   if (!settings.data) {
-    toast.add({ title: errorText(settings.error), color: 'error' })
+    settingsError.value = errorText(settings.error)
     return
   }
+  settingsError.value = ''
   today.value = settings.data.business_date
   const active = await api.POST('/api/ops/get_commission_scheme', { body: { date: today.value } })
   if (!current()) return
@@ -262,7 +266,8 @@ function changeSource(o: OverrideForm) {
       <UButton size="sm" icon="i-lucide-pencil" :disabled="!today" @click="edit">修改方案</UButton>
     </PageActions>
     <PageDescriptionTail v-if="today">今天是营业日 {{ today }}。</PageDescriptionTail>
-    <EmptyState v-if="!versions.loading.value && !versions.items.value.length" art="chart" title="还没有提成方案，没有方案时不计提成。" hint="点右上角修改方案，按项目、耗卡或销售设置提成" />
+    <LoadError v-if="loadError" title="提成方案没有读出来" :hint="loadError" @retry="reload()" />
+    <EmptyState v-else-if="!versions.loading.value && !versions.items.value.length" art="chart" title="还没有提成方案，没有方案时不计提成。" hint="点右上角修改方案，按项目、耗卡或销售设置提成" />
     <section v-else>
       <div class="sec">方案版本</div>
       <div class="overflow-x-auto">
