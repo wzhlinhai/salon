@@ -218,7 +218,7 @@ async function saveRule() {
               </div>
               <UButton color="error" variant="ghost" class="-ms-2" @click="definition.splice(index, 1)">移除项目</UButton>
             </div>
-            <UButton color="neutral" class="-ms-2 self-start" :disabled="definition.length >= 20" variant="ghost" @click="definition.push({ item_id: '', paid_count: 1, gift_count: 0, unit_price: '0.00' })">添加项目</UButton>
+            <UButton color="neutral" class="-ms-2 self-start text-muted hover:text-default" :disabled="definition.length >= 20" variant="ghost" @click="definition.push({ item_id: '', paid_count: 1, gift_count: 0, unit_price: '0.00' })">添加项目</UButton>
             <p class="text-meta text-muted">次数售价 {{ countsPrice.toFixed(2) }}。编辑项目只影响以后开卡，已开卡保留原次数和单次金额。</p>
           </div>
           <div class="grid grid-cols-2 gap-4">

@@ -388,6 +388,27 @@ test('今天的页头写约了几位、几位没到；过时没到的写打个�
   await expect(page.getByTestId('booking-now')).toHaveText(clockAt(hours, 200))
 })
 
+test('员工列多到要横着滚时，时间栏钉在左边', async ({ page }) => {
+  await seed()
+  await login(page, owner.account, owner.password)
+  await page.goto('/bookings')
+  const grid = page.locator('[data-booking-grid]')
+  const axis = page.getByTestId('booking-time-axis')
+  await expect(axis).toBeVisible()
+  // 把看板压到比「时间栏 + 一列员工」（56 + 160）还窄，库里只有一个员工也要横着滚。
+  await grid.evaluate((el) => {
+    el.style.width = '200px'
+  })
+  await expect.poll(() => grid.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true)
+  await grid.evaluate((el) => {
+    el.scrollLeft = el.scrollWidth
+  })
+  await expect.poll(() => grid.evaluate(el => el.scrollLeft)).toBeGreaterThan(0)
+  const gridBox = (await grid.boundingBox())!
+  const axisBox = (await axis.boundingBox())!
+  expect(Math.abs(axisBox.x - gridBox.x)).toBeLessThan(2)
+})
+
 test('未来已确认预约不显示记爽约', async ({ page }) => {
   const seeded = await seed()
   const today = await settings(seeded.token)

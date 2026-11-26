@@ -726,12 +726,13 @@ function actorLabel(actor: Actor) {
       <p v-if="loading" class="text-sm text-muted" aria-live="polite">加载中</p>
     </div>
 
-    <div v-if="businessDate" ref="grid" class="box h-[calc(100dvh-15.5rem)] min-h-96 overflow-auto p-0" data-booking-grid>
-      <div v-if="dayEmpty" class="pointer-events-none sticky top-16 left-0 z-30 flex h-0 justify-center">
+    <div v-if="businessDate" ref="grid" class="box h-[calc(100dvh-15.5rem)] min-h-96 scroll-ps-14 scroll-pt-11 overflow-auto p-0" data-booking-grid>
+      <div v-if="dayEmpty" class="pointer-events-none sticky top-16 left-0 z-40 flex h-0 justify-center">
         <p class="h-fit rounded-md bg-white px-3 py-2 text-meta text-muted shadow-paper" data-testid="booking-day-empty">这天还没有预约。点空白时段，或右上角「新建预约」</p>
       </div>
       <div class="flex min-w-max">
-        <div class="w-14 shrink-0">
+        <!-- 时间栏横滚时钉在左边，压在员工列（含列头）上面；右边框归时间栏，第一列员工不再画左框。 -->
+        <div class="sticky left-0 z-30 w-14 shrink-0 border-e border-default bg-white" data-testid="booking-time-axis">
           <div class="sticky top-0 z-20 h-11 border-b border-default bg-white" />
           <div class="relative" :style="{ height: `${gridHeight}px` }">
             <div v-if="nowTop !== null" class="absolute right-2 z-10 -translate-y-1/2 bg-white text-xs font-medium text-ink-red tabular-nums" :style="{ top: `${nowTop}px` }" data-testid="booking-now">{{ nowText }}</div>
@@ -746,7 +747,7 @@ function actorLabel(actor: Actor) {
             </div>
           </div>
         </div>
-        <div v-for="person in staffColumns" :key="person.id" class="min-w-40 flex-1 border-l border-default" :data-staff-column="person.id">
+        <div v-for="(person, index) in staffColumns" :key="person.id" class="min-w-40 flex-1 border-default" :class="index ? 'border-l' : ''" :data-staff-column="person.id">
           <div class="sticky top-0 z-20 flex h-11 items-center gap-2 border-b border-default bg-white px-2" :title="person.name" data-testid="booking-column-head">
             <PersonAvatar :name="person.name" size="sm" />
             <span class="min-w-0 truncate text-sm font-medium">{{ person.name }}{{ person.active ? '' : '（已停用）' }}</span>

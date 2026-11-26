@@ -180,6 +180,10 @@ async function loadUnlinked() {
 // —— 扫码框 ——
 const scanValue = ref('')
 const scanKind = ref('')
+// 框清空了（选好顾客、开好单，或手动删掉），「识别为…」也跟着去掉。
+watch(scanValue, (value) => {
+  if (!value.trim()) scanKind.value = ''
+})
 const scanGuard = useRequestGuard()
 const scanLoading = ref(false)
 const customerMatches = ref<Customer[]>([])
