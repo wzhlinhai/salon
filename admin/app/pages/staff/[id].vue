@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-// 员工详情（样稿 09）：和顾客档案同一副骨架。页头头像和名字，下面一张资料表；左栏「这个月」「最近做的」，右栏考勤。
+// 员工详情（样稿 09）：和顾客档案同一副骨架。页头头像和名字，下面一张资料表；下面一栏写「这个月」「考勤」「最近做的」，不分右栏。
 // 外壳只在顶栏写「员工 / 名字」。业绩要 performance.view，班次和考勤要 attendance.manage，没权限的那块不出现。
 definePageMeta({ permission: 'staff.manage', title: '员工', bare: true })
 
@@ -171,7 +171,7 @@ const moreItems = computed(() => {
           </div>
         </header>
 
-        <div class="mt-8 grid gap-10 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div class="mt-8 max-w-3xl">
           <div class="min-w-0 space-y-8">
             <dl class="grid grid-cols-[6rem_minmax(0,1fr)] gap-y-3 text-sm" data-testid="staff-fields">
               <template v-for="field in fields" :key="field.label">
@@ -188,6 +188,14 @@ const moreItems = computed(() => {
               <p class="text-base tabular-nums">{{ monthSentence }}</p>
             </section>
 
+            <section v-if="attendance" data-testid="staff-attendance">
+              <div class="flex items-center">
+                <h2 class="sec mt-0!">考勤</h2>
+                <NuxtLink to="/attendance" class="tap-area ms-auto inline-flex items-center text-meta text-muted hover:underline">考勤明细<UIcon name="i-lucide-chevron-right" class="size-4" aria-hidden="true" /></NuxtLink>
+              </div>
+              <p class="text-base tabular-nums">{{ attendanceSentence }}</p>
+            </section>
+
             <section v-if="can('performance.view')" data-testid="staff-recent">
               <h2 class="sec">最近做的</h2>
               <p v-if="!recent.length" class="text-sm text-muted">这个月还没有做过的项目</p>
@@ -200,14 +208,6 @@ const moreItems = computed(() => {
               </div>
             </section>
           </div>
-
-          <aside class="space-y-8" data-testid="staff-rail">
-            <section v-if="attendance" data-testid="staff-attendance">
-              <h2 class="flex h-7 items-center text-meta text-muted">考勤</h2>
-              <p class="text-sm tabular-nums">{{ attendanceSentence }}</p>
-              <NuxtLink to="/attendance" class="tap-area mt-1 inline-flex items-center text-meta text-muted hover:underline">考勤明细<UIcon name="i-lucide-chevron-right" class="size-4" aria-hidden="true" /></NuxtLink>
-            </section>
-          </aside>
         </div>
       </template>
       <LoadError v-else-if="loadError" title="员工档案没有读出来" :hint="loadError" @retry="load()" />

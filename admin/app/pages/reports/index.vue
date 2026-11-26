@@ -151,7 +151,6 @@ onMounted(() => {
           :key="r.key"
           :to="`/reports/${r.key}`"
           :label="r.label"
-          :icon="r.icon"
           :description="r.description"
           :figure="linkFigures[r.key]"
         />
