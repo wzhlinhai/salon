@@ -247,12 +247,16 @@ onBeforeUnmount(() => clearInterval(draftTimer))
         <template #body>
           <main :class="pageWidth">
             <!-- 页头：阅读页上画下字；工作台页（收银、预约）插画和标题并排一行，省出约 80px 给下面的列。 -->
-            <header v-if="showPageHeader" class="mb-5" data-testid="page-header">
-              <div :class="route.meta.workbench ? 'flex items-center gap-2' : ''">
-                <SpotArt v-if="route.meta.art" :name="route.meta.art" class="-ml-1 w-[60px] shrink-0" :class="route.meta.workbench ? '' : 'mb-1'" data-testid="page-art" />
-                <h1 class="text-title font-semibold text-balance">{{ pageTitle }}</h1>
+            <!-- 右边的 #title-actions 给 <PageActions at="title"> 用：主操作贴着标题行右下角，窄屏折到说明下面。 -->
+            <header v-if="showPageHeader" class="mb-5 flex flex-wrap items-end gap-x-6 gap-y-3" data-testid="page-header">
+              <div class="min-w-0 flex-1 basis-80">
+                <div :class="route.meta.workbench ? 'flex items-center gap-2' : ''">
+                  <SpotArt v-if="route.meta.art" :name="route.meta.art" class="-ml-1 w-[60px] shrink-0" :class="route.meta.workbench ? '' : 'mb-1'" data-testid="page-art" />
+                  <h1 class="text-title font-semibold text-balance">{{ pageTitle }}</h1>
+                </div>
+                <p id="page-description" class="mt-2 text-muted text-pretty empty:hidden" data-testid="page-description"><span v-if="pageDescription">{{ pageDescription }}</span></p>
               </div>
-              <p id="page-description" class="mt-2 text-muted text-pretty empty:hidden" data-testid="page-description"><span v-if="pageDescription">{{ pageDescription }}</span></p>
+              <div id="title-actions" class="flex items-center gap-2 empty:hidden" />
             </header>
             <NuxtPage />
           </main>
