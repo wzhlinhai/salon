@@ -299,8 +299,9 @@ onMounted(async () => {
           @select="selectSummary"
         >
           <!-- 整行可点；名字做成按钮，键盘也能打开这个人的打卡明细。 -->
-          <template #staff-cell="{ row }"><button type="button" class="font-medium hover:underline" @click.stop="openSummary(row.original)">{{ row.original.staff.name }}</button><span v-if="!row.original.active" class="text-dimmed">（离职）</span></template>
+          <template #staff-cell="{ row }"><button type="button" class="inline-flex min-h-6 items-center font-medium hover:underline" @click.stop="openSummary(row.original)">{{ row.original.staff.name }}</button><span v-if="!row.original.active" class="text-dimmed">（离职）</span></template>
           <!-- 0 次留空，照 Notion 空属性；外层 span 要一直在，插槽空了表格会改显示原始数字。 -->
+          <template #attendance_days-cell="{ row }"><span><template v-if="row.original.attendance_days">{{ row.original.attendance_days }}</template></span></template>
           <template #late_count-cell="{ row }"><span class="text-ink-red"><template v-if="row.original.late_count">{{ row.original.late_count }} 次 / {{ row.original.late_minutes }} 分钟</template></span></template>
           <template #early_count-cell="{ row }"><span class="text-ink-orange"><template v-if="row.original.early_count">{{ row.original.early_count }} 次 / {{ row.original.early_minutes }} 分钟</template></span></template>
           <template #missing_count-cell="{ row }"><span class="text-ink-red"><template v-if="row.original.missing_count">{{ row.original.missing_count }} 次</template></span></template>
@@ -332,7 +333,7 @@ onMounted(async () => {
     <section v-else class="space-y-8">
       <div class="space-y-3">
         <div class="sec">
-          班次
+          <h2>班次</h2>
           <UButton size="xs" color="neutral" variant="ghost" class="ms-auto" @click="openCreateShift">新建班次</UButton>
         </div>
         <div class="overflow-x-auto">
@@ -350,7 +351,7 @@ onMounted(async () => {
       </div>
 
       <div class="space-y-3">
-        <div class="sec">员工班次</div>
+        <h2 class="sec">员工班次</h2>
         <div class="overflow-x-auto">
           <UTable :data="staffShifts" :columns="staffShiftColumns" :loading="staffShiftsLoading" :aria-busy="staffShiftsLoading" data-testid="staff-shifts-table">
             <template #staff-cell="{ row }">{{ row.original.staff.name }}{{ row.original.active ? '' : '（离职）' }}</template>

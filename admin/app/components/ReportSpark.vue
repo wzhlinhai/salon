@@ -30,7 +30,7 @@ const peak = computed(() => {
       <!-- 最高那天：一个色卡色的点，外面一圈白边压在线上。 -->
       <span v-if="peak" data-testid="spark-peak" class="absolute size-2 -translate-1/2 rounded-full bg-dye-1 ring-2 ring-white" :style="{ left: peak.left, top: peak.top }" aria-hidden="true" />
     </div>
-    <figcaption class="mt-1 flex justify-between text-xs text-dimmed tabular-nums">
+    <figcaption class="mt-1 flex justify-between text-xs text-muted tabular-nums">
       <span>{{ start }}</span>
       <span>{{ caption }}<template v-if="peak && peakLabel"> · 最高 {{ peakLabel(peak.i) }}</template></span>
       <span>{{ end }}</span>

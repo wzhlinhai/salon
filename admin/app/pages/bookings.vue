@@ -344,6 +344,7 @@ const booking = reactive({
   customer_phone: '',
   note: ''
 })
+const bookingEndError = computed(() => booking.end_time && booking.start_time && booking.end_time <= booking.start_time ? '结束时间要晚于开始时间' : '')
 const selectedCustomer = ref<Customer | null>(null)
 const customerQuery = ref('')
 const customerResults = ref<Customer[]>([])
@@ -429,6 +430,7 @@ function clearCustomer() {
 }
 
 async function saveBooking() {
+  if (bookingEndError.value) return
   await bookingEditor.save(async (current) => {
     const body: components['schemas']['CreateAppointmentInput'] = {
       staff_id: booking.staff_id,
@@ -458,6 +460,7 @@ async function saveBooking() {
 const blockEditor = useModalForm()
 const { open: blockOpen, saving: blockSaving } = blockEditor
 const blockForm = reactive({ staff_id: '', start_time: '', end_time: '', note: '' })
+const blockEndError = computed(() => blockForm.end_time && blockForm.start_time && blockForm.end_time <= blockForm.start_time ? '结束时间要晚于开始时间' : '')
 const blockDay = ref('')
 
 function openBlock(staffID: string, time: string) {
@@ -475,6 +478,7 @@ function chooseBlock() {
 }
 
 async function saveBlock() {
+  if (blockEndError.value) return
   await blockEditor.save(async (current) => {
     const body: components['schemas']['CreateBlockInput'] = {
       staff_id: blockForm.staff_id,
@@ -763,7 +767,7 @@ function actorLabel(actor: Actor) {
       <UButton v-else color="neutral" variant="outline" size="sm" @click="goToday">今天</UButton>
       <DateInput v-model="day" size="sm" aria-label="营业日" class="ms-2 w-36" />
       <USwitch v-model="showCancelled" size="sm" label="显示已取消" class="ms-auto" />
-      <p v-if="loading" class="text-sm text-muted" aria-live="polite">加载中</p>
+      <span v-if="loading" class="inline-flex items-center text-muted" role="status" aria-live="polite"><UIcon name="i-lucide-loader-circle" class="size-4 animate-spin" aria-hidden="true" /><span class="sr-only">加载中</span></span>
     </div>
 
     <LoadError v-if="optionsError" title="预约页没有读出来" :hint="optionsError" @retry="loadOptions()" />
@@ -793,7 +797,7 @@ function actorLabel(actor: Actor) {
           <div class="sticky top-0 z-20 flex h-11 items-center gap-2 border-b border-default bg-white px-2" :title="person.name" data-testid="booking-column-head">
             <PersonAvatar :name="person.name" size="sm" />
             <span class="min-w-0 truncate text-sm font-medium">{{ person.name }}{{ person.active ? '' : '（已停用）' }}</span>
-            <span class="ms-auto shrink-0 text-meta tabular-nums" :class="bookedCount.get(person.id) ? 'text-muted' : 'text-dimmed'">{{ bookedCount.get(person.id) ?? 0 }} 约</span>
+            <span class="ms-auto shrink-0 text-meta text-muted tabular-nums">{{ bookedCount.get(person.id) ?? 0 }} 约</span>
           </div>
           <div class="relative" :style="{ height: `${gridHeight}px` }">
             <template v-if="person.active">
@@ -867,7 +871,7 @@ function actorLabel(actor: Actor) {
           <UFormField label="发型师"><USelect v-model="booking.staff_id" :items="activeStaffItems" aria-label="发型师" class="w-full" /></UFormField>
           <div class="grid grid-cols-2 gap-4">
             <UFormField label="开始时间"><UInput v-model="booking.start_time" type="time" aria-label="开始时间" class="w-full" /></UFormField>
-            <UFormField label="结束时间" help="不填按项目时长或门店默认时长"><UInput v-model="booking.end_time" type="time" aria-label="结束时间" class="w-full" /></UFormField>
+            <UFormField label="结束时间" help="不填按项目时长或门店默认时长" :error="bookingEndError"><UInput v-model="booking.end_time" type="time" aria-label="结束时间" class="w-full" /></UFormField>
           </div>
           <UFormField label="项目">
             <div v-if="bookableItems.length" class="space-y-1">
@@ -919,7 +923,7 @@ function actorLabel(actor: Actor) {
           <UFormField label="员工"><USelect v-model="blockForm.staff_id" :items="activeStaffItems" aria-label="员工" class="w-full" /></UFormField>
           <div class="grid grid-cols-2 gap-4">
             <UFormField label="开始时间"><UInput v-model="blockForm.start_time" type="time" aria-label="开始时间" class="w-full" /></UFormField>
-            <UFormField label="结束时间"><UInput v-model="blockForm.end_time" type="time" aria-label="结束时间" class="w-full" /></UFormField>
+            <UFormField label="结束时间" :error="blockEndError"><UInput v-model="blockForm.end_time" type="time" aria-label="结束时间" class="w-full" /></UFormField>
           </div>
           <UFormField label="备注"><UInput v-model="blockForm.note" :maxlength="200" aria-label="备注" class="w-full" /></UFormField>
         </div>

@@ -64,10 +64,10 @@ export function useDayReport<T>(fetch: (from: string, to: string) => Promise<{ d
 
   onMounted(start)
 
-  watch(range, (value) => {
-    void router.replace({ query: { from: value.from, to: value.to } })
+  watch(() => [range.value.from, range.value.to], ([from, to]) => {
+    void router.replace({ query: { from, to } })
     void load()
-  }, { deep: true })
+  })
 
   return { today, range, report, loading, failed, retry }
 }

@@ -483,6 +483,10 @@ async function handover() {
       </template>
       <template #footer>
         <ModalActions @cancel="handoverOpen = false">
+          <template #leading>
+            <span v-if="!fromStaff || !toStaff" class="text-meta text-muted">选好交出和接手的员工</span>
+            <span v-else-if="fromStaff === toStaff" class="text-meta text-muted">交出和接手不能是同一位员工</span>
+          </template>
           <UButton :disabled="!fromStaff || !toStaff || fromStaff === toStaff" :loading="handingOver" @click="handover">确认交接</UButton>
         </ModalActions>
       </template>

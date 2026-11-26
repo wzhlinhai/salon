@@ -65,7 +65,8 @@ function remove(row: OrderItemRow) {
   <div class="space-y-4">
     <div>
       <p class="mb-2 text-meta text-muted">项目</p>
-      <div class="flex flex-wrap items-center gap-2" role="group" aria-label="挑项目">
+      <p v-if="!items.length" class="text-meta text-muted">还没有项目，先到「项目与价格」新建</p>
+      <div v-else class="flex flex-wrap items-center gap-2" role="group" aria-label="挑项目">
         <button
           v-for="item in chips"
           :key="item.id"

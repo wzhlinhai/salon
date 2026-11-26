@@ -13,13 +13,13 @@ const shownArt = computed(() => route.meta.art ? undefined : props.art)
 <template>
   <div
     class="flex flex-col items-center gap-2 text-center"
-    :class="art ? 'box mx-auto my-8 max-w-sm px-8 py-10' : 'px-4 py-12'"
+    :class="shownArt ? 'box mx-auto my-8 max-w-md px-8 py-10' : 'px-4 py-12'"
     data-testid="empty-state"
   >
     <SpotArt v-if="shownArt" :name="shownArt" class="mb-2 w-24" />
     <UIcon v-else-if="icon && !art" :name="icon" class="mb-1 size-6 text-dimmed" aria-hidden="true" />
     <p class="font-medium">{{ title }}</p>
-    <p v-if="hint" class="text-meta text-muted">{{ hint }}</p>
+    <p v-if="hint" class="text-meta text-pretty text-muted">{{ hint }}</p>
     <div v-if="$slots.default" class="mt-4 flex gap-2">
       <slot />
     </div>

@@ -71,6 +71,8 @@ async function fillDay(page: Page, day: string) {
     if (!response.url().endsWith('/api/ops/get_settings')) return false
     return (response.request().postDataJSON() as { date?: string }).date === day
   })
+  // 页面第一次读完会把营业日写进框；先等它写好再填，不然填到一半被写进来的今天会和要填的日期接在一起。
+  await expect(page.getByLabel('营业日')).not.toHaveValue('')
   await page.getByLabel('营业日').fill(day)
   await Promise.all([appointments, daySettings])
 }

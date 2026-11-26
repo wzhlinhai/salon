@@ -166,12 +166,12 @@ function signed(amount: string, reversal: boolean) {
       <ReportBrief :parts="brief" :class="loading && 'opacity-60'" />
 
       <section v-if="ranked.length > 1">
-        <div class="sec">谁做得多<span class="font-normal text-dimmed">项目业绩前 {{ RANK_TOP }} 名</span></div>
+        <h2 class="sec">谁做得多<span class="font-normal text-muted">项目业绩前 {{ RANK_TOP }} 名</span></h2>
         <ReportRank :rows="ranked.map(r => ({ key: r.staff!.id, name: r.staff!.name, value: Number(r.item_performance), display: yuan(r.item_performance) }))" />
       </section>
 
       <section>
-        <div class="sec">明细<span class="ms-auto font-normal text-dimmed">点一行看每笔业绩和提成</span></div>
+        <h2 class="sec">明细<span class="ms-auto font-normal text-muted">点一行看每笔业绩和提成</span></h2>
         <EmptyState v-if="!rows.length" art="chart" title="这段时间没有业绩" hint="结账、开卡充值后这里会有数" />
         <div v-else class="overflow-x-auto">
           <table class="w-full text-sm tabular-nums" data-testid="staff-table">

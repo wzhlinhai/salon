@@ -130,7 +130,7 @@ function shiftText(s: Staff) {
             :key="s.id"
             :to="`/staff/${s.id}`"
             data-testid="staff-row"
-            class="-mx-3 flex items-center gap-3 rounded-card px-3 py-3 hover:bg-hover"
+            class="flex items-center gap-3 rounded-card py-3 hover:bg-hover sm:-mx-3 sm:px-3"
           >
             <PersonAvatar :name="s.name" />
             <div class="min-w-0 flex-1">

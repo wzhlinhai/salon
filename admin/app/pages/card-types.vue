@@ -143,7 +143,7 @@ async function saveRule() {
       <UButton size="sm" @click="edit(null)">新建卡类型</UButton>
     </PageActions>
     <section aria-label="卡类型">
-      <div v-if="items.length" class="sec mt-0!"><span class="font-normal text-dimmed">{{ items.length }} 种</span></div>
+      <p v-if="items.length" class="sec mt-0!"><span class="font-normal text-muted">{{ items.length }} 种</span></p>
       <div class="overflow-x-auto">
         <ListSkeleton v-if="loading && !items.length" :rows="3" />
         <LoadError v-else-if="loadError && !items.length" title="卡类型没有读出来" :hint="loadError" @retry="load()" />
@@ -168,7 +168,7 @@ async function saveRule() {
     </section>
     <section aria-label="升级规则">
       <div class="sec">
-        升级规则<span class="ms-2 font-normal text-dimmed">{{ upgradeRules.length }}</span>
+        <h2>升级规则</h2><span class="ms-2 font-normal text-muted">{{ upgradeRules.length }}</span>
         <UButton size="xs" color="neutral" variant="ghost" class="ms-auto" @click="editRule(null)">新建升级规则</UButton>
       </div>
       <div class="overflow-x-auto">

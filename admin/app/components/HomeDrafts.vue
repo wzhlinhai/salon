@@ -25,7 +25,7 @@ const shown = computed(() => props.drafts.slice(0, 5))
         </NuxtLink>
       </li>
     </ul>
-    <NuxtLink v-if="drafts.length > shown.length" to="/drafts" class="mt-2 inline-flex items-center text-meta text-muted hover:text-default">
+    <NuxtLink v-if="drafts.length > shown.length" to="/drafts" class="tap-area mt-2 inline-flex items-center text-meta text-muted hover:text-default">
       还有 {{ drafts.length - shown.length }} 条<UIcon name="i-lucide-chevron-right" class="size-4" aria-hidden="true" />
     </NuxtLink>
   </section>

@@ -269,7 +269,7 @@ function changeSource(o: OverrideForm) {
     <LoadError v-if="loadError" title="提成方案没有读出来" :hint="loadError" @retry="reload()" />
     <EmptyState v-else-if="!versions.loading.value && !versions.items.value.length" art="chart" title="还没有提成方案，没有方案时不计提成。" hint="点右上角修改方案，按项目、耗卡或销售设置提成" />
     <section v-else>
-      <div class="sec">方案版本</div>
+      <h2 class="sec">方案版本</h2>
       <div class="overflow-x-auto">
         <table class="data-table">
           <thead class="text-left">
@@ -297,7 +297,7 @@ function changeSource(o: OverrideForm) {
     </section>
     <ListSkeleton v-if="detailLoading" :rows="3" />
     <section v-if="detail" data-testid="scheme-detail">
-      <div class="sec">版本 {{ detail.version }} · {{ detail.effective_from }} 起执行</div>
+      <h2 class="sec">版本 {{ detail.version }} · {{ detail.effective_from }} 起执行</h2>
       <div class="overflow-x-auto">
         <div v-for="source in shownSources(detail.scheme.rules.some(r => r.source === 'labor'))" :key="source.value" class="grid gap-x-6 gap-y-2 border-t border-default px-4 py-4 first:border-t-0 md:grid-cols-[10rem_minmax(0,1fr)]" :data-source="source.value">
           <div class="text-sm font-medium">{{ source.label }}</div>

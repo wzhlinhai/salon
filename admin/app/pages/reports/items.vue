@@ -92,12 +92,12 @@ function cell(value: string | number) {
       <ReportBrief :parts="brief" :class="loading && 'opacity-60'" />
 
       <section v-if="mix.length > 1">
-        <div class="sec">钱从哪来<span class="font-normal text-dimmed">实收前 {{ MIX_TOP }} 的项目</span></div>
+        <h2 class="sec">钱从哪来<span class="font-normal text-muted">实收前 {{ MIX_TOP }} 的项目</span></h2>
         <ReportMix :parts="mix" />
       </section>
 
       <section>
-        <div class="sec">明细</div>
+        <h2 class="sec">明细</h2>
         <EmptyState v-if="!rows.length" art="chart" title="这段时间没有做过项目" hint="结账后这里会有数" />
         <div v-else class="overflow-x-auto">
           <table class="w-full text-sm tabular-nums" data-testid="item-table">

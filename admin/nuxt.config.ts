@@ -14,6 +14,7 @@ export default defineNuxtConfig({
   // 宋体第一包是数字、字母和标点，页面标题和大数字几乎都会用到；预加载免得首屏先闪一下黑体。
   app: {
     head: {
+      htmlAttrs: { lang: 'zh-CN' },
       link: [{ rel: 'preload', href: '/fonts/serif-0.woff2', as: 'font', type: 'font/woff2', crossorigin: 'anonymous' }]
     }
   },

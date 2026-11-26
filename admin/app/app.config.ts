@@ -156,7 +156,7 @@ export default defineAppConfig({
         color: {
           primary: { icon: 'text-inverted' },
           neutral: { icon: 'text-inverted' },
-          error: { root: 'bg-tag-red', title: 'text-highlighted', description: 'text-muted', close: 'text-muted hover:text-default', actions: '[&_button]:text-highlighted [&_button:hover]:text-default' }
+          error: { root: 'bg-tag-red', title: 'text-highlighted', description: 'text-toned', close: 'text-toned hover:text-default', actions: '[&_button]:text-highlighted [&_button:hover]:text-default' }
         }
       }
     },

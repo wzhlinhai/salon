@@ -76,7 +76,7 @@ onMounted(retrySettings)
       {{ greeting }}，{{ me?.staff.name }}
     </h1>
 
-    <div class="grid gap-12 lg:grid-cols-[minmax(0,1fr)_300px]">
+    <div class="grid gap-12 lg:has-[>aside>*]:grid-cols-[minmax(0,1fr)_300px]">
       <div class="flex min-w-0 flex-col gap-8">
         <template v-if="can('attendance.clock') && (punchKnown || attendanceTried)">
           <div v-if="!todayClockIn" class="flex items-center gap-4 rounded-card bg-notice px-4 py-4">
@@ -96,7 +96,7 @@ onMounted(retrySettings)
         />
       </div>
 
-      <aside class="flex min-w-0 flex-col gap-8">
+      <aside class="flex min-w-0 flex-col gap-8 empty:hidden">
         <HomeFloor v-if="can('queue.view') && me" :staff-id="wholeStore ? undefined : me.staff.id" :serving="serving" />
         <HomeDrafts v-if="can('report.view')" title="待你确认" :drafts="pendingDrafts" />
         <HomeDrafts v-else title="我起草的" :drafts="myDrafts" waiting-for="等店长确认" />

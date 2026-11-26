@@ -368,13 +368,16 @@ function saveUnseal() {
 <template>
   <div class="space-y-6">
     <PageActions>
-      <div v-if="date" class="flex items-center rounded-md border border-default" role="group" aria-label="换一天">
-        <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-chevron-left" aria-label="前一天" :disabled="busy" @click="go(addDays(date, -1))" />
-        <span class="px-1 text-sm tabular-nums" data-testid="close-date">{{ dayLabel(date) }}</span>
-        <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-chevron-right" aria-label="后一天" :disabled="busy || date >= yesterday" @click="go(addDays(date, 1))" />
-      </div>
       <UButton v-if="primaryLabel" size="sm" :loading="closing" :disabled="loading" @click="primary">{{ primaryLabel }}</UButton>
     </PageActions>
+
+    <div v-if="date" class="flex flex-wrap items-center gap-2">
+      <div class="flex items-center rounded-md border border-default" role="group" aria-label="换一天">
+        <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-chevron-left" aria-label="前一天" :disabled="busy" @click="go(addDays(date, -1))" />
+        <span class="px-2 text-sm tabular-nums" data-testid="close-date">{{ dayLabel(date) }}</span>
+        <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-chevron-right" aria-label="后一天" :disabled="busy || date >= yesterday" @click="go(addDays(date, 1))" />
+      </div>
+    </div>
 
     <LoadError v-if="failed && !figures" title="这天的账没加载出来" hint="检查网络后再试一次" @retry="retry" />
     <ListSkeleton v-else-if="!figures" :rows="5" />
@@ -403,7 +406,7 @@ function saveUnseal() {
                 <th scope="col" class="px-3 py-2 text-end font-normal">系统记的</th>
                 <th scope="col" class="px-3 py-2 text-end font-normal">实际</th>
                 <th scope="col" class="px-3 py-2 text-end font-normal">差</th>
-                <th scope="col" class="w-28 px-3 py-2"><span class="sr-only">说明</span></th>
+                <th v-if="!sealed" scope="col" class="w-28 px-3 py-2"><span class="sr-only">说明</span></th>
               </tr>
             </thead>
             <tbody class="divide-y divide-default">
@@ -427,9 +430,9 @@ function saveUnseal() {
                   <span v-if="!difference(line)" class="text-dimmed">—</span>
                   <span v-else class="text-ink-red">{{ signedYuan(difference(line)!) }}</span>
                 </td>
-                <td class="px-3 py-2">
+                <td v-if="!sealed" class="px-3 py-2">
                   <span v-if="difference(line) === 0 && !zeroText(line.amount)" class="text-ink-green">✓ 对上</span>
-                  <button v-else-if="difference(line) && !sealed" type="button" class="text-muted whitespace-nowrap hover:underline" @click="writeReason">写个原因</button>
+                  <button v-else-if="difference(line)" type="button" class="text-muted whitespace-nowrap hover:underline" @click="writeReason">写个原因</button>
                 </td>
               </tr>
               <tr class="font-semibold" data-testid="close-total">
@@ -437,14 +440,14 @@ function saveUnseal() {
                 <td class="px-3 py-2 text-end tabular-nums">{{ yuan(systemTotal) }}</td>
                 <td class="px-3 py-2 text-end tabular-nums">{{ actualTotal === null ? '' : yuan(actualTotal) }}</td>
                 <td class="px-3 py-2 text-end tabular-nums" :class="totalDifference ? 'text-ink-red' : 'text-dimmed font-normal'">{{ totalDifference ? signedYuan(totalDifference) : '—' }}</td>
-                <td />
+                <td v-if="!sealed" />
               </tr>
               <tr v-for="line in nonSite" :key="line.method" class="text-muted" :data-method="line.method">
                 <td class="px-3 py-2">{{ line.label }}<span class="text-muted">（不进钱箱）</span></td>
                 <td class="px-3 py-2 text-end tabular-nums">{{ yuan(line.amount) }}</td>
                 <td class="px-3 py-2 text-end text-dimmed">—</td>
                 <td class="px-3 py-2 text-end text-dimmed">—</td>
-                <td />
+                <td v-if="!sealed" />
               </tr>
             </tbody>
           </table>
