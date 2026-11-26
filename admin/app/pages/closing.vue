@@ -372,11 +372,11 @@ function saveUnseal() {
     </PageActions>
 
     <div v-if="date" class="flex flex-wrap items-center gap-2">
-      <div class="flex items-center rounded-md border border-default" role="group" aria-label="换一天">
-        <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-chevron-left" aria-label="前一天" :disabled="busy" @click="go(addDays(date, -1))" />
-        <span class="px-2 text-sm tabular-nums" data-testid="close-date">{{ dayLabel(date) }}</span>
-        <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-chevron-right" aria-label="后一天" :disabled="busy || date >= yesterday" @click="go(addDays(date, 1))" />
+      <div class="flex items-center" role="group" aria-label="换一天">
+        <UButton color="neutral" variant="ghost" icon="i-lucide-chevron-left" aria-label="前一天" :disabled="busy" @click="go(addDays(date, -1))" />
+        <UButton color="neutral" variant="ghost" icon="i-lucide-chevron-right" aria-label="后一天" :disabled="busy || date >= yesterday" @click="go(addDays(date, 1))" />
       </div>
+      <h2 class="figure" data-testid="close-date">{{ dayLabel(date) }}</h2>
     </div>
 
     <LoadError v-if="failed && !figures" title="这天的账没加载出来" hint="检查网络后再试一次" @retry="retry" />

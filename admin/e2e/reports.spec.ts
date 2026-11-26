@@ -90,13 +90,13 @@ test('店长从报表入口进营业报表：合计等于各行之和，切按�
   await expectBriefIsTotal(table, 'business-totals', 'service_revenue')
 
   // 按月：一月一行，月份写 YYYY-MM。
-  await page.getByRole('radiogroup', { name: '按日或按月' }).getByRole('radio', { name: '按月' }).click()
+  await page.getByRole('group', { name: '按日或按月' }).getByRole('button', { name: '按月', exact: true }).click()
   await expect(page).toHaveURL(/g=month/)
   await expect(table.locator(`tbody tr[data-period="${today.slice(0, 7)}"]`)).toBeVisible()
   await expectTotalsAreSums(table, 'business-totals', 5, col => col === 'guest_total')
 
   // 按日超过 92 天：不查，旁边写为什么。
-  await page.getByRole('radiogroup', { name: '按日或按月' }).getByRole('radio', { name: '按日' }).click()
+  await page.getByRole('group', { name: '按日或按月' }).getByRole('button', { name: '按日', exact: true }).click()
   await page.getByLabel('开始').fill('2020-01-01')
   await expect(page.getByTestId('range-problem')).toHaveText('按日最多查 92 天，长了请切到按月')
 })
@@ -114,7 +114,7 @@ test('店长看员工业绩：每人一行、合计等于各行之和，点一�
   await page.getByTestId('report-list').getByRole('link', { name: /员工业绩/ }).click()
   await expect(page).toHaveURL(/\/reports\/staff\?from=/)
   // 员工业绩只按营业日查，没有按日 / 按月切换。
-  await expect(page.getByRole('radiogroup', { name: '按日或按月' })).toHaveCount(0)
+  await expect(page.getByRole('group', { name: '按日或按月' })).toHaveCount(0)
 
   const table = page.getByTestId('staff-table')
   const row = table.locator(`tbody tr[data-staff="${stylist.name}"]`)
@@ -133,7 +133,7 @@ test('店长看员工业绩：每人一行、合计等于各行之和，点一�
   const reversal = list.locator('li').filter({ hasText: '冲回' })
   await expect(reversal).toHaveCount(1)
   await expect(reversal).toContainText(/-¥\d/)
-  await detail.getByRole('radiogroup', { name: '明细类别' }).getByRole('radio', { name: '提成' }).click()
+  await detail.getByRole('group', { name: '明细类别' }).getByRole('button', { name: '提成', exact: true }).click()
   await expect(detail.getByText(/提成合计/)).toBeVisible()
 
   // 超过 92 天：不查，旁边写为什么（不提示切按月）。
@@ -181,15 +181,15 @@ test('店长看项目报表：今天做的项目在表里，合计等于各行�
   await expectBriefIsTotal(table, 'item-totals', 'paid')
 
   // 只看服务：合计改成服务各行在前端相加，这个服务项目还在。
-  const kinds = page.getByRole('radiogroup', { name: '项目类型' })
-  await kinds.getByRole('radio', { name: '服务' }).click()
+  const kinds = page.getByRole('group', { name: '项目类型' })
+  await kinds.getByRole('button', { name: '服务', exact: true }).click()
   await expect(row.locator('td[data-col="paid"]')).toHaveText('¥66')
   await expect(table.locator('tbody tr', { has: page.getByText('卖品', { exact: true }) })).toHaveCount(0)
   await expectTotalsAreSums(table, 'item-totals', 8)
   await expectBriefIsTotal(table, 'item-totals', 'paid')
 
   // 只看卖品：服务项目不在。
-  await kinds.getByRole('radio', { name: '卖品' }).click()
+  await kinds.getByRole('button', { name: '卖品', exact: true }).click()
   await expect(row).toHaveCount(0)
 })
 

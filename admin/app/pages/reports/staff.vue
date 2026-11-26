@@ -76,7 +76,7 @@ const PAGE = 50
 const picked = ref<Row | null>(null)
 const open = ref(false)
 const tab = ref<'performance' | 'commission'>('performance')
-const tabs: { label: string, value: 'performance' | 'commission' }[] = [{ label: '业绩', value: 'performance' }, { label: '提成', value: 'commission' }]
+const tabs: { label: string, key: 'performance' | 'commission' }[] = [{ label: '业绩', key: 'performance' }, { label: '提成', key: 'commission' }]
 const entries = ref<PerformanceEntry[]>([])
 const commissions = ref<Commission[]>([])
 const moreEntries = ref(false)
@@ -227,7 +227,7 @@ function signed(amount: string, reversal: boolean) {
       </template>
       <template #body>
         <div v-if="picked" class="space-y-5" data-testid="staff-detail">
-          <MethodPicker v-model="tab" :items="tabs" label="明细类别" />
+          <ViewTabs v-model="tab" :items="tabs" label="明细类别" />
           <p class="text-meta text-muted tabular-nums">
             <template v-if="tab === 'performance'">项目 {{ yuan(picked.item_performance) }} · 耗卡 {{ yuan(picked.consume_performance) }}<template v-if="Number(picked.labor_performance) !== 0"> · 手工费 {{ yuan(picked.labor_performance) }}</template> · 销售 {{ yuan(picked.sale_performance) }}</template>
             <template v-else>提成合计 {{ yuan(picked.commission_total) }}</template>

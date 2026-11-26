@@ -84,7 +84,7 @@ onMounted(() => load())
     <UTabs v-model="tab" :items="tabs" :content="false" variant="link" color="neutral" data-testid="drafts-tabs" />
 
     <LoadError v-if="loadError && !loaded" title="草稿没有读出来" :hint="loadError" @retry="load()" />
-    <EmptyState v-else-if="!shown.length" class="box" icon="i-lucide-inbox" :title="emptyText" :hint="tab === 'pending' ? '点右下角的 AI 按钮说一句话，AI 起草后会出现在这里等你确认' : undefined" data-testid="drafts-empty" />
+    <EmptyState v-else-if="!shown.length" :title="emptyText" :hint="tab === 'pending' ? '点右下角的 AI 按钮说一句话，AI 起草后会出现在这里等你确认' : undefined" data-testid="drafts-empty" />
     <div v-else class="grid items-stretch gap-3 md:grid-cols-2 xl:grid-cols-3">
       <DraftCard v-for="draft in shown" :key="draft.id" :draft="draft" @open="openDetail" />
     </div>
