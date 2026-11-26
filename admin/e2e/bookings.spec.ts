@@ -162,6 +162,45 @@ test('代约、改约、完成后显示全部状态变化', async ({ page }) => 
   await expect(entry(page, seeded.staff.id, seeded.customer.name)).toHaveAttribute('data-entry-status', 'completed')
 })
 
+test('完成预约时列出这位顾客当天已结的单，只有一张时先选上，完成后关联', async ({ page }) => {
+  const seeded = await seed()
+  const today = await settings(seeded.token)
+  const tomorrow = addDays(today.businessDate, 1)
+  const { hours } = await settings(seeded.token, tomorrow)
+  await apiBook(seeded.token, seeded.staff.id, seeded.customer.id, tomorrow, clockAt(hours, 60), clockAt(hours, 120))
+  const order = await api<{ id: string, net: string }>(seeded.token, 'open_order', {
+    customer_id: seeded.customer.id,
+    gender: 'female',
+    designated: false,
+    items: [{ item_id: seeded.item.id, staff: [] }]
+  })
+  await api(seeded.token, 'checkout_orders', { orders: [{ order_id: order.id, payments: [{ method: 'cash', amount: order.net }] }] })
+
+  // 预约不能约过去的时段，单又只能结在今天：约在明天，读单时先核对问的是预约那天，再换成今天去读真单。
+  const asked: unknown[] = []
+  await page.route('**/api/ops/list_orders', async (route) => {
+    const body = route.request().postDataJSON() as { business_date?: string }
+    asked.push(body)
+    await route.continue({ postData: JSON.stringify({ ...body, business_date: today.businessDate }) })
+  })
+  await login(page, owner.account, owner.password)
+  await page.goto('/bookings')
+  await fillDay(page, tomorrow)
+  const detail = await openEntry(page, seeded.staff.id, seeded.customer.name)
+  await detail.getByRole('button', { name: '完成', exact: true }).click()
+  const complete = page.getByRole('dialog', { name: '完成预约', exact: true })
+  const choice = complete.getByTestId('complete-orders').getByRole('button')
+  await expect(choice).toHaveCount(1)
+  await expect(choice).toContainText(seeded.item.name)
+  await expect(choice).toHaveAttribute('aria-pressed', 'true')
+  expect(asked).toContainEqual({ customer_id: seeded.customer.id, business_date: tomorrow, status: 'paid' })
+  const saved = page.waitForRequest(r => r.url().endsWith('/api/ops/complete_appointment'))
+  await complete.getByRole('button', { name: '完成预约', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ order_id: order.id })
+  await expect(complete).not.toBeVisible()
+  await expect(detail).toContainText('已关联收银单')
+})
+
 test('时段冲突时显示后端提示', async ({ page }) => {
   const seeded = await seed()
   const today = await settings(seeded.token)
