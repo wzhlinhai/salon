@@ -70,9 +70,17 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
 
-  e2e:
+  # e2e 按文件拆成 3 台机器并行，每台起自己的后端和全新数据库，互不干扰。
+  # 全店级用例（工资锁月、全店顾客分页、团购对账、日结封账）本地要等默认项目跑完；
+  # 这里放在第 3 片自己那份默认用例之后跑（--no-deps 不再拉起整套默认项目），日结最后单独跑。
+  e2e-shard:
+    name: e2e (${{ matrix.shard }}/3)
     timeout-minutes: 30
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -126,13 +134,27 @@ jobs:
         env:
           # CI 上 nuxt dev 首次编译较慢。
           DEV_WAIT_SECONDS: 180
-      - run: npm run e2e
+      - run: npx playwright test --project=default --shard=${{ matrix.shard }}/3
+        working-directory: admin
+      - if: matrix.shard == 3
+        run: npx playwright test --no-deps --project=payroll-store --project=store-customer-dataset --project=groupbuy-month
+        working-directory: admin
+      - if: matrix.shard == 3
+        run: npx playwright test --no-deps --project=closing
         working-directory: admin
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-results
+          name: e2e-results-${{ matrix.shard }}
           include-hidden-files: true
           path: |
             admin/test-results
             .dev/*.log
+
+  # 汇总成一个「e2e」检查：三片都过才算过，合并前看这一项即可。
+  e2e:
+    if: always()
+    needs: e2e-shard
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.e2e-shard.result }}" = success

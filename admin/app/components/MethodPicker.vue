@@ -29,25 +29,27 @@ function move(event: KeyboardEvent, step: number) {
 </script>
 
 <template>
-  <!-- 收银台（counter）：大按钮等宽铺满一排，六种付款方式也不掉行。 -->
-  <div role="radiogroup" :aria-label="label" :class="counter ? 'grid w-full auto-cols-fr grid-flow-col gap-2' : 'flex flex-wrap gap-2'">
-    <UButton
-      v-for="m in items"
-      :key="m.value"
-      role="radio"
-      :aria-checked="model === m.value"
-      :tabindex="model === m.value || !items.some(x => x.value === model) ? 0 : -1"
-      :size="counter ? 'lg' : 'sm'"
-      color="neutral"
-      :variant="model === m.value ? (counter ? 'solid' : 'soft') : 'outline'"
-      :class="[counter ? 'justify-center px-0' : '', model === m.value && !counter ? 'bg-selected font-medium text-default ring-1 ring-(--ui-border-accented) ring-inset' : '']"
-      @click="pick(m.value)"
-      @keydown.left.prevent="move($event, -1)"
-      @keydown.right.prevent="move($event, 1)"
-      @keydown.up.prevent="move($event, -1)"
-      @keydown.down.prevent="move($event, 1)"
-    >
-      {{ m.label }}
-    </UButton>
+  <!-- 收银台（counter）：大按钮等宽铺满一排；放得下的宽度不够（窄屏、窄栏）时一排三个，六种方式排两行，字不挤。 -->
+  <div :class="counter ? '@container w-full' : 'contents'">
+    <div role="radiogroup" :aria-label="label" :class="counter ? 'grid w-full grid-cols-3 gap-2 @sm:grid-flow-col @sm:auto-cols-fr @sm:grid-cols-none' : 'flex flex-wrap gap-2'">
+      <UButton
+        v-for="m in items"
+        :key="m.value"
+        role="radio"
+        :aria-checked="model === m.value"
+        :tabindex="model === m.value || !items.some(x => x.value === model) ? 0 : -1"
+        :size="counter ? 'lg' : 'sm'"
+        color="neutral"
+        :variant="model === m.value ? (counter ? 'solid' : 'soft') : 'outline'"
+        :class="[counter ? 'justify-center px-0' : '', model === m.value && !counter ? 'bg-selected font-medium text-default ring-1 ring-(--ui-border-accented) ring-inset' : '']"
+        @click="pick(m.value)"
+        @keydown.left.prevent="move($event, -1)"
+        @keydown.right.prevent="move($event, 1)"
+        @keydown.up.prevent="move($event, -1)"
+        @keydown.down.prevent="move($event, 1)"
+      >
+        {{ m.label }}
+      </UButton>
+    </div>
   </div>
 </template>

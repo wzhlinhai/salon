@@ -8,7 +8,10 @@ const { me } = useMe()
 const guard = useRequestGuard()
 const saving = ref(false)
 
+// 开关窗都作废还没回来的请求、放开按钮：关窗再开不会还在转圈，旧请求的报错也不提示到新窗口。
 watch(open, (value) => {
+  guard.invalidate()
+  saving.value = false
   if (!value) return
   form.old_password = ''
   form.new_password = ''
@@ -20,15 +23,15 @@ async function submit() {
   saving.value = true
   try {
     const { data, error } = await useApi().POST('/api/ops/change_my_password', { body: form })
-    if (!current()) return
+    // 密码已经改了，旧登录就该作废：关了窗也照样回登录页。
     if (data) {
       toast.add({ title: '密码已修改，请重新登录', color: 'success' })
       setToken(null)
       me.value = null
       await navigateTo('/login')
-    } else {
-      toast.add({ title: errorText(error), color: 'error' })
+      return
     }
+    if (current()) toast.add({ title: errorText(error), color: 'error' })
   } finally {
     if (current()) saving.value = false
   }
