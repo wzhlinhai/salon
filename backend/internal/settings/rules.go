@@ -337,6 +337,13 @@ func businessDayEnd(h history, t time.Time) (string, error) {
 	return end, err
 }
 
+// PayrollAutoLockDay 返回每月自动锁定上个月工资的日期。
+func (r Rules) PayrollAutoLockDay() int {
+	var v int
+	r.decode(KeyPayrollAutoLockDay, &v)
+	return v
+}
+
 // AttendanceGraceMinutes 返回判断迟到、早退的宽限分钟数。
 func (r Rules) AttendanceGraceMinutes() int {
 	var v int

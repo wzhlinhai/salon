@@ -59,7 +59,7 @@ const SETTING_GROUPS: { label: string, match: (key: string) => boolean }[] = [
   { label: '轮牌', match: k => k.startsWith('rotation_') },
   { label: '收银与卡', match: k => k.startsWith('card_') || k.startsWith('collection_channel_') || ['member_price_rule', 'others_card_payment', 'points_per_recharge_yuan', 'void_window_minutes'].includes(k) },
   { label: '售后', match: k => k.startsWith('aftersale_') },
-  { label: '业绩与提成', match: k => k.startsWith('performance_') || ['guest_count_split', 'commission_split'].includes(k) },
+  { label: '业绩与提成', match: k => k.startsWith('performance_') || ['guest_count_split', 'commission_split', 'payroll_auto_lock_day'].includes(k) },
   { label: '小票', match: k => k.startsWith('receipt_') }
 ]
 

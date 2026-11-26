@@ -1,11 +1,19 @@
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 
-// 时间点的显示：今天只写时分，其他日子写"11 月 20 日 周五 14:30"。
+// 时间点的显示：今天只写时分，其他日子写"11 月 20 日 周五 14:30"。按门店时区（Asia/Shanghai），不随浏览器所在时区变。
+const stampParts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Shanghai', year: 'numeric', month: 'numeric', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+const WEEKDAY_INDEX: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
+
+function shanghai(date: Date) {
+  const parts = stampParts.formatToParts(date)
+  const part = (type: string) => parts.find(p => p.type === type)?.value ?? ''
+  return { day: `${part('year')}-${part('month')}-${part('day')}`, month: Number(part('month')), date: Number(part('day')), weekday: WEEKDAY_INDEX[part('weekday')] ?? 0, time: `${part('hour')}:${part('minute')}` }
+}
+
 export function formatStamp(value: string, now = new Date()) {
-  const date = new Date(value)
-  const time = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
-  if (date.toDateString() === now.toDateString()) return time
-  return `${date.getMonth() + 1}月${date.getDate()}日 ${WEEKDAYS[date.getDay()]} ${time}`
+  const at = shanghai(new Date(value))
+  if (at.day === shanghai(now).day) return at.time
+  return `${at.month}月${at.date}日 ${WEEKDAYS[at.weekday]} ${at.time}`
 }
 
 // 表格里的日期：门店时区的 2026-11-20（DESIGN.md 组件约定）。

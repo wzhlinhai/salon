@@ -16,6 +16,7 @@
 // 注册内存假团购平台，生产必须不设置。
 // 顾客小程序登录用 WECHAT_APPID 和 WECHAT_SECRET 启用微信官方接口；WECHAT_FAKE=1 只在
 // 开发环境启用假登录，二者不能同时设置。
+// PAYROLL_AUTO_LOCK=off 关闭后台自动锁月循环（开发环境和端到端测试使用）。
 package main
 
 import (
@@ -43,6 +44,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/httpapi"
 	"github.com/wzhlinhai/salon/backend/internal/miniprogram"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
+	"github.com/wzhlinhai/salon/backend/internal/payroll"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
 	"github.com/wzhlinhai/salon/backend/internal/wechat"
 	"github.com/wzhlinhai/salon/backend/internal/wechat/fakewechat"
@@ -146,6 +148,9 @@ func serve(ctx context.Context, pool *pgxpool.Pool) error {
 		Authenticate: authn.Authenticate, AuthenticateCustomer: authn.AuthenticateCustomer,
 		Login: authn.Login, CustomerLogin: customerLogin.Login, AIModel: model, Groupbuy: providers,
 	})
+	if os.Getenv("PAYROLL_AUTO_LOCK") != "off" {
+		go payroll.RunAutoLock(ctx, pool, time.Now, slog.Default())
+	}
 	sc := echo.StartConfig{Address: addr, HideBanner: true}
 	return sc.Start(ctx, e)
 }

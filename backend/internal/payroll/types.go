@@ -109,21 +109,25 @@ type PayrollLine struct {
 
 // Payroll 是结算月的工资表及锁定状态。
 type Payroll struct {
-	Month    string        `json:"month"`
-	Locked   bool          `json:"locked"`
-	LockedBy *staff.Ref    `json:"locked_by"`
-	LockedAt *time.Time    `json:"locked_at"`
-	Lines    []PayrollLine `json:"lines"`
-	Totals   PayrollTotals `json:"totals"`
+	Month        string        `json:"month"`
+	Locked       bool          `json:"locked"`
+	LockedBy     *staff.Ref    `json:"locked_by"`
+	LockedAt     *time.Time    `json:"locked_at"`
+	AutoLocked   bool          `json:"auto_locked"`
+	AutoLockDate *string       `json:"auto_lock_date" format:"date"`
+	Lines        []PayrollLine `json:"lines"`
+	Totals       PayrollTotals `json:"totals"`
 }
 
 // PayrollMonth 是一个结算月的锁定状态及当前是否允许锁定。
 type PayrollMonth struct {
-	Month    string     `json:"month"`
-	Locked   bool       `json:"locked"`
-	LockedBy *staff.Ref `json:"locked_by"`
-	LockedAt *time.Time `json:"locked_at"`
-	Lockable bool       `json:"lockable"`
+	Month        string     `json:"month"`
+	Locked       bool       `json:"locked"`
+	LockedBy     *staff.Ref `json:"locked_by"`
+	LockedAt     *time.Time `json:"locked_at"`
+	AutoLocked   bool       `json:"auto_locked"`
+	AutoLockDate *string    `json:"auto_lock_date" format:"date"`
+	Lockable     bool       `json:"lockable"`
 }
 
 // PayrollMonthList 是从当前营业月倒序到开店月的结算状态。
@@ -134,14 +138,16 @@ type PayrollMonthList struct {
 // ListPayrollMonthsInput 是无需参数的结算状态查询。
 type ListPayrollMonthsInput struct{}
 
-// TransformSchema 声明开放工资表的锁定人可以为空。
+// TransformSchema 声明开放工资表的锁定人和自动锁定日可以为空。
 func (Payroll) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
 	s.Properties["locked_by"] = &huma.Schema{AnyOf: []*huma.Schema{s.Properties["locked_by"], {Type: "null"}}}
+	s.Properties["auto_lock_date"] = &huma.Schema{AnyOf: []*huma.Schema{{Type: "string", Format: "date"}, {Type: "null"}}}
 	return s
 }
 
-// TransformSchema 声明开放结算月的锁定人可以为空。
+// TransformSchema 声明开放结算月的锁定人和自动锁定日可以为空。
 func (PayrollMonth) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
 	s.Properties["locked_by"] = &huma.Schema{AnyOf: []*huma.Schema{s.Properties["locked_by"], {Type: "null"}}}
+	s.Properties["auto_lock_date"] = &huma.Schema{AnyOf: []*huma.Schema{{Type: "string", Format: "date"}, {Type: "null"}}}
 	return s
 }

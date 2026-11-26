@@ -702,7 +702,7 @@ onBeforeUnmount(() => {
           <div v-for="{ entry, changes } in logEntries" :key="entry.id" data-testid="customer-log-entry" class="space-y-1 border-t border-default py-2 first:border-t-0">
             <p class="flex flex-wrap items-center gap-x-2 text-meta text-muted">
               <span class="font-medium text-default">{{ actions[entry.action] || entry.action }}</span>
-              <span>{{ entry.actor.name }}</span>
+              <span>{{ entry.actor?.name ?? '系统' }}</span>
               <span class="ms-auto tabular-nums">{{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</span>
             </p>
             <p v-for="change in changes" :key="change.label" data-testid="log-change">

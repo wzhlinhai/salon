@@ -61,6 +61,36 @@ func (q *Queries) GetStore(ctx context.Context, id uuid.UUID) (Store, error) {
 	return i, err
 }
 
+const listStoreTenants = `-- name: ListStoreTenants :many
+SELECT tenant_id, id FROM stores ORDER BY created_at, id
+`
+
+type ListStoreTenantsRow struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+// 后台循环选择门店用，只读租户和门店标识。
+func (q *Queries) ListStoreTenants(ctx context.Context) ([]ListStoreTenantsRow, error) {
+	rows, err := q.db.Query(ctx, listStoreTenants)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListStoreTenantsRow
+	for rows.Next() {
+		var i ListStoreTenantsRow
+		if err := rows.Scan(&i.TenantID, &i.ID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listStores = `-- name: ListStores :many
 SELECT id, tenant_id, name, created_at FROM stores ORDER BY created_at, id
 `

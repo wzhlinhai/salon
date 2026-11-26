@@ -422,7 +422,7 @@ type CommissionSettlement struct {
 	StoreID   uuid.UUID
 	ID        uuid.UUID
 	Month     pgtype.Date
-	SettledBy uuid.UUID
+	SettledBy *uuid.UUID
 	SettledAt pgtype.Timestamptz
 }
 

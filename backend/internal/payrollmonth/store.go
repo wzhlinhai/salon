@@ -13,7 +13,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/settings"
 )
 
-// Settlement 是结算月的锁定记录。
+// Settlement 是结算月的锁定记录。SettledBy 为零值表示系统自动锁定。
 type Settlement struct {
 	ID        uuid.UUID
 	TenantID  uuid.UUID
@@ -73,7 +73,11 @@ func Check(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, s string) (
 }
 
 func settlement(row dbgen.CommissionSettlement) *Settlement {
-	return &Settlement{ID: row.ID, TenantID: row.TenantID, Month: Of(row.Month.Time), SettledBy: row.SettledBy, SettledAt: row.SettledAt.Time}
+	var settledBy uuid.UUID
+	if row.SettledBy != nil {
+		settledBy = *row.SettledBy
+	}
+	return &Settlement{ID: row.ID, TenantID: row.TenantID, Month: Of(row.Month.Time), SettledBy: settledBy, SettledAt: row.SettledAt.Time}
 }
 
 // GetSettlement 读取结算月锁定记录，未锁定时返回 nil。
@@ -134,6 +138,7 @@ func List(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, now time.Tim
 }
 
 // Lock 检查锁定条件并写入结算月锁定记录，调用者在同一事务保存提成和工资表行。
+// by 为零值表示系统自动锁定，锁定记录没有员工操作者。
 func Lock(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, s string, by uuid.UUID, now time.Time) (*Settlement, error) {
 	if err := q.LockPayroll(ctx, storeID); err != nil {
 		return nil, err
@@ -169,7 +174,11 @@ func Lock(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, s string, by
 			return nil, ops.Rule("请先锁定 " + m.Prev().String())
 		}
 	}
-	row, err := q.AddCommissionSettlement(ctx, dbgen.AddCommissionSettlementParams{TenantID: tenantID, StoreID: storeID, Month: pgtype.Date{Time: m.First(), Valid: true}, SettledBy: by})
+	var settledBy *uuid.UUID
+	if by != uuid.Nil {
+		settledBy = &by
+	}
+	row, err := q.AddCommissionSettlement(ctx, dbgen.AddCommissionSettlementParams{TenantID: tenantID, StoreID: storeID, Month: pgtype.Date{Time: m.First(), Valid: true}, SettledBy: settledBy})
 	if err != nil {
 		return nil, err
 	}

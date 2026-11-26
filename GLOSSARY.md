@@ -652,6 +652,10 @@ _English_: commission settlement
 将已结束的工资月份永久结算；不能撤销，错误在之后月份用加减项更正。
 _English_: lock
 
+**自动锁定**:
+每月固定一天自动锁定上个月的工资，日期由门店设置 payroll_auto_lock_day 决定；锁定记录没有员工或顾客操作者，表示系统执行。可以提前手动锁定，手动锁定和自动锁定共用同一套流程。
+_English_: automatic lock
+
 **底薪部分**:
 底薪 + 提成模式执行的底薪金额；保底模式为零。
 _English_: base pay

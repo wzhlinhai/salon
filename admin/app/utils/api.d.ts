@@ -4998,7 +4998,7 @@ export interface components {
         };
         Entry: {
             action: string;
-            actor: components["schemas"]["Actor"];
+            actor: components["schemas"]["Actor"] | null;
             after: unknown;
             /** Format: date-time */
             at: string;
@@ -6042,6 +6042,8 @@ export interface components {
             red_packet_id?: string;
         };
         Payroll: {
+            auto_lock_date: string | null;
+            auto_locked: boolean;
             lines: components["schemas"]["PayrollLine"][];
             locked: boolean;
             /** Format: date-time */
@@ -6081,6 +6083,8 @@ export interface components {
             total: string;
         };
         PayrollMonth: {
+            auto_lock_date: string | null;
+            auto_locked: boolean;
             lockable: boolean;
             locked: boolean;
             /** Format: date-time */

@@ -105,6 +105,7 @@ const (
 	KeyReceiptShowStaff                  = "receipt_show_staff"
 	KeyReceiptShowPayments               = "receipt_show_payments"
 	KeyReceiptShowCardBalance            = "receipt_show_card_balance"
+	KeyPayrollAutoLockDay                = "payroll_auto_lock_day"
 )
 
 // Catalogue 是全部门店设置，顺序即设置页面的显示顺序。后续模块的业务规则在这里添加。
@@ -171,6 +172,10 @@ var Catalogue = []Def{
 	},
 	{Key: KeyAftersaleDeductPerformance, Label: "退款默认扣业绩", Kind: KindChoice, Default: "off", Options: []ChoiceOption{{Value: "off", Label: "不扣"}, {Value: "on", Label: "扣"}}, Hint: "审批退款售后单时默认是否扣原单项目业绩，审批时可以逐单改"},
 	{Key: KeyAftersaleDeductCommission, Label: "退款默认扣提成", Kind: KindChoice, Default: "off", Options: []ChoiceOption{{Value: "off", Label: "不扣"}, {Value: "on", Label: "扣"}}, Hint: "按业绩计算；选择扣提成时必须同时扣业绩"},
+	{
+		Key: KeyPayrollAutoLockDay, Label: "工资自动锁定日", Kind: KindInteger, Min: 1, Max: 28, Default: 15,
+		Hint: "每月几号自动锁定上个月的工资，当天生效",
+	},
 	{
 		Key: KeyBackfillMaxDays, Label: "可补录天数", Kind: KindInteger, Min: 0, Max: 31, Default: 3,
 		Hint: "断网后用纸单补录时，最多能补录今天之前多少个营业日的单；0 为只能补录当天",
