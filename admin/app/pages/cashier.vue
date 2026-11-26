@@ -338,7 +338,7 @@ onMounted(init)
     <PageActions>
       <span v-if="businessDate" class="text-meta text-muted">营业日 {{ businessDate }}</span>
       <!-- 每页只一个实心主按钮：选着一张单时主角是小票上的「结账」，顶栏的「开单」退成描边。 -->
-      <UButton size="sm" :color="selectedOrderID ? 'neutral' : 'primary'" :variant="selectedOrderID ? 'outline' : 'solid'" @click="openOrderBegin(pickedCustomer)">开单</UButton>
+      <UButton :color="selectedOrderID ? 'neutral' : 'primary'" :variant="selectedOrderID ? 'outline' : 'solid'" @click="openOrderBegin(pickedCustomer)">开单</UButton>
     </PageActions>
 
     <LoadError v-if="initError" title="收银台没有读出来" :hint="initError" @retry="init()" />

@@ -140,7 +140,7 @@ async function saveRule() {
 <template>
   <div class="space-y-4">
     <PageActions>
-      <UButton size="sm" @click="edit(null)">新建卡类型</UButton>
+      <UButton @click="edit(null)">新建卡类型</UButton>
     </PageActions>
     <section aria-label="卡类型">
       <p v-if="items.length" class="sec mt-0!"><span class="font-normal text-muted">{{ items.length }} 种</span></p>

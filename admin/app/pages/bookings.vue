@@ -751,7 +751,7 @@ function actorLabel(actor: Actor) {
 <template>
   <div class="space-y-4">
     <PageActions>
-      <UButton size="sm" @click="newBooking">新建预约</UButton>
+      <UButton @click="newBooking">新建预约</UButton>
     </PageActions>
     <div class="flex flex-wrap items-center gap-2">
       <div class="flex items-center">

@@ -221,8 +221,8 @@ async function remove(role: Role) {
 
 <template>
   <div class="space-y-4">
-    <PageActions at="title">
-      <UButton icon="i-lucide-plus" @click="openEditor(null)">新建角色</UButton>
+    <PageActions>
+      <UButton @click="openEditor(null)">新建角色</UButton>
     </PageActions>
 
     <LoadError v-if="loadError && !roles.length" title="角色没有读出来" :hint="loadError" @retry="load()" />

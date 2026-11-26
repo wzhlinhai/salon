@@ -287,7 +287,7 @@ onMounted(async () => {
         <span class="text-sm text-muted">点一行看这个人每天的打卡</span>
       </div>
       <PageActions>
-        <UButton size="sm" @click="openAddPunch()">补卡</UButton>
+        <UButton @click="openAddPunch()">补卡</UButton>
       </PageActions>
       <div class="overflow-x-auto">
         <UTable

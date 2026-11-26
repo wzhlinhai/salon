@@ -192,7 +192,7 @@ function itemMeta(item: Item) {
 <template>
   <div class="space-y-4">
     <PageActions>
-      <UButton size="sm" @click="openEditor(null)">新建项目</UButton>
+      <UButton @click="openEditor(null)">新建项目</UButton>
     </PageActions>
     <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
       <ViewTabs v-model="tab" :items="tabs" label="项目类别" />

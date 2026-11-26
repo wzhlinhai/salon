@@ -3,7 +3,7 @@ import type { components } from '~/utils/api'
 import type { CommissionValue } from '~/components/CommissionValueEditor.vue'
 import { LOG_PAGE_SIZE } from '~/utils/paging'
 
-definePageMeta({ permission: 'settings.manage', title: '提成规则', description: '保存后从生效日期起执行，之前写入的业绩仍按当时的方案版本算；阶梯提成随当月累计变化，月底锁定后才固定。', art: 'tag' })
+definePageMeta({ permission: 'settings.manage', title: '提成规则', description: '保存后从生效日期起执行，之前的业绩仍按当时的方案算。', art: 'tag' })
 type Schema = components['schemas']
 type Source = Schema['Rule']['source']
 type Cell = Schema['Cell']
@@ -263,7 +263,7 @@ function changeSource(o: OverrideForm) {
 <template>
   <div class="space-y-4">
     <PageActions>
-      <UButton size="sm" :disabled="!today" @click="edit">修改方案</UButton>
+      <UButton :disabled="!today" @click="edit">修改方案</UButton>
     </PageActions>
     <PageDescriptionTail v-if="today">今天是营业日 {{ today }}。</PageDescriptionTail>
     <LoadError v-if="loadError" title="提成方案没有读出来" :hint="loadError" @retry="reload()" />

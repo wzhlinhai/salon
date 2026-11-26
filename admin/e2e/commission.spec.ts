@@ -400,7 +400,7 @@ test('提成方案加载中的自动选择不覆盖手动选择', async ({ page 
   })
   await page.goto('/commission')
   await pending
-  await expect(page.getByText(`保存后从生效日期起执行，之前写入的业绩仍按当时的方案版本算；阶梯提成随当月累计变化，月底锁定后才固定。今天是营业日 ${today}。`, { exact: true })).toBeVisible()
+  await expect(page.getByText(`保存后从生效日期起执行，之前的业绩仍按当时的方案算。今天是营业日 ${today}。`, { exact: true })).toBeVisible()
   await page.getByRole('button', { name: `版本 ${clicked.version}`, exact: true }).click()
   const detail = page.getByTestId('scheme-detail')
   await expect(detail).toContainText('21.00%')
