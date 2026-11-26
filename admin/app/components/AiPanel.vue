@@ -145,6 +145,7 @@ watch(() => [entries.value.length, sending.value], async () => {
             :maxrows="6"
             :maxlength="MAX_MESSAGE"
             :placeholder="editing ? '说说要怎么改' : '说一句，比如「明天下午谁有空」'"
+            :aria-label="editing ? '说说要怎么改' : '跟 AI 说'"
             class="flex-1"
             data-testid="ai-input"
             @keydown="onKeydown"

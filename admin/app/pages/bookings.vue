@@ -450,7 +450,7 @@ async function saveBooking() {
     void loadDay()
     if (!current()) return
     bookingOpen.value = false
-    toast.add({ title: '已保存', color: 'success' })
+    toast.add({ title: '已约好，到店时间前会出现在首页「接下来」', color: 'success' })
   })
 }
 
@@ -489,7 +489,7 @@ async function saveBlock() {
     void loadDay()
     if (!current()) return
     blockOpen.value = false
-    toast.add({ title: '已保存', color: 'success' })
+    toast.add({ title: '已占上这段时间，别人约不进来', color: 'success' })
   })
 }
 
@@ -780,7 +780,7 @@ function actorLabel(actor: Actor) {
             <div
               v-for="slot in hourSlots"
               :key="slot.minutes"
-              class="absolute right-2 text-xs text-dimmed tabular-nums"
+              class="absolute right-2 text-xs text-muted tabular-nums"
               :class="slot.top === 0 ? 'translate-y-0.5' : '-translate-y-1/2'"
               :style="{ top: `${slot.top}px` }"
             >

@@ -66,13 +66,14 @@ function openEditor(deal: Deal | null) {
 async function save() {
   const body = { name: name.value, purchase_price: purchasePrice.value, item_id: itemID.value }
   await editor.save(async (current) => {
+    const verb = editing.value ? '已改好' : '已新建'
     const result = editing.value
       ? await api.POST('/api/ops/update_groupbuy_deal', { body: { ...body, id: editing.value.id, active: active.value } })
       : await api.POST('/api/ops/create_groupbuy_deal', { body: { ...body, platform: platform.value } })
     if (!current()) return
     if (result.data) {
       open.value = false
-      toast.add({ title: '已保存', color: 'success' })
+      toast.add({ title: `${verb}团购商品「${body.name}」`, color: 'success' })
       await load()
     } else {
       toast.add({ title: errorText(result.error), color: 'error' })

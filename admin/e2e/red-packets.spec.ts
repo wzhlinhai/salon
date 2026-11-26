@@ -42,9 +42,9 @@ test('发放卖和送的红包、两名业绩归属人、撤回原因', async ({
   const gift = section.locator('[data-red-packet]').filter({ hasText: '面额 ¥30.00' })
   await gift.getByRole('button', { name: '撤回', exact: true }).click()
   const revoking = page.getByRole('dialog', { name: '撤回红包', exact: true })
-  await expect(revoking.getByRole('button', { name: '确认撤回', exact: true })).toBeDisabled()
+  await expect(revoking.getByRole('button', { name: '撤回', exact: true })).toBeDisabled()
   await revoking.getByLabel('撤回原因', { exact: true }).fill('发错顾客')
-  await revoking.getByRole('button', { name: '确认撤回', exact: true }).click()
+  await revoking.getByRole('button', { name: '撤回', exact: true }).click()
   await expect(revoking).not.toBeVisible()
   await expect(gift).toContainText('已撤回')
   await expect(gift).toContainText('发错顾客')
@@ -196,7 +196,7 @@ for (const action of ['issue', 'revoke'] as const) {
       } else {
         await section.locator(`[data-red-packet="${a.id}"]`).getByRole('button', { name: '撤回', exact: true }).click()
         await dialog.getByLabel('撤回原因', { exact: true }).fill('第一次')
-        await dialog.getByRole('button', { name: '确认撤回', exact: true }).click()
+        await dialog.getByRole('button', { name: '撤回', exact: true }).click()
       }
       await pending
       await dialog.getByRole('button', { name: '关闭', exact: true }).click()
@@ -244,7 +244,7 @@ for (const action of ['issue', 'revoke'] as const) {
       await section.locator(`[data-red-packet="${packet.id}"]`).getByRole('button', { name: '撤回', exact: true }).click()
       await dialog.getByLabel('撤回原因', { exact: true }).fill('发错了')
     }
-    const save = dialog.getByRole('button', { name: action === 'issue' ? '保存' : '确认撤回', exact: true })
+    const save = dialog.getByRole('button', { name: action === 'issue' ? '保存' : '撤回', exact: true })
     await save.click()
     await expect(save).toBeEnabled()
     await save.click()

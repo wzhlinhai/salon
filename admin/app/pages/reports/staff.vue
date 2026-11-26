@@ -268,12 +268,13 @@ function signed(amount: string, reversal: boolean) {
             </ul>
           </template>
 
-          <p v-if="detailLoading" class="text-meta text-muted">正在读取…</p>
+          <ListSkeleton v-if="detailLoading && !(tab === 'performance' ? entries : commissions).length" :rows="3" />
           <UButton
             v-else-if="tab === 'performance' ? moreEntries : moreCommissions"
             block
             color="neutral"
             variant="ghost"
+            :loading="detailLoading"
             @click="loadMore"
           >
             再看 {{ PAGE }} 笔

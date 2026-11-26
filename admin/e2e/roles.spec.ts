@@ -81,7 +81,7 @@ test('角色旧保存只刷新列表，不关闭另一个角色窗口', async ({
   await expect(page.getByText(name, { exact: true })).toBeVisible()
   await expect(editor).toBeVisible()
   await expect(editor.getByLabel('角色名称', { exact: true })).toHaveValue('前台')
-  await expect(page.getByText('已保存', { exact: true })).toHaveCount(0)
+  await expect(page.getByText(/^已(新建|改好)角色/)).toHaveCount(0)
 })
 
 test('保存角色断网后恢复并可重试', async ({ page }) => {

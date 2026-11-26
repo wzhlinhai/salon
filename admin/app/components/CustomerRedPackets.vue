@@ -149,8 +149,8 @@ defineExpose({ editIssue })
   <UModal v-model:open="revokeOpen" title="撤回红包">
     <template #body><UFormField label="撤回原因" required><UTextarea v-model="reason" :maxlength="200" class="w-full" /></UFormField></template>
     <template #footer>
-      <ModalActions @cancel="revokeOpen = false">
-        <UButton :loading="revoking" :disabled="!reason.trim()" color="error" @click="revoke">确认撤回</UButton>
+      <ModalActions cancel-label="不撤回了" @cancel="revokeOpen = false">
+        <UButton :loading="revoking" :disabled="!reason.trim()" color="error" @click="revoke">撤回</UButton>
       </ModalActions>
     </template>
   </UModal>

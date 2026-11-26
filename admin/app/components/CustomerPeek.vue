@@ -30,7 +30,7 @@ watch(open, async (value) => {
     <slot />
     <template #content>
       <div class="w-80 p-4 text-sm" data-testid="customer-peek">
-        <p v-if="loading" class="text-muted">正在取…</p>
+        <ListSkeleton v-if="loading" :rows="2" />
         <p v-else-if="failed || !glance" class="text-muted">取不到这位顾客的资料</p>
         <template v-else>
           <div class="flex items-center gap-3">

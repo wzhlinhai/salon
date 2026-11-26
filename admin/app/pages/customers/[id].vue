@@ -54,7 +54,7 @@ const detailGuard = useRequestGuard()
 
 // withHistory=false：只改了顾客资料（记住的事、负责人），做过的头发不用重取，免得「上次」闪一下、「更早」退回第一页。
 // 做过的头发等读到顾客再取：已合并的顾客，记录都转到了保留的那位，后端按不存在回 404。
-// 清了记录就欠一次重取：被后一次 load(false) 顶掉或断网，由当前这次在 finally 里还上，不会一直停在「正在读取」。
+// 清了记录就欠一次重取：被后一次 load(false) 顶掉或断网，由当前这次在 finally 里还上，不会一直停在加载骨架。
 let historyOwed = false
 
 async function load(withHistory = true) {
@@ -615,7 +615,7 @@ onBeforeUnmount(() => {
             <template v-if="!customer.merged_into">
               <section data-testid="customer-last">
                 <h2 class="sec mt-0!">上次</h2>
-                <p v-if="history.loading.value && !visits.length" class="text-sm text-muted">正在读取做过的头发…</p>
+                <ListSkeleton v-if="history.loading.value && !visits.length" :rows="2" />
                 <div v-else-if="!lastVisit" class="box text-sm text-muted">还没在店里做过头发</div>
                 <div v-else class="box space-y-3">
                   <p class="text-meta text-muted tabular-nums">{{ shortDate(lastVisit.date) }} · {{ weekday(lastVisit.date) }}<template v-if="lastVisit.staff"> · {{ lastVisit.staff }}</template></p>
@@ -693,7 +693,7 @@ onBeforeUnmount(() => {
         </div>
       </template>
       <LoadError v-else-if="loadError" title="顾客档案没有读出来" :hint="loadError" @retry="load()" />
-      <p v-else class="text-muted">正在读取顾客档案…</p>
+      <ListSkeleton v-else :rows="6" />
     </div>
     <USlideover v-model:open="logsOpen" title="修改记录">
       <template #body>
@@ -786,8 +786,8 @@ onBeforeUnmount(() => {
     <UModal :open="!!revokeTarget" title="撤销安全标签" @update:open="setRevokeOpen">
       <template #body>确认撤销“{{ labelNames[revokeTarget?.kind ?? ''] }}”安全标签？历史记录仍然保留。</template>
       <template #footer>
-        <ModalActions @cancel="setRevokeOpen(false)">
-          <UButton :loading="saving" color="error" @click="revoke">确认撤销</UButton>
+        <ModalActions cancel-label="不撤了" @cancel="setRevokeOpen(false)">
+          <UButton :loading="saving" color="error" @click="revoke">撤销</UButton>
         </ModalActions>
       </template>
     </UModal>
@@ -837,8 +837,8 @@ onBeforeUnmount(() => {
         <p v-if="customer && other" class="mt-3">保留：{{ customerName(keepID === id ? customer : other) }}；被合并：{{ customerName(keepID === id ? other : customer) }}</p>
       </template>
       <template #footer>
-        <ModalActions @cancel="mergeConfirm = false">
-          <UButton :loading="saving" color="error" @click="merge">确认合并</UButton>
+        <ModalActions cancel-label="不合并了" @cancel="mergeConfirm = false">
+          <UButton :loading="saving" color="error" @click="merge">合并</UButton>
         </ModalActions>
       </template>
     </UModal>

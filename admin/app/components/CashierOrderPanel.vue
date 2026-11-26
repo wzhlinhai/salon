@@ -580,7 +580,7 @@ defineExpose({ select, clear, refresh, voided })
 <template>
   <!-- 当前单照样稿 02 排成一张账：顾客头、项目一行一个、虚线分开，应收用宋体大字，付款方式一排按钮，结账整条。站着点的付款区控件 44 高。 -->
   <section data-testid="selected-order" class="max-w-120">
-    <p v-if="orderLoading && !order" class="py-8 text-sm text-muted">加载中…</p>
+    <ListSkeleton v-if="orderLoading && !order" :rows="3" />
     <EmptyState v-else-if="!order" class="rounded-card bg-side" art="receipt" title="还没选单" hint="从左边选一张在做的单，或扫码开单" />
     <template v-else>
       <!-- 当前单是一张拿在手里的小票（样稿系统页「小票」）：白纸、上边圆角、底边一排齿孔；齿孔用遮罩挖，阴影就放在外层用 drop-shadow 跟着齿形走。 -->
@@ -759,7 +759,7 @@ defineExpose({ select, clear, refresh, voided })
     </template>
     <template #footer>
       <ModalActions @cancel="countOpen = false">
-        <UButton @click="addCountPayment">确定</UButton>
+        <UButton @click="addCountPayment">用这张卡</UButton>
       </ModalActions>
     </template>
   </UModal>

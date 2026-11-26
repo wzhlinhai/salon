@@ -80,16 +80,18 @@ async function save() {
           window_days: d.windowed && r.days !== '' ? Number(r.days) : undefined
         }
       })
+    const verb = editing.value ? '已改好' : '已新建'
+    const saved = name.value
     const res = editing.value
-      ? await api.POST('/api/ops/update_role', { body: { role_id: editing.value.id, name: name.value, permissions } })
-      : await api.POST('/api/ops/create_role', { body: { name: name.value, permissions } })
+      ? await api.POST('/api/ops/update_role', { body: { role_id: editing.value.id, name: saved, permissions } })
+      : await api.POST('/api/ops/create_role', { body: { name: saved, permissions } })
     if (!current()) {
       if (res.data) load()
       else toast.add({ title: errorText(res.error), color: 'error' })
       return
     }
     if (res.data) {
-      toast.add({ title: '已保存', color: 'success' })
+      toast.add({ title: `${verb}角色「${saved}」`, color: 'success' })
       open.value = false
       load()
     } else {
@@ -175,6 +177,7 @@ function summary(g: components['schemas']['GrantSpec']) {
               v-if="d.scoped && rows[d.name]!.on"
               v-model="rows[d.name]!.scope"
               :items="[{ label: '全店', value: 'store' }, { label: '本人', value: 'self' }]"
+              :aria-label="`${d.label}的范围`"
               class="w-24"
             />
             <UInput
@@ -183,6 +186,7 @@ function summary(g: components['schemas']['GrantSpec']) {
               type="text"
               inputmode="numeric"
               placeholder="不限天数"
+              :aria-label="`${d.label}的天数`"
               class="w-28"
             />
           </div>

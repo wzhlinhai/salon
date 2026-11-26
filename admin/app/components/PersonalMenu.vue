@@ -86,7 +86,7 @@ const menuItems = computed(() => {
 
   <UModal v-model:open="attendanceOpen" title="我的考勤">
     <template #body>
-      <p v-if="attendanceLoading" class="text-sm text-muted">加载中</p>
+      <ListSkeleton v-if="attendanceLoading" :rows="3" />
       <p v-else-if="!attendanceDays.length" class="text-sm text-muted">这个月还没有考勤记录。</p>
       <div v-else class="space-y-1">
         <div
