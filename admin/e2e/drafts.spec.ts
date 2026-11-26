@@ -138,6 +138,8 @@ test('修改：在面板里说怎么改，发给 AI 的话带上草稿编号；�
   await card(page, draft.id).getByTestId('draft-modify').click()
   const panel = aiPanel(page)
   await expect(panel.getByTestId('ai-editing')).toContainText(draft.summary)
+  // 正在改草稿时不列常用的事，免得点了「今天收了多少」被当成改这张草稿。
+  await expect(panel.getByTestId('ai-quick')).toHaveCount(0)
   await panel.getByTestId('ai-input').fill('业绩算八成')
   await panel.getByTestId('ai-input').press('Enter')
   await expect(panel.getByText('AI 响应超时，请重试')).toBeVisible()
@@ -340,4 +342,47 @@ test('AI 还在回上一句时说的话放进输入框；清空对话后迟到�
   await expect(panel.getByText('新回复')).toBeVisible()
   await expect(panel.getByText('迟到的回复')).toHaveCount(0)
   await expect(panel.getByTestId('ai-entry')).toHaveCount(2)
+})
+
+test('面板空着时列常用的事：开单先填开头和提示，补完再发；问数的直接发；按权限出', async ({ page }) => {
+  const bodies: { messages: { role: string, content: string }[] }[] = []
+  await page.route('**/api/ai/chat', async (route) => {
+    bodies.push(route.request().postDataJSON())
+    await route.fulfill({ json: { reply: '收到。', sources: [], drafts: [] } })
+  })
+  await login(page, owner.account, owner.password)
+  await page.getByTestId('ai-fab').click()
+  const panel = aiPanel(page)
+  const quick = panel.getByTestId('ai-quick')
+  await expect(quick.getByRole('button')).toHaveText(['开单', '约个时间', '会员卡充值', '今天收了多少'])
+
+  // 输入框里已经打了字：点「开单」不覆盖，把开头加在前面。
+  const input = panel.getByTestId('ai-input')
+  await input.fill('陈女士')
+  await quick.getByRole('button', { name: '开单' }).click()
+  await expect(input).toHaveValue('开单：陈女士')
+  await input.fill('')
+  await quick.getByRole('button', { name: '开单' }).click()
+  await expect(input).toHaveValue('开单：')
+  await expect(input).toBeFocused()
+  await expect(panel.getByTestId('ai-starter')).toContainText('说顾客、项目和做的人')
+  await input.pressSequentially('陈女士 剪发')
+  await input.press('Enter')
+  await expect(panel.getByText('收到。')).toBeVisible()
+  expect(bodies[0]!.messages.at(-1)).toEqual({ role: 'user', content: '开单：陈女士 剪发' })
+  await expect(panel.getByTestId('ai-starter')).toHaveCount(0)
+
+  await panel.getByRole('button', { name: '清空对话' }).click()
+  await quick.getByRole('button', { name: '今天收了多少' }).click()
+  await expect.poll(() => bodies.length).toBe(2)
+  expect(bodies[1]!.messages).toEqual([{ role: 'user', content: '今天实收多少？按付款方式分开说' }])
+})
+
+test('面板常用的事按权限出：发型师没有充值和报表', async ({ page }) => {
+  const stylist = await hire('发型师')
+  await login(page, stylist.account, stylist.password)
+  await page.getByTestId('ai-fab').click()
+  const quick = aiPanel(page).getByTestId('ai-quick')
+  await expect(quick.getByRole('button', { name: '会员卡充值' })).toHaveCount(0)
+  await expect(quick.getByRole('button', { name: '今天收了多少' })).toHaveCount(0)
 })
