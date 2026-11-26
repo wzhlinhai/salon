@@ -15,7 +15,9 @@ const myDrafts = computed(() => allDrafts.value.filter(draft => draft.status ===
 const businessDate = ref('')
 const settingsGuard = useRequestGuard()
 const attendanceGuard = useRequestGuard()
-const { clockIn: todayClockIn, punching, punch, remember: rememberClockIn } = usePunch()
+const { clockIn: todayClockIn, known: punchKnown, punching, punch, remember: rememberClockIn } = usePunch()
+// 考勤没读出来时也要露出打卡按钮：读完（成功或失败）才决定。
+const attendanceTried = ref(false)
 // 「在店里」写「做王女士」用：正在做的单是哪位顾客，由时间线报上来。
 const serving = ref<Record<string, string>>({})
 
@@ -44,6 +46,7 @@ async function loadAttendance() {
   const before = todayClockIn.value
   const { data, error } = await api.POST('/api/ops/list_my_attendance', { body: { month: businessDate.value.slice(0, 7) } })
   if (!current()) return
+  attendanceTried.value = true
   if (!data) {
     toast.add({ title: errorText(error), color: 'error' })
     return
@@ -69,7 +72,7 @@ onMounted(async () => {
 
     <div class="grid gap-12 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div class="flex min-w-0 flex-col gap-8">
-        <template v-if="can('attendance.clock')">
+        <template v-if="can('attendance.clock') && (punchKnown || attendanceTried)">
           <div v-if="!todayClockIn" class="flex items-center gap-4 rounded-card bg-notice px-4 py-4">
             <p class="text-sm font-semibold">今天还没打卡<small class="block text-meta font-normal text-muted">上班先打卡，迟到、早退按门店的班次算</small></p>
             <UButton data-testid="home-punch" size="lg" class="ms-auto shrink-0 px-8" :loading="punching" @click="punch">打卡</UButton>

@@ -563,7 +563,7 @@ function onMembersSaved() {
     </EmptyState>
 
     <EmptyState v-else-if="!activeQueues.length" art="chair" title="还没有轮牌队列" hint="先建一个队列，例如「剪发牌」，再选参加的员工和默认顺序">
-      <UButton v-if="canOperate" icon="i-lucide-plus" @click="askName(null)">新建队列</UButton>
+      <UButton v-if="canOperate" @click="askName(null)">新建队列</UButton>
     </EmptyState>
 
     <template v-else>

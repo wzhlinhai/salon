@@ -134,7 +134,7 @@ async function saveRevoke() {
     <section v-if="attendance">
       <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
         <p data-testid="attendance-summary-line" class="text-sm">{{ summaryText(attendance.summary) }}</p>
-        <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-plus" @click="emit('add-punch', attendance.summary)">给该员工补卡</UButton>
+        <UButton size="sm" color="neutral" variant="outline" @click="emit('add-punch', attendance.summary)">给该员工补卡</UButton>
       </div>
       <EmptyState v-if="!days.length && !loading" title="本月还没有考勤明细" />
       <div v-else class="box overflow-hidden p-0">

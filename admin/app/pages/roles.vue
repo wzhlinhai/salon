@@ -97,16 +97,32 @@ async function save() {
 const removeGuard = useRequestGuard()
 const removing = reactive<Record<string, boolean>>({})
 
+// 删角色先确认（样稿 21 危险确认）：标题问一句，正文写删了以后会怎样，底栏「不删了」在左、红色「删除角色」在右。
+const removeTarget = ref<Role | null>(null)
+const removeOpen = ref(false)
+
+function askRemove(role: Role) {
+  removeTarget.value = role
+  removeOpen.value = true
+}
+
+async function confirmRemove() {
+  const role = removeTarget.value
+  if (!role) return
+  if (await remove(role)) removeOpen.value = false
+}
+
+// 删成了返回 true；没删成（出错、换了人）弹窗留着，可以直接再点一次。
 async function remove(role: Role) {
-  if (removing[role.id]) return
-  if (!confirm(`删除角色「${role.name}」？拥有该角色的员工会失去它。`)) return
+  if (removing[role.id]) return false
   const current = removeGuard.hold()
   removing[role.id] = true
   try {
     const res = await api.POST('/api/ops/delete_role', { body: { role_id: role.id } })
-    if (!current()) return
+    if (!current()) return false
     if (!res.data) toast.add({ title: errorText(res.error), color: 'error' })
     load()
+    return !!res.data
   } finally {
     if (current()) removing[role.id] = false
   }
@@ -124,7 +140,7 @@ function summary(g: components['schemas']['GrantSpec']) {
 <template>
   <div class="space-y-4">
     <PageActions>
-      <UButton size="sm" icon="i-lucide-plus" @click="openEditor(null)">新建角色</UButton>
+      <UButton size="sm" @click="openEditor(null)">新建角色</UButton>
     </PageActions>
 
     <section v-for="role in roles" :key="role.id" :data-role="role.name" class="box group/row">
@@ -134,7 +150,7 @@ function summary(g: components['schemas']['GrantSpec']) {
         <span v-else class="text-xs text-dimmed">{{ role.permissions.length }} 项权限</span>
         <div v-if="!role.is_owner" class="ms-auto flex gap-0.5 opacity-0 group-hover/row:opacity-100 focus-within:opacity-100 any-pointer-coarse:opacity-100">
           <UButton size="sm" color="neutral" variant="ghost" @click="openEditor(role)">编辑</UButton>
-          <UButton size="sm" variant="ghost" color="error" :loading="removing[role.id]" @click="remove(role)">删除</UButton>
+          <UButton size="sm" variant="ghost" color="error" :loading="removing[role.id]" @click="askRemove(role)">删除</UButton>
         </div>
       </div>
       <p v-if="role.is_owner" class="mt-2 text-sm text-muted">老板拥有全部权限，包括以后新增的；不能修改。</p>
@@ -144,7 +160,7 @@ function summary(g: components['schemas']['GrantSpec']) {
       </div>
     </section>
 
-    <UModal v-model:open="open" :title="editing ? '编辑角色' : '新建角色'" class="max-w-2xl">
+    <UModal v-model:open="open" :title="editing ? '编辑角色' : '新建角色'" :ui="{ content: 'sm:max-w-[600px]' }">
       <template #body>
         <UFormField label="角色名称" class="mb-4"><UInput v-model="name" class="w-full" /></UFormField>
         <div class="divide-y divide-default">
@@ -171,6 +187,23 @@ function summary(g: components['schemas']['GrantSpec']) {
       <template #footer>
         <ModalActions @cancel="open = false">
           <UButton :loading="saving" @click="save">保存</UButton>
+        </ModalActions>
+      </template>
+    </UModal>
+    <UModal v-model:open="removeOpen" :title="`删除角色「${removeTarget?.name ?? ''}」？`">
+      <template #body>
+        <p class="text-sm">删了以后：</p>
+        <ul class="mt-2 list-disc space-y-1 ps-5 text-sm text-muted">
+          <li>有这个角色的员工失去它带的 {{ removeTarget?.permissions.length ?? 0 }} 项权限，别的角色不受影响</li>
+          <li>员工本人、账号和以前的记录都还在</li>
+        </ul>
+      </template>
+      <template #footer>
+        <ModalActions cancel-label="不删了" @cancel="removeOpen = false">
+          <template #leading>
+            <span class="text-meta text-muted">删了不能恢复</span>
+          </template>
+          <UButton color="error" :loading="removeTarget ? removing[removeTarget.id] : false" @click="confirmRemove">删除角色</UButton>
         </ModalActions>
       </template>
     </UModal>

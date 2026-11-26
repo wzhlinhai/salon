@@ -325,7 +325,7 @@ onMounted(init)
   <div class="space-y-4">
     <PageActions>
       <span v-if="businessDate" class="text-meta text-muted">营业日 {{ businessDate }}</span>
-      <UButton size="sm" icon="i-lucide-plus" @click="openOrderBegin(pickedCustomer)">开单</UButton>
+      <UButton size="sm" @click="openOrderBegin(pickedCustomer)">开单</UButton>
     </PageActions>
 
     <section v-if="canCustomer || canGroupbuy" class="space-y-3">
@@ -359,7 +359,7 @@ onMounted(init)
       <div v-if="pickedCustomer" class="box flex flex-wrap items-center gap-2" data-testid="picked-customer">
         <span class="text-meta text-muted">已选顾客</span>
         <span class="font-medium">{{ pickedCustomer.name || '未识别' }}</span>
-        <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-plus" @click="openOrderBegin(pickedCustomer)">为这位顾客开单</UButton>
+        <UButton size="sm" color="neutral" variant="outline" @click="openOrderBegin(pickedCustomer)">为这位顾客开单</UButton>
         <template v-if="pickedOpenOrders.length">
           <span class="text-meta text-muted">还有 {{ pickedOpenOrders.length }} 张挂单：</span>
           <UButton v-for="order in pickedOpenOrders" :key="order.id" size="sm" color="neutral" variant="ghost" @click="selectOrder(order)">选择挂单</UButton>

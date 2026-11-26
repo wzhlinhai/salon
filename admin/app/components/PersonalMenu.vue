@@ -80,7 +80,7 @@ const menuItems = computed(() => {
         <span class="block truncate">{{ me?.staff.name }}</span>
         <small v-if="roleLine" class="block truncate text-xs text-dimmed">{{ roleLine }}</small>
       </span>
-      <small v-if="!collapsed" class="ms-auto text-dimmed" aria-hidden="true">▴</small>
+      <UIcon v-if="!collapsed" name="i-lucide-chevrons-up-down" class="ms-auto size-4 shrink-0 text-dimmed" aria-hidden="true" />
     </button>
   </UDropdownMenu>
 
@@ -104,9 +104,5 @@ const menuItems = computed(() => {
     </template>
   </UModal>
 
-  <UModal v-model:open="passwordOpen" title="改密码">
-    <template #body>
-      <ChangePassword />
-    </template>
-  </UModal>
+  <ChangePassword v-model:open="passwordOpen" />
 </template>

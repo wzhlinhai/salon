@@ -230,7 +230,7 @@ onMounted(loadSources)
         </div>
         <form v-if="can('settings.manage')" class="flex gap-2 py-2" @submit.prevent="addSource">
           <UInput v-model="sourceName" aria-label="新顾客来源" placeholder="新顾客来源" class="flex-1" />
-          <UButton type="submit" size="sm" color="neutral" variant="outline" icon="i-lucide-plus">添加</UButton>
+          <UButton type="submit" size="sm" color="neutral" variant="outline">添加</UButton>
         </form>
       </div>
     </section>

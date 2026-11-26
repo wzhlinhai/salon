@@ -126,3 +126,31 @@ test('角色天数非法文本不发出保存请求', async ({ page }) => {
   await expect(page.getByText('天数须为非负整数或留空', { exact: true })).toBeVisible()
   expect(requests).toEqual([])
 })
+
+test('删除角色先弹确认，不删了就留着', async ({ page }) => {
+  await login(page, owner.account, owner.password)
+  await page.goto('/roles')
+  await expect(page.getByText('内置 · 全部权限', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '新建角色', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: '新建角色', exact: true })
+  const name = `待删角色${Date.now()}`
+  await editor.getByLabel('角色名称', { exact: true }).fill(name)
+  await editor.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(editor).toHaveCount(0)
+  const row = page.locator(`[data-role="${name}"]`)
+  await expect(row).toBeVisible()
+
+  const ask = page.getByRole('dialog', { name: `删除角色「${name}」？`, exact: true })
+  await row.hover()
+  await row.getByRole('button', { name: '删除', exact: true }).click()
+  await expect(ask).toContainText('删了不能恢复')
+  await ask.getByRole('button', { name: '不删了', exact: true }).click()
+  await expect(ask).toHaveCount(0)
+  await expect(row).toBeVisible()
+
+  await row.hover()
+  await row.getByRole('button', { name: '删除', exact: true }).click()
+  await ask.getByRole('button', { name: '删除角色', exact: true }).click()
+  await expect(ask).toHaveCount(0)
+  await expect(row).toHaveCount(0)
+})

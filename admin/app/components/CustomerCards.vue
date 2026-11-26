@@ -398,7 +398,7 @@ onMounted(cardLoad)
   <section data-testid="customer-cards">
     <div class="flex h-7 items-center gap-2">
       <h3 class="text-meta text-muted">卡</h3>
-      <UButton v-if="can('card.sell') && !props.merged" size="sm" color="neutral" variant="ghost" icon="i-lucide-plus" class="ms-auto -me-2" @click="cardEdit(null)">开卡</UButton>
+      <UButton v-if="can('card.sell') && !props.merged" size="sm" color="neutral" variant="ghost" class="ms-auto -me-2" @click="cardEdit(null)">开卡</UButton>
     </div>
     <p v-if="cardLoading && !cardCards.length" class="text-sm text-muted">正在读取卡…</p>
     <p v-else-if="!cardCards.length" class="text-sm text-dimmed">暂无卡</p>

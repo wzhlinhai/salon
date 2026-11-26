@@ -150,7 +150,7 @@ test('代约、改约、完成后显示全部状态变化', async ({ page }) => 
 
   await detail.getByRole('button', { name: '完成', exact: true }).click()
   const complete = page.getByRole('dialog', { name: '完成预约', exact: true })
-  await complete.getByRole('button', { name: '确定', exact: true }).click()
+  await complete.getByRole('button', { name: '完成预约', exact: true }).click()
   await expect(complete).not.toBeVisible()
   await expect(detail.locator('[data-appointment-detail]')).toHaveAttribute('data-detail-status', 'completed')
   await expect(detail.locator('[data-event-kind="create"]')).toHaveCount(1)
@@ -209,7 +209,7 @@ test('取消原因选其他必须填写说明，取消后保留记录并隐藏�
   const cancel = page.getByRole('dialog', { name: '取消预约', exact: true })
   await cancel.getByRole('combobox', { name: '取消原因', exact: true }).click()
   await page.getByRole('option', { name: '其他', exact: true }).click()
-  const confirm = cancel.getByRole('button', { name: '确定', exact: true })
+  const confirm = cancel.getByRole('button', { name: '取消预约', exact: true })
   await expect(confirm).toBeDisabled()
   await cancel.getByLabel('说明', { exact: true }).fill(note)
   await expect(confirm).toBeEnabled()

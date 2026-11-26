@@ -782,7 +782,7 @@ onBeforeUnmount(() => {
           </div>
           <p v-if="!searching && !candidates.length" class="text-sm text-muted">未找到其他顾客</p>
           <div v-if="customer && other" class="grid grid-cols-2 gap-3">
-            <UCard v-for="c in [customer, other]" :key="c.id">
+            <div v-for="c in [customer, other]" :key="c.id" class="rounded-md p-4 shadow-line">
               <dl class="space-y-2 text-sm">
                 <dt class="font-medium">{{ customerName(c) }}</dt>
                 <dd>手机号：{{ c.phone || '未填写' }}</dd>
@@ -796,7 +796,7 @@ onBeforeUnmount(() => {
                 </dd>
               </dl>
               <UButton class="mt-3" :variant="keepID === c.id ? 'solid' : 'outline'" :aria-pressed="keepID === c.id" @click="keepID = c.id">保留这位顾客</UButton>
-            </UCard>
+            </div>
           </div>
         </div>
       </template>

@@ -27,6 +27,13 @@ const statusLabels: Record<Appointment['status'], string> = {
   cancelled: '已取消',
   no_show: '爽约'
 }
+const statusTag: Record<Appointment['status'], string> = {
+  pending: 'bg-tag-yellow',
+  confirmed: 'bg-tag-gray',
+  completed: 'bg-tag-green',
+  cancelled: 'bg-tag-gray',
+  no_show: 'bg-tag-red'
+}
 const kindLabels: Record<Appointment['kind'], string> = { appointment: '预约', block: '私约占位' }
 const eventLabels: Record<AppointmentEvent['kind'], string> = {
   create: '创建',
@@ -120,6 +127,13 @@ function clockOf(iso: string) {
 function dateTimeText(iso: string) {
   const value = shanghai(iso)
   return `${value.date} ${value.time}`
+}
+
+// 同一天的起止只写一次日期：「2026-11-25 14:00–15:30」。
+function rangeText(start: string, end: string) {
+  const a = shanghai(start)
+  const b = shanghai(end)
+  return a.date === b.date ? `${a.date} ${a.time}–${b.time}` : `${dateTimeText(start)}–${dateTimeText(end)}`
 }
 
 function isoAt(date: string, time: string) {
@@ -511,6 +525,8 @@ onBeforeUnmount(() => {
   if (nowTimer) clearInterval(nowTimer)
 })
 
+// 还能操作的预约才有底栏：完成、取消、爽约以后只剩查看。
+const detailActionable = computed(() => detail.value?.status === 'pending' || detail.value?.status === 'confirmed')
 const noShowAllowed = computed(() => {
   if (detail.value?.kind !== 'appointment' || detail.value.status !== 'confirmed') return false
   return now.value >= new Date(detail.value.starts_at).getTime()
@@ -691,7 +707,7 @@ function actorLabel(actor: Actor) {
 <template>
   <div class="space-y-4">
     <PageActions>
-      <UButton size="sm" icon="i-lucide-plus" @click="newBooking">新建预约</UButton>
+      <UButton size="sm" @click="newBooking">新建预约</UButton>
     </PageActions>
     <div class="flex flex-wrap items-center gap-2">
       <div class="flex items-center">
@@ -710,7 +726,7 @@ function actorLabel(actor: Actor) {
       <p v-if="loading" class="text-sm text-muted" aria-live="polite">加载中</p>
     </div>
 
-    <div v-if="businessDate" ref="grid" class="box h-[calc(100dvh-19.5rem)] min-h-96 overflow-auto p-0" data-booking-grid>
+    <div v-if="businessDate" ref="grid" class="box h-[calc(100dvh-15.5rem)] min-h-96 overflow-auto p-0" data-booking-grid>
       <div v-if="dayEmpty" class="pointer-events-none sticky top-16 left-0 z-30 flex h-0 justify-center">
         <p class="h-fit rounded-md bg-white px-3 py-2 text-meta text-muted shadow-paper" data-testid="booking-day-empty">这天还没有预约。点空白时段，或右上角「新建预约」</p>
       </div>
@@ -872,56 +888,80 @@ function actorLabel(actor: Actor) {
       </template>
     </UModal>
 
-    <UModal v-model:open="detailOpen" title="预约详情">
+    <!-- 预约详情（样稿 22 侧滑）：后面不变暗，能接着点时间轴上的别的预约；顶上是顾客和时间，往下属性、状态变化，按钮在底栏。 -->
+    <USlideover v-model:open="detailOpen" :modal="false" title="预约详情" :description="detail ? `${detail.staff.name} · ${rangeText(detail.starts_at, detail.ends_at)}` : '读取中'">
       <template #body>
-        <p v-if="detailLoading" class="text-sm text-muted">加载中</p>
-        <div v-else-if="detail" class="max-h-[70vh] space-y-4 overflow-auto" data-appointment-detail :data-detail-id="detail.id" :data-detail-status="detail.status">
-          <div class="grid grid-cols-2 gap-2 text-sm">
-            <p>类型：{{ kindLabels[detail.kind] }}</p>
-            <p>状态：{{ statusLabels[detail.status] }}</p>
-            <p class="col-span-2">
-              顾客：<CustomerPeek v-if="detail.kind !== 'block' && detail.customer?.name && can('customer.view')" :customer-id="detail.customer.id">
-                <button type="button" class="hover:underline focus-visible:underline" aria-haspopup="dialog" data-detail-customer>{{ detail.customer.name }}</button>
-              </CustomerPeek>
-              <span v-else data-detail-customer>{{ detail.kind === 'block' ? '私约占位' : (detail.customer?.name ?? '未识别顾客') }}</span><span v-if="detail.customer?.phone"> · {{ detail.customer.phone }}</span>
-            </p>
-            <p>发型师：{{ detail.staff.name }}</p>
-            <p data-detail-created-by :data-actor-kind="detail.created_by.kind">创建人：{{ actorLabel(detail.created_by) }}</p>
-            <p>开始：{{ dateTimeText(detail.starts_at) }}</p>
-            <p>结束：{{ dateTimeText(detail.ends_at) }}</p>
-            <p>创建时间：{{ dateTimeText(detail.created_at) }}</p>
-            <p v-if="detail.order_id">关联单：{{ detail.order_id }}</p>
-            <p v-if="detail.note" class="col-span-2">备注：{{ detail.note }}</p>
-          </div>
-
-          <div v-if="detail.items.length" class="space-y-1">
-            <h2 class="font-medium">项目</h2>
-            <p v-for="item in detail.items" :key="item.item_id" class="text-sm">{{ item.position }}. {{ item.name }} · {{ item.duration_minutes || '未设置' }}{{ item.duration_minutes ? ' 分钟' : '' }}</p>
-          </div>
-
-          <div class="flex flex-wrap gap-2">
-            <UButton v-if="detail.kind === 'appointment' && detail.status === 'pending'" :loading="detailSaving" @click="confirmAppointment">确认</UButton>
-            <UButton v-if="detail.kind === 'appointment' && (detail.status === 'pending' || detail.status === 'confirmed')" variant="outline" @click="askReschedule">改约</UButton>
-            <UButton v-if="detail.kind === 'appointment' && detail.status === 'confirmed'" :loading="detailSaving" @click="askComplete">完成</UButton>
-            <UButton v-if="detail.kind === 'appointment' && detail.status === 'confirmed' && noShowAllowed" color="error" variant="outline" :loading="detailSaving" @click="markNoShow">记爽约</UButton>
-            <UButton v-if="detail.kind === 'appointment' && (detail.status === 'pending' || detail.status === 'confirmed')" color="error" variant="outline" @click="askCancel">取消</UButton>
-            <UButton v-if="detail.kind === 'block' && detail.status === 'confirmed'" color="error" variant="outline" :loading="detailSaving" @click="cancelBlock">取消占位</UButton>
-          </div>
-
-          <div class="space-y-2">
-            <h2 class="font-medium">状态变化</h2>
-            <div v-for="event in detail.events" :key="event.id" class="rounded-card bg-side p-2 text-sm" data-event-row :data-event-kind="event.kind">
-              <p class="font-medium" data-event-actor :data-actor-kind="event.actor.kind">{{ eventLabels[event.kind] }} · {{ dateTimeText(event.created_at) }} · {{ actorLabel(event.actor) }}</p>
-              <p v-if="event.from_starts_at" class="text-muted">时间：{{ eventRange(event) }} → {{ eventToRange(event) }}</p>
-              <p v-else class="text-muted">时间：{{ eventToRange(event) }}</p>
-              <p v-if="event.from_staff" class="text-muted">发型师：{{ eventStaff(event) }}</p>
-              <p v-if="event.reason" class="text-muted">原因：{{ event.reason }}</p>
-              <p v-if="event.note" class="text-muted">说明：{{ event.note }}</p>
+        <ListSkeleton v-if="detailLoading" :rows="4" />
+        <div v-else-if="detail" class="space-y-6" data-appointment-detail :data-detail-id="detail.id" :data-detail-status="detail.status">
+          <div class="flex items-center gap-3">
+            <PersonAvatar v-if="detail.kind !== 'block'" :name="detail.customer?.name ?? '?'" />
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-base font-semibold">
+                <CustomerPeek v-if="detail.kind !== 'block' && detail.customer?.name && can('customer.view')" :customer-id="detail.customer.id">
+                  <button type="button" class="hover:underline focus-visible:underline" aria-haspopup="dialog" data-detail-customer>{{ detail.customer.name }}</button>
+                </CustomerPeek>
+                <span v-else data-detail-customer>{{ detail.kind === 'block' ? '私约占位' : (detail.customer?.name ?? '未识别顾客') }}</span>
+              </p>
+              <p v-if="detail.customer?.phone" class="text-meta text-muted tabular-nums">{{ detail.customer.phone }}</p>
             </div>
+            <span class="tag" :class="statusTag[detail.status]">{{ statusLabels[detail.status] }}</span>
+          </div>
+
+          <dl class="props -mx-2">
+            <dt>类型</dt>
+            <dd>{{ kindLabels[detail.kind] }}</dd>
+            <dt>时间</dt>
+            <dd class="tabular-nums">{{ rangeText(detail.starts_at, detail.ends_at) }}</dd>
+            <dt>发型师</dt>
+            <dd>{{ detail.staff.name }}</dd>
+            <template v-if="detail.items.length">
+              <dt>项目</dt>
+              <dd>{{ detail.items.map(item => item.duration_minutes ? `${item.name} ${item.duration_minutes} 分钟` : item.name).join('、') }}</dd>
+            </template>
+            <dt>谁约的</dt>
+            <dd data-detail-created-by :data-actor-kind="detail.created_by.kind">{{ actorLabel(detail.created_by) }}<span class="ms-1 text-muted tabular-nums">{{ dateTimeText(detail.created_at) }}</span></dd>
+            <template v-if="detail.order_id">
+              <dt>收银单</dt>
+              <dd>已关联收银单</dd>
+            </template>
+            <template v-if="detail.note">
+              <dt>备注</dt>
+              <dd class="said">{{ detail.note }}</dd>
+            </template>
+          </dl>
+
+          <section>
+            <h2 class="mb-1 text-sm text-muted">状态变化</h2>
+            <ol class="divide-y divide-default">
+              <li v-for="event in detail.events" :key="event.id" class="py-2 text-sm" data-event-row :data-event-kind="event.kind">
+                <p data-event-actor :data-actor-kind="event.actor.kind">
+                  <span class="font-medium">{{ eventLabels[event.kind] }}</span>
+                  <span class="text-muted"> · {{ actorLabel(event.actor) }} · </span><span class="text-muted tabular-nums">{{ dateTimeText(event.created_at) }}</span>
+                </p>
+                <p class="text-meta text-muted tabular-nums">
+                  <template v-if="event.from_starts_at">{{ eventRange(event) }} → </template>{{ eventToRange(event) }}
+                </p>
+                <p v-if="event.from_staff" class="text-meta text-muted">发型师 {{ eventStaff(event) }}</p>
+                <p v-if="event.reason" class="text-meta text-muted">原因：{{ event.reason }}</p>
+                <p v-if="event.note" class="said text-meta text-muted">{{ event.note }}</p>
+              </li>
+            </ol>
+          </section>
+        </div>
+      </template>
+      <template v-if="detail && !detailLoading && detailActionable" #footer>
+        <div class="flex w-full flex-wrap items-center gap-2">
+          <UButton v-if="detail.kind === 'appointment'" color="error" variant="ghost" @click="askCancel">取消</UButton>
+          <UButton v-if="detail.kind === 'block' && detail.status === 'confirmed'" color="error" variant="ghost" :loading="detailSaving" @click="cancelBlock">取消占位</UButton>
+          <UButton v-if="detail.kind === 'appointment' && detail.status === 'confirmed' && noShowAllowed" color="error" variant="ghost" :loading="detailSaving" @click="markNoShow">记爽约</UButton>
+          <div class="ms-auto flex gap-2">
+            <UButton v-if="detail.kind === 'appointment'" color="neutral" variant="outline" @click="askReschedule">改约</UButton>
+            <UButton v-if="detail.kind === 'appointment' && detail.status === 'pending'" :loading="detailSaving" @click="confirmAppointment">确认</UButton>
+            <UButton v-if="detail.kind === 'appointment' && detail.status === 'confirmed'" :loading="detailSaving" @click="askComplete">完成</UButton>
           </div>
         </div>
       </template>
-    </UModal>
+    </USlideover>
 
     <UModal v-model:open="rescheduleOpen" title="改约预约">
       <template #body>
@@ -950,8 +990,8 @@ function actorLabel(actor: Actor) {
         </div>
       </template>
       <template #footer>
-        <ModalActions @cancel="cancelOpen = false">
-          <UButton :disabled="cancelDisabled" :loading="cancelSaving" @click="saveCancel">确定</UButton>
+        <ModalActions cancel-label="不取消了" @cancel="cancelOpen = false">
+          <UButton :disabled="cancelDisabled" :loading="cancelSaving" @click="saveCancel">取消预约</UButton>
         </ModalActions>
       </template>
     </UModal>
@@ -964,7 +1004,7 @@ function actorLabel(actor: Actor) {
       </template>
       <template #footer>
         <ModalActions @cancel="completeOpen = false">
-          <UButton :loading="completeSaving" @click="saveComplete">确定</UButton>
+          <UButton :loading="completeSaving" @click="saveComplete">完成预约</UButton>
         </ModalActions>
       </template>
     </UModal>

@@ -107,7 +107,7 @@ function shiftText(s: Staff) {
 <template>
   <div class="space-y-4">
     <PageActions>
-      <UButton size="sm" icon="i-lucide-plus" @click="editors?.openProfile(null)">新建员工</UButton>
+      <UButton size="sm" @click="editors?.openProfile(null)">新建员工</UButton>
     </PageActions>
 
     <div class="space-y-2">

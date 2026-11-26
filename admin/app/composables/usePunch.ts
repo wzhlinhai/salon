@@ -18,6 +18,9 @@ export function usePunch() {
     return staffId && state.value?.staffId === staffId ? state.value.at : null
   })
 
+  // 读到过本人今天的打卡（打了或没打）：没读到之前，首页不出「今天还没打卡」，免得打过卡的人进首页先闪一下黄条。
+  const known = computed(() => !!me.value && state.value?.staffId === me.value.staff.id)
+
   function remember(at: string | null) {
     const staffId = me.value?.staff.id
     if (staffId) state.value = { staffId, at }
@@ -41,7 +44,7 @@ export function usePunch() {
     }
   }
 
-  return { clockIn, punching, punch, remember }
+  return { clockIn, known, punching, punch, remember }
 }
 
 export function clockTime(value: string | null) {
