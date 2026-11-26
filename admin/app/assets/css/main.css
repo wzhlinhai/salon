@@ -323,6 +323,27 @@ input[type="time"] {
   }
 }
 
+/* Windows 高对比度：底色和阴影都换成系统色、阴影整个去掉，靠底色表示的「选中」和靠内阴影画的提醒框会看不出来。
+   这里补一道系统高亮色描边，只在这个模式下生效，平时不出现。 */
+@media (forced-colors: active) {
+  /* 聚焦时让位给聚焦轮廓，不然键盘焦点落在选中项上看不出来。 */
+  [aria-pressed="true"]:not(:focus-visible),
+  [aria-checked="true"]:not(:focus-visible),
+  [aria-selected="true"]:not(:focus-visible),
+  [aria-current="true"]:not(:focus-visible),
+  [aria-current="page"]:not(:focus-visible),
+  .bg-selected:not(:focus-visible) {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  .ring-alert,
+  .ring-pending,
+  .ring-serving {
+    outline: 2px solid CanvasText;
+    outline-offset: -2px;
+  }
+}
+
 /* 滚动条：全站细的灰条，不要系统自带的粗条和两头箭头。Chrome 一旦看到 scrollbar-width / scrollbar-color
    就不再认 ::-webkit-scrollbar，所以标准属性只给不支持 ::-webkit-scrollbar 的浏览器（Firefox）。 */
 ::-webkit-scrollbar {

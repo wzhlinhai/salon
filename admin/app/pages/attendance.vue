@@ -82,9 +82,13 @@ async function reloadSummary() {
   }
 }
 
-function selectSummary(_event: Event, row: TableRow<Schema['AttendanceSummary']>) {
-  selected.value = row.original
+function openSummary(summary: Schema['AttendanceSummary']) {
+  selected.value = summary
   detailOpen.value = true
+}
+
+function selectSummary(_event: Event, row: TableRow<Schema['AttendanceSummary']>) {
+  openSummary(row.original)
 }
 
 const addPunchForm = useModalForm()
@@ -294,7 +298,8 @@ onMounted(async () => {
           data-testid="attendance-table"
           @select="selectSummary"
         >
-          <template #staff-cell="{ row }"><span class="font-medium">{{ row.original.staff.name }}</span><span v-if="!row.original.active" class="text-dimmed">（离职）</span></template>
+          <!-- 整行可点；名字做成按钮，键盘也能打开这个人的打卡明细。 -->
+          <template #staff-cell="{ row }"><button type="button" class="font-medium hover:underline" @click.stop="openSummary(row.original)">{{ row.original.staff.name }}</button><span v-if="!row.original.active" class="text-dimmed">（离职）</span></template>
           <!-- 0 次留空，照 Notion 空属性；外层 span 要一直在，插槽空了表格会改显示原始数字。 -->
           <template #late_count-cell="{ row }"><span class="text-ink-red"><template v-if="row.original.late_count">{{ row.original.late_count }} 次 / {{ row.original.late_minutes }} 分钟</template></span></template>
           <template #early_count-cell="{ row }"><span class="text-ink-orange"><template v-if="row.original.early_count">{{ row.original.early_count }} 次 / {{ row.original.early_minutes }} 分钟</template></span></template>

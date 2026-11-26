@@ -112,7 +112,8 @@ onMounted(() => {
   observer.observe(el.value)
 })
 
-watch(() => [props.categories, props.series], render, { deep: true })
+// 父组件每次取数都换新数组，不改原数组里的值：比引用就够，不用逐层比对。
+watch(() => [props.categories, props.series], render)
 
 onBeforeUnmount(() => {
   observer?.disconnect()

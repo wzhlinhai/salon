@@ -138,8 +138,19 @@ test('店长合并顾客时迁移安全标签，默认搜索隐藏被合并顾�
   await page.goto('/customers')
   expect((await search(page, mergedName)).items).toEqual([])
   await expect(page.getByRole('button', { name: mergedName, exact: true })).toHaveCount(0)
+  // 已合并的顾客不再去读卡和红包（后端按不存在回 404），页面不弹错。
+  const notFound: string[] = []
+  page.on('response', (r) => {
+    if (r.url().includes('/api/ops/') && r.status() === 404) notFound.push(r.url())
+  })
   await page.goto(`/customers/${merged.id}`)
   await expect(page.getByText('已合并到另一位顾客', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('customer-cards')).toHaveCount(0)
+  await expect(page.getByTestId('customer-last')).toHaveCount(0)
+  await expect(page.getByTestId('customer-earlier')).toHaveCount(0)
+  // 等请求都回来再看，免得 404 还在路上就判过了。
+  await page.waitForLoadState('networkidle')
+  expect(notFound).toEqual([])
   await expect(page.getByRole('button', { name: '修改资料', exact: true })).toHaveCount(0)
   await page.getByRole('link', { name: '查看保留的顾客', exact: true }).click()
   await expect(detail.getByRole('heading', { name: keepName, exact: true })).toBeVisible()
