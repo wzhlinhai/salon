@@ -80,10 +80,10 @@ function retry() {
 
 onMounted(start)
 
-watch(range, (value) => {
-  void router.replace({ query: { g: value.granularity, from: value.from, to: value.to } })
+watch(() => [range.value.granularity, range.value.from, range.value.to], ([g, from, to]) => {
+  void router.replace({ query: { g, from, to } })
   void load()
-}, { deep: true })
+})
 
 const hasPrevious = computed(() => {
   const t = previous.value?.totals

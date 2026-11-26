@@ -53,7 +53,7 @@ watch(open, async (value) => {
             <p v-if="glance.counts" class="text-meta text-muted">次卡剩 <span class="text-default tabular-nums">{{ glance.counts }}</span> 次</p>
           </div>
           <div class="mt-3 flex justify-end border-t border-default pt-3">
-            <NuxtLink :to="`/customers/${glance.customer.id}`" class="inline-flex items-center text-sm hover:underline" @click="open = false">打开档案<UIcon name="i-lucide-chevron-right" class="size-4" aria-hidden="true" /></NuxtLink>
+            <NuxtLink :to="`/customers/${glance.customer.id}`" class="tap-area inline-flex items-center text-sm hover:underline" @click="open = false">打开档案<UIcon name="i-lucide-chevron-right" class="size-4" aria-hidden="true" /></NuxtLink>
           </div>
         </template>
       </div>

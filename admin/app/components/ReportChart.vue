@@ -49,17 +49,20 @@ function option() {
   const font = getComputedStyle(document.body).fontFamily
   const single = props.categories.length === 1
   const legend = props.series.length > 1
+  const allZero = props.series.every(s => s.values.every(v => v === 0))
   const categoryAxis = {
     type: 'category' as const,
     data: props.categories,
     axisTick: { show: false },
     axisLine: { lineStyle: { color: grid } },
-    axisLabel: { color: dimmed, fontSize: 12, hideOverlap: true }
+    axisLabel: { color: muted, fontSize: 12, hideOverlap: true }
   }
   const valueAxis = {
     type: 'value' as const,
+    minInterval: 1,
+    ...(allZero ? { min: 0, max: 100 } : {}),
     splitLine: { lineStyle: { color: grid, width: 1, type: 'solid' as const } },
-    axisLabel: { color: dimmed, fontSize: 12, formatter: axisMoney }
+    axisLabel: { color: muted, fontSize: 12, formatter: axisMoney }
   }
   return {
     color: colors,

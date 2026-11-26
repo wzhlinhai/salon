@@ -117,7 +117,7 @@ async function saveSettlement() {
       </dl>
 
       <section>
-        <div class="sec">核销的券</div>
+        <h2 class="sec">核销的券</h2>
         <dl class="props tabular-nums">
           <dt>已关联已结账</dt>
           <dd data-testid="linked-paid">{{ data.linked_paid.count }} 张 · 购买价 {{ yuan(data.linked_paid.purchase_total) }}</dd>
@@ -132,7 +132,7 @@ async function saveSettlement() {
       </section>
 
       <section>
-        <div class="sec">结算录入历史</div>
+        <h2 class="sec">结算录入历史</h2>
         <p v-if="!data.history.length" class="text-muted">还没有录入结算</p>
         <div v-else class="overflow-x-auto">
           <UTable :data="data.history" :columns="historyColumns" data-testid="settlement-history">

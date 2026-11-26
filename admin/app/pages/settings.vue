@@ -297,6 +297,10 @@ onMounted(loadSources)
       </template>
       <template #footer>
         <ModalActions @cancel="renameOpen = false">
+          <template #leading>
+            <span v-if="!newName.trim()" class="text-meta text-muted">填写新门店名后再保存</span>
+            <span v-else-if="newName.trim() === storeName" class="text-meta text-muted">门店名未改动</span>
+          </template>
           <UButton :loading="renaming" :disabled="!newName.trim() || newName.trim() === storeName" @click="rename">保存</UButton>
         </ModalActions>
       </template>

@@ -29,9 +29,9 @@ function move(event: KeyboardEvent, step: number) {
 </script>
 
 <template>
-  <!-- 收银台（counter）：大按钮等宽铺满一排；放得下的宽度不够（窄屏、窄栏）时一排三个，六种方式排两行，字不挤。 -->
+  <!-- 收银台（counter）：四种以内等宽铺满一排（太窄时两个一排）；五六种一排三个、排两行，大按钮不挤成细条。 -->
   <div :class="counter ? '@container w-full' : 'contents'">
-    <div role="radiogroup" :aria-label="label" :class="counter ? 'grid w-full grid-cols-3 gap-2 @sm:grid-flow-col @sm:auto-cols-fr @sm:grid-cols-none' : 'flex flex-wrap gap-2'">
+    <div role="radiogroup" :aria-label="label" :class="counter ? (items.length <= 4 ? 'grid w-full grid-cols-2 gap-2 @sm:grid-flow-col @sm:auto-cols-fr @sm:grid-cols-none' : 'grid w-full grid-cols-3 gap-2') : 'flex flex-wrap gap-2'">
       <UButton
         v-for="m in items"
         :key="m.value"

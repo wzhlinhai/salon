@@ -49,7 +49,7 @@ const greeting = (() => {
         <UAlert v-if="error" color="error" variant="subtle" :title="error" />
         <UButton type="submit" size="lg" block :loading="loading" class="mt-2">登录</UButton>
       </form>
-      <p class="mt-6 text-center text-meta text-muted">用店里给你开的账号登录，忘了密码请找店长重置</p>
+      <p class="mt-6 text-center text-meta text-pretty text-muted">用店里给你开的账号登录，忘了密码请找店长重置</p>
     </div>
   </main>
 </template>

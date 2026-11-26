@@ -101,7 +101,7 @@ watch(() => [entries.value.length, sending.value], async () => {
           <!-- 正在改一张草稿时不列：这时发的话都算在改那张草稿上。 -->
           <ul v-if="quick.length && !editing" class="-mx-2" data-testid="ai-quick">
             <li v-for="q in quick" :key="q.label">
-              <button type="button" class="flex w-full items-center gap-3 rounded-md px-2 py-2 text-start text-sm text-default hover:bg-hover focus-visible:bg-hover focus-visible:outline-none" :disabled="sending" @click="pick(q)">
+              <button type="button" class="flex w-full items-center gap-3 rounded-md px-2 py-2 text-start text-sm text-default hover:bg-hover focus-visible:bg-hover focus-visible:outline-2 focus-visible:outline-primary" :disabled="sending" @click="pick(q)">
                 <UIcon :name="q.icon" class="size-5 shrink-0 text-muted" aria-hidden="true" />
                 {{ q.label }}
               </button>

@@ -581,7 +581,7 @@ defineExpose({ select, clear, refresh, voided })
   <!-- 当前单照样稿 02 排成一张账：顾客头、项目一行一个、虚线分开，应收用宋体大字，付款方式一排按钮，结账整条。站着点的付款区控件 44 高。 -->
   <section data-testid="selected-order" class="max-w-120">
     <ListSkeleton v-if="orderLoading && !order" :rows="3" />
-    <EmptyState v-else-if="!order" class="rounded-card bg-side" art="receipt" title="还没选单" hint="从左边选一张在做的单，或扫码开单" />
+    <EmptyState v-else-if="!order" class="rounded-card bg-side" art="receipt" title="还没选单" hint="从「在做」里选一张单，或扫码开单" />
     <template v-else>
       <!-- 当前单是一张拿在手里的小票（样稿系统页「小票」）：白纸、上边圆角、底边一排齿孔；齿孔用遮罩挖，阴影就放在外层用 drop-shadow 跟着齿形走。 -->
       <div class="receipt-drop">
@@ -698,7 +698,7 @@ defineExpose({ select, clear, refresh, voided })
 
       <p v-if="orderGlance?.formula" class="mt-8 text-meta text-muted" data-testid="order-formula">
         配方记在顾客档案里：{{ orderGlance.formula.formula }}（{{ monthDay(orderGlance.formula.date) }} {{ orderGlance.formula.item }}）。
-        <NuxtLink :to="`/customers/${order.customer_id}`" class="text-default underline underline-offset-4 hover:no-underline">改配方</NuxtLink>
+        <NuxtLink :to="`/customers/${order.customer_id}`" class="tap-area inline-flex items-center text-default underline underline-offset-4 hover:no-underline">改配方</NuxtLink>
       </p>
     </template>
   </section>

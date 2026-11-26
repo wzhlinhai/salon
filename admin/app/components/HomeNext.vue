@@ -37,7 +37,7 @@ async function load() {
   const body = props.staffId ? { from: props.date, to: props.date, staff_id: props.staffId } : { from: props.date, to: props.date }
   const [list, overview, report] = await Promise.all([
     api.POST('/api/ops/list_appointments', { body }),
-    can('customer.view') ? api.POST('/api/ops/list_customer_overview', { body: { segment: 'today', limit: 200 } }) : null,
+    can('customer.view') ? api.POST('/api/ops/list_customer_overview', { body: { segment: 'today', limit: 100 } }) : null,
     !props.staffId && can('report.view') ? api.POST('/api/ops/get_business_report', { body: { from: props.date, to: props.date, granularity: 'day' } }) : null
   ])
   if (!current()) return
@@ -245,7 +245,7 @@ const empty = computed(() => loaded.value && !rows.value.length && !done.value &
   <section data-testid="home-next" class="min-w-0">
     <header class="mb-3 flex items-baseline gap-2">
       <h2 class="text-base font-semibold">接下来</h2>
-      <span class="text-meta text-dimmed tabular-nums">{{ dateLabel }}</span>
+      <span class="text-meta text-muted tabular-nums">{{ dateLabel }}</span>
       <NuxtLink v-if="can('booking.manage')" to="/bookings" class="tap-area ms-auto inline-flex items-center text-meta text-muted hover:text-default">
         打开预约<UIcon name="i-lucide-chevron-right" class="size-4" aria-hidden="true" />
       </NuxtLink>

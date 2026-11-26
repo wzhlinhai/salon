@@ -64,12 +64,12 @@ function cell(value: string | number) {
       </p>
 
       <section v-if="ranked.length > 1">
-        <div class="sec">新客从哪来</div>
+        <h2 class="sec">新客从哪来</h2>
         <ReportRank :avatar="false" :rows="ranked.map(r => ({ key: r.source_id ?? '', name: nameOf(r), value: r.new_customers, display: `${r.new_customers} 人` }))" />
       </section>
 
       <section>
-        <div class="sec">明细</div>
+        <h2 class="sec">明细</h2>
         <EmptyState v-if="!rows.length" art="chart" title="这段时间没有新客" hint="新顾客第一次结账后这里会有数" />
         <div v-else class="overflow-x-auto">
           <table class="w-full text-sm tabular-nums" data-testid="source-table">

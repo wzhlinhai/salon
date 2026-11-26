@@ -147,7 +147,7 @@ onBeforeUnmount(() => clearInterval(draftTimer))
             <UIcon name="i-lucide-search" class="side-icon" aria-hidden="true" />
             <template v-if="!collapsed">
               <span class="truncate">搜索</span>
-              <kbd class="ms-auto font-mono text-xs text-dimmed">Ctrl K</kbd>
+              <kbd class="ms-auto font-mono text-xs text-muted">Ctrl K</kbd>
             </template>
           </button>
           <NuxtLink
@@ -160,7 +160,7 @@ onBeforeUnmount(() => clearInterval(draftTimer))
             <UIcon :name="DRAFTS_ICON" class="side-icon" aria-hidden="true" />
             <template v-if="!collapsed">
               <span>待确认</span>
-              <span v-if="pendingDrafts.length" class="ms-auto text-xs text-dimmed tabular-nums">{{ pendingDrafts.length }}</span>
+              <span v-if="pendingDrafts.length" class="ms-auto text-xs text-muted tabular-nums">{{ pendingDrafts.length }}</span>
             </template>
           </NuxtLink>
 
@@ -169,7 +169,7 @@ onBeforeUnmount(() => clearInterval(draftTimer))
               <button
                 v-if="!collapsed"
                 type="button"
-                class="group/fold flex items-center gap-1 rounded-md px-2 pt-4 pb-1 text-start text-xs font-medium text-dimmed hover:text-muted"
+                class="group/fold flex items-center gap-1 rounded-md px-2 pt-4 pb-1 text-start text-xs font-medium text-muted hover:text-default"
                 :class="holdsActive(group) ? 'cursor-default' : ''"
                 :aria-expanded="groupOpen(group)"
                 :aria-disabled="holdsActive(group) || undefined"
@@ -233,7 +233,7 @@ onBeforeUnmount(() => clearInterval(draftTimer))
               <p class="flex min-w-0 items-center gap-1 rounded-md px-2 py-0.5 text-sm text-muted">
                 <UIcon v-if="pageIcon" :name="pageIcon" class="size-4 shrink-0" aria-hidden="true" />
                 <template v-if="parentCrumb">
-                  <NuxtLink :to="parentCrumb.to" class="rounded-md hover:text-default hover:underline" data-testid="parent-crumb">{{ parentCrumb.label }}</NuxtLink>
+                  <NuxtLink :to="parentCrumb.to" class="inline-flex min-h-6 items-center rounded-md px-1 hover:text-default hover:underline" data-testid="parent-crumb">{{ parentCrumb.label }}</NuxtLink>
                   <span class="text-dimmed" aria-hidden="true">/</span>
                 </template>
                 <span class="truncate">{{ pageTitle }}</span>

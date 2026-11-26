@@ -779,6 +779,10 @@ onBeforeUnmount(() => {
       </template>
       <template #footer>
         <ModalActions @cancel="labelOpen = false">
+          <template #leading>
+            <span v-if="!label.observed_on" class="text-meta text-muted">选择观察日期后再保存</span>
+            <span v-else-if="label.observed_on > today" class="text-meta text-muted">观察日期不能晚于今天</span>
+          </template>
           <UButton :loading="saving" :disabled="!label.observed_on || label.observed_on > today" @click="addLabel">保存</UButton>
         </ModalActions>
       </template>
@@ -798,7 +802,7 @@ onBeforeUnmount(() => {
             <UInput v-model="mergeQuery" placeholder="手机号、后四位或姓名" :loading="searching" class="w-full" @keydown.enter="searchCandidates" />
           </UFormField>
           <div class="max-h-48 overflow-y-auto space-y-1">
-            <UButton v-for="c in candidates" :key="c.id" :data-customer-id="c.id" variant="outline" class="w-full" @click="selectCandidate(c)">{{ customerName(c) }} · {{ c.phone || '未留手机号' }} · {{ new Date(c.created_at).toLocaleString('zh-CN') }}</UButton>
+            <UButton v-for="c in candidates" :key="c.id" :data-customer-id="c.id" variant="outline" class="w-full justify-start" @click="selectCandidate(c)">{{ customerName(c) }} · {{ c.phone || '未留手机号' }} · {{ new Date(c.created_at).toLocaleString('zh-CN') }}</UButton>
           </div>
           <div class="flex items-center gap-3">
             <UButton variant="outline" :disabled="mergeOffset === 0 || searching" @click="changeMergePage(-1)">上一页</UButton>
