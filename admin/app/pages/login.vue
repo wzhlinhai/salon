@@ -36,11 +36,11 @@ const greeting = (() => {
 })()
 </script>
 
-<!-- 一张纸（样稿 17）：暖灰底上居中一张白纸，一幅店里的墨线小画、宋体「本店」、楷体问候，账号密码和一个实心按钮。 -->
+<!-- 敞开的一页：暖灰底上居中一窄栏，不加纸框；一幅剪刀墨线小画、宋体「本店」、楷体问候，账号密码和一个实心按钮。 -->
 <template>
   <main class="flex min-h-dvh flex-col bg-side px-6 py-10">
-    <div class="m-auto w-full max-w-sm rounded-card border border-default bg-white px-8 py-10 shadow-paper">
-      <SpotArt name="curl" class="mx-auto mb-4 w-24" />
+    <div class="m-auto w-full max-w-sm">
+      <SpotArt name="scissors" class="mx-auto mb-4 w-28" />
       <h1 class="text-center text-title">本店</h1>
       <p class="said mt-2 mb-8 text-center text-base text-muted" data-testid="login-greeting">{{ greeting }}</p>
       <form class="space-y-4" @submit.prevent="submit">
