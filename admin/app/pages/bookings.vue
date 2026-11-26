@@ -772,7 +772,7 @@ function actorLabel(actor: Actor) {
 
     <LoadError v-if="optionsError" title="预约页没有读出来" :hint="optionsError" @retry="loadOptions()" />
     <LoadError v-else-if="dayError" title="这天的预约没有读出来" :hint="dayError" @retry="loadDay()" />
-    <div v-else-if="businessDate" ref="grid" class="box h-[calc(100dvh-15.5rem)] min-h-96 scroll-ps-14 scroll-pt-11 overflow-auto p-0" data-booking-grid>
+    <div v-else-if="businessDate" ref="grid" class="box h-[calc(100dvh-15.5rem)] min-h-96 scroll-ps-14 scroll-pt-11 overflow-auto p-0 pb-16" data-booking-grid>
       <div v-if="dayEmpty" class="pointer-events-none sticky top-16 left-0 z-40 flex h-0 justify-center">
         <p class="h-fit rounded-md bg-white px-3 py-2 text-meta text-muted shadow-paper" data-testid="booking-day-empty">这天还没有预约。点空白时段，或右上角「新建预约」</p>
       </div>

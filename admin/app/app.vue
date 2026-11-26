@@ -60,7 +60,7 @@ function isActive(to: string) {
 
 // 页面骨架（DESIGN.md）：首页有自己的问候，其余页面正文顶上统一一个大标题；宽度按页面元数据分两档。
 const showPageHeader = computed(() => route.path !== '/' && !route.meta.bare)
-// 底部留出右下角 AI 按钮的位置，页面滚到底时最后一行不被压住；工作台页（预约）自己管高度，不留。
+// 底部留出右下角 AI 按钮的位置，页面滚到底时最后一行不被压住；工作台页不另留：收银靠面板本身的底部留白，预约格子在自己的滚动区里留。
 const pageWidth = computed(() => [
   route.meta.width === 'narrow' ? 'mx-auto w-full max-w-[800px]' : 'w-full',
   route.meta.workbench ? '' : 'pb-16'
@@ -241,20 +241,6 @@ onBeforeUnmount(() => clearInterval(draftTimer))
             </template>
             <template #right>
               <div id="navbar-actions" class="flex items-center gap-1 text-muted" />
-              <!-- 平板和手机上右下角的圆钮会压住收银、日结底部的按钮和输入框，AI 入口挪到顶栏最右（大屏仍是圆钮）。 -->
-              <UButton
-                v-if="!aiOpen"
-                size="sm"
-                color="neutral"
-                variant="ghost"
-                aria-label="问 AI"
-                title="问 AI"
-                data-testid="ai-navbar"
-                class="shrink-0 xl:hidden"
-                @click="aiOpen = true"
-              >
-                <AiMark class="size-5" />
-              </UButton>
             </template>
           </UDashboardNavbar>
         </template>
@@ -276,17 +262,18 @@ onBeforeUnmount(() => clearInterval(draftTimer))
       <GlobalSearch v-model:open="searchOpen" />
 
       <AiPanel />
-      <!-- 问 AI 的常驻入口（照 Notion 右下角的 AI 按钮）：宽屏每一页都在，面板打开时收起；窄于 1280px 时收进顶栏。 -->
+      <!-- 问 AI 的常驻入口（照 Notion 右下角的 AI 按钮）：每一页、各种宽度都在右下角，面板打开时收起。
+           页面底部都留了比它高的空白（正文 pb-16、面板 pb-16 / sm:pb-24，预约格子内部另留），滚到底时最后一个按钮能露出来。窄屏缩到 44px。 -->
       <button
         v-if="!aiOpen"
         type="button"
         aria-label="问 AI"
         title="问 AI"
         data-testid="ai-fab"
-        class="fixed right-5 bottom-5 z-40 hidden size-12 xl:grid place-items-center rounded-full bg-white text-default shadow-lift transition-colors hover:bg-side"
+        class="fixed right-4 bottom-4 z-40 grid size-11 place-items-center rounded-full bg-white text-default shadow-lift transition-colors hover:bg-side sm:right-5 sm:bottom-5 sm:size-12"
         @click="aiOpen = true"
       >
-        <AiMark class="size-8" />
+        <AiMark class="size-7 sm:size-8" />
       </button>
     </UDashboardGroup>
   </UApp>
