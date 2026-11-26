@@ -36,9 +36,9 @@ const greeting = (() => {
 })()
 </script>
 
-<!-- 敞开的一页：白底上居中一窄栏，不加纸框；一幅剪刀墨线小画、宋体「本店」、楷体问候，账号密码和一个实心按钮。 -->
+<!-- 敞开的一页：暖灰底上居中一窄栏，不加纸框；一幅剪刀墨线小画、宋体「本店」、楷体问候，账号密码和一个实心按钮。 -->
 <template>
-  <main class="flex min-h-dvh flex-col bg-white px-6 py-10">
+  <main class="flex min-h-dvh flex-col bg-side px-6 py-10">
     <div class="m-auto w-full max-w-sm">
       <SpotArt name="scissors" class="mx-auto mb-4 w-28" />
       <h1 class="text-center text-title">本店</h1>
