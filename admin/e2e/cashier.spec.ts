@@ -90,6 +90,9 @@ test('扫码开单、现金结账并按设置打印小票', async ({ page }) => 
   await scan.press('Enter')
   await expect(page.getByTestId('scan-kind')).toHaveText('识别为手机号')
   await page.getByRole('button', { name: new RegExp(customer.name) }).click()
+  // 选好顾客，扫码框清空，「识别为手机号」也跟着去掉。
+  await expect(scan).toHaveValue('')
+  await expect(page.getByTestId('scan-kind')).toHaveCount(0)
   await page.getByRole('button', { name: '为这位顾客开单' }).click()
   const dialog = await chooseItem(page, 'dialog', item.name, staff.name)
   await dialog.getByRole('button', { name: '开单', exact: true }).click()
@@ -733,12 +736,21 @@ test('收款平时只露付款方式，点「分开付」才填各自金额', as
   await expect(page.getByTestId('cash-expected')).toHaveText('88.00')
   const pay = page.getByTestId('sale-payments')
   await expect(pay.getByLabel('金额')).toHaveCount(0)
+  const rows = pay.getByTestId('payment-row')
+
+  // 默认现金时点「分开付」：新加的一行换一种方式，不出两行现金。
+  await pay.getByRole('button', { name: '分开付', exact: true }).click()
+  await expect(rows).toHaveCount(2)
+  await expect(rows.nth(0).getByRole('radio', { name: '现金', exact: true })).toHaveAttribute('aria-checked', 'true')
+  await expect(rows.nth(1).getByRole('radio', { name: '现金', exact: true })).toHaveAttribute('aria-checked', 'false')
+  await rows.nth(1).getByRole('button', { name: '删除', exact: true }).click()
+  await expect(pay.getByLabel('金额')).toHaveCount(0)
+
   await pay.getByRole('radio', { name: '微信', exact: true }).click()
   await expect(page.getByTestId('payment-status')).toHaveText('✓ 正好付清')
 
   // 分开付后删到只剩一行：收回一排，按剩下的方式收全额。
   await pay.getByRole('button', { name: '分开付', exact: true }).click()
-  const rows = pay.getByTestId('payment-row')
   await expect(rows).toHaveCount(2)
   await rows.nth(1).getByRole('button', { name: '删除', exact: true }).click()
   await expect(pay.getByLabel('金额')).toHaveCount(0)

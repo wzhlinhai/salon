@@ -548,7 +548,7 @@ defineExpose({ select, clear, refresh, voided })
       <!-- 当前单是一张拿在手里的小票（样稿系统页「小票」）：白纸、上边圆角、底边一排齿孔；齿孔用遮罩挖，阴影就放在外层用 drop-shadow 跟着齿形走。 -->
       <div class="receipt-drop">
         <div class="receipt" data-testid="order-receipt">
-          <header class="flex items-center gap-4 border-b border-dashed border-default pb-5">
+          <header class="flex items-center gap-4 border-b border-dashed border-accented pb-5">
             <span class="grid size-16 shrink-0 place-items-center rounded-full bg-tag-gray font-serif text-figure" aria-hidden="true">{{ initial }}</span>
             <div class="min-w-0 flex-1">
               <h2 class="flex flex-wrap items-center gap-2 text-figure font-semibold">
@@ -565,7 +565,7 @@ defineExpose({ select, clear, refresh, voided })
             <UButton size="sm" color="neutral" variant="outline" class="ms-auto shrink-0" :loading="actionSaving" :disabled="busy" @click="mergeOrders">合并到这张</UButton>
           </div>
 
-          <div class="border-b border-dashed border-default py-3">
+          <div class="border-b border-dashed border-accented py-3">
             <div
               v-for="item in order.items.filter(i => !i.removed_at)"
               :key="item.id"
@@ -607,10 +607,10 @@ defineExpose({ select, clear, refresh, voided })
                 </span>
               </div>
             </div>
-            <UButton v-if="canOrderEdit" size="sm" color="neutral" variant="ghost" class="-ms-2 mt-1 text-muted" @click="addItemBegin">加项目</UButton>
+            <UButton v-if="canOrderEdit" size="sm" color="neutral" variant="ghost" class="-ms-2 mt-1 text-muted hover:text-default" @click="addItemBegin">加项目</UButton>
           </div>
 
-          <div v-if="canGroupbuy && order.groupbuy.length" class="border-b border-dashed border-default py-3" data-testid="order-groupbuy">
+          <div v-if="canGroupbuy && order.groupbuy.length" class="border-b border-dashed border-accented py-3" data-testid="order-groupbuy">
             <p class="mb-1 text-meta text-muted">关联团购券</p>
             <div v-for="coupon in order.groupbuy" :key="coupon.redemption_id" class="flex flex-wrap items-center gap-x-3 gap-y-1 py-1 text-sm">
               <span>{{ coupon.deal_name }}</span>
@@ -651,7 +651,7 @@ defineExpose({ select, clear, refresh, voided })
               <PaymentEditor v-model="payments" v-model:touched="paymentsTouched" counter :expected="expectedCash" :methods="paymentMethods" :reset-key="paymentResetKey" />
               <div class="flex gap-2">
                 <UButton size="lg" color="neutral" variant="outline" class="px-5" :disabled="busy" @click="hold">挂起</UButton>
-                <UButton size="lg" block class="flex-1" data-testid="checkout" :loading="busy" :disabled="previewLoading || actionSaving || orderLoading || busy" @click="checkout">结账 {{ yuanFixed(expectedCash) }}</UButton>
+                <UButton size="lg" block class="flex-1 tabular-nums" data-testid="checkout" :loading="busy" :disabled="previewLoading || actionSaving || orderLoading || busy" @click="checkout">结账 {{ yuanFixed(expectedCash) }}</UButton>
               </div>
             </template>
           </div>
@@ -696,7 +696,7 @@ defineExpose({ select, clear, refresh, voided })
     </template>
     <template #footer>
       <ModalActions @cancel="repriceOpen = false">
-        <UButton :loading="repriceSaving" @click="saveReprice">改成 {{ yuan(repricePrice) }}</UButton>
+        <UButton :loading="repriceSaving" class="tabular-nums" @click="saveReprice">改成 {{ yuan(repricePrice) }}</UButton>
       </ModalActions>
     </template>
   </UModal>

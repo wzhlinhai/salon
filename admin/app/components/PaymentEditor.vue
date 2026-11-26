@@ -69,7 +69,10 @@ function change() {
 function add() {
   touched.value = true
   const left = cents(props.expected) - total.value
-  payments.value = [...payments.value, { method: 'cash', amount: left > 0 ? money(left) : '0.00' }]
+  // 新加的一行先选一种还没用过的方式，免得「分开付」后冒出两行现金。
+  const used = new Set(payments.value.map(p => p.method))
+  const method = methods.value.find(m => !used.has(m.value))?.value ?? 'cash'
+  payments.value = [...payments.value, { method, amount: left > 0 ? money(left) : '0.00' }]
 }
 
 function remove(index: number) {
@@ -105,14 +108,14 @@ function remove(index: number) {
         </UInput>
         <UButton v-if="!counter || payments.length > 1" color="neutral" variant="ghost" icon="i-lucide-x" aria-label="删除" @click="remove(index)" />
       </div>
-      <UButton color="neutral" variant="ghost" class="-ms-2" @click="add">添加收款方式</UButton>
+      <UButton color="neutral" variant="ghost" class="-ms-2 text-muted hover:text-default" @click="add">添加收款方式</UButton>
     </template>
     <!-- 付没付清一句话（样稿 19）：正好付清写绿勾，差多少、多了多少写橙字。 -->
     <!-- 「分开付」跟在付清那句话的行尾：平时一排付款方式就够，一单分两种付时才点开。 -->
     <div class="flex items-center justify-between gap-2">
       <p v-if="total === cents(expected)" class="text-meta text-ink-green" data-testid="payment-status">✓ 正好付清</p>
       <p v-else class="text-meta text-ink-orange tabular-nums" data-testid="payment-status">已录入 {{ yuanFixed(money(total)) }}，{{ total < cents(expected) ? '还差' : '多了' }} {{ yuanFixed(money(Math.abs(cents(expected) - total))) }}</p>
-      <UButton v-if="collapsed && cents(expected) > 0" color="neutral" variant="ghost" size="sm" class="-me-2 shrink-0 text-muted" @click="split">分开付</UButton>
+      <UButton v-if="collapsed && cents(expected) > 0" color="neutral" variant="ghost" size="sm" class="-me-2 shrink-0 text-muted hover:text-default" @click="split">分开付</UButton>
     </div>
   </div>
 </template>

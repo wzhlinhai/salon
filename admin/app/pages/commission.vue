@@ -365,7 +365,7 @@ function changeSource(o: OverrideForm) {
               <CommissionValueEditor v-model="o.value" />
               <UButton variant="ghost" @click="overrides.splice(index, 1)">删除覆盖</UButton>
             </div>
-            <UButton color="neutral" class="-ms-2 self-start" :disabled="!enabledSources.length" variant="ghost" @click="overrides.push({ source: enabledSources[0]!.value, target: 'staff_item', staff_id: '__all__', item_id: '__all__', position_id: '__all__', category_id: '__all__', value: formValue({ percent: '' }) })">添加覆盖</UButton>
+            <UButton color="neutral" class="-ms-2 self-start text-muted hover:text-default" :disabled="!enabledSources.length" variant="ghost" @click="overrides.push({ source: enabledSources[0]!.value, target: 'staff_item', staff_id: '__all__', item_id: '__all__', position_id: '__all__', category_id: '__all__', value: formValue({ percent: '' }) })">添加覆盖</UButton>
           </section>
           <UFormField label="不计提成的员工"><USelect v-model="excludedStaff" multiple :items="staffOptions" class="w-full" /></UFormField>
         </div>

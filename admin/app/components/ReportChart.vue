@@ -74,7 +74,7 @@ function option() {
       axisPointer: { type: 'line' as const, lineStyle: { color: dimmed, width: 1 } },
       // 提示框和菜单、弹出层同一张拿起来的纸（DESIGN.md 菜单）：卡片圆角、shadow-lift，不要 ECharts 自带的 4px 圆角和灰阴影；
       // 不出图表边界，跟手快一点。
-      backgroundColor: '#fff',
+      backgroundColor: cssVar('--color-page'),
       borderWidth: 0,
       padding: [8, 12],
       confine: true,
@@ -90,7 +90,7 @@ function option() {
     },
     xAxis: categoryAxis,
     yAxis: valueAxis,
-    series: props.series.map(s => ({ type: 'line' as const, name: s.name, data: s.values, lineStyle: { width: 2, cap: 'round' as const, join: 'round' as const }, showSymbol: single, symbol: 'circle', symbolSize: 8, itemStyle: { borderColor: '#fff', borderWidth: 2 }, emphasis: { focus: 'none' as const, scale: false } }))
+    series: props.series.map(s => ({ type: 'line' as const, name: s.name, data: s.values, clip: false, lineStyle: { width: 2, cap: 'round' as const, join: 'round' as const }, showSymbol: single, symbol: 'circle', symbolSize: 8, itemStyle: { borderColor: cssVar('--color-page'), borderWidth: 2 }, emphasis: { focus: 'none' as const, scale: false } }))
   }
 }
 
@@ -124,3 +124,10 @@ onBeforeUnmount(() => {
 <template>
   <div ref="el" role="img" :aria-label="label" class="h-64 w-full" data-testid="report-chart" />
 </template>
+
+<style scoped>
+/* 坐标轴数字等宽，一列金额上下对齐。 */
+:deep(svg text) {
+  font-variant-numeric: tabular-nums;
+}
+</style>

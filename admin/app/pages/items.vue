@@ -260,7 +260,7 @@ function itemMeta(item: Item) {
               <UButton :disabled="index === positionRows.length - 1" icon="i-lucide-arrow-down" color="neutral" variant="ghost" aria-label="下移" @click="move(index, 1)" />
               <UButton color="error" variant="ghost" icon="i-lucide-x" aria-label="移除岗位" @click="positionRows.splice(index, 1)" />
             </div>
-            <UButton color="neutral" class="-ms-2 self-start" variant="ghost" @click="positionRows.push({ position_id: positions.find(p => p.active)?.id ?? '', required: false, share_percent: '' })">添加岗位</UButton>
+            <UButton color="neutral" class="-ms-2 self-start text-muted hover:text-default" variant="ghost" @click="positionRows.push({ position_id: positions.find(p => p.active)?.id ?? '', required: false, share_percent: '' })">添加岗位</UButton>
           </FieldGroup>
           <FieldGroup label="级别价">
             <div v-for="(row, index) in levelRows" :key="index" class="flex items-center gap-2" data-testid="level-row">
@@ -268,7 +268,7 @@ function itemMeta(item: Item) {
               <UInput v-model="row.price" :aria-label="`级别价${index + 1}`" inputmode="decimal" class="w-32" />
               <UButton color="error" variant="ghost" icon="i-lucide-x" aria-label="移除级别价" @click="levelRows.splice(index, 1)" />
             </div>
-            <UButton color="neutral" class="-ms-2 self-start" variant="ghost" @click="levelRows.push({ level_id: levels.find(l => l.active)?.id ?? '', price: '0.00' })">添加级别价</UButton>
+            <UButton color="neutral" class="-ms-2 self-start text-muted hover:text-default" variant="ghost" @click="levelRows.push({ level_id: levels.find(l => l.active)?.id ?? '', price: '0.00' })">添加级别价</UButton>
           </FieldGroup>
           <FieldGroup label="会员价">
             <div v-for="(row, index) in memberRows" :key="index" class="flex items-center gap-2" data-testid="member-row">
@@ -276,7 +276,7 @@ function itemMeta(item: Item) {
               <UInput v-model="row.price" :aria-label="`会员价${index + 1}`" inputmode="decimal" class="w-32" />
               <UButton color="error" variant="ghost" icon="i-lucide-x" aria-label="移除会员价" @click="memberRows.splice(index, 1)" />
             </div>
-            <UButton color="neutral" class="-ms-2 self-start" variant="ghost" @click="memberRows.push({ card_type_id: cardTypes.find(t => t.active)?.id ?? '', price: '0.00' })">添加会员价</UButton>
+            <UButton color="neutral" class="-ms-2 self-start text-muted hover:text-default" variant="ghost" @click="memberRows.push({ card_type_id: cardTypes.find(t => t.active)?.id ?? '', price: '0.00' })">添加会员价</UButton>
           </FieldGroup>
           <USwitch v-if="editing" v-model="active" label="启用项目" />
         </div>
