@@ -99,7 +99,8 @@ test('封账到一个月前那天，只有下一天能接着封，老板写原�
   const day = addDays(today, -30)
   const next = addDays(today, -29)
   const later = addDays(today, -28)
-  const sealButton = page.getByRole('button', { name: /封账$/ })
+  // 主按钮写「对完了，封账」或「封账」；不能写成 /封账$/，「去 10-27 撤销封账」的按钮名也以封账结尾。
+  const sealButton = page.getByRole('button', { name: /^(对完了，)?封账$/ })
 
   await login(page, owner.account, owner.password)
   await page.goto(`/closing?date=${day}`)
