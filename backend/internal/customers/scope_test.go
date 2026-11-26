@@ -106,3 +106,51 @@ func TestCreateCustomerRequiresView(t *testing.T) {
 	assertEqual(t, r.Status, 200)
 	assertEqual(t, r.Body["existed"], false)
 }
+
+func TestScopedCreateCustomerAssignsResponsible(t *testing.T) {
+	s := open(t)
+	staffID, token := s.Hire("范围员工", "002", "scope-creator")
+	scoped := s.MustCaller(token)
+	scoped.Permissions = map[ops.Permission]ops.Grant{perm.CustomerEdit: {}, perm.CustomerView: {Scope: ops.ScopeSelf}}
+
+	identified := s.HTTP(t, &scoped, "create_customer", map[string]any{"phone": "13800132222"})
+	assertEqual(t, identified.Status, 200)
+	assertEqual(t, identified.Body["existed"], false)
+	customer := identified.Body["customer"].(map[string]any)
+	assertEqual(t, customer["responsible"].(map[string]any)["id"], staffID.String())
+	got := s.HTTP(t, &scoped, "get_customer", map[string]any{"id": customer["id"]})
+	assertEqual(t, got.Status, 200)
+	assertEqual(t, got.Body["id"], customer["id"])
+
+	unidentified := s.HTTP(t, &scoped, "create_customer", map[string]any{})
+	assertEqual(t, unidentified.Status, 200)
+	assertEqual(t, unidentified.Body["existed"], false)
+	unknown := unidentified.Body["customer"].(map[string]any)
+	assertEqual(t, unknown["responsible"].(map[string]any)["id"], staffID.String())
+	got = s.HTTP(t, &scoped, "get_customer", map[string]any{"id": unknown["id"]})
+	assertEqual(t, got.Status, 200)
+	assertEqual(t, got.Body["id"], unknown["id"])
+
+	entries := s.call("list_audit_log", map[string]any{"target_id": customer["id"]}, 200)["entries"].([]any)
+	created := entries[0].(map[string]any)
+	assertEqual(t, created["action"], "create_customer")
+	assertEqual(t, created["after"].(map[string]any)["responsible"].(map[string]any)["id"], staffID.String())
+
+	store := s.MustCaller(token)
+	store.Permissions = map[ops.Permission]ops.Grant{perm.CustomerEdit: {}, perm.CustomerView: {}}
+	r := s.HTTP(t, &store, "create_customer", map[string]any{"phone": "13900132222"})
+	assertEqual(t, r.Status, 200)
+	assertEqual(t, r.Body["customer"].(map[string]any)["responsible"], nil)
+
+	otherID, _ := s.Hire("其他负责人", "003", "scope-owner")
+	existing := s.create(map[string]any{"phone": "13700132222"})
+	s.call("assign_customer_responsible", map[string]any{"customer_ids": []any{existing["id"]}, "staff_id": otherID}, 200)
+	r = s.HTTP(t, &store, "create_customer", map[string]any{"phone": "13700132222"})
+	assertEqual(t, r.Status, 200)
+	assertEqual(t, r.Body["existed"], true)
+	assertEqual(t, r.Body["customer"].(map[string]any)["responsible"].(map[string]any)["id"], otherID.String())
+	r = s.HTTP(t, &scoped, "create_customer", map[string]any{"phone": "13800132222"})
+	assertEqual(t, r.Status, 200)
+	assertEqual(t, r.Body["existed"], true)
+	assertEqual(t, r.Body["customer"].(map[string]any)["responsible"].(map[string]any)["id"], staffID.String())
+}

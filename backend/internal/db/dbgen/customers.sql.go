@@ -43,22 +43,23 @@ func (q *Queries) AddSafetyLabel(ctx context.Context, arg AddSafetyLabelParams) 
 }
 
 const createCustomer = `-- name: CreateCustomer :one
-INSERT INTO customers (tenant_id, store_id, name, phone, gender, source_id, note, created_by, created_by_customer)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO customers (tenant_id, store_id, name, phone, gender, source_id, note, created_by, created_by_customer, responsible_staff_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 ON CONFLICT (tenant_id, phone) WHERE phone IS NOT NULL AND merged_into IS NULL DO NOTHING
 RETURNING id, tenant_id, store_id, name, phone, gender, source_id, responsible_staff_id, note, merged_into, created_by, created_at, created_by_customer, hair_texture, preferences, dislikes
 `
 
 type CreateCustomerParams struct {
-	TenantID          uuid.UUID
-	StoreID           uuid.UUID
-	Name              *string
-	Phone             *string
-	Gender            *string
-	SourceID          *uuid.UUID
-	Note              *string
-	CreatedBy         *uuid.UUID
-	CreatedByCustomer *uuid.UUID
+	TenantID           uuid.UUID
+	StoreID            uuid.UUID
+	Name               *string
+	Phone              *string
+	Gender             *string
+	SourceID           *uuid.UUID
+	Note               *string
+	CreatedBy          *uuid.UUID
+	CreatedByCustomer  *uuid.UUID
+	ResponsibleStaffID *uuid.UUID
 }
 
 func (q *Queries) CreateCustomer(ctx context.Context, arg CreateCustomerParams) (Customer, error) {
@@ -72,6 +73,7 @@ func (q *Queries) CreateCustomer(ctx context.Context, arg CreateCustomerParams) 
 		arg.Note,
 		arg.CreatedBy,
 		arg.CreatedByCustomer,
+		arg.ResponsibleStaffID,
 	)
 	var i Customer
 	err := row.Scan(
