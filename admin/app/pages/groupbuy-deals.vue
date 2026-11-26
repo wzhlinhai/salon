@@ -15,6 +15,9 @@ const loading = ref(false)
 const loadGuard = useRequestGuard()
 const itemItems = computed(() => items.value.filter(i => i.active).map(i => ({ label: `${i.name}（${i.price}）`, value: i.id })))
 
+// 一次都没读到过时原地给「重试」，别写成「还没有…」让人以为要重新建；已经有数据（刷新失败）时弹提示就够。
+const loadError = ref('')
+
 async function load() {
   const current = loadGuard.next()
   loading.value = true
@@ -25,9 +28,12 @@ async function load() {
     ])
     if (!current()) return
     if (!d.data || !i.data) {
-      toast.add({ title: errorText(d.error ?? i.error), color: 'error' })
+      const text = errorText(d.error ?? i.error)
+      if (deals.value.length) toast.add({ title: text, color: 'error' })
+      else loadError.value = text
       return
     }
+    loadError.value = ''
     deals.value = d.data.items
     items.value = i.data.items
   } finally {
@@ -83,6 +89,7 @@ async function save() {
     <p class="text-sm text-muted">平台购买价用于和平台月结账对账；门店标价取所对应项目的标准价。平台创建后不能修改。</p>
     <div class="overflow-x-auto">
       <ListSkeleton v-if="loading && !deals.length" :rows="3" />
+      <LoadError v-else-if="loadError && !deals.length" title="团购商品没有读出来" :hint="loadError" @retry="load()" />
       <EmptyState v-else-if="!deals.length" art="receipt" title="还没有团购商品" hint="把美团、抖音上卖的团购商品录进来，核销和月底对账才对得上" />
       <div
         v-for="deal in deals"

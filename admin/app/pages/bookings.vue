@@ -31,7 +31,7 @@ const statusLabels: Record<Appointment['status'], string> = {
 const statusTag: Record<Appointment['status'], string> = {
   pending: 'bg-tag-yellow',
   confirmed: 'bg-tag-gray',
-  completed: 'bg-tag-green',
+  completed: 'bg-tag-gray',
   cancelled: 'bg-tag-gray',
   no_show: 'bg-tag-red'
 }
@@ -202,6 +202,10 @@ function entryItems(entry: Appointment) {
   return entry.items.map(item => item.name).join(' + ')
 }
 
+// 读失败原地给「重试」（DESIGN「读取出错」）：不然网格不出、或者留着前一天的预约，前台会当成这天空着又约一位。
+const optionsError = ref('')
+const dayError = ref('')
+
 async function loadOptions() {
   const current = initGuard.next()
   const [settingsResult, staffResult, itemsResult] = await Promise.all([
@@ -211,9 +215,10 @@ async function loadOptions() {
   ])
   if (!current()) return
   if (!settingsResult.data || !staffResult.data || !itemsResult.data) {
-    toast.add({ title: errorText(settingsResult.error ?? staffResult.error ?? itemsResult.error), color: 'error' })
+    optionsError.value = errorText(settingsResult.error ?? staffResult.error ?? itemsResult.error)
     return
   }
+  optionsError.value = ''
   businessDate.value = settingsResult.data.business_date
   staff.value = staffResult.data.staff
   items.value = itemsResult.data.items
@@ -251,9 +256,10 @@ async function loadDay() {
     ])
     if (!current()) return
     if (!appointmentResult.data || !settingsResult.data) {
-      toast.add({ title: errorText(appointmentResult.error ?? settingsResult.error), color: 'error' })
+      dayError.value = errorText(appointmentResult.error ?? settingsResult.error)
       return
     }
+    dayError.value = ''
     entries.value = appointmentResult.data.entries
     const hoursSetting = settingsResult.data.settings.find(setting => setting.key === 'business_hours')
     if (hoursSetting?.value) hours.value = hoursSetting.value as { open: string, close: string }
@@ -749,8 +755,8 @@ function actorLabel(actor: Actor) {
       </div>
       <h2 class="figure" data-testid="booking-day-title">{{ dayTitle }}</h2>
       <p class="flex items-center gap-2 text-meta text-muted tabular-nums" data-testid="booking-day-summary">
-        {{ dayBooked ? `约了 ${dayBooked} 位` : '还没有人约' }}
-        <span v-if="dayLate" class="tag bg-tag-yellow">{{ dayLate }} 位没到</span>
+        <template v-if="!dayError">{{ dayBooked ? `约了 ${dayBooked} 位` : '还没有人约' }}</template>
+        <span v-if="dayLate && !dayError" class="tag bg-tag-yellow">{{ dayLate }} 位没到</span>
       </p>
       <span v-if="day && day === businessDate" class="tag bg-tag-gray">今天</span>
       <UButton v-else color="neutral" variant="outline" size="sm" @click="goToday">今天</UButton>
@@ -759,7 +765,9 @@ function actorLabel(actor: Actor) {
       <p v-if="loading" class="text-sm text-muted" aria-live="polite">加载中</p>
     </div>
 
-    <div v-if="businessDate" ref="grid" class="box h-[calc(100dvh-15.5rem)] min-h-96 scroll-ps-14 scroll-pt-11 overflow-auto p-0" data-booking-grid>
+    <LoadError v-if="optionsError" title="预约页没有读出来" :hint="optionsError" @retry="loadOptions()" />
+    <LoadError v-else-if="dayError" title="这天的预约没有读出来" :hint="dayError" @retry="loadDay()" />
+    <div v-else-if="businessDate" ref="grid" class="box h-[calc(100dvh-15.5rem)] min-h-96 scroll-ps-14 scroll-pt-11 overflow-auto p-0" data-booking-grid>
       <div v-if="dayEmpty" class="pointer-events-none sticky top-16 left-0 z-40 flex h-0 justify-center">
         <p class="h-fit rounded-md bg-white px-3 py-2 text-meta text-muted shadow-paper" data-testid="booking-day-empty">这天还没有预约。点空白时段，或右上角「新建预约」</p>
       </div>

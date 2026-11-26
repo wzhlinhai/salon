@@ -651,3 +651,30 @@ test('顾客自助预约显示顾客创建人并可确认', async ({ page }) => 
   await dialog.getByRole('button', { name: '确认', exact: true }).click()
   await expect(dialog.locator('[data-appointment-detail]')).toHaveAttribute('data-detail-status', 'confirmed')
 })
+
+test('换一天读失败时原地给重试，不留着前一天的预约', async ({ page }) => {
+  const token = await apiLogin(owner.account, owner.password)
+  const today = await settings(token)
+  const tomorrow = addDays(today.businessDate, 1)
+  await login(page, owner.account, owner.password)
+  await page.goto('/bookings')
+  await expect(page.locator('[data-booking-grid]')).toBeVisible()
+  let fail = true
+  await page.route('**/api/ops/list_appointments', async (route) => {
+    const body = route.request().postDataJSON() as { from?: string }
+    if (fail && body.from === tomorrow) {
+      fail = false
+      await route.abort()
+      return
+    }
+    await route.continue()
+  })
+  await page.getByLabel('营业日').fill(tomorrow)
+  const error = page.getByTestId('load-error')
+  await expect(error).toContainText('这天的预约没有读出来')
+  await expect(page.locator('[data-booking-grid]')).toHaveCount(0)
+  await expect(page.getByTestId('booking-day-summary')).not.toContainText('还没有人约')
+  await error.getByRole('button', { name: '重试', exact: true }).click()
+  await expect(page.locator('[data-booking-grid]')).toBeVisible()
+  await expect(error).toHaveCount(0)
+})

@@ -29,14 +29,18 @@ const greeting = computed(() => {
   return '晚上好'
 })
 
+// 读不到营业日时「接下来」整块出不来：原地给「重试」，别只弹一条提示留一片空白。
+const settingsError = ref('')
+
 async function loadSettings() {
   const current = settingsGuard.next()
   const { data, error } = await api.POST('/api/ops/get_settings', { body: {} })
   if (!current()) return
   if (!data) {
-    toast.add({ title: errorText(error), color: 'error' })
+    settingsError.value = errorText(error)
     return
   }
+  settingsError.value = ''
   businessDate.value = data.business_date
 }
 
@@ -57,10 +61,12 @@ async function loadAttendance() {
   rememberClockIn(day?.clock_in ?? null)
 }
 
-onMounted(async () => {
+async function retrySettings() {
   await loadSettings()
   await loadAttendance()
-})
+}
+
+onMounted(retrySettings)
 </script>
 
 <template>
@@ -81,6 +87,7 @@ onMounted(async () => {
             <span data-testid="home-punch-time" class="tag bg-tag-gray tabular-nums">已打卡 {{ clockTime(todayClockIn) }}</span>
           </p>
         </template>
+        <LoadError v-if="settingsError" title="今天的安排没有读出来" :hint="settingsError" @retry="retrySettings()" />
         <HomeNext
           v-if="businessDate && can('booking.manage')"
           :date="businessDate"

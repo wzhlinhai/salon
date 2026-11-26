@@ -55,8 +55,13 @@ const backfillMaxDays = computed(() => {
 const staffItems = computed(() => staffOptions.value.map(s => ({ label: s.name, value: s.id })))
 const activeItems = computed(() => items.value.filter(i => i.active))
 
+// 读失败原地给「重试」：不然页面空着，在做列表写「还没有在做的单」，前台以为没人在做。
+const initError = ref('')
+const ordersError = ref('')
+
 async function init() {
   const current = initGuard.next()
+  initError.value = ''
   const [s, i, st] = await Promise.all([
     api.POST('/api/ops/get_settings', { body: {} }),
     api.POST('/api/ops/list_items', { body: {} }),
@@ -64,9 +69,10 @@ async function init() {
   ])
   if (!current()) return
   if (!s.data || !i.data || !st.data) {
-    toast.add({ title: errorText(s.error ?? i.error ?? st.error), color: 'error' })
+    initError.value = errorText(s.error ?? i.error ?? st.error)
     return
   }
+  initError.value = ''
   businessDate.value = s.data.business_date
   settings.value = s.data.settings
   items.value = i.data.items
@@ -157,9 +163,11 @@ async function loadOrders() {
     const { data, error } = await api.POST('/api/ops/list_open_orders', { body: {} })
     if (!current()) return
     if (!data) {
-      toast.add({ title: errorText(error), color: 'error' })
+      if (openOrders.value.length) toast.add({ title: errorText(error), color: 'error' })
+      else ordersError.value = errorText(error)
       return
     }
+    ordersError.value = ''
     openOrders.value = data.items
     await resolveNames(data.items)
     if (!current()) return
@@ -333,6 +341,8 @@ onMounted(init)
       <UButton size="sm" :color="selectedOrderID ? 'neutral' : 'primary'" :variant="selectedOrderID ? 'outline' : 'solid'" @click="openOrderBegin(pickedCustomer)">开单</UButton>
     </PageActions>
 
+    <LoadError v-if="initError" title="收银台没有读出来" :hint="initError" @retry="init()" />
+
     <section v-if="canCustomer || canGroupbuy" class="space-y-3">
       <form class="flex flex-wrap items-center gap-2" @submit.prevent="submitScan">
         <UInput
@@ -391,7 +401,8 @@ onMounted(init)
         <h2 class="sec">在做<span class="ms-1 font-normal text-dimmed">{{ openOrders.length }}</span></h2>
         <div class="space-y-1" data-testid="open-orders">
           <ListSkeleton v-if="ordersLoading && !openOrders.length" :rows="3" />
-          <p v-else-if="!openOrders.length" class="py-2 text-sm text-muted">还没有在做的单。顾客到店开单后列在这里，做完再结账。</p>
+          <LoadError v-else-if="ordersError && !openOrders.length" title="在做的单没有读出来" :hint="ordersError" @retry="loadOrders()" />
+          <p v-else-if="!openOrders.length && !initError" class="py-2 text-sm text-muted">还没有在做的单。顾客到店开单后列在这里，做完再结账。</p>
           <!-- 一行一位：头像字点开顾客小卡片（样稿 26），其余整行点了选这张单；两个按钮并排，不嵌套。 -->
           <div
             v-for="order in openOrders"

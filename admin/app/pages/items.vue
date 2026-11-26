@@ -17,6 +17,9 @@ const categories = ref<ItemCategory[]>([])
 const loading = ref(false)
 const loadGuard = useRequestGuard()
 
+// 一次都没读到过时原地给「重试」，别写成「还没有…」让人以为要重新建；已经有数据（刷新失败）时弹提示就够。
+const loadError = ref('')
+
 async function load() {
   const current = loadGuard.next()
   loading.value = true
@@ -30,9 +33,12 @@ async function load() {
     ])
     if (!current()) return
     if (!i.data || !l.data || !p.data || !t.data || !c.data) {
-      toast.add({ title: errorText(i.error ?? l.error ?? p.error ?? t.error ?? c.error), color: 'error' })
+      const text = errorText(i.error ?? l.error ?? p.error ?? t.error ?? c.error)
+      if (items.value.length) toast.add({ title: text, color: 'error' })
+      else loadError.value = text
       return
     }
+    loadError.value = ''
     items.value = i.data.items
     levels.value = l.data.items
     positions.value = p.data.items
@@ -192,6 +198,7 @@ function itemMeta(item: Item) {
       <UInput v-model="search" icon="i-lucide-search" variant="ghost" :placeholder="search ? '' : '项目名'" aria-label="搜索项目" class="ms-auto w-40" />
     </div>
     <ListSkeleton v-if="loading && !items.length" />
+    <LoadError v-else-if="loadError && !items.length" title="项目没有读出来" :hint="loadError" @retry="load()" />
     <EmptyState v-else-if="!items.length" art="scissors" title="还没有项目" hint="点右上角新建项目，填上价格和服务时长，开单和预约就能选它" />
     <EmptyState v-else-if="!groups.length && search.trim()" title="没有找到这个项目" hint="换个名字试试" />
     <section v-for="group in groups" :key="group.key" :data-category="group.name">

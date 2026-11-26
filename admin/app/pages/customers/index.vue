@@ -75,6 +75,9 @@ const emptyTexts: Record<SegmentKey, { title: string, hint: string }> = {
   sleeping: { title: '没有沉睡顾客', hint: '超过 90 天没来的顾客会出现在这里' }
 }
 
+// 读失败原地给「重试」，别写成「还没有顾客」让人以为名册空了。
+const loadError = ref('')
+
 async function load() {
   const current = searchGuard.next()
   loading.value = true
@@ -98,13 +101,14 @@ async function load() {
         void load()
         return
       }
+      loadError.value = ''
       items.value = res.data.items
       total.value = res.data.total
       selected.value = []
     } else {
       items.value = []
       total.value = 0
-      toast.add({ title: errorText(res.error), color: 'error' })
+      loadError.value = errorText(res.error)
     }
   } finally {
     if (current()) loading.value = false
@@ -426,7 +430,8 @@ async function handover() {
           </div>
         </div>
       </section>
-      <template v-if="!items.length && !loading">
+      <LoadError v-if="loadError && !loading" title="顾客名册没有读出来" :hint="loadError" @retry="load()" />
+      <template v-else-if="!items.length && !loading">
         <EmptyState v-if="query || responsible !== NONE" title="没有找到顾客" hint="换个手机号或姓名试试">
           <UButton color="neutral" variant="outline" @click="clearFilters">清除筛选</UButton>
         </EmptyState>
