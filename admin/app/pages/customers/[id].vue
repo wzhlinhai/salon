@@ -53,6 +53,10 @@ const sourceItems = computed(() => [
 const detailGuard = useRequestGuard()
 
 // withHistory=false：只改了顾客资料（记住的事、负责人），做过的头发不用重取，免得「上次」闪一下、「更早」退回第一页。
+// 做过的头发等读到顾客再取：已合并的顾客，记录都转到了保留的那位，后端按不存在回 404。
+// 清了记录就欠一次重取：被后一次 load(false) 顶掉或断网，由当前这次在 finally 里还上，不会一直停在「正在读取」。
+let historyOwed = false
+
 async function load(withHistory = true) {
   const id = props.id
   const request = detailGuard.next()
@@ -60,15 +64,28 @@ async function load(withHistory = true) {
   if (can('audit_log.view')) logs.reload()
   else logs.clear()
   loadOverview()
-  if (withHistory) history.reload()
-  const res = await api.POST('/api/ops/get_customer', { body: { id } })
-  if (id !== props.id || !request()) return
-  if (res.data) {
-    customer.value = res.data
-    crumbTitle.value = customerName(res.data)
-  } else {
-    loadError.value = errorText(res.error)
-    toast.add({ title: loadError.value, color: 'error' })
+  if (withHistory) {
+    history.clear()
+    historyOwed = true
+  }
+  let found: Customer | undefined
+  try {
+    const res = await api.POST('/api/ops/get_customer', { body: { id } })
+    if (id !== props.id || !request()) return
+    found = res.data
+    if (res.data) {
+      customer.value = res.data
+      crumbTitle.value = customerName(res.data)
+    } else {
+      loadError.value = errorText(res.error)
+      toast.add({ title: loadError.value, color: 'error' })
+    }
+  } finally {
+    if (historyOwed && id === props.id && request()) {
+      historyOwed = false
+      if (found && !found.merged_into) history.reload()
+      else history.loading.value = false
+    }
   }
 }
 
@@ -210,6 +227,12 @@ const history = (() => {
     items,
     loading,
     hasMore,
+    clear: () => {
+      guard.invalidate()
+      items.value = []
+      hasMore.value = false
+      loading.value = true
+    },
     reload: () => {
       items.value = []
       hasMore.value = false
@@ -589,45 +612,50 @@ onBeforeUnmount(() => {
 
         <div class="mt-8 grid gap-10 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <div class="min-w-0 space-y-8">
-            <section data-testid="customer-last">
-              <h2 class="sec mt-0!">上次</h2>
-              <p v-if="history.loading.value && !visits.length" class="text-sm text-muted">正在读取做过的头发…</p>
-              <div v-else-if="!lastVisit" class="box text-sm text-muted">还没在店里做过头发</div>
-              <div v-else class="box space-y-3">
-                <p class="text-meta text-muted tabular-nums">{{ shortDate(lastVisit.date) }} · {{ weekday(lastVisit.date) }}<template v-if="lastVisit.staff"> · {{ lastVisit.staff }}</template></p>
-                <p class="figure">{{ lastVisit.items.map(item => item.item.name).join(' · ') }}</p>
-                <template v-for="item in lastVisit.items" :key="item.order_item_id">
-                  <div v-if="item.record?.formula" class="rounded-card bg-tag-gray px-3 py-2 text-sm">
-                    <p class="text-meta text-muted">{{ item.item.name }} · 配方</p>
-                    <p class="whitespace-pre-wrap tabular-nums">{{ item.record.formula }}</p>
-                  </div>
-                  <p v-if="item.record?.result" class="text-sm"><span class="me-2 text-meta text-muted">做成</span>{{ item.record.result }}</p>
-                  <p v-if="item.record?.feedback" class="text-sm"><span class="me-2 text-meta text-muted">顾客觉得</span>{{ feedbackNames[item.record.feedback] }}</p>
-                </template>
-                <div v-if="can('order.create') && !customer.merged_into" class="flex justify-end">
-                  <UButton :to="againLink" icon="i-lucide-repeat">照这个开单</UButton>
-                </div>
-              </div>
-            </section>
-            <section v-if="visits.length > 1" data-testid="customer-earlier">
-              <h2 class="sec">更早</h2>
-              <div class="divide-y divide-default">
-                <div v-for="visit in visits.slice(1)" :key="visit.orderID" data-testid="customer-visit" class="grid grid-cols-[5rem_minmax(0,1fr)] gap-3 py-2 text-sm">
-                  <span class="text-meta text-muted tabular-nums">{{ shortDate(visit.date) }}</span>
-                  <div class="min-w-0">
-                    <p>{{ visit.items.map(item => item.item.name).join(' · ') }}<span v-if="visit.staff" class="text-muted"> · {{ visit.staff }}</span></p>
-                    <p v-for="item in visit.items.filter(i => i.record?.formula)" :key="item.order_item_id" class="truncate text-meta text-muted" :title="item.record!.formula!">配方 {{ item.record!.formula }}</p>
+            <template v-if="!customer.merged_into">
+              <section data-testid="customer-last">
+                <h2 class="sec mt-0!">上次</h2>
+                <p v-if="history.loading.value && !visits.length" class="text-sm text-muted">正在读取做过的头发…</p>
+                <div v-else-if="!lastVisit" class="box text-sm text-muted">还没在店里做过头发</div>
+                <div v-else class="box space-y-3">
+                  <p class="text-meta text-muted tabular-nums">{{ shortDate(lastVisit.date) }} · {{ weekday(lastVisit.date) }}<template v-if="lastVisit.staff"> · {{ lastVisit.staff }}</template></p>
+                  <p class="figure">{{ lastVisit.items.map(item => item.item.name).join(' · ') }}</p>
+                  <template v-for="item in lastVisit.items" :key="item.order_item_id">
+                    <div v-if="item.record?.formula" class="rounded-card bg-tag-gray px-3 py-2 text-sm">
+                      <p class="text-meta text-muted">{{ item.item.name }} · 配方</p>
+                      <p class="whitespace-pre-wrap tabular-nums">{{ item.record.formula }}</p>
+                    </div>
+                    <p v-if="item.record?.result" class="text-sm"><span class="me-2 text-meta text-muted">做成</span>{{ item.record.result }}</p>
+                    <p v-if="item.record?.feedback" class="text-sm"><span class="me-2 text-meta text-muted">顾客觉得</span>{{ feedbackNames[item.record.feedback] }}</p>
+                  </template>
+                  <div v-if="can('order.create')" class="flex justify-end">
+                    <UButton :to="againLink" icon="i-lucide-repeat">照这个开单</UButton>
                   </div>
                 </div>
-              </div>
-              <UButton v-if="history.hasMore.value" :loading="history.loading.value" size="sm" color="neutral" variant="ghost" class="mt-2" @click="history.loadMore">加载更多</UButton>
-            </section>
+              </section>
+              <section v-if="visits.length > 1" data-testid="customer-earlier">
+                <h2 class="sec">更早</h2>
+                <div class="divide-y divide-default">
+                  <div v-for="visit in visits.slice(1)" :key="visit.orderID" data-testid="customer-visit" class="grid grid-cols-[5rem_minmax(0,1fr)] gap-3 py-2 text-sm">
+                    <span class="text-meta text-muted tabular-nums">{{ shortDate(visit.date) }}</span>
+                    <div class="min-w-0">
+                      <p>{{ visit.items.map(item => item.item.name).join(' · ') }}<span v-if="visit.staff" class="text-muted"> · {{ visit.staff }}</span></p>
+                      <p v-for="item in visit.items.filter(i => i.record?.formula)" :key="item.order_item_id" class="truncate text-meta text-muted" :title="item.record!.formula!">配方 {{ item.record!.formula }}</p>
+                    </div>
+                  </div>
+                </div>
+                <UButton v-if="history.hasMore.value" :loading="history.loading.value" size="sm" color="neutral" variant="ghost" class="mt-2" @click="history.loadMore">加载更多</UButton>
+              </section>
+            </template>
           </div>
 
           <aside class="space-y-8" data-testid="customer-rail">
-            <CustomerCards :id="customer.id" :merged="!!customer.merged_into" @changed="loadOverview" />
-            <CustomerDebts v-if="!customer.merged_into" :id="customer.id" ref="debts" :today="today" />
-            <CustomerRedPackets :id="customer.id" ref="redPackets" :merged="!!customer.merged_into" />
+            <!-- 已合并的顾客，卡、欠款、红包都随合并转到保留的那位，后端对这里按不存在处理：不挂载，免得读一次弹一次错。 -->
+            <template v-if="!customer.merged_into">
+              <CustomerCards :id="customer.id" @changed="loadOverview" />
+              <CustomerDebts :id="customer.id" ref="debts" :today="today" />
+              <CustomerRedPackets :id="customer.id" ref="redPackets" />
+            </template>
             <section data-testid="customer-memory">
               <h2 class="flex h-7 items-center text-meta text-muted">记住的事</h2>
               <div class="divide-y divide-default text-sm">

@@ -538,6 +538,46 @@ test('加项目可以打字搜', async ({ page }) => {
   await expect(page.getByRole('option')).toHaveCount(2)
 })
 
+test('去掉还没回来就切到别的单，回来后不动新单的试算和收款方式', async ({ page }) => {
+  const { item, order } = await twoItemOrder()
+  const other = await seed()
+  const next = await api<{ id: string }>(other.token, 'open_order', {
+    customer_id: other.customer.id, gender: 'female', designated: false,
+    items: [{ item_id: other.item.id, staff: [{ slot: 1, staff_id: other.staff.id }] }]
+  })
+  await login(page, owner.account, owner.password)
+  await page.goto('/cashier')
+  await page.locator(`[data-order-id="${order.id}"]`).click()
+  await expect(page.getByTestId('cash-expected')).toHaveText('176.00')
+  let release!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/api/ops/remove_order_item', async (route) => {
+    await blocked
+    await route.continue()
+  })
+  const removing = page.waitForResponse(r => r.url().endsWith('/api/ops/remove_order_item'))
+  await page.locator(`[data-order-item="${item.name}"]`).getByRole('button', { name: '去掉' }).click()
+
+  await page.locator(`[data-order-id="${next.id}"]`).click()
+  await expect(page.getByTestId('cash-expected')).toHaveText('88.00')
+  const pay = page.getByTestId('sale-payments')
+  await pay.getByRole('radio', { name: '微信', exact: true }).click()
+  let previews = 0
+  page.on('request', (r) => {
+    if (r.url().endsWith('/api/ops/preview_checkout')) previews++
+  })
+  const listed = page.waitForResponse(r => r.url().endsWith('/api/ops/list_open_orders'))
+  release()
+  await removing
+  await listed
+  await expect(page.locator(`[data-order-id="${order.id}"]`)).toContainText('¥88')
+  await expect(pay.getByRole('radio', { name: '微信', exact: true })).toHaveAttribute('aria-checked', 'true')
+  await expect(page.getByTestId('cash-expected')).toHaveText('88.00')
+  expect(previews).toBe(0)
+})
+
 test('项目写成功后先清空旧试算', async ({ page }) => {
   const { item, order } = await twoItemOrder()
   await login(page, owner.account, owner.password)

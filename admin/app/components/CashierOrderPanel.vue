@@ -159,7 +159,12 @@ async function voided(target: Order) {
 }
 
 // —— 编辑项目 ——
-async function afterEdit() {
+// 写操作回来时可能已经换了单：只让列表刷新，不清新单的试算和已填的收款（CODING_STANDARDS「返回后确认还是当前对象」）。
+async function afterEdit(targetID: string) {
+  if (orderId.value !== targetID) {
+    emit('changed')
+    return
+  }
   invalidatePreview()
   await refresh()
   emit('changed')
@@ -197,7 +202,7 @@ async function saveAddItem() {
       return
     }
     addItemOpen.value = false
-    await afterEdit()
+    await afterEdit(target.id)
   })
 }
 
@@ -219,7 +224,7 @@ async function removeItem(item: OrderItem) {
       color: 'neutral',
       actions: [{ label: '撤销', color: 'neutral', variant: 'link', onClick: () => void undoRemove(target.id, item) }]
     })
-    await afterEdit()
+    await afterEdit(target.id)
   } finally {
     if (current()) actionSaving.value = false
   }
@@ -249,8 +254,7 @@ async function undoRemove(orderID: string, item: OrderItem) {
         toast.add({ title: `${item.item_name}加回来了，按原价算，改过的价没改回${why}`, color: 'error' })
       }
     }
-    if (orderId.value === orderID) await afterEdit()
-    else emit('changed')
+    await afterEdit(orderID)
   } finally {
     if (current()) actionSaving.value = false
   }
@@ -277,11 +281,7 @@ async function mergeOrders() {
       return
     }
     toast.add({ title: `已合并 ${merged.length} 张挂单`, color: 'success' })
-    if (orderId.value !== target.id) {
-      emit('changed')
-      return
-    }
-    await afterEdit()
+    await afterEdit(target.id)
   } finally {
     if (current()) actionSaving.value = false
   }
@@ -304,6 +304,8 @@ async function changeStaff(item: OrderItem, slot: number, staffID: string) {
       toast.add({ title: errorText(error), color: 'error' })
       return
     }
+    // 已换单就不动新单；挂单列表不显示做的人，也不用通知刷新。
+    if (orderId.value !== target.id) return
     invalidatePreview()
     await refresh()
     focusScan()
@@ -354,12 +356,13 @@ async function saveReprice() {
       return
     }
     repriceOpen.value = false
-    await afterEdit()
+    await afterEdit(target.id)
   })
 }
 
 async function unlinkCoupon(redemptionID: string) {
-  if (!canGroupbuy.value) return
+  const target = order.value
+  if (!target || !canGroupbuy.value) return
   const current = actionGuard.next()
   actionSaving.value = true
   try {
@@ -370,10 +373,8 @@ async function unlinkCoupon(redemptionID: string) {
       return
     }
     toast.add({ title: '已解除关联', color: 'success' })
-    await refresh()
-    emit('changed')
     emit('coupons-changed')
-    focusScan()
+    await afterEdit(target.id)
   } finally {
     if (current()) actionSaving.value = false
   }

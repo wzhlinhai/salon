@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-const props = defineProps<{ id: string, merged: boolean }>()
+const props = defineProps<{ id: string }>()
 const api = useApi()
 const toast = useToast()
 const { can } = useMe()

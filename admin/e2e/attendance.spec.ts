@@ -249,6 +249,16 @@ test('本人打卡不能作废', async ({ page }) => {
   await expect(punch.getByRole('button', { name: '作废', exact: true })).toHaveCount(0)
 })
 
+test('月度考勤的员工名可以用键盘打开明细', async ({ page }) => {
+  const staff = await hire('发型师')
+  await login(page, owner.account, owner.password)
+  await page.goto('/attendance')
+  const name = tableRow(page, 'attendance-table', staff.name).getByRole('button', { name: staff.name, exact: true })
+  await name.focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByTestId('attendance-detail')).toBeVisible()
+})
+
 test('发型师没有考勤权限', async ({ page }) => {
   const stylist = await hire('发型师')
   await login(page, stylist.account, stylist.password)

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-const props = defineProps<{ id: string, merged: boolean }>()
+const props = defineProps<{ id: string }>()
 // 卡变了（开卡、充值、调整、升级、转余额、退卡）：详情顶部的卡余额小卡取自列表行，要让列表重读
 const emit = defineEmits<{ changed: [] }>()
 const api = useApi()
@@ -369,7 +369,7 @@ async function refreshCards() {
 
 // 卡的操作（DESIGN.md 行内操作）：充值常显，其余收进 ··· 菜单，分成改卡、看记录、退卡三组。
 function canRecharge(card: CustomerCard) {
-  return card.status === 'active' && card.kind !== 'count' && can('card.sell') && !props.merged
+  return card.status === 'active' && card.kind !== 'count' && can('card.sell')
 }
 
 function cardMenu(card: CustomerCard) {
@@ -398,7 +398,7 @@ onMounted(cardLoad)
   <section data-testid="customer-cards">
     <div class="flex h-7 items-center gap-2">
       <h2 class="text-meta text-muted">卡</h2>
-      <UButton v-if="can('card.sell') && !props.merged" size="sm" color="neutral" variant="ghost" class="ms-auto -me-2" @click="cardEdit(null)">开卡</UButton>
+      <UButton v-if="can('card.sell')" size="sm" color="neutral" variant="ghost" class="ms-auto -me-2" @click="cardEdit(null)">开卡</UButton>
     </div>
     <p v-if="cardLoading && !cardCards.length" class="text-sm text-muted">正在读取卡…</p>
     <p v-else-if="!cardCards.length" class="text-sm text-dimmed">暂无卡</p>
