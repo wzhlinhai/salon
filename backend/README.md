@@ -45,6 +45,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
   `TestEveryTableIsTenantIsolated` 会检查这几条，组合外键由 `TestBusinessForeignKeysIncludeTenant` 检查。
 - 行级安全只按租户隔离。同一租户内门店之间的隔离由业务接口的权限检查负责。
+- 有两类访问在进入门店的 `db.InTenant` 事务之前发生：登录时还不知道租户，`auth_find_login` 和 `customer_login_store` 是只返回登录字段的 SECURITY DEFINER 函数；工资自动锁月的后台循环则用服务连接（数据库属主角色，不 `SET ROLE salon_app`）只读 `stores` 的 `(tenant_id, id)`，用来选择租户和门店。拿到租户、门店 ID 后，工资、提成和锁定记录仍全部在各自门店的 `db.InTenant` 事务里读写。
 
 ## 业务操作（ADR-0001、ADR-0004）
 
@@ -116,6 +117,7 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 - 设置值支持 time（时刻）、time_range（时段）、choice（Options 中的字符串）、integer（Min/Max 内的非负整数）和 text（单行文字，可为空，最多 Max 个字符）。`member_price_rule` 默认会员价优先，也可取较低价；`points_per_recharge_yuan` 为每积一分所需充值本金元数，默认 0（不积分），范围 0–100000。开卡、充值和升级补差价按当日规则积分，赠送金、转余额和调整余额不积分。`guest_count_split` 默认将客次记给第一个岗位的员工，也可选择单上员工均分，当天可生效。`performance_split` 默认按岗位比例分多人业绩，也可选择均分，项目没设岗位比例时均分；还可选择“每人各记全额”，一个项目几个人做时每个岗位上的员工都记全额，全店业绩合计会大于实收；`commission_split` 默认“跟业绩分法一样”，也可选择均分或按岗位比例，只在 `performance_split` 为“每人各记全额”时起作用，其他分法下提成总跟业绩一样，项目没设岗位比例时按均分；结账时随业绩一起按快照留存，之后改设置不影响已结账的单。`performance_ratio_*` 为九种支付方式各自的 0–100 业绩比例，本金、现金、银联、微信、支付宝、团购和挂账默认 100%，赠送金和红包默认 0%；购买次数、赠送次数的耗卡业绩比例默认分别为 100%、0%，均可当天生效。退卡赠送金 `card_refund_bonus` 默认不退、作废，可选择扣回未被撤单退回的消费赠送金；`card_refund_fee_percent` 为 0–100 的退款手续费百分比，默认 0，当天可生效。撤单授权窗口 `void_window_minutes` 为 0（默认关闭）或 1–60 分钟，当天可生效。
 - 项目类别是门店数据，不是设置项：门店自行维护类别名称、0–100 的类别比例和启用状态，名称在门店内唯一。项目可以归一个类别，也可以不归类；停用的类别不能再新设到项目上，已经设了的项目保留。加项目行时把项目当时的类别和该类别比例复制到项目行，之后改项目的类别或类别的比例都不影响已经加的行。
+- 工资自动锁定日 `payroll_auto_lock_day` 为每月几号自动锁定上个月的工资，1–28，默认 15，当天可生效。
 - 考勤宽限分钟 `attendance_grace_minutes` 默认 0，范围 0–60，当天可生效，仅决定迟到、早退是否计异常。
 断网补录：可补录天数 `backfill_max_days` 默认 3，范围 0–31，0 为只能补录当天；按今天执行的设置检查纸单日期。小票设置 `receipt_paper_width` 为 58mm 或 80mm（默认 80mm），`receipt_header`/`receipt_footer` 为最多 60 字的单行文字（抬头留空表示打印门店名称，页尾默认“谢谢惠顾”），`receipt_show_customer_name`、`receipt_show_staff`、`receipt_show_payments`、`receipt_show_card_balance` 为显示/不显示（默认都显示），均可当天生效。
 - 轮牌设置：`rotation_order_rule` 新一天队列的初始顺序（先到先排、接昨天顺序、每晚按成员默认顺序重置，默认先到先排）；`rotation_designated_takes_turn` 点客结账后是否占轮排到队尾（默认占轮）；`rotation_skip_when_serving_designated` 队首正在服务点客时是否自动跳过并记录（默认跳过）；`rotation_skip_policy` 被跳过时排到队尾还是保留原位（默认排到队尾）；`rotation_half_rule` 半轮规则（不记、按价格、按项目、按预约，默认不记）；`rotation_half_price_below` 按价格记半轮的实收上限（元，默认 0 表示不按价格）。预约设置：`booking_min_lead_minutes` 顾客自助预约至少提前的分钟数（默认 0，前台代约不检查）；`booking_max_days_ahead` 从今天起最多可约的天数（默认 30）；`booking_default_minutes` 预约没选项目或项目都没设时长时的默认服务时长，挂单的项目都没设时长时也按它占一次（默认 60）。营业时段复用 `business_hours`，预约必须完整落在开门到关门之间，关门须晚于开门，不支持跨天。规则按营业日生效，收银推进和每次轮牌操作都读取调用时刻执行的设置。
@@ -391,7 +393,7 @@ set_base_salary、add_payroll_adjustment、delete_payroll_adjustment 是 Write /
 
 两表有租户 RLS、tenant_id/id 唯一约束，以及门店、员工、保存人或创建人的租户组合外键。salon_app 对 staff_base_salaries 仅有 SELECT、INSERT，对 payroll_adjustments 仅有 SELECT、INSERT、DELETE，没有 UPDATE。月份在数据库约束为月首；计薪方式、金额、名称、备注也有 CHECK。
 
-`commission_settlements` 每店每月唯一，月份 CHECK 为月首，记录 settled_by / settled_at。`settled_commissions` 保存每笔提成的金额、冲回标识、解释和排序时刻 unit_created_at；月份与营业日所在月有 CHECK，同一店的提成 ID 唯一，结算通过 (tenant_id, store_id, settlement_id, month) → commission_settlements (tenant_id, store_id, id, month) 的组合外键同时绑定租户、门店与月份；payroll_lines 通过 (tenant_id, store_id, settlement_id) → commission_settlements (tenant_id, store_id, id) 绑定结算所属门店。父表只保留这两组供引用的组合唯一键，去掉不含门店的旧组合唯一键。两表与 `payroll_lines` 均有租户 RLS、门店与员工的租户组合外键，仅授予 salon_app SELECT、INSERT，不允许 UPDATE 或 DELETE。
+`commission_settlements` 每店每月唯一，月份 CHECK 为月首，记录 settled_by / settled_at；settled_by 为空表示系统自动锁定。`settled_commissions` 保存每笔提成的金额、冲回标识、解释和排序时刻 unit_created_at；月份与营业日所在月有 CHECK，同一店的提成 ID 唯一，结算通过 (tenant_id, store_id, settlement_id, month) → commission_settlements (tenant_id, store_id, id, month) 的组合外键同时绑定租户、门店与月份；payroll_lines 通过 (tenant_id, store_id, settlement_id) → commission_settlements (tenant_id, store_id, id) 绑定结算所属门店。父表只保留这两组供引用的组合唯一键，去掉不含门店的旧组合唯一键。两表与 `payroll_lines` 均有租户 RLS、门店与员工的租户组合外键，仅授予 salon_app SELECT、INSERT，不允许 UPDATE 或 DELETE。
 
 Commissions 通过一条 commission_settlements LEFT JOIN settled_commissions 语句同时读取范围内的结算月份与已保存明细，以同一 READ COMMITTED 语句快照构造锁定月份集合、替换对应月的现算结果，避免锁定事务在两个查询之间提交时重复拼入现算与存储明细。空结算月仍返回月份标记，员工过滤置于 JOIN 条件中，即使该员工没有保存明细也不丢失锁定标记。未锁定月仍现算。恢复 explanation 和 unit_created_at，统一按原日期范围过滤、按营业日 / createdAt / ID 倒序排序，再批量解析员工、岗位与项目的当前名称。金额、方案版本、计算解释固定；名字可更新。list_commissions 的来源筛选、合计、分页及本人范围继续在同一输出路径执行，锁定不会扩大数据范围。
 
@@ -399,9 +401,11 @@ Commissions 通过一条 commission_settlements LEFT JOIN settled_commissions �
 
 工资表行保存 mode、applied_amount、base_pay、item_commission、consume_commission、labor_commission、sale_commission、commission_total、guarantee_top_up、adjustments_total、total。四类提成按有符号 Commission.Amount 求和；加减项按有符号金额求和。payroll_lines 的 CHECK 保证 commission_total 等于四类之和，total = base_pay + commission_total + guarantee_top_up + adjustments_total；base 模式 base_pay = applied_amount 且补差 0；guarantee 模式 base_pay = 0 且补差 = greatest(0, applied_amount - commission_total)。mode 只允许 base / guarantee，applied_amount 非负。结算与员工唯一。全店 totals 对每个金额列按工资表行逐列相加。
 
-list_payroll_months、get_payroll 是 Read / AIDirect，lock_payroll_month 是 Write / AIDraft，三个都要求 payroll.manage。状态从当前营业月到开店月倒序，含锁定人、时刻与 lockable；get_payroll 对开放月每次重算（允许未来月），锁定月从 payroll_lines 读取、名称在读取时解析。
+list_payroll_months、get_payroll 是 Read / AIDirect，lock_payroll_month 是 Write / AIDraft，三个都要求 payroll.manage。状态从当前营业月到开店月倒序，含锁定人、时刻、auto_locked 与 lockable；系统自动锁定的月份 locked_by 为 null、auto_locked 为 true。未锁定月返回 auto_lock_date，即按今天执行的 payroll_auto_lock_day 算出的自动锁定日（结算月的下个月第 N 号）；已锁定时为 null。get_payroll 对开放月每次重算（允许未来月），锁定月从 payroll_lines 读取、名称在读取时解析。
 
 锁定顺序：payrollmonth.Lock（咨询锁 → Check → GetSettlement 检查未锁定 → settings.BusinessDate 检查月份已结束 → 检查前月已锁定，开店月免此项 → 插入锁定记录并返回 Settlement）→ commission.Settle 保存每笔提成结果 → 现算工资表（此时 Commissions 读刚存下的提成，工资表各列与提成明细出自同一份数据）→ 保存工资表行 → 读回锁定视图 → audit.Record。所有步骤同一事务，失败全部回滚并提示，可重试，无后台补算。锁定不可撤销；错误以后月加减项更正。加减项不复制，原表在锁后禁止增加或删除。底薪与加减项写操作在检查开店月和锁定状态前取同一咨询锁，锁定期间请求会等待，提交后再检查锁定。
+
+自动锁定：结算月 M 的自动锁定日是 M 的下个月第 N 号，N 取判断当时营业日执行的 payroll_auto_lock_day。当前营业日不早于自动锁定日且 M 未锁定时，M 应自动锁定。`salon serve` 启动后立即跑一轮，之后每 AutoLockInterval（一小时）一轮，随服务 ctx 退出；PAYROLL_AUTO_LOCK=off（scripts/dev.sh 默认）不启动。每轮先在 db.InTenant 之外只读全部门店的 (tenant_id, store_id)，再对每家门店从开店月起按从早到晚的顺序锁定到期月份；某个月锁不上就停止该店本轮，已手动锁定的月份直接跳过。每月一个独立事务，沿用 payrollmonth.Lock 的同一门店咨询锁，因此与手动锁并发也不会重复或漏锁；一家店出错只记日志，不影响其他店。自动锁定的流程与手动共用 payroll.LockMonth（payrollmonth.Lock → commission.Settle → 保存工资表行 → 读回 → 审计），只是 settled_by 为空、操作日志用 audit.RecordSystem 记录、没有员工或顾客操作者。
 
 锁月日志 action 为 lock_payroll_month，目标 payroll_month，无关联顾客，before 为 nil，after 为返回的完整工资表；list_audit_log 额外要求 payroll.manage 才能读取。三个接口、提成查询与工资日志不输出顾客或手机号；工资接口的整店工资视图由 payroll.manage 授权，提成查询仍需 performance.view 并保留 self 范围。
 

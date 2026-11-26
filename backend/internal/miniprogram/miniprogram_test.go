@@ -786,7 +786,6 @@ func TestActorCheckConstraints(t *testing.T) {
 		{"customer both actors", `INSERT INTO customers (tenant_id, store_id, created_by, created_by_customer) VALUES ($1,$2,$3,$4)`, []any{s.Res.TenantID, s.Res.StoreID, s.Res.OwnerID, customer}, "customers_actor_check"},
 		{"customer no actor", `INSERT INTO customers (tenant_id, store_id) VALUES ($1,$2)`, []any{s.Res.TenantID, s.Res.StoreID}, "customers_actor_check"},
 		{"audit both actors", `INSERT INTO audit_log (tenant_id, store_id, action, target_id, target_kind, customer_id, actor_id, actor_customer_id) VALUES ($1,$2,'x',$3,'customer',$4,$5,$6)`, []any{s.Res.TenantID, s.Res.StoreID, customer, customer, s.Res.OwnerID, customer}, "audit_log_actor_check"},
-		{"audit no actor", `INSERT INTO audit_log (tenant_id, store_id, action, target_id, target_kind, customer_id) VALUES ($1,$2,'x',$3,'customer',$4)`, []any{s.Res.TenantID, s.Res.StoreID, customer, customer}, "audit_log_actor_check"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -799,6 +798,10 @@ func TestActorCheckConstraints(t *testing.T) {
 			}
 		})
 	}
+	// 系统自动锁定没有员工或顾客操作者，两个操作者都为空是允许的。
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	dbtest.Exec(t, tx, `INSERT INTO audit_log (tenant_id, store_id, action, target_id, target_kind) VALUES ($1,$2,'x',$3,'payroll_month')`, s.Res.TenantID, s.Res.StoreID, uuid.New())
+	dbtest.Commit(t, tx)
 }
 
 func TestCustomerLoginsRLS(t *testing.T) {

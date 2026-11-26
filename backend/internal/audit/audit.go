@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
@@ -50,29 +51,9 @@ func ClosingTarget(id uuid.UUID) Target { return Target{kind: "closing", id: id}
 
 // Record 在业务操作的同一事务中追加日志；nil 表示新建前或删除后不存在；手机号必须用键名 phone 或以 _phone 结尾。
 func Record(ctx context.Context, env ops.Env, action string, target Target, before, after any) error {
-	if err := checkPhoneKeys(before); err != nil {
+	params, err := prepare(env, action, target, before, after)
+	if err != nil {
 		return err
-	}
-	if err := checkPhoneKeys(after); err != nil {
-		return err
-	}
-	var oldJSON, newJSON []byte
-	var err error
-	if before != nil {
-		oldJSON, err = json.Marshal(before)
-		if err != nil {
-			return err
-		}
-	}
-	if after != nil {
-		newJSON, err = json.Marshal(after)
-		if err != nil {
-			return err
-		}
-	}
-	params := dbgen.AddAuditLogParams{
-		TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID,
-		DraftID: env.DraftID, Action: action, TargetID: target.id, TargetKind: target.kind, CustomerID: target.customerID, Before: oldJSON, After: newJSON,
 	}
 	switch {
 	case env.Caller.StaffID != uuid.Nil:
@@ -83,6 +64,42 @@ func Record(ctx context.Context, env ops.Env, action string, target Target, befo
 		return fmt.Errorf("audit: caller has no actor")
 	}
 	return env.Q.AddAuditLog(ctx, params)
+}
+
+// RecordSystem 记录没有员工或顾客操作者的系统操作，例如后台自动锁定工资月份。
+func RecordSystem(ctx context.Context, env ops.Env, action string, target Target, before, after any) error {
+	params, err := prepare(env, action, target, before, after)
+	if err != nil {
+		return err
+	}
+	return env.Q.AddAuditLog(ctx, params)
+}
+
+func prepare(env ops.Env, action string, target Target, before, after any) (dbgen.AddAuditLogParams, error) {
+	if err := checkPhoneKeys(before); err != nil {
+		return dbgen.AddAuditLogParams{}, err
+	}
+	if err := checkPhoneKeys(after); err != nil {
+		return dbgen.AddAuditLogParams{}, err
+	}
+	var oldJSON, newJSON []byte
+	var err error
+	if before != nil {
+		oldJSON, err = json.Marshal(before)
+		if err != nil {
+			return dbgen.AddAuditLogParams{}, err
+		}
+	}
+	if after != nil {
+		newJSON, err = json.Marshal(after)
+		if err != nil {
+			return dbgen.AddAuditLogParams{}, err
+		}
+	}
+	return dbgen.AddAuditLogParams{
+		TenantID: env.Caller.TenantID, StoreID: env.Caller.StoreID,
+		DraftID: env.DraftID, Action: action, TargetID: target.id, TargetKind: target.kind, CustomerID: target.customerID, Before: oldJSON, After: newJSON,
+	}, nil
 }
 
 // checkPhoneKeys 遍历日志值，确保手机号字段使用读取时会打码的键名。
@@ -151,6 +168,12 @@ type Actor struct {
 	Kind string    `json:"kind" enum:"staff,customer"`
 }
 
+// TransformSchema 声明系统操作日志没有操作者。
+func (Entry) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
+	s.Properties["actor"] = &huma.Schema{AnyOf: []*huma.Schema{s.Properties["actor"], {Type: "null"}}}
+	return s
+}
+
 // Entry 是一次操作的记录，改前改后按调用者权限打码手机号。
 type Entry struct {
 	DraftID    *uuid.UUID      `json:"draft_id"`
@@ -160,7 +183,7 @@ type Entry struct {
 	TargetKind string          `json:"target_kind"`
 	Before     json.RawMessage `json:"before"`
 	After      json.RawMessage `json:"after"`
-	Actor      Actor           `json:"actor"`
+	Actor      *Actor          `json:"actor"`
 	At         time.Time       `json:"at"`
 }
 
@@ -211,11 +234,11 @@ func Register(r *ops.Registry) {
 				if actorID == nil {
 					actorID = a.ActorID
 				}
-				var id uuid.UUID
+				var actor *Actor
 				if actorID != nil {
-					id = *actorID
+					actor = &Actor{ID: *actorID, Name: row.ActorName, Kind: row.ActorKind}
 				}
-				out.Entries = append(out.Entries, Entry{DraftID: a.DraftID, ID: a.ID, Action: a.Action, TargetID: a.TargetID, TargetKind: a.TargetKind, Before: a.Before, After: a.After, Actor: Actor{ID: id, Name: row.ActorName, Kind: row.ActorKind}, At: a.At.Time})
+				out.Entries = append(out.Entries, Entry{DraftID: a.DraftID, ID: a.ID, Action: a.Action, TargetID: a.TargetID, TargetKind: a.TargetKind, Before: a.Before, After: a.After, Actor: actor, At: a.At.Time})
 			}
 			return out, nil
 		},

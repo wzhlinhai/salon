@@ -181,8 +181,12 @@ func lockedPayroll(ctx context.Context, env ops.Env, settlement *payrollmonth.Se
 		refs[person.ID] = staff.Ref{ID: person.ID, Name: person.Name}
 		active[person.ID] = person.Active
 	}
-	by := refs[settlement.SettledBy]
-	out := &Payroll{Month: settlement.Month.String(), Locked: true, LockedBy: &by, LockedAt: &settlement.SettledAt, Lines: []PayrollLine{}}
+	var lockedBy *staff.Ref
+	if settlement.SettledBy != uuid.Nil {
+		by := refs[settlement.SettledBy]
+		lockedBy = &by
+	}
+	out := &Payroll{Month: settlement.Month.String(), Locked: true, LockedBy: lockedBy, LockedAt: &settlement.SettledAt, AutoLocked: settlement.SettledBy == uuid.Nil, Lines: []PayrollLine{}}
 	for _, row := range rows {
 		out.Lines = append(out.Lines, PayrollLine{Staff: refs[row.StaffID], Active: active[row.StaffID], Mode: row.Mode, PayrollTotals: PayrollTotals{
 			AppliedAmount: row.AppliedAmount, BasePay: row.BasePay, ItemCommission: row.ItemCommission, ConsumeCommission: row.ConsumeCommission, LaborCommission: row.LaborCommission, SaleCommission: row.SaleCommission, CommissionTotal: row.CommissionTotal, GuaranteeTopUp: row.GuaranteeTopUp, AdjustmentsTotal: row.AdjustmentsTotal, Total: row.Total}})
@@ -205,7 +209,16 @@ func getPayroll(ctx context.Context, env ops.Env, in *MonthInput) (*Payroll, err
 	if settlement != nil {
 		return lockedPayroll(ctx, env, settlement)
 	}
-	return livePayroll(ctx, env, month)
+	out, err := livePayroll(ctx, env, month)
+	if err != nil {
+		return nil, err
+	}
+	_, rules, err := settings.CurrentRules(ctx, env.Q, env.Caller.StoreID, env.Now)
+	if err != nil {
+		return nil, err
+	}
+	out.AutoLockDate = new(autoLockDate(month, rules.PayrollAutoLockDay()).Format(settings.DateLayout))
+	return out, nil
 }
 
 func listPayrollMonths(ctx context.Context, env ops.Env, _ *ListPayrollMonthsInput) (*PayrollMonthList, error) {
@@ -213,9 +226,13 @@ func listPayrollMonths(ctx context.Context, env ops.Env, _ *ListPayrollMonthsInp
 	if err != nil {
 		return nil, err
 	}
+	_, rules, err := settings.CurrentRules(ctx, env.Q, env.Caller.StoreID, env.Now)
+	if err != nil {
+		return nil, err
+	}
 	ids := []uuid.UUID{}
 	for _, row := range rows {
-		if row.Settlement != nil {
+		if row.Settlement != nil && row.Settlement.SettledBy != uuid.Nil {
 			ids = append(ids, row.Settlement.SettledBy)
 		}
 	}
@@ -227,9 +244,14 @@ func listPayrollMonths(ctx context.Context, env ops.Env, _ *ListPayrollMonthsInp
 	for _, row := range rows {
 		entry := PayrollMonth{Month: row.Month.String(), Locked: row.Settlement != nil, Lockable: row.Lockable}
 		if row.Settlement != nil {
-			by := refs[row.Settlement.SettledBy]
-			entry.LockedBy = &by
+			entry.AutoLocked = row.Settlement.SettledBy == uuid.Nil
+			if !entry.AutoLocked {
+				by := refs[row.Settlement.SettledBy]
+				entry.LockedBy = &by
+			}
 			entry.LockedAt = &row.Settlement.SettledAt
+		} else {
+			entry.AutoLockDate = new(autoLockDate(row.Month, rules.PayrollAutoLockDay()).Format(settings.DateLayout))
 		}
 		out.Entries = append(out.Entries, entry)
 	}
@@ -237,7 +259,16 @@ func listPayrollMonths(ctx context.Context, env ops.Env, _ *ListPayrollMonthsInp
 }
 
 func lockPayrollMonth(ctx context.Context, env ops.Env, in *MonthInput) (*Payroll, error) {
-	settlement, err := payrollmonth.Lock(ctx, env.Q, env.Caller.StoreID, in.Month, env.Caller.StaffID, env.Now)
+	month, err := payrollmonth.Parse(in.Month)
+	if err != nil {
+		return nil, err
+	}
+	return LockMonth(ctx, env, month, env.Caller.StaffID)
+}
+
+// LockMonth 锁定结算月：保存提成与工资表行并写操作日志；by 为零值表示系统自动锁定。
+func LockMonth(ctx context.Context, env ops.Env, month payrollmonth.Month, by uuid.UUID) (*Payroll, error) {
+	settlement, err := payrollmonth.Lock(ctx, env.Q, env.Caller.StoreID, month.String(), by, env.Now)
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +290,12 @@ func lockPayrollMonth(ctx context.Context, env ops.Env, in *MonthInput) (*Payrol
 	if err != nil {
 		return nil, err
 	}
-	if err := audit.Record(ctx, env, "lock_payroll_month", audit.PayrollMonthTarget(settlement.ID), nil, out); err != nil {
+	if by == uuid.Nil {
+		err = audit.RecordSystem(ctx, env, "lock_payroll_month", audit.PayrollMonthTarget(settlement.ID), nil, out)
+	} else {
+		err = audit.Record(ctx, env, "lock_payroll_month", audit.PayrollMonthTarget(settlement.ID), nil, out)
+	}
+	if err != nil {
 		return nil, err
 	}
 	return out, nil

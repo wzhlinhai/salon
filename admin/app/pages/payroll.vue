@@ -97,7 +97,7 @@ const brief = computed(() => {
     bold(missing.map(l => `${l.staff.name}缺卡 ${attendance.value.get(l.staff.id)} 次`).join('，'))
     say(p.locked ? '。' : '，锁定前看一下。')
   }
-  if (p.locked) say(`已锁定（${p.locked_by?.name ?? ''} ${p.locked_at ? formatStamp(p.locked_at) : ''}），之后有错只能在以后的月份用加减项更正。`)
+  if (p.locked) say(`已锁定（${lockedText.value}），之后有错只能在以后的月份用加减项更正。`)
   return parts
 })
 
@@ -158,10 +158,25 @@ function edit(target: 'salary' | 'adjustment') {
   })
 }
 
-const moreItems = [[
+// 工资到每月设定的那天自动锁定（设置里「每月几号自动锁定上个月的工资」），平时不用人管；月份过完、前面的月份都锁了，才在菜单里给「提前锁定」。
+const moreItems = computed(() => [[
   { label: '设置底薪', icon: 'i-lucide-wallet', onSelect: () => edit('salary') },
   { label: '添加加减项', icon: 'i-lucide-plus', onSelect: () => edit('adjustment') }
-]]
+], ...(status.value?.lockable ? [[{ label: '提前锁定', icon: 'i-lucide-lock', onSelect: askLock }]] : [])])
+
+// 「2026-12-15」写成「12 月 15 日」。
+function dayLabel(value: string) {
+  const [, m, d] = value.split('-')
+  return `${Number(m)} 月 ${Number(d)} 日`
+}
+
+// 谁锁的：系统到日子自动锁的写「自动锁定」，有人提前锁的写人名和时刻。
+const lockedText = computed(() => {
+  const p = payroll.value
+  if (!p?.locked) return ''
+  const at = p.locked_at ? formatStamp(p.locked_at) : ''
+  return p.auto_locked ? `${at} 自动锁定` : `${p.locked_by?.name ?? ''} ${at} 锁定`
+})
 
 watch(() => form.staff_id, () => {
   if (kind.value === 'salary') {
@@ -250,18 +265,17 @@ onBeforeUnmount(() => {
       <UDropdownMenu v-if="payroll && !payroll.locked" :items="moreItems" :content="{ align: 'end' }">
         <UButton color="neutral" variant="ghost" icon="i-lucide-ellipsis" aria-label="更多操作" />
       </UDropdownMenu>
-      <UButton v-if="payroll && !payroll.locked" :disabled="!status?.lockable" @click="askLock">核对无误，锁定</UButton>
     </PageActions>
 
     <ReportBrief v-if="brief.length" :parts="brief" data-testid="payroll-brief" />
     <div class="flex flex-wrap items-center gap-2 text-meta text-muted">
       <template v-if="payroll?.locked">
         <span class="tag bg-tag-gray">已锁定</span>
-        <span>{{ payroll.locked_by?.name }} · {{ payroll.locked_at ? new Date(payroll.locked_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '' }}</span>
+        <span>{{ lockedText }}</span>
       </template>
       <template v-else-if="payroll">
         <span>未锁定</span>
-        <span v-if="!status?.lockable">月份结束且之前的月份都已锁定后才能锁定</span>
+        <span v-if="payroll.auto_lock_date">{{ dayLabel(payroll.auto_lock_date) }}自动锁定，之后不能再改</span>
       </template>
     </div>
 
@@ -339,9 +353,9 @@ onBeforeUnmount(() => {
         </ModalActions>
       </template>
     </UModal>
-    <UModal v-model:open="lockOpen" :title="`锁定 ${monthLabel(lockMonth)}`">
+    <UModal v-model:open="lockOpen" :title="`提前锁定 ${monthLabel(lockMonth)}`">
       <template #body>
-        <p>锁定后本月的提成和工资表不再变化，也不能再设置底薪或增删加减项。锁定不能撤销，之后发现错误只能在以后的月份用加减项更正。</p>
+        <p>不提前锁也会在设定的日子自动锁定。锁定后本月的提成和工资表不再变化，也不能再设置底薪或增删加减项。锁定不能撤销，之后发现错误只能在以后的月份用加减项更正。</p>
         <p class="mt-3">全店应发 {{ yuan(lockTotal) }}</p>
       </template>
       <template #footer>

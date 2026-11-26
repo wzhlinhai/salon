@@ -20,7 +20,7 @@ type AddCommissionSettlementParams struct {
 	TenantID  uuid.UUID
 	StoreID   uuid.UUID
 	Month     pgtype.Date
-	SettledBy uuid.UUID
+	SettledBy *uuid.UUID
 }
 
 func (q *Queries) AddCommissionSettlement(ctx context.Context, arg AddCommissionSettlementParams) (CommissionSettlement, error) {
