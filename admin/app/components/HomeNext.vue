@@ -246,7 +246,7 @@ const empty = computed(() => loaded.value && !rows.value.length && !done.value &
     <header class="mb-3 flex items-baseline gap-2">
       <h2 class="text-base font-semibold">接下来</h2>
       <span class="text-meta text-dimmed tabular-nums">{{ dateLabel }}</span>
-      <NuxtLink v-if="can('booking.manage')" to="/bookings" class="ms-auto inline-flex items-center text-meta text-muted hover:text-default">
+      <NuxtLink v-if="can('booking.manage')" to="/bookings" class="tap-area ms-auto inline-flex items-center text-meta text-muted hover:text-default">
         打开预约<UIcon name="i-lucide-chevron-right" class="size-4" aria-hidden="true" />
       </NuxtLink>
     </header>
@@ -257,7 +257,7 @@ const empty = computed(() => loaded.value && !rows.value.length && !done.value &
       <li v-if="done" class="row" data-testid="next-done">
         <span class="time">之前</span>
         <span class="rail"><i class="dot" /></span>
-        <NuxtLink v-if="totals" to="/reports/business" class="body inline-flex items-center text-sm text-muted hover:text-default">
+        <NuxtLink v-if="totals" to="/reports/business" class="tap-area body inline-flex items-center text-sm text-muted hover:text-default">
           {{ done }}<UIcon name="i-lucide-chevron-right" class="size-4" aria-hidden="true" />
         </NuxtLink>
         <span v-else class="body text-sm text-muted">{{ done }}</span>

@@ -104,7 +104,7 @@ async function addCategory() {
     }
     reportCategory(error, data)
   } finally {
-    categoryAddSaving.value = false
+    if (current()) categoryAddSaving.value = false
   }
 }
 

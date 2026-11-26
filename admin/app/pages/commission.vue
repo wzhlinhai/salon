@@ -263,7 +263,7 @@ function changeSource(o: OverrideForm) {
 <template>
   <div class="space-y-4">
     <PageActions>
-      <UButton size="sm" icon="i-lucide-pencil" :disabled="!today" @click="edit">修改方案</UButton>
+      <UButton size="sm" :disabled="!today" @click="edit">修改方案</UButton>
     </PageActions>
     <PageDescriptionTail v-if="today">今天是营业日 {{ today }}。</PageDescriptionTail>
     <LoadError v-if="loadError" title="提成方案没有读出来" :hint="loadError" @retry="reload()" />

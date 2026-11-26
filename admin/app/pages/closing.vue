@@ -492,7 +492,7 @@ function saveUnseal() {
       </template>
       <template #footer>
         <ModalActions @cancel="sealForm.open.value = false">
-          <UButton :loading="sealForm.saving.value" icon="i-lucide-lock" @click="saveSeal">封账</UButton>
+          <UButton :loading="sealForm.saving.value" @click="saveSeal">封账</UButton>
         </ModalActions>
       </template>
     </UModal>

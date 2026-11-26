@@ -307,7 +307,7 @@ input[type="time"] {
 
 /* 店里常用平板和触屏电脑，主要操作区域至少 44px。 */
 @media (pointer: coarse) {
-  button,
+  button:not([role="switch"]),
   input,
   select,
   textarea,
@@ -317,9 +317,23 @@ input[type="time"] {
   [role="option"] {
     min-height: 44px;
   }
-  /* 只有图标的按钮（··· 菜单、关闭、翻页）宽度也补到 44px，不然高够了还是一根细条。 */
-  button:has(> [data-slot="leadingIcon"]:only-child) {
+  /* 按钮宽度也补到 44px：只有图标的（··· 菜单、关闭、翻页、顶栏 AI）和两个字的短按钮，不然高够了还是一根细条。 */
+  button:not([role="switch"]) {
     min-width: 44px;
+  }
+  /* 开关和正文里的小链接撑大会变形、挤乱排版，改用一层看不见的点击区补到 44px，外观不变。 */
+  button[role="switch"],
+  .tap-area {
+    position: relative;
+  }
+  button[role="switch"]::after,
+  .tap-area::after {
+    content: "";
+    position: absolute;
+    inset: 50% auto auto 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
   }
 }
 
@@ -335,6 +349,15 @@ input[type="time"] {
   .bg-selected:not(:focus-visible) {
     outline: 2px solid Highlight;
     outline-offset: -2px;
+  }
+  /* 白纸卡片、预约块平时靠阴影画边，这个模式下阴影没了，补一道系统文字色细线。 */
+  .box,
+  .card-face,
+  .shadow-paper,
+  .shadow-line,
+  .entry {
+    outline: 1px solid CanvasText;
+    outline-offset: -1px;
   }
   .ring-alert,
   .ring-pending,
