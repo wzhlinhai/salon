@@ -53,11 +53,16 @@ async function businessDate(token: string) {
   return settings
 }
 
-// 开单弹窗里用「搜全部项目」找到项目：测试项目名带随机后缀，不一定在前面那排胶囊里。
+// 开单弹窗里点「选项目」，在弹层里打字搜到项目挑上：测试项目名带随机后缀，项目多时不一定在前面。挑完按 Esc 只收起弹层。
 async function pickItem(page: Page, dialog: Locator, itemName: string) {
-  await dialog.getByRole('button', { name: '搜全部项目' }).click()
-  await page.getByPlaceholder('项目名').fill(itemName)
-  await page.getByRole('option', { name: new RegExp(itemName) }).click()
+  await dialog.getByTestId('item-picker-trigger').click()
+  const picker = page.getByTestId('item-picker')
+  await picker.getByPlaceholder('项目名').fill(itemName)
+  await picker.getByRole('button', { name: new RegExp(itemName) }).click()
+  await expect(picker.getByRole('button', { name: new RegExp(itemName) })).toHaveAttribute('aria-pressed', 'true')
+  await page.keyboard.press('Escape')
+  await expect(picker).toHaveCount(0)
+  await expect(dialog).toBeVisible()
   await expect(dialog.locator(`[data-testid="order-item-row"][data-item="${itemName}"]`)).toBeVisible()
 }
 

@@ -57,7 +57,10 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 // 打开时把焦点放在输入框，不让对话框自动聚焦标题栏的按钮：从指令框回车打开时，回车会误按到"新对话"。
+// 滑出动画还没完人就点了面板里的东西（比如历史下拉）时不抢焦点，不然刚打开的下拉会被关掉。
 function focusInput() {
+  const active = document.activeElement
+  if (active?.closest('[data-testid="ai-history"]') || scroller.value?.closest('[role="dialog"]')?.contains(active)) return
   input.value?.textareaRef?.focus()
 }
 

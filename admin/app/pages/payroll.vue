@@ -161,7 +161,7 @@ function edit(target: 'salary' | 'adjustment') {
 // 工资到每月设定的那天自动锁定（设置里「每月几号自动锁定上个月的工资」），平时不用人管；月份过完、前面的月份都锁了，才在菜单里给「提前锁定」。
 const moreItems = computed(() => [[
   { label: '设置底薪', icon: 'i-lucide-wallet', onSelect: () => edit('salary') },
-  { label: '添加加减项', icon: 'i-lucide-plus', onSelect: () => edit('adjustment') }
+  { label: '添加加减项', icon: 'i-lucide-plus-minus', onSelect: () => edit('adjustment') }
 ], ...(status.value?.lockable ? [[{ label: '提前锁定', icon: 'i-lucide-lock', onSelect: askLock }]] : [])])
 
 // 「2026-12-15」写成「12 月 15 日」。
@@ -210,6 +210,10 @@ const lockForm = useModalForm()
 const { open: lockOpen, saving: lockSaving } = lockForm
 const lockMonth = ref('')
 const lockTotal = ref('')
+// 锁定时还缺卡的人（「小王缺卡 2 次」）；没有考勤权限时取不到，就不提。
+const lockMissing = computed(() => (payroll.value?.lines ?? [])
+  .filter(l => attendance.value.has(l.staff.id))
+  .map(l => `${l.staff.name}缺卡 ${attendance.value.get(l.staff.id)} 次`))
 
 function askLock() {
   lockForm.begin(() => {
@@ -310,7 +314,7 @@ onBeforeUnmount(() => {
                 </div>
               </td>
               <td v-for="c in shownColumns" :key="c.key" class="px-3 py-2 text-end tabular-nums whitespace-nowrap" :class="Number(line[c.key]) < 0 ? 'text-ink-red' : zeroText(line[c.key]) ? 'text-dimmed' : ''" :data-col="c.key">
-                <template v-if="c.key === 'base_pay' && line.mode === 'guarantee'"><span class="text-dimmed">保底 {{ yuan(line.applied_amount) }}</span></template>
+                <template v-if="c.key === 'base_pay' && line.mode === 'guarantee'"><span class="text-muted">保底 {{ yuan(line.applied_amount) }}</span></template>
                 <template v-else>{{ money(line[c.key]) }}</template>
               </td>
               <td class="px-3 py-2 text-end font-semibold tabular-nums" :class="Number(line.total) < 0 ? 'text-ink-red' : ''" data-col="total">{{ money(line.total) }}</td>
@@ -357,6 +361,8 @@ onBeforeUnmount(() => {
       <template #body>
         <p>不提前锁也会在设定的日子自动锁定。锁定后本月的提成和工资表不再变化，也不能再设置底薪或增删加减项。锁定不能撤销，之后发现错误只能在以后的月份用加减项更正。</p>
         <p class="mt-3">全店应发 {{ yuan(lockTotal) }}</p>
+        <!-- 还有人缺卡时锁前再提一次：锁上以后考勤不再改得进这个月的工资。 -->
+        <p v-if="lockMissing.length" class="mt-2 text-ink-red" data-testid="lock-missing">还有 {{ lockMissing.length }} 人缺卡没处理：{{ lockMissing.join('，') }}。锁定后再补卡也改不了这个月的工资。</p>
       </template>
       <template #footer>
         <ModalActions @cancel="lockOpen = false">

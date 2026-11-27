@@ -109,7 +109,7 @@ async function saveSettlement() {
         <dt>平台购买价合计</dt>
         <dd data-testid="purchase-total">{{ yuan(data.purchase_total) }}</dd>
         <dt>当前结算额</dt>
-        <dd data-testid="settlement-amount" :class="data.settlement ? '' : 'text-dimmed'">{{ data.settlement ? yuan(data.settlement.amount) : '未录入' }}</dd>
+        <dd data-testid="settlement-amount" :class="data.settlement ? '' : 'text-muted'">{{ data.settlement ? yuan(data.settlement.amount) : '未录入' }}</dd>
         <dt>差额</dt>
         <dd data-testid="difference" :class="data.difference && Number(data.difference) !== 0 ? 'text-ink-orange' : data.difference ? '' : 'text-dimmed'">{{ data.difference ? yuan(data.difference) : '—' }}</dd>
       </dl>

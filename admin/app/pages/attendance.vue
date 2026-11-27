@@ -297,7 +297,7 @@ onMounted(async () => {
           @select="selectSummary"
         >
           <!-- 整行可点；名字做成按钮，键盘也能打开这个人的打卡明细。 -->
-          <template #staff-cell="{ row }"><button type="button" class="inline-flex min-h-6 items-center font-medium hover:underline" @click.stop="openSummary(row.original)">{{ row.original.staff.name }}</button><span v-if="!row.original.active" class="text-dimmed">（离职）</span></template>
+          <template #staff-cell="{ row }"><button type="button" class="inline-flex min-h-6 items-center font-medium hover:underline" @click.stop="openSummary(row.original)">{{ row.original.staff.name }}</button><span v-if="!row.original.active" class="text-muted">（离职）</span></template>
           <!-- 0 次留空，照 Notion 空属性；外层 span 要一直在，插槽空了表格会改显示原始数字。 -->
           <template #attendance_days-cell="{ row }"><span><template v-if="row.original.attendance_days">{{ row.original.attendance_days }}</template></span></template>
           <template #late_count-cell="{ row }"><span class="text-ink-red"><template v-if="row.original.late_count">{{ row.original.late_count }} 次 / {{ row.original.late_minutes }} 分钟</template></span></template>
@@ -336,7 +336,7 @@ onMounted(async () => {
         </div>
         <div class="overflow-x-auto">
           <UTable :data="shifts" :columns="shiftColumns" :loading="shiftsLoading" :aria-busy="shiftsLoading" :ui="{ tr: 'group/row' }" data-testid="shifts-table">
-            <template #active-cell="{ row }"><span v-if="row.original.active" class="text-dimmed">在用</span><span v-else class="tag bg-tag-gray">已停用</span></template>
+            <template #active-cell="{ row }"><span v-if="row.original.active" class="text-muted">在用</span><span v-else class="tag bg-tag-gray">已停用</span></template>
             <template #actions-cell="{ row }">
               <UButton v-if="row.original.active" size="sm" color="error" variant="ghost" class="opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100" @click="askDeactivate(row.original)">停用</UButton>
             </template>

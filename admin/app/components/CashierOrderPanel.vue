@@ -664,7 +664,7 @@ defineExpose({ select, clear, refresh, voided })
             <div class="flex items-center gap-2 text-sm">
               <span class="text-muted">计价卡</span>
               <USelect v-model="selectedCardID" :items="[{ label: '不使用卡', value: NONE }, ...cardItems]" variant="ghost" size="sm" class="min-w-0" aria-label="计价卡" @update:model-value="previewCheckout" />
-              <span v-if="previewLoading" class="text-meta text-dimmed">试算中…</span>
+              <span v-if="previewLoading" class="text-meta text-muted">试算中…</span>
               <span v-if="preview && discountTotal" class="ms-auto text-muted tabular-nums">−{{ yuanFixed(discountTotal / 100) }}</span>
             </div>
             <template v-if="preview">

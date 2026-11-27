@@ -109,7 +109,7 @@ async function saveReject() {
       </button>
       <span class="tag shrink-0" :class="isPending ? 'bg-tag-pink' : statusBadge.tone">{{ isPending ? '草稿' : statusBadge.label }}</span>
     </header>
-    <header v-else class="flex items-center gap-2 text-xs text-dimmed">
+    <header v-else class="flex items-center gap-2 text-xs text-muted">
       <span class="tag shrink-0 bg-ai-soft text-ai">AI 起草</span>
       <span class="min-w-0 truncate"><span data-testid="draft-initiator">{{ staffName(current.initiator) }}</span>说 · <span class="tabular-nums">{{ formatStamp(props.draft.created_at) }}</span></span>
       <span v-if="!isPending" class="tag ms-auto shrink-0" :class="statusBadge.tone">{{ statusBadge.label }}</span>

@@ -233,7 +233,7 @@ onBeforeUnmount(() => clearInterval(draftTimer))
               <p class="flex min-w-0 items-center gap-1 rounded-md px-2 py-0.5 text-sm text-muted">
                 <UIcon v-if="pageIcon" :name="pageIcon" class="size-4 shrink-0" aria-hidden="true" />
                 <template v-if="parentCrumb">
-                  <NuxtLink :to="parentCrumb.to" class="inline-flex min-h-6 items-center rounded-md px-1 hover:text-default hover:underline" data-testid="parent-crumb">{{ parentCrumb.label }}</NuxtLink>
+                  <NuxtLink :to="parentCrumb.to" class="tap-area inline-flex min-h-6 items-center rounded-md px-1 hover:text-default hover:underline" data-testid="parent-crumb">{{ parentCrumb.label }}</NuxtLink>
                   <span class="text-dimmed" aria-hidden="true">/</span>
                 </template>
                 <span class="truncate">{{ pageTitle }}</span>

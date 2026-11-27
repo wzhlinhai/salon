@@ -44,7 +44,7 @@ watch(open, async (value) => {
           </div>
           <div class="mt-3 space-y-1 border-t border-default pt-3">
             <template v-if="glance.last">
-              <p class="text-xs text-dimmed">上次 · {{ monthDay(glance.last.date) }}<template v-if="glance.last.staff"> · {{ glance.last.staff }}</template></p>
+              <p class="text-xs text-muted">上次 · {{ monthDay(glance.last.date) }}<template v-if="glance.last.staff"> · {{ glance.last.staff }}</template></p>
               <p>{{ glance.last.items }}<template v-if="glance.last.result"> · {{ glance.last.result }}</template></p>
             </template>
             <p v-else class="text-muted">第一次来</p>

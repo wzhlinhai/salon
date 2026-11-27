@@ -97,8 +97,10 @@ function option() {
   }
 }
 
+// 图的内容由外层 role="img" 的 aria-label 说，里面画出来的 svg 不让读屏再逐个读。
 function render() {
   chart?.setOption(option(), true)
+  el.value?.querySelector('svg')?.setAttribute('aria-hidden', 'true')
 }
 
 onMounted(() => {

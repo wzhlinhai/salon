@@ -77,7 +77,10 @@ test('店长从报表入口进营业报表：合计等于各行之和，切按�
   const table = page.getByTestId('business-table')
   const todayRow = table.locator(`tbody tr[data-period="${today}"]`)
   await expect(todayRow).toBeVisible()
+  await expect(page.getByTestId('range-trigger')).toContainText('本月')
+  await page.getByTestId('range-trigger').click()
   await expect(page.getByRole('group', { name: '快捷范围' }).getByRole('button', { name: '本月' })).toHaveAttribute('aria-pressed', 'true')
+  await page.keyboard.press('Escape')
   const token = await apiLogin(manager.account, manager.password)
   const report = await api<{ rows: { period: string, on_site: { method: string, amount: string }[] }[], totals: { service_revenue: string } }>(token, 'get_business_report', { granularity: 'day', from: `${today.slice(0, 7)}-01`, to: today })
   const wechat = report.rows.find(r => r.period === today)!.on_site.find(m => m.method === 'wechat')!.amount
@@ -97,6 +100,7 @@ test('店长从报表入口进营业报表：合计等于各行之和，切按�
 
   // 按日超过 92 天：不查，旁边写为什么。
   await page.getByRole('group', { name: '按日或按月' }).getByRole('button', { name: '按日', exact: true }).click()
+  await page.getByTestId('range-trigger').click()
   await page.getByLabel('开始').fill('2020-01-01')
   await expect(page.getByTestId('range-problem')).toHaveText('按日最多查 92 天，长了请切到按月')
 })
@@ -138,6 +142,8 @@ test('店长看员工业绩：每人一行、合计等于各行之和，点一�
 
   // 超过 92 天：不查，旁边写为什么（不提示切按月）。
   await page.keyboard.press('Escape')
+  await expect(detail).toHaveCount(0)
+  await page.getByTestId('range-trigger').click()
   await page.getByLabel('开始').fill('2020-01-01')
   await expect(page.getByTestId('range-problem')).toHaveText('最多查 92 天')
 })

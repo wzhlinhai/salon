@@ -56,7 +56,7 @@ const orders = computed(() => {
   <HomeWidget v-if="today" title="我今天" data-testid="home-my-day" class="@container">
     <div class="grid grid-cols-2 gap-x-4 gap-y-3 tabular-nums @2xl:grid-cols-4">
       <div>
-        <p class="text-xs text-dimmed">业绩</p>
+        <p class="text-xs text-muted">业绩</p>
         <p class="figure" :class="zeroText(yuan(itemAmount)) && 'text-dimmed'">{{ yuan(itemAmount) }}</p>
         <p class="text-xs text-muted">
           <template v-if="change === null">我做的项目</template>
@@ -70,17 +70,17 @@ const orders = computed(() => {
         class="-m-2 rounded-md p-2 text-start hover:bg-side"
         @click="showCommissions = true"
       >
-        <p class="flex items-center gap-1 text-xs text-dimmed">提成<UIcon name="i-lucide-chevron-right" class="size-3.5" aria-hidden="true" /></p>
+        <p class="flex items-center gap-1 text-xs text-muted">提成<UIcon name="i-lucide-chevron-right" class="size-3.5" aria-hidden="true" /></p>
         <p class="figure" :class="zeroText(yuan(commissions.total)) && 'text-dimmed'">{{ yuan(commissions.total) }}</p>
         <p class="text-xs text-muted">{{ tiered ? '含阶梯提成，月底才定' : '点开看每笔怎么算' }}</p>
       </button>
       <div>
-        <p class="text-xs text-dimmed">售卡</p>
+        <p class="text-xs text-muted">售卡</p>
         <p class="figure" :class="zeroText(yuan(total(today, 'sale'))) && 'text-dimmed'">{{ yuan(total(today, 'sale')) }}</p>
         <p class="text-xs text-muted">办卡、充值和升级</p>
       </div>
       <div>
-        <p class="text-xs text-dimmed">单数</p>
+        <p class="text-xs text-muted">单数</p>
         <p class="figure" :class="zeroText(orders) && 'text-dimmed'">{{ orders }}</p>
         <p class="text-xs text-muted">有我参与的单</p>
       </div>
