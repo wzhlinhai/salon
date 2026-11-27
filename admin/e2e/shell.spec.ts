@@ -55,7 +55,7 @@ test('个人菜单可以打卡、打开我的考勤并退出登录', async ({ pa
 test('页面骨架：正文顶上统一插画加标题，设置类页面居中收窄，首页用问候不用标题', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 })
   await login(page, owner.account, owner.password)
-  await expect(page.getByTestId('page-header')).toHaveCount(0)
+  await expect(page.getByTestId('page-header')).toBeHidden()
 
   await page.goto('/staff')
   const header = page.getByTestId('page-header')
@@ -187,4 +187,20 @@ test('问 AI 各种宽度都在右下角，滚到底时不压住收银单和预�
 
   await page.setViewportSize({ width: 1366, height: 900 })
   await expect(fab).toBeVisible()
+})
+
+test('首页和带页头按钮的页面之间来回切，不出未处理的错误', async ({ page }) => {
+  // 首页不画页头；页头里的 #title-actions 被拆掉时，旧页面传送过去的按钮一更新就报错（开发模式会弹错误层挡住页面）。
+  const pageErrors: string[] = []
+  page.on('pageerror', error => pageErrors.push(error.message))
+  await login(page, owner.account, owner.password)
+  const nav = page.getByRole('navigation').first()
+  for (let i = 0; i < 6; i++) {
+    for (const [name, path] of [['收银', '/cashier'], ['首页', '/'], ['轮牌', '/rotation'], ['首页', '/']] as const) {
+      await nav.getByRole('link', { name, exact: true }).click()
+      await expect(page).toHaveURL(path)
+    }
+  }
+  await expect(page.getByRole('link', { name: '收银', exact: true }).first()).toBeVisible()
+  expect(pageErrors).toEqual([])
 })
