@@ -13,35 +13,23 @@ const kindItems = [{ label: '储值卡', value: 'stored_value' }, { label: '次�
 const definition = ref<components['schemas']['CardTypeItemInput'][]>([])
 // 每项最多 9999 次、单次金额最多 99999999.99 元，最多 20 项的分值总和仍小于 2^53，Number 可精确累加。
 const countsPrice = computed(() => definition.value.reduce((sum, x) => sum + Math.round(Number(x.unit_price) * 100) * Number(x.paid_count), 0) / 100)
-const loading = ref(false)
-const loadGuard = useRequestGuard()
-
-// 一次都没读到过时原地给「重试」，别写成「还没有…」让人以为要重新建；已经有数据（刷新失败）时弹提示就够。
-const loadError = ref('')
-
-async function load() {
-  const current = loadGuard.next()
-  loading.value = true
-  try {
-    const [types, projects, rules] = await Promise.all([
-      api.POST('/api/ops/list_card_types', { body: {} }),
-      api.POST('/api/ops/list_items', { body: {} }),
-      api.POST('/api/ops/list_card_upgrade_rules', { body: {} })
-    ])
-    const { data, error } = types
-    if (!current()) return
-    if (rules.data) upgradeRules.value = rules.data.items
-    else toast.add({ title: errorText(rules.error), color: 'error' })
+// 一次都没读到过时原地给「重试」，别写成「还没有…」让人以为要重新建；已经有数据（刷新失败）时弹提示就够（usePageLoad）。
+// 项目和升级规则是可选的：读不到照样列卡类型，各弹一条提示（以前项目没读到什么都不说）。
+// 卡类型本身没读到时整页原地重试，这次读到的项目和规则也不写（重试会一起再读）。
+const { loading, error: loadError, load } = usePageLoad({
+  fetch: () => [
+    api.POST('/api/ops/list_card_types', { body: {} }),
+    api.POST('/api/ops/list_items', { body: {} }),
+    api.POST('/api/ops/list_card_upgrade_rules', { body: {} })
+  ],
+  apply: ([types, projects, rules]) => {
+    items.value = types.data!.items
     if (projects.data) catalog.value = projects.data.items
-    if (data) {
-      loadError.value = ''
-      items.value = data.items
-    } else if (items.value.length) toast.add({ title: errorText(error), color: 'error' })
-    else loadError.value = errorText(error)
-  } finally {
-    if (current()) loading.value = false
-  }
-}
+    if (rules.data) upgradeRules.value = rules.data.items
+  },
+  hasData: () => items.value.length > 0,
+  optional: [1, 2]
+})
 
 onMounted(load)
 const editor = useModalForm()

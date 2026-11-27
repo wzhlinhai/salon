@@ -7,41 +7,26 @@ definePageMeta({ permission: 'staff.manage', title: '员工', art: 'comb' })
 
 type Staff = components['schemas']['Staff']
 const api = useApi()
-const toast = useToast()
 const { can } = useMe()
 
 const staff = ref<Staff[]>([])
 const positions = ref<components['schemas']['Position'][]>([])
 const performance = ref<Map<string, string> | null>(null)
 const shifts = ref(new Map<string, components['schemas']['Shift'] | null>())
-const loadGuard = useRequestGuard()
-const loading = ref(false)
-const loadError = ref('')
 const editors = useTemplateRef('editors')
 
-async function load() {
-  const request = loadGuard.next()
-  loading.value = true
-  try {
-    const [s, p] = await Promise.all([
-      api.POST('/api/ops/list_staff', { body: {} }),
-      api.POST('/api/ops/list_positions', { body: {} })
-    ])
-    if (!request()) return
-    if (!s.data || !p.data) {
-      // 名册还没读到过时原地给一块「重试」，别只弹提示留一片空白；已经有名册时（刷新失败）弹提示就够。
-      if (staff.value.length) toast.add({ title: errorText(s.error ?? p.error), color: 'error' })
-      else loadError.value = errorText(s.error ?? p.error)
-      return
-    }
-    loadError.value = ''
-    staff.value = s.data.staff
-    positions.value = p.data.items
-  } finally {
-    // 网络断了也要停掉骨架屏；只有最新一次请求能改。
-    if (request()) loading.value = false
-  }
-}
+// 名册还没读到过时原地给一块「重试」，别只弹提示留一片空白；已经有名册时（刷新失败）弹提示就够（usePageLoad）。
+const { loading, error: loadError, load } = usePageLoad({
+  fetch: () => [
+    api.POST('/api/ops/list_staff', { body: {} }),
+    api.POST('/api/ops/list_positions', { body: {} })
+  ],
+  apply: ([s, p]) => {
+    staff.value = s.data!.staff
+    positions.value = p.data!.items
+  },
+  hasData: () => staff.value.length > 0
+})
 
 // 本月业绩和今天的班次是补充信息：没权限或取不到就不写，不挡名册。
 const storeToday = useStoreToday()

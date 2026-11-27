@@ -14,40 +14,24 @@ const levels = ref<Level[]>([])
 const cardTypes = ref<components['schemas']['CardType'][]>([])
 const positions = ref<Position[]>([])
 const categories = ref<ItemCategory[]>([])
-const loading = ref(false)
-const loadGuard = useRequestGuard()
-
-// 一次都没读到过时原地给「重试」，别写成「还没有…」让人以为要重新建；已经有数据（刷新失败）时弹提示就够。
-const loadError = ref('')
-
-async function load() {
-  const current = loadGuard.next()
-  loading.value = true
-  try {
-    const [i, l, p, t, c] = await Promise.all([
-      api.POST('/api/ops/list_items', { body: {} }),
-      api.POST('/api/ops/list_levels', { body: {} }),
-      api.POST('/api/ops/list_positions', { body: {} }),
-      api.POST('/api/ops/list_card_types', { body: {} }),
-      api.POST('/api/ops/list_item_categories', { body: {} })
-    ])
-    if (!current()) return
-    if (!i.data || !l.data || !p.data || !t.data || !c.data) {
-      const text = errorText(i.error ?? l.error ?? p.error ?? t.error ?? c.error)
-      if (items.value.length) toast.add({ title: text, color: 'error' })
-      else loadError.value = text
-      return
-    }
-    loadError.value = ''
-    items.value = i.data.items
-    levels.value = l.data.items
-    positions.value = p.data.items
-    cardTypes.value = t.data.items
-    categories.value = c.data.items
-  } finally {
-    if (current()) loading.value = false
-  }
-}
+// 一次都没读到过时原地给「重试」，别写成「还没有…」让人以为要重新建；已经有数据（刷新失败）时弹提示就够（usePageLoad）。
+const { loading, error: loadError, load } = usePageLoad({
+  fetch: () => [
+    api.POST('/api/ops/list_items', { body: {} }),
+    api.POST('/api/ops/list_levels', { body: {} }),
+    api.POST('/api/ops/list_positions', { body: {} }),
+    api.POST('/api/ops/list_card_types', { body: {} }),
+    api.POST('/api/ops/list_item_categories', { body: {} })
+  ],
+  apply: ([i, l, p, t, c]) => {
+    items.value = i.data!.items
+    levels.value = l.data!.items
+    positions.value = p.data!.items
+    cardTypes.value = t.data!.items
+    categories.value = c.data!.items
+  },
+  hasData: () => items.value.length > 0
+})
 
 // 本月每个项目做了几次（要 report.view）：补充信息，取不到就不写。
 const times = ref(new Map<string, number>())

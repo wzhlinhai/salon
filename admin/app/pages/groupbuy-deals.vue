@@ -11,35 +11,20 @@ const api = useApi()
 const toast = useToast()
 const deals = ref<Deal[]>([])
 const items = ref<Item[]>([])
-const loading = ref(false)
-const loadGuard = useRequestGuard()
 const itemItems = computed(() => items.value.filter(i => i.active).map(i => ({ label: `${i.name}（${i.price}）`, value: i.id })))
 
-// 一次都没读到过时原地给「重试」，别写成「还没有…」让人以为要重新建；已经有数据（刷新失败）时弹提示就够。
-const loadError = ref('')
-
-async function load() {
-  const current = loadGuard.next()
-  loading.value = true
-  try {
-    const [d, i] = await Promise.all([
-      api.POST('/api/ops/list_groupbuy_deals', { body: {} }),
-      api.POST('/api/ops/list_items', { body: {} })
-    ])
-    if (!current()) return
-    if (!d.data || !i.data) {
-      const text = errorText(d.error ?? i.error)
-      if (deals.value.length) toast.add({ title: text, color: 'error' })
-      else loadError.value = text
-      return
-    }
-    loadError.value = ''
-    deals.value = d.data.items
-    items.value = i.data.items
-  } finally {
-    if (current()) loading.value = false
-  }
-}
+// 一次都没读到过时原地给「重试」，别写成「还没有…」让人以为要重新建；已经有数据（刷新失败）时弹提示就够（usePageLoad）。
+const { loading, error: loadError, load } = usePageLoad({
+  fetch: () => [
+    api.POST('/api/ops/list_groupbuy_deals', { body: {} }),
+    api.POST('/api/ops/list_items', { body: {} })
+  ],
+  apply: ([d, i]) => {
+    deals.value = d.data!.items
+    items.value = i.data!.items
+  },
+  hasData: () => deals.value.length > 0
+})
 
 onMounted(load)
 

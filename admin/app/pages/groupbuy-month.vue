@@ -14,37 +14,23 @@ const platformTabs: { key: Platform, label: string }[] = [{ key: 'meituan', labe
 const platform = ref<Platform>('meituan')
 const month = ref('')
 const data = ref<GroupbuyMonth | null>(null)
-const loading = ref(false)
-const loadGuard = useRequestGuard()
 
 function currentMonth() {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
 
-// 读失败时丢掉上一个平台或月份的对账，原地给「重试」：不然看着的是别的月份的数，却以为是这个月的。
-const loadError = ref('')
-
-async function load() {
-  const current = loadGuard.next()
-  loadError.value = ''
-  loading.value = true
-  try {
-    const { data: result, error } = await api.POST('/api/ops/get_groupbuy_month', {
-      body: { platform: platform.value, month: month.value }
-    })
-    if (!current()) return
-    if (!result) {
-      data.value = null
-      loadError.value = errorText(error)
-      return
-    }
-    loadError.value = ''
-    data.value = result
-  } finally {
-    if (current()) loading.value = false
+// 读失败时丢掉上一个平台或月份的对账，原地给「重试」：不然看着的是别的月份的数，却以为是这个月的（hasData 恒为否）。
+const { loading, error: loadError, load } = usePageLoad({
+  fetch: () => [api.POST('/api/ops/get_groupbuy_month', { body: { platform: platform.value, month: month.value } })],
+  apply: ([r]) => {
+    data.value = r.data!
+  },
+  hasData: () => false,
+  onFail: () => {
+    data.value = null
   }
-}
+})
 
 onMounted(() => {
   month.value = currentMonth()

@@ -12,38 +12,39 @@ const toast = useToast()
 const { me } = useMe()
 
 const roles = ref<Role[]>([])
-const loadError = ref('')
 const catalogue = ref<Def[]>([])
 // 每个角色有几位在职员工；没有「员工管理」权限读不到员工，就不显示人数。
 const staffCount = ref<Record<string, number> | null>(null)
 
-const loadGuard = useRequestGuard()
-
-async function load() {
-  const request = loadGuard.next()
-  const [r, p, s] = await Promise.all([
+// 一次都没读到过时原地给「重试」，别只弹提示留一片空白；已经有角色（刷新失败）时弹提示就够（usePageLoad）。
+// 员工人数是补充信息：没权限不取，取不到也不提示（当作这次不取）。
+const { error: loadError, load } = usePageLoad({
+  fetch: () => [
     api.POST('/api/ops/list_roles', { body: {} }),
     api.POST('/api/ops/list_permissions', { body: {} }),
-    mine('staff.manage') ? api.POST('/api/ops/list_staff', { body: {} }) : Promise.resolve(null)
-  ])
-  if (!request()) return
-  // 一次都没读到过时原地给「重试」，别只弹提示留一片空白；已经有角色（刷新失败）时弹提示就够。
-  if (!r.data || !p.data) {
-    if (roles.value.length) toast.add({ title: errorText(r.error ?? p.error), color: 'error' })
-    else loadError.value = errorText(r.error ?? p.error)
-    return
+    staffForCount()
+  ],
+  apply: ([r, p, s]) => {
+    roles.value = r.data!.roles
+    catalogue.value = p.data!.permissions
+    if (s?.data) applyStaffCount(s.data.staff)
+  },
+  hasData: () => roles.value.length > 0
+})
+
+// 写在 fetch 外面：放进数组里，.then 的返回会被推成 Fetched，data 的类型就丢了。
+function staffForCount() {
+  if (!mine('staff.manage')) return null
+  return api.POST('/api/ops/list_staff', { body: {} }).then(r => r.data ? r : null)
+}
+
+function applyStaffCount(staff: components['schemas']['Staff'][]) {
+  const count: Record<string, number> = {}
+  for (const st of staff) {
+    if (st.deactivated_at) continue
+    for (const role of st.roles) count[role.id] = (count[role.id] ?? 0) + 1
   }
-  loadError.value = ''
-  roles.value = r.data.roles
-  catalogue.value = p.data.permissions
-  if (s?.data) {
-    const count: Record<string, number> = {}
-    for (const st of s.data.staff) {
-      if (st.deactivated_at) continue
-      for (const role of st.roles) count[role.id] = (count[role.id] ?? 0) + 1
-    }
-    staffCount.value = count
-  }
+  staffCount.value = count
 }
 
 onMounted(load)
