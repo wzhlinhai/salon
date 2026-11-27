@@ -113,6 +113,64 @@ type AiDraftEvent struct {
 	BeforeSummary *string
 }
 
+type AiInbox struct {
+	TenantID   uuid.UUID
+	StoreID    uuid.UUID
+	ID         uuid.UUID
+	StaffID    *uuid.UUID
+	LeaseToken *uuid.UUID
+	LeaseUntil pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+}
+
+type AiInboxEvent struct {
+	TenantID    uuid.UUID
+	StoreID     uuid.UUID
+	ID          uuid.UUID
+	InboxID     uuid.UUID
+	Kind        string
+	SourceKey   string
+	SubjectKind *string
+	SubjectID   *uuid.UUID
+	Payload     []byte
+	Status      string
+	Attempts    int32
+	NotBefore   pgtype.Timestamptz
+	LastError   *string
+	LeaseToken  *uuid.UUID
+	SessionID   *uuid.UUID
+	CreatedAt   pgtype.Timestamptz
+	DoneAt      pgtype.Timestamptz
+}
+
+type AiMemoryFile struct {
+	TenantID  uuid.UUID
+	StoreID   uuid.UUID
+	ID        uuid.UUID
+	InboxID   uuid.UUID
+	Path      string
+	Content   string
+	UpdatedAt pgtype.Timestamptz
+}
+
+type AiOutbox struct {
+	TenantID    uuid.UUID
+	StoreID     uuid.UUID
+	ID          uuid.UUID
+	RecipientID uuid.UUID
+	Tier        string
+	SubjectKind string
+	SubjectID   uuid.UUID
+	ParentID    *uuid.UUID
+	Body        string
+	Status      string
+	SessionID   *uuid.UUID
+	QueuedAt    pgtype.Timestamptz
+	SentAt      pgtype.Timestamptz
+	ReadAt      pgtype.Timestamptz
+	WithdrawnAt pgtype.Timestamptz
+}
+
 type AiReminder struct {
 	TenantID         uuid.UUID
 	StoreID          uuid.UUID
@@ -156,6 +214,53 @@ type AiReminderRun struct {
 	LastError    *string
 	Matched      int32
 	UpdatedAt    pgtype.Timestamptz
+}
+
+type AiRequest struct {
+	TenantID    uuid.UUID
+	StoreID     uuid.UUID
+	ID          uuid.UUID
+	ToStaffID   uuid.UUID
+	Kind        string
+	SubjectKind string
+	SubjectID   uuid.UUID
+	Options     []byte
+	DueAt       pgtype.Timestamptz
+	Status      string
+	Answer      *string
+	AnsweredAt  pgtype.Timestamptz
+	PreviousID  *uuid.UUID
+	CreatedAt   pgtype.Timestamptz
+}
+
+type AiSession struct {
+	TenantID    uuid.UUID
+	StoreID     uuid.UUID
+	ID          uuid.UUID
+	InboxID     uuid.UUID
+	SubjectKind *string
+	SubjectID   *uuid.UUID
+	Status      string
+	WaitingFor  *string
+	Messages    []byte
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}
+
+type AiTimer struct {
+	TenantID    uuid.UUID
+	StoreID     uuid.UUID
+	ID          uuid.UUID
+	InboxID     uuid.UUID
+	Kind        string
+	SubjectKind *string
+	SubjectID   *uuid.UUID
+	PeriodicKey *string
+	Repeat      *string
+	DueAt       pgtype.Timestamptz
+	Payload     []byte
+	Status      string
+	CreatedAt   pgtype.Timestamptz
 }
 
 type Appointment struct {
