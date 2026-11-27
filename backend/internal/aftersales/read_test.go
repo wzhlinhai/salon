@@ -22,7 +22,9 @@ func TestAftersaleReads(t *testing.T) {
 	secondOrder := f.paidOrder(payment("cash", "100"))
 	second := f.create(id(secondOrder["id"]), "partial_refund", "部分退款", payment("cash", "10"))
 	f.reject(id(second["id"]), nil)
-	thirdOrder := f.paidOrder(payment("cash", "100"))
+	opened := f.order(1, 1)
+	f.call("remove_order_item", map[string]any{"order_id": opened["id"], "order_item_id": opened["items"].([]any)[1].(map[string]any)["id"]}, 200)
+	thirdOrder := f.checkout(opened, payment("cash", "100"))
 	third := f.create(id(thirdOrder["id"]), "partial_refund", "通过", payment("cash", "10"))
 	f.approve(id(third["id"]), nil)
 
@@ -32,6 +34,11 @@ func TestAftersaleReads(t *testing.T) {
 		if got.Status != 200 || got.Body["id"] != third["id"] || got.Body["status"] != "approved" || len(got.Body["events"].([]any)) != 2 {
 			t.Fatal(ch.Name, got)
 		}
+		receivable := ch.Call(t, caller, "get_order", map[string]any{"id": thirdOrder["id"]}).Body["receivable"]
+		gotOrder, ok := got.Body["order"].(map[string]any)
+		if !ok || len(gotOrder) != 3 || gotOrder["business_date"] != "2026-10-01" || gotOrder["customer_id"] != f.customer.String() || gotOrder["receivable"] != receivable || receivable != "100.00" {
+			t.Fatal(ch.Name, got.Body["order"], receivable)
+		}
 		list := ch.Call(t, caller, "list_aftersales", map[string]any{"date_from": "2026-10-01", "date_to": "2026-10-01"})
 		if list.Status != 200 || len(list.Body["items"].([]any)) != 3 {
 			t.Fatal(ch.Name, list)
@@ -40,7 +47,7 @@ func TestAftersaleReads(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(string(raw), "phone") || strings.Contains(string(raw), "customer") {
+		if strings.Contains(string(raw), "phone") || strings.Contains(string(raw), "customer_name") {
 			t.Fatal(string(raw))
 		}
 		for _, tc := range []struct {
@@ -122,8 +129,6 @@ func (*aftersaleQueryCounter) TraceQueryEnd(context.Context, *pgx.Conn, pgx.Trac
 func TestAftersaleListQueryCount(t *testing.T) {
 	f := open(t)
 	f.now("2026-10-01", 12)
-	order := f.order(1)
-	f.checkout(order, payment("cash", "100"))
 	counter := &aftersaleQueryCounter{}
 	config := f.Pool.Config().Copy()
 	config.ConnConfig.Tracer = counter
@@ -140,6 +145,7 @@ func TestAftersaleListQueryCount(t *testing.T) {
 	counts := map[string]int64{}
 	for _, n := range []int{1, 6} {
 		for len(f.call("list_aftersales", map[string]any{"date_from": "2026-10-01", "date_to": "2026-10-01"}, 200)["items"].([]any)) < n {
+			order := f.paidOrder(payment("cash", "100"))
 			f.create(id(order["id"]), "repair", "修补")
 		}
 		for _, ch := range app.Channels() {
