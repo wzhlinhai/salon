@@ -57,8 +57,9 @@
   --font-serif: "Ledger Serif", "Noto Serif SC", "Source Han Serif SC", "Songti SC", SimSun, serif;
   --font-hand: "Ledger Hand", "LXGW WenKai", "Kaiti SC", KaiTi, STKaiti, serif;
 
-  /* 圆角两档加胶囊：控件 6（--ui-radius，rounded-md），纸 12（rounded-card），胶囊和头像 rounded-full。 */
+  /* 圆角三档加胶囊：控件 6（--ui-radius，rounded-md），纸 12（rounded-card），AI 对话里人说的话 20（rounded-bubble，照 Notion AI，单行时看着像胶囊），胶囊和头像 rounded-full。 */
   --radius-card: 12px;
+  --radius-bubble: 20px;
 
   /* 只有实物是纸，纸有两种：平放的纸 shadow-paper（小票、发型卡、卡面），拿起来的纸 shadow-lift（弹窗、菜单、侧滑、浮条）。
      其余只用细线 shadow-line 或留白分开。 */
