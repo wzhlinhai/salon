@@ -39,7 +39,7 @@ func PutReminder(ctx context.Context, q *dbgen.Queries, now time.Time, in PutRem
 		return dbgen.AiOutbox{}, err
 	}
 	if err := q.LockOutboxSubject(ctx, dbgen.LockOutboxSubjectParams{
-		StoreID: in.StoreID,
+		StoreID:     in.StoreID,
 		SubjectKind: in.Subject.Kind, SubjectID: in.Subject.ID,
 	}); err != nil {
 		return dbgen.AiOutbox{}, err
