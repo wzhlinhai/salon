@@ -31,6 +31,7 @@ const emit = defineEmits<{
   'changed': []
   'coupons-changed': []
   'checked-out': [checkoutId: string | null | undefined]
+  'open': []
 }>()
 const api = useApi()
 const toast = useToast()
@@ -115,6 +116,8 @@ async function select(target: Order) {
     const { data, error } = await api.POST('/api/ops/get_order', { body: { id: target.id } })
     if (!current() || orderId.value !== target.id) return
     if (!data) {
+      // 没读出来就不算选着这张单：右栏回到空白小票，顶栏不再另出一个「开单」，左栏那行也不再高亮。
+      orderId.value = ''
       toast.add({ title: errorText(error), color: 'error' })
       return
     }
@@ -586,7 +589,13 @@ defineExpose({ select, clear, refresh, voided })
   <!-- 当前单照样稿 02 排成一张账：顾客头、项目一行一个、虚线分开，应收用宋体大字，付款方式一排按钮，结账整条。站着点的付款区控件 44 高。 -->
   <section data-testid="selected-order" class="max-w-120">
     <ListSkeleton v-if="orderLoading && !order" :rows="3" />
-    <EmptyState v-else-if="!order" title="还没选单" hint="从「在做」里选一张单，或扫码开单" />
+    <!-- 没选单时右栏是一张空白小票，正中一个大「开单」：收银台空着时主角就是开下一张单。顶栏这时不放「开单」，一页只一个。 -->
+    <div v-else-if="!order" class="receipt-drop" data-testid="blank-receipt">
+      <div class="receipt flex min-h-80 flex-col items-center justify-center gap-4 text-center">
+        <UButton size="xl" class="px-10" @click="emit('open')">开单</UButton>
+        <p v-if="openOrders.length || canGroupbuy" class="text-meta text-muted">{{ openOrders.length ? '或点一张在做的单' : '带团购券的，先在上面扫券' }}</p>
+      </div>
+    </div>
     <template v-else>
       <!-- 当前单是一张拿在手里的小票（样稿系统页「小票」）：白纸、上边圆角、底边一排齿孔；齿孔用遮罩挖，阴影就放在外层用 drop-shadow 跟着齿形走。 -->
       <div class="receipt-drop">

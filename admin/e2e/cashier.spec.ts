@@ -138,6 +138,9 @@ test('补录单有标记且超出补录天数被拒绝', async ({ page }) => {
   await page.goto('/cashier')
   await expect(page.locator(`[data-order-id="${normal.id}"]`)).toBeVisible()
   await expect(page.locator(`[data-order-id="${normal.id}"]`).getByTestId('backfill-badge')).toHaveCount(0)
+  // 没选单时「开单」只在右栏空白小票上，页面上只有这一个。
+  await expect(page.getByTestId('blank-receipt').getByRole('button', { name: '开单', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '开单', exact: true })).toHaveCount(1)
   await page.getByRole('button', { name: '开单', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '开单' })
   await dialog.getByRole('checkbox', { name: '补录纸单' }).click()
@@ -149,6 +152,9 @@ test('补录单有标记且超出补录天数被拒绝', async ({ page }) => {
   await expect(dialog).not.toBeVisible()
   await expect(page.getByTestId('backfill-badge')).toBeVisible()
   await expect(page.getByTestId('selected-backfill')).toBeVisible()
+  // 选着单时空白小票不在，「开单」回到顶栏，仍只有一个。
+  await expect(page.getByTestId('blank-receipt')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '开单', exact: true })).toHaveCount(1)
   await expect(page.getByTestId('cash-expected')).toHaveText('88.00')
   await page.getByRole('button', { name: /^结账 ¥/ }).click()
   await expect(page.getByTestId('receipt-backfill')).toHaveText('补录')
@@ -233,7 +239,8 @@ test('团购验券、核销、立即开单、暂不开单后关联与撤销', as
   const row3 = page.getByTestId('unlinked-coupons').locator('div').filter({ hasText: code3 }).last()
   await row3.getByRole('button', { name: '撤销核销' }).click()
   await expect(page.getByText('已撤销核销').first()).toBeVisible()
-  await expect(page.getByTestId('unlinked-coupons')).not.toContainText(code3)
+  // 撤掉最后一张时整块不出现，所以断言「没有含这张券的块」，不要求这块还在。
+  await expect(page.getByTestId('unlinked-coupons').filter({ hasText: code3 })).toHaveCount(0)
 })
 
 test('切换挂单丢弃旧单的迟到响应', async ({ page }) => {
