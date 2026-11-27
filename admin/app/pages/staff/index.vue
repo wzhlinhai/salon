@@ -44,12 +44,13 @@ async function load() {
 }
 
 // 本月业绩和今天的班次是补充信息：没权限或取不到就不写，不挡名册。
+const storeToday = useStoreToday()
+
 async function loadFacts() {
-  const settings = await api.POST('/api/ops/get_settings', { body: {} })
-  const today = settings.data?.business_date
+  const today = (await storeToday.load())?.business_date
   if (!today) return
   await Promise.all([
-    can('performance.view') && api.POST('/api/ops/get_staff_report', { body: { from: `${today.slice(0, 8)}01`, to: today } }).then((r) => {
+    can('performance.view') && api.POST('/api/ops/get_staff_report', { body: { from: monthStart(today), to: today } }).then((r) => {
       if (r.data) performance.value = new Map(r.data.rows.filter(row => row.staff).map(row => [row.staff!.id, row.item_performance]))
     }),
     can('attendance.manage') && api.POST('/api/ops/list_staff_shifts', { body: { date: today } }).then((r) => {

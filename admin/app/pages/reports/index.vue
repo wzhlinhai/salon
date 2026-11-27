@@ -28,18 +28,18 @@ function shortDay(day: string) {
 // 营业日都没读到时，本月的数一个也算不出来：原地给「重试」，不留一片空白。
 const failed = ref('')
 const loadGuard = useRequestGuard()
+const storeToday = useStoreToday()
 
 async function load() {
   const current = loadGuard.next()
-  const settings = await api.POST('/api/ops/get_settings', { body: {} })
+  const today = (await storeToday.load())?.business_date
   if (!current()) return
-  const today = settings.data?.business_date
   if (!today) {
-    failed.value = errorText(settings.error)
+    failed.value = storeToday.error.value
     return
   }
   failed.value = ''
-  const range = { from: `${today.slice(0, 7)}-01`, to: today }
+  const range = { from: monthStart(today), to: today }
   const keys = new Set(visible.value.map(r => r.key))
   const merge = (patch: Partial<MonthFigures>) => {
     figures.value = { ...figures.value, ...patch }

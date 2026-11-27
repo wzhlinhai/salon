@@ -8,6 +8,7 @@ npm run generate:api   # 从后端生成 OpenAPI 文档和 TypeScript 类型（�
 npm run dev            # http://localhost:3000，/api 代理到 127.0.0.1:8080
 npm run lint           # 检查代码格式
 npm run typecheck
+npm run test:unit      # 单元测试（vitest，test/unit/）
 ```
 
 多个 worktree 并行开发时，每个 worktree 设置不同的 `DEV_DB_PORT`、`DEV_BACKEND_ADDR`、`DEV_ADMIN_PORT`，即可各用一套数据库容器、后端和前端（容器名随端口变化，形如 `salon-dev-db-55432`）。`.dev/e2e.json`、pid 和日志都在各自 worktree 的 `.dev` 下。`scripts/gate.py` 的重任务锁按 worktree 各一把，不跨 worktree 互斥；同时运行重任务仍会争用 CPU 和 Docker。
@@ -15,6 +16,8 @@ npm run typecheck
 - 接口类型 `app/utils/api.d.ts` 由 `npm run generate:api` 生成，不要手改。后端接口有变化时重新生成并提交。
 - 页面用 `definePageMeta({ permission: '...' })` 声明所需权限。导航只显示有权限的页面，直接访问会跳到无权限页。权限以后端检查为准，页面只是隐藏入口。
 - 生产环境用 `NUXT_PUBLIC_API_BASE` 指定后端地址。
+- 营业日和门店设置用 `useStoreToday()` 读（`load` 每次重新问后端，`value(key)` 是这一天执行的值，默认值由后端给，前端不另写）；只有按指定日期取设置（预约页的营业时间）才直接调 `get_settings`。
+- 单元测试只测不依赖 Nuxt 自动导入的模块：逻辑放在 `app/utils/` 里显式 import 的文件，composable 只做接线（例如 `utils/storeToday.ts` 和 `composables/useStoreToday.ts`）。页面和组件靠 e2e。
 - 页面里的请求用 `useRequestGuard` 判断结果是否过期（加载用 `next`，编辑窗口里的写操作用 `hold`，打开窗口或换对象时 `next`），卸载时自动作废；游标分页用 `useCursorList`。
 
 - 弹窗表单用 `useModalForm`：`begin` 复位并开启一次有效期，`load` 和 `save` 管理加载、保存及 finally 复位；回调写页面状态前检查传入的 `current()`。关闭、重开或卸载使旧请求失效。

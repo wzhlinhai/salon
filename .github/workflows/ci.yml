@@ -106,6 +106,7 @@ jobs:
             echo "app/utils/api.d.ts is stale: run 'npm run generate:api' in admin/ and commit it"; exit 1; }
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm run test:unit
 
   # e2e 按文件拆成 3 台机器并行，每台起自己的后端和全新数据库，互不干扰。
   # 全店级用例（工资锁月、全店顾客分页、团购对账、日结封账）本地要等默认项目跑完；

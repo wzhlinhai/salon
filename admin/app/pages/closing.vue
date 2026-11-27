@@ -20,7 +20,7 @@ const { can } = useMe()
 const crumbTitle = useState('page-crumb-title', () => '')
 const guard = useRequestGuard()
 
-const today = ref('')
+const { businessDate: today, error: todayError, load: loadToday } = useStoreToday()
 const date = ref('')
 const sealedThrough = ref<string | null>(null)
 const pendingDays = ref<string[]>([])
@@ -59,13 +59,11 @@ function dayLabel(value: string) {
 }
 
 async function start() {
-  const settings = await api.POST('/api/ops/get_settings', { body: {} })
-  if (!settings.data) {
+  if (!await loadToday()) {
     failed.value = true
-    toast.add({ title: errorText(settings.error), color: 'error' })
+    toast.add({ title: todayError.value, color: 'error' })
     return
   }
-  today.value = settings.data.business_date
   const asked = typeof route.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(route.query.date) ? route.query.date : ''
   date.value = asked && asked < today.value ? asked : yesterday.value
 }

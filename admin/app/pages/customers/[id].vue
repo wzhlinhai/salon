@@ -24,7 +24,7 @@ const NONE = 'none'
 // 详情资料
 const customer = ref<Customer | null>(null)
 const loadError = ref('')
-const today = ref('')
+const { businessDate: today, error: todayError, load: loadToday } = useStoreToday()
 const editing = ref(false)
 const profile = reactive({
   name: '',
@@ -551,13 +551,9 @@ onMounted(async () => {
       if (data) staffOptions.value = data.staff
     })
   }
-  const res = await api.POST('/api/ops/get_settings', { body: {} })
+  const loaded = await loadToday()
   if (!current()) return
-  if (res.data) {
-    today.value = res.data.business_date
-  } else {
-    toast.add({ title: errorText(res.error), color: 'error' })
-  }
+  if (!loaded) toast.add({ title: todayError.value, color: 'error' })
 })
 
 onBeforeUnmount(() => {

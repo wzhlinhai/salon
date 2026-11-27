@@ -12,8 +12,8 @@ const wholeStore = computed(() => can('report.view') || can('payment.collect') |
 const { pending: pendingDrafts, drafts: allDrafts } = useDrafts()
 const myDrafts = computed(() => allDrafts.value.filter(draft => draft.status === 'pending' && draft.initiator === me.value?.staff.id))
 
-const businessDate = ref('')
-const settingsGuard = useRequestGuard()
+// 读不到营业日时「接下来」整块出不来：原地给「重试」（settingsError），别只弹一条提示留一片空白。
+const { businessDate, error: settingsError, load: loadSettings } = useStoreToday()
 const attendanceGuard = useRequestGuard()
 const { clockIn: todayClockIn, known: punchKnown, punching, punch, remember: rememberClockIn } = usePunch()
 // 考勤没读出来时也要露出打卡按钮：读完（成功或失败）才决定。
@@ -28,21 +28,6 @@ const greeting = computed(() => {
   if (hour < 18) return '下午好'
   return '晚上好'
 })
-
-// 读不到营业日时「接下来」整块出不来：原地给「重试」，别只弹一条提示留一片空白。
-const settingsError = ref('')
-
-async function loadSettings() {
-  const current = settingsGuard.next()
-  const { data, error } = await api.POST('/api/ops/get_settings', { body: {} })
-  if (!current()) return
-  if (!data) {
-    settingsError.value = errorText(error)
-    return
-  }
-  settingsError.value = ''
-  businessDate.value = data.business_date
-}
 
 async function loadAttendance() {
   if (!can('attendance.clock') || !businessDate.value) return

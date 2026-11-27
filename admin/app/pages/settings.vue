@@ -11,8 +11,7 @@ const api = useApi()
 const toast = useToast()
 const { can } = useMe()
 
-const today = ref('')
-const settings = ref<Setting[]>([])
+const { businessDate: today, settings, setting: settingOf, error: todayError, load: loadToday } = useStoreToday()
 const changes = useCursorList(async (beforeId) => {
   const { data, error } = await api.POST('/api/ops/list_setting_changes', { body: { before_id: beforeId } })
   return { data: data?.changes, error }
@@ -24,17 +23,15 @@ const loadError = ref('')
 async function load() {
   const request = settingsGuard.next()
   if (can('audit_log.view')) changes.reload()
-  const { data, error } = await api.POST('/api/ops/get_settings', { body: {} })
+  const data = await loadToday()
   if (!request()) return
   // 读失败时留着上次读到的设置；一次都没读到过才原地给「重试」，别把设置清空成一张白纸。
   if (!data) {
-    if (settings.value.length) toast.add({ title: errorText(error), color: 'error' })
-    else loadError.value = errorText(error)
+    if (settings.value.length) toast.add({ title: todayError.value, color: 'error' })
+    else loadError.value = todayError.value
     return
   }
   loadError.value = ''
-  today.value = data.business_date
-  settings.value = data.settings
 }
 
 onMounted(load)
@@ -49,8 +46,6 @@ function show(setting: Setting | undefined, value: unknown): string {
   }
   return String(value)
 }
-
-const settingOf = (key: string) => settings.value.find(s => s.key === key)
 
 // 设置页分组（DESIGN.md 设置页）：按键名归到几组，组内保持后端目录的顺序；认不出的放最后"其他"。
 const SETTING_GROUPS: { label: string, match: (key: string) => boolean }[] = [

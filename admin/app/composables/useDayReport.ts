@@ -4,11 +4,10 @@ import type { ReportRange } from '~/utils/report'
 // 范围写在网址 ?from=&to= 里，范围一变就查；范围无效不查，也作废还在路上的旧请求。
 // fetch 传一个按起止营业日取数的函数，返回 openapi-fetch 的 { data, error }。
 export function useDayReport<T>(fetch: (from: string, to: string) => Promise<{ data?: T, error?: unknown }>) {
-  const api = useApi()
   const route = useRoute()
   const router = useRouter()
   const toast = useToast()
-  const today = ref('')
+  const { businessDate: today, error: todayError, load: loadToday } = useStoreToday()
   const range = ref<ReportRange>({ granularity: 'day', from: '', to: '' })
   const report = ref<T | null>(null) as Ref<T | null>
   const loading = ref(false)
@@ -48,13 +47,11 @@ export function useDayReport<T>(fetch: (from: string, to: string) => Promise<{ d
 
   async function start() {
     failed.value = false
-    const settings = await api.POST('/api/ops/get_settings', { body: {} })
-    if (!settings.data) {
+    if (!await loadToday()) {
       failed.value = true
-      toast.add({ title: errorText(settings.error), color: 'error' })
+      toast.add({ title: todayError.value, color: 'error' })
       return
     }
-    today.value = settings.data.business_date
     range.value = fromQuery() ?? defaultRange('day', today.value)
   }
 

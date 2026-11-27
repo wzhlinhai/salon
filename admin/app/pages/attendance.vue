@@ -14,7 +14,8 @@ const tabs = [
   { label: '班次', value: 'shifts' }
 ]
 
-const today = ref('')
+// 营业日没读出来时，月份和班次都定不下来：原地给「重试」，别留一片空白。
+const { businessDate: today, error: dayError, load: loadDay } = useStoreToday()
 const calendarToday = ref(attendanceCalendarDate())
 const currentMonth = ref('')
 const month = ref('')
@@ -264,24 +265,23 @@ watch(month, () => {
   void reloadSummary()
 })
 
-onMounted(async () => {
-  const { data, error } = await api.POST('/api/ops/get_settings', { body: {} })
-  if (!data) {
-    toast.add({ title: errorText(error), color: 'error' })
-    return
-  }
-  today.value = data.business_date
+async function start() {
+  const data = await loadDay()
+  if (!data) return
   currentMonth.value = data.business_date.slice(0, 7)
   month.value = currentMonth.value
   await Promise.all([reloadShifts(), reloadStaffShifts()])
-})
+}
+
+onMounted(start)
 </script>
 
 <template>
   <div class="space-y-4">
     <UTabs v-model="tab" :items="tabs" :content="false" variant="link" color="neutral" class="w-fit" />
 
-    <section v-if="tab === 'monthly'" class="space-y-4">
+    <LoadError v-if="dayError && !today" title="考勤没有读出来" :hint="dayError" @retry="start()" />
+    <section v-else-if="tab === 'monthly'" class="space-y-4">
       <p class="text-sm text-muted">点一行看这个人每天的打卡</p>
       <PageActions>
         <DateInput v-model="month" month :max="currentMonth" aria-label="月份" class="w-36" />

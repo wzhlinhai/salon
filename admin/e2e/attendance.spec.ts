@@ -522,3 +522,20 @@ test('考勤统计切月后丢弃迟到的旧统计', async ({ page }) => {
   await expect(input).toHaveValue(month)
   await expect(input).toHaveAttribute('max', today.slice(0, 7))
 })
+
+test('考勤页营业日没读出来时原地给重试，重试后正常显示', async ({ page }) => {
+  await login(page, owner.account, owner.password)
+  let failures = 1
+  await page.route('**/api/ops/get_settings', async (route) => {
+    if (failures-- > 0) await route.fulfill({ status: 500, json: { detail: '营业日读取失败' } })
+    else await route.continue()
+  })
+  await page.goto('/attendance')
+  const error = page.getByText('考勤没有读出来', { exact: true })
+  await expect(error).toBeVisible()
+  await expect(page.getByText('营业日读取失败', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('attendance-table')).toHaveCount(0)
+  await page.getByRole('button', { name: '重试', exact: true }).click()
+  await expect(error).toHaveCount(0)
+  await expect(page.getByTestId('attendance-table')).toBeVisible()
+})

@@ -25,7 +25,7 @@ const targets: { value: OverrideTarget, label: string }[] = [
 ]
 const api = useApi()
 const toast = useToast()
-const today = ref('')
+const { businessDate: today, error: todayError, load: loadToday } = useStoreToday()
 const inForce = ref<number>()
 const selected = ref<number>()
 const detail = ref<View>()
@@ -60,16 +60,13 @@ async function selectVersion(version: number) {
 async function reload(version?: number) {
   const selectionAtStart = selectionRevision
   const current = todayGuard.next()
-  const [settings] = await Promise.all([
-    api.POST('/api/ops/get_settings', { body: {} }), versions.reload()
-  ])
+  const [loaded] = await Promise.all([loadToday(), versions.reload()])
   if (!current()) return
-  if (!settings.data) {
-    settingsError.value = errorText(settings.error)
+  if (!loaded) {
+    settingsError.value = todayError.value
     return
   }
   settingsError.value = ''
-  today.value = settings.data.business_date
   const active = await api.POST('/api/ops/get_commission_scheme', { body: { date: today.value } })
   if (!current()) return
   if (active.error && active.response.status !== 404) toast.add({ title: errorText(active.error), color: 'error' })
