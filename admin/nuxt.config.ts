@@ -20,6 +20,8 @@ export default defineNuxtConfig({
   },
   css: ['~/assets/css/main.css'],
   ui: {
+    // 只做浅色（DESIGN.md）：不跟系统切深色，否则系统开了深色时底色变深、字还是墨色，看不清。
+    colorMode: false,
     theme: {
       colors: ['primary', 'secondary', 'success', 'info', 'warning', 'error', 'ai']
     }

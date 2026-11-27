@@ -488,6 +488,16 @@ function saveUnseal() {
     <UModal v-model:open="sealForm.open.value" :title="`封账到 ${sealDate}`">
       <template #body>
         <div class="space-y-2 text-sm">
+          <!-- 封之前把这天的数再摆一遍：收了多少、日结对出的差，没日结或日结后又变了就写出来。 -->
+          <div class="rounded-card bg-elevated px-4 py-3" data-testid="seal-summary">
+            <p>{{ sealDate }} 现场收了 <span class="font-semibold tabular-nums">{{ yuan(systemTotal) }}</span>，结账 {{ figures?.checkout_count ?? 0 }} 单。</p>
+            <p v-if="!saved && !business && !figures?.checkout_count && !systemTotal" class="text-muted">这天没有营业，不用日结。</p>
+            <p v-else-if="!saved" class="text-ink-orange">这天还没日结，现金和到账没对过。</p>
+            <template v-else>
+              <p :class="saved.differences.some(d => Number(d.difference) !== 0) ? 'text-ink-red' : 'text-muted'">日结对的：{{ offText(saved.differences) }}</p>
+              <p v-if="changed" class="text-ink-orange">日结之后账有变动或改了数，还没重新日结。</p>
+            </template>
+          </div>
           <p>封账后 {{ sealDate }} 及以前的单不能再改、撤单、补录，要退钱只能走售后。</p>
           <p v-if="!sealedThrough" class="text-muted">这是第一次封账，{{ sealDate }} 以前的日子也一起封上。</p>
           <p class="text-muted">封错了老板可以撤销，撤销要写原因。</p>

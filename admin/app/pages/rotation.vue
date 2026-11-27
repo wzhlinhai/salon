@@ -531,7 +531,7 @@ const settingsMenu = computed<DropdownMenuItem[][]>(() => {
     ])
   }
   groups.push([
-    { label: '新建队列…', icon: 'i-lucide-plus', onSelect: () => askName(null) },
+    { label: '新建队列…', icon: 'i-lucide-list-ordered', onSelect: () => askName(null) },
     ...inactiveQueues.value.map(q => ({ label: `启用「${q.name}」`, icon: 'i-lucide-archive-restore', onSelect: () => setActive(q, true) }))
   ])
   groups.push([

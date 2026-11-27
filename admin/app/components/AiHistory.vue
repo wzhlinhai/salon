@@ -125,7 +125,7 @@ async function setArchived(item: Summary, value: boolean) {
             <ul>
               <li v-for="item in g.items" :key="item.id" class="group flex items-center gap-1 rounded-md hover:bg-hover" :class="item.id === conversationId && 'bg-hover'" data-testid="ai-history-item">
                 <button type="button" class="min-w-0 flex-1 truncate rounded-md px-2 py-2 text-start text-default focus-visible:outline-2 focus-visible:outline-primary" :title="item.title" @click="choose(item)">{{ item.title }}</button>
-                <span class="shrink-0 text-xs text-dimmed tabular-nums">{{ formatShortStamp(item.updated_at) }}</span>
+                <span class="shrink-0 text-xs text-muted tabular-nums">{{ formatShortStamp(item.updated_at) }}</span>
                 <UButton
                   color="neutral"
                   variant="ghost"

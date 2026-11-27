@@ -283,7 +283,7 @@ async function submitVoid() {
           改人：{{ changeText(order, change) }}
         </p>
       </div>
-      <p v-if="total > orders.length" class="border-t border-default px-3 py-2 text-meta text-dimmed">只显示最近 {{ orders.length }} 张</p>
+      <p v-if="total > orders.length" class="border-t border-default px-3 py-2 text-meta text-muted">只显示最近 {{ orders.length }} 张</p>
     </div>
   </section>
   <CashierCollections

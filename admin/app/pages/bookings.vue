@@ -763,7 +763,7 @@ function actorLabel(actor: Actor) {
         <template v-if="!dayError">{{ dayBooked ? `约了 ${dayBooked} 位` : '还没有人约' }}</template>
         <span v-if="dayLate && !dayError" class="tag bg-tag-yellow">{{ dayLate }} 位没到</span>
       </p>
-      <span v-if="day && day === businessDate" class="tag bg-tag-gray">今天</span>
+      <span v-if="day && day === businessDate" class="text-meta text-muted">今天</span>
       <UButton v-else color="neutral" variant="outline" size="sm" @click="goToday">今天</UButton>
       <DateInput v-model="day" size="sm" aria-label="营业日" class="ms-2 w-36" />
       <USwitch v-model="showCancelled" size="sm" label="显示已取消" class="ms-auto" />
