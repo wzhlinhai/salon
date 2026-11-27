@@ -221,9 +221,12 @@ watch(() => [entries.value.length, sending.value], async () => {
                 </template>
               </div>
             </div>
-            <div v-else class="space-y-3">
-              <p class="text-sm leading-relaxed whitespace-pre-wrap text-pretty" :class="entry.failed ? 'text-ink-red' : 'text-highlighted'">{{ entry.content }}</p>
-              <DraftCard v-for="draft in entry.drafts ?? []" :key="draft.id" :draft="draft" compact />
+            <!-- AI 的话：复制按钮紧贴正文，和人那边气泡到按钮的距离看着一样（正文行高下面已经留了半行空，按钮不再加间距）；下面有草稿卡时隔 4px。 -->
+            <div v-else>
+              <div class="space-y-3">
+                <p class="text-sm leading-relaxed whitespace-pre-wrap text-pretty" :class="entry.failed ? 'text-ink-red' : 'text-highlighted'">{{ entry.content }}</p>
+                <DraftCard v-for="draft in entry.drafts ?? []" :key="draft.id" :draft="draft" compact />
+              </div>
               <UButton
                 v-if="!entry.failed"
                 color="neutral"
@@ -232,6 +235,7 @@ watch(() => [entries.value.length, sending.value], async () => {
                 :icon="copied === index ? 'i-lucide-check' : 'i-lucide-copy'"
                 :aria-label="copied === index ? '已复制' : '复制'"
                 :ui="tinyAction"
+                :class="entry.drafts?.length ? 'mt-1' : undefined"
                 data-testid="ai-copy"
                 @click="copy(index, entry.content)"
               />
