@@ -483,6 +483,7 @@ test('AI 面板全屏和侧栏一键切换，刷新后照上次的样子', async
   await login(page, owner.account, owner.password)
   await page.getByTestId('ai-fab').click()
   const panel = aiPanel(page)
+  // 打开时在滑出动画里量的宽度可能差零点几像素，退出全屏后比它宽不超过 1px 就算回到侧栏。
   const narrow = (await panel.boundingBox())!.width
   await panel.getByRole('button', { name: '全屏' }).click()
   await expect(panel.getByRole('button', { name: '退出全屏' })).toBeVisible()
@@ -493,7 +494,7 @@ test('AI 面板全屏和侧栏一键切换，刷新后照上次的样子', async
   await expect(panel.getByRole('button', { name: '退出全屏' })).toBeVisible()
   await panel.getByRole('button', { name: '退出全屏' }).click()
   await expect(panel.getByRole('button', { name: '全屏' })).toBeVisible()
-  await expect.poll(async () => (await panel.boundingBox())!.width).toBeLessThanOrEqual(narrow)
+  await expect.poll(async () => (await panel.boundingBox())!.width).toBeLessThanOrEqual(narrow + 1)
 })
 
 test('先点的历史对话迟到时不盖住后点的；换人登录后历史列表不留上一个人的', async ({ page }) => {
