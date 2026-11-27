@@ -17,6 +17,7 @@ import (
 
 	"github.com/wzhlinhai/salon/backend/internal/aftersales"
 	"github.com/wzhlinhai/salon/backend/internal/ai"
+	"github.com/wzhlinhai/salon/backend/internal/aiconversations"
 	"github.com/wzhlinhai/salon/backend/internal/attendance"
 	"github.com/wzhlinhai/salon/backend/internal/audit"
 	"github.com/wzhlinhai/salon/backend/internal/auth"
@@ -113,7 +114,7 @@ func New(pool *pgxpool.Pool, cfg Config) (*echo.Echo, *ops.Registry) {
 	if model == nil {
 		model = func() ai.Model { return nil }
 	}
-	registerChat(api, ai.NewChat(reg, model, cfg.Now, func(ctx context.Context, caller ops.Caller, now time.Time) (time.Time, error) {
+	chat := ai.NewChat(reg, model, cfg.Now, func(ctx context.Context, caller ops.Caller, now time.Time) (time.Time, error) {
 		var day time.Time
 		err := db.InTenant(ctx, pool, caller.TenantID, func(q *dbgen.Queries) error {
 			var err error
@@ -121,7 +122,9 @@ func New(pool *pgxpool.Pool, cfg Config) (*echo.Echo, *ops.Registry) {
 			return err
 		})
 		return day, err
-	}))
+	})
+	registerChat(api, aiconversations.NewChatService(pool, chat, cfg.Now))
+	aiconversations.Register(reg)
 	groupbuy.Register(reg, cfg.Groupbuy)
 	stores.Register(reg)
 	staff.Register(reg)

@@ -1,11 +1,10 @@
 import type { DraftView } from '~/composables/useDrafts'
 
-// 一条对话记录。sent 是实际发给 AI 的内容（修改草稿时带上草稿编号），content 是显示给人看的话。
-// failed 的记录只显示，不进入发给 AI 的历史。
+// 一条对话记录。content 是显示给人看的话；修改草稿时发给 AI 的话另带草稿编号，由服务端存成 sent。
+// failed 的记录只在本页显示，服务端没有保存（AI 没回成什么都不存）。
 export interface ChatEntry {
   role: 'user' | 'assistant'
   content: string
-  sent?: string
   editing?: string
   drafts?: DraftView[]
   failed?: boolean
@@ -17,10 +16,11 @@ export interface DraftEditing {
   summary: string
 }
 
-const MAX_HISTORY = 20
 export const MAX_MESSAGE = 4000
+const EXPANDED_KEY = 'salon-ai-expanded'
 
 // AI 对话面板：侧栏搜索、首页指令框和草稿卡片的"修改"都往同一个右侧面板里说话，不另开页面。
+// 对话由服务端按人保存：每次只发这一句，前文由服务端从这个对话里取；历史对话可以打开接着聊。
 export function useAiChat() {
   const api = useApi()
   const { me } = useMe()
@@ -29,49 +29,48 @@ export function useAiChat() {
   const entries = useState<ChatEntry[]>('ai-entries', () => [])
   const sending = useState<boolean>('ai-sending', () => false)
   const editing = useState<DraftEditing | null>('ai-editing', () => null)
+  // 当前对话；null 是还没说话的新对话，第一句回来后由服务端给出。
+  const conversationId = useState<string | null>('ai-conversation', () => null)
+  const title = useState<string>('ai-title', () => '')
+  const loadingConversation = useState<boolean>('ai-loading-conversation', () => false)
+  // 全屏还是侧栏，记在本机。
+  const expanded = useState<boolean>('ai-expanded', () => false)
   // 面板输入框里的字。AI 还在回上一句时，从别处说的话先放在这里，不丢。
   const input = useState<string>('ai-input', () => '')
-  // 发出时记下号码；换人登录或清空对话会换号，旧回复到达时丢弃。
+  // 发出或打开时记下号码；换人登录、开新对话、换到别的对话都会换号，旧结果到达时丢弃。
   const generation = useState<number>('ai-generation', () => 0)
-
-  function history(): { role: 'user' | 'assistant', content: string }[] {
-    const sent = entries.value
-      .filter(entry => !entry.failed)
-      // 后端要求每条非空且不超过 4000 字；AI 偶尔回空话或长清单，不能让它卡住后面的对话。
-      .map(entry => ({ role: entry.role, content: (entry.sent ?? entry.content).trim().slice(0, MAX_MESSAGE) }))
-      .filter(entry => entry.content)
-      .slice(-MAX_HISTORY)
-    // 截断后从用户的话开始，免得第一条是没有上文的 AI 回复。
-    while (sent.length && sent[0]!.role !== 'user') sent.shift()
-    return sent
-  }
 
   async function send(text: string) {
     const content = text.trim().slice(0, MAX_MESSAGE)
-    if (!content || sending.value || !me.value) return
+    if (!content || sending.value || loadingConversation.value || !me.value) return
     const target = editing.value
     editing.value = null
-    entries.value.push({
-      role: 'user',
-      content,
-      sent: target ? `请修改草稿 ${target.id}（${target.summary}）：${content}`.slice(0, MAX_MESSAGE) : undefined,
-      editing: target?.summary
-    })
+    entries.value.push({ role: 'user', content, editing: target?.summary })
     const current = generation.value
     sending.value = true
     try {
       // draft_id 让后端允许这次对话改这张（之前起草的）草稿；不带时 AI 只能改本次对话起草的。
-      const { data, error } = await api.POST('/api/ai/chat', { body: { messages: history(), draft_id: target?.id } })
+      const { data, error } = await api.POST('/api/ai/chat', {
+        body: {
+          conversation_id: conversationId.value ?? undefined,
+          content,
+          sent: target ? `请修改草稿 ${target.id}（${target.summary}）：${content}`.slice(0, MAX_MESSAGE) : undefined,
+          editing: target?.summary,
+          draft_id: target?.id
+        }
+      })
       if (current !== generation.value) return
       if (!data) {
         entries.value.push({ role: 'assistant', content: errorText(error), failed: true })
-        // 失败的那句话也不进历史，重说一遍即可。
+        // 没回成的那句服务端没存，标成失败，重说一遍即可。
         const asked = entries.value.at(-2)
         if (asked) asked.failed = true
         // 修改草稿那句没发成，重说时仍然是在改这张草稿。
         if (target && !editing.value) editing.value = target
         return
       }
+      conversationId.value = data.conversation_id ?? null
+      title.value = data.title ?? ''
       entries.value.push({ role: 'assistant', content: data.reply, drafts: data.drafts })
       if (data.drafts.length || target) void loadDrafts()
     } finally {
@@ -79,11 +78,11 @@ export function useAiChat() {
     }
   }
 
-  // 打开面板并说一句话；没有话时只打开面板。AI 还在回上一句时，这句话放进输入框等人再发。
+  // 打开面板并说一句话；没有话时只打开面板。AI 还在回上一句、或旧对话还在打开时，这句话放进输入框等人再发。
   function ask(text = '') {
     open.value = true
     if (!text.trim()) return
-    if (sending.value) {
+    if (sending.value || loadingConversation.value) {
       input.value = text
       return
     }
@@ -96,14 +95,68 @@ export function useAiChat() {
     open.value = true
   }
 
-  function reset() {
+  // 清掉面板里的对话（不动服务端），之前发出还没回来的结果作废。
+  function clear() {
     generation.value++
     entries.value = []
     editing.value = null
-    input.value = ''
+    conversationId.value = null
+    title.value = ''
     sending.value = false
+    loadingConversation.value = false
+  }
+
+  // 新对话：面板留着，输入框里的字也留着。
+  function startNew() {
+    clear()
+  }
+
+  // 打开一个历史对话，接着聊。
+  async function openConversation(id: string) {
+    clear()
+    conversationId.value = id
+    const current = generation.value
+    loadingConversation.value = true
+    try {
+      const { data, error } = await api.POST('/api/ops/get_ai_conversation', { body: { id } })
+      if (current !== generation.value) return
+      if (!data) {
+        conversationId.value = null
+        entries.value = [{ role: 'assistant', content: errorText(error), failed: true }]
+        return
+      }
+      title.value = data.title
+      entries.value = data.messages.map(m => ({
+        role: m.role === 'user' ? 'user' : 'assistant',
+        content: m.content,
+        editing: m.editing ?? undefined,
+        drafts: m.drafts
+      }))
+    } finally {
+      if (current === generation.value) loadingConversation.value = false
+    }
+  }
+
+  // 本机存不了（隐私模式等）也照样切换，只是下次不记得。
+  function setExpanded(value: boolean) {
+    expanded.value = value
+    try {
+      localStorage.setItem(EXPANDED_KEY, value ? '1' : '0')
+    } catch {
+      // 不记也行。
+    }
+  }
+
+  function restoreExpanded() {
+    expanded.value = localStorage.getItem(EXPANDED_KEY) === '1'
+  }
+
+  // 换人登录或退出：清空对话、关上面板。
+  function reset() {
+    clear()
+    input.value = ''
     open.value = false
   }
 
-  return { open, entries, sending, editing, input, send, ask, editDraft, reset }
+  return { open, entries, sending, editing, input, conversationId, title, loadingConversation, expanded, send, ask, editDraft, startNew, openConversation, setExpanded, restoreExpanded, reset }
 }

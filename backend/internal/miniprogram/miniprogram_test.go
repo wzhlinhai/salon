@@ -416,7 +416,7 @@ func TestCustomerTokenOnlyForOpsRoutes(t *testing.T) {
 		{http.MethodGet, "/openapi.json", ""},
 		{http.MethodGet, "/docs", ""},
 		{http.MethodPost, "/api/auth/login", "{}"},
-		{http.MethodPost, "/api/ai/chat", `{"messages":[{"role":"user","content":"你好"}]}`},
+		{http.MethodPost, "/api/ai/chat", `{"content":"你好"}`},
 		{http.MethodPost, "/api/import/preview", "{}"},
 		{http.MethodGet, "/api/export/all.xlsx", ""},
 	}
@@ -439,7 +439,7 @@ func TestCustomerTokenRejectedByRawRoutes(t *testing.T) {
 		status, body := doCustomerRequest(s, token, tc.method, tc.path, tc.body)
 		assertUnauthenticated(t, tc.method+" "+tc.path, status, body)
 	}
-	status, body := doCustomerRequest(s, token, http.MethodPost, "/api/ai/chat", `{"messages":[{"role":"user","content":"你好"}]}`)
+	status, body := doCustomerRequest(s, token, http.MethodPost, "/api/ai/chat", `{"content":"你好"}`)
 	assertUnauthenticated(t, "ai chat", status, body)
 }
 
@@ -448,7 +448,7 @@ func TestCustomerTokenDoesNotReachChatModel(t *testing.T) {
 	model := &failingModel{t: t}
 	s.SetAIModel(model)
 	token, _ := mustLogin(t, s, "fake-openid:chat-model", "fake-phone:13800130034")
-	status, body := doCustomerRequest(s, token, http.MethodPost, "/api/ai/chat", `{"messages":[{"role":"user","content":"你好"}]}`)
+	status, body := doCustomerRequest(s, token, http.MethodPost, "/api/ai/chat", `{"content":"你好"}`)
 	assertUnauthenticated(t, "ai chat", status, body)
 	if model.called.Load() {
 		t.Fatal("customer token reached the chat model")

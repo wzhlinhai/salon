@@ -748,3 +748,15 @@ _English_: unseal（操作 unseal_day；权限 closing.unseal）
 **未记方式**:
 历史开卡、充值、补差价或卖红包有本金或售价、却没有登记现金/银联/微信/支付宝收款方式的记录；日结单独列出金额和笔数，不回填。
 _English_: unrecorded payment method（日结的 Unrecorded）
+
+## AI
+
+**AI 对话**:
+员工用一句话向 AI 提问、由 AI 按本人权限查询或起草的一次对话。每次对话保存在服务端，标题取第一句用户的话；只有发起人本人能查看、接着聊和归档，老板也看不到员工的对话。
+_English_: AI conversation（ConversationSummary / ConversationDetail / ConversationMessage）
+_Avoid_: 聊天记录, 会话记录
+
+**归档**:
+把 AI 对话收进本人的历史列表、不再排在默认列表里；只改归档状态，不删除对话或消息，可以解开。
+_English_: archive
+_Avoid_: 删除, 清理

@@ -16,6 +16,24 @@ export function formatStamp(value: string, now = new Date()) {
   return `${at.month}月${at.date}日 ${WEEKDAYS[at.weekday]} ${at.time}`
 }
 
+// 列表里的短时间（AI 历史对话）：今天写时分，其他日子写"11月20日"，按门店时区。
+export function formatShortStamp(value: string, now = new Date()) {
+  const at = shanghai(new Date(value))
+  if (at.day === shanghai(now).day) return at.time
+  return `${at.month}月${at.date}日`
+}
+
+// 按门店时区分组：今天、近 7 天（不含今天）、更早。
+export function recencyOf(value: string, now = new Date()): 'today' | 'week' | 'older' {
+  const serial = (date: Date) => {
+    const [year, month, day] = shanghai(date).day.split('-').map(Number)
+    return Date.UTC(year ?? 0, (month ?? 1) - 1, day ?? 1) / 86400000
+  }
+  const days = serial(now) - serial(new Date(value))
+  if (days <= 0) return 'today'
+  return days < 7 ? 'week' : 'older'
+}
+
 // 表格里的日期：门店时区的 2026-11-20（DESIGN.md 组件约定）。
 export function formatDate(value: string) {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value))

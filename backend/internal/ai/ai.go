@@ -101,11 +101,7 @@ type Source struct {
 }
 
 // DraftView 是本次对话创建或修改的草稿及其只读预览。
-type DraftView struct {
-	drafts.Draft
-	Preview      json.RawMessage `json:"preview,omitempty"`
-	PreviewError string          `json:"preview_error,omitempty"`
-}
+type DraftView = drafts.DraftView
 
 // Answer 是一次对话的最终回答、按顺序记录的全部工具调用来源和本次创建或修改的草稿。
 type Answer struct {

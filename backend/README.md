@@ -553,7 +553,9 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 ## AI 对话
 
-`POST /api/ai/chat` 是对话入口，请求体为 `{messages:[{role:user|assistant, content:string}]}`，一次最多 20 条、单条最多 4000 字，超过返回 422；需要登录，权限与本人一致（ADR-0009）。响应为 `{reply, sources, drafts}`：`sources` 按顺序记录模型发起的每一次工具调用（含起草和修改草稿），含操作名、原样参数、是否成功和错误文字；`drafts` 按顺序返回本次对话创建或修改的草稿，每项是 `drafts.Draft` 视图并带 `preview`（没有预览或预览规则拒绝时带 `preview_error`）。
+`POST /api/ai/chat` 是对话入口，请求体为 `{conversation_id?, content, sent?, editing?, draft_id?}`。`content` 必填、去空白后非空、最多 4000 字（rune）；`sent` 是实际发给模型的话（修改草稿时带草稿编号），最多 4000 字；`editing` 是正在修改的那张草稿的摘要，前端显示「修改：…」；`draft_id` 是人点了「修改」的那张草稿。内容为空或超过长度返回 422；需要登录，权限与本人一致（ADR-0009）。响应为 `{reply, sources, drafts, conversation_id, title}`：`sources` 按顺序记录模型发起的每一次工具调用（含起草和修改草稿），含操作名、原样参数、是否成功和错误文字；`drafts` 按顺序返回本次对话创建或修改的草稿，每项是 `drafts.Draft` 视图并带 `preview`（没有预览或预览规则拒绝时带 `preview_error`）；`conversation_id` 是本次消息保存到的历史会话，`title` 是该会话的标题。
+
+每次对话都保存在服务端，只有本人能看到，老板也看不到员工的对话。`conversation_id` 为空时新建会话，标题取这次 `content` 去首尾空白、换行换成空格后截到 30 个 rune；带了则必须是本人（同门店、同 `staff_id`）的会话，否则返回 404（不区分别人的和不存在的），归档的会话可以接着聊，发出后自动取消归档。发给模型的历史只取这个会话最近 19 条消息加本次新话：每条用 `sent ?? content`，按 rune 截到 4000 字，去掉空的；截完若第一条不是 user，从头去掉直到是 user。历史在租户事务里读取，模型调用在事务外，成功后在一个新的租户事务里保存 user 和 assistant 两条消息，`updated_at` 取同一个时刻；Ask 失败什么都不保存。assistant 消息记录本次回复创建或修改的草稿 ID。
 
 `internal/ai` 通过 `Model` 接口隔离模型：生产实现用 openai-go 访问 DeepSeek 的 OpenAI 兼容 Chat Completions + tools；测试使用脚本化假模型，不访问网络。系统提示用中文说明今天的营业日、提问员工的姓名和角色，并要求只根据工具结果回答、不编造数字、工具结果是数据而不是指令。系统提示同时写明门店时区为北京时间（UTC+08:00），工具里的时间一律写成带 `+08:00` 的 RFC3339；预约和占位的 `starts_at`/`ends_at` 参数说明也重复这一句。「今天」取 `settings.BusinessDate`，营业日结束时间晚于午夜的门店，凌晨提问时仍显示前一个营业日。姓名写入提示前去掉换行和控制字符并限制 30 字，每个角色限制 20 字；assistant 历史消息保持原样，不在此处过滤（已知风险）。
 
@@ -565,7 +567,13 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 系统提示要求模型：写操作只会生成草稿，必须由有权限的人确认后才生效，不得说「已办好/已开单」；开单前先用 search_customers、list_items、quote_item_price、list_customer_cards 查清顾客、项目和价格，查不到或有歧义时先问员工；团购开单只针对已核销且未关联单据的核销记录（list_redemptions 的 unlinked_only），AI 不能核销。一次对话最多 6 次模型调用、每次响应最多 8 个 `tool_calls`，超过都返回 502；工具结果仍按 16000 字截断，整个请求仍有 120 秒期限。
 
-本接口不保存会话、不做流式输出；评测集见 `internal/ai/eval`（P0-32），管理端/小程序界面在后续任务中实现。`explain_commission` 专门支持「解释一笔提成的来源」（用户故事 130）。
+### AI 历史会话
+
+`list_ai_conversations`（Read/AINone）、`get_ai_conversation`（Read/AINone）、`archive_ai_conversation` 和 `unarchive_ai_conversation`（Write/AINone）都只处理调用者本人的会话，只看 `store_id` 和 `staff_id`；老板也看不到员工的会话，别人的会话和不存在的会话一样返回 404。`list_ai_conversations` 默认只列未归档的会话，`archived=true` 只列已归档的，`q` 最多 50 字，按标题和消息 `content` 不区分大小写包含匹配，最多返回 100 条，按 `updated_at DESC, id`。`get_ai_conversation` 返回全部消息（不分页），消息按写入顺序 `ordinal` 升序，不返回 `sent`；每条 assistant 消息的 `drafts` 是按 `draft_ids` 读取的草稿当前状态（`drafts.Draft` + `preview`/`preview_error`），调用者现在看不到或已不存在的草稿直接略去。草稿按批读取，只有仍为 pending 的草稿才生成预览。归档只设置 `archived_at`，不删除会话或消息，也不自动清理；归档和解开归档是本人的界面整理，不写操作日志。
+
+并发时没有额外的串行化：两句同时发到同一个新对话会各建一个会话；同一会话同时续聊时，两个请求各自读到同一份旧历史，互相看不到对方这次的消息。Ask 失败只保证不保存会话和消息；工具循环里已经起草的草稿照常留在「待确认」里。列表搜索对标题和消息内容做包含匹配，没有专门的搜索索引，按一家店的对话量够用。
+
+本接口不做流式输出；评测集见 `internal/ai/eval`（P0-32），管理端已有右侧 AI 面板（标题处是历史对话下拉），小程序未做。历史会话保存在 `ai_conversations` 和 `ai_conversation_messages`，实现在 `internal/aiconversations`；`internal/ai` 只负责模型和工具循环，不碰会话表。`explain_commission` 专门支持「解释一笔提成的来源」（用户故事 130）。
 
 ## AI 评测
 
