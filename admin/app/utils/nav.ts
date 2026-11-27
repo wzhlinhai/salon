@@ -20,6 +20,7 @@ export const navItems: { label: string, icon: string, to: string, permission: st
   { label: '卡类型', icon: 'i-lucide-credit-card', to: '/card-types', permission: 'settings.manage', group: '项目与卡' },
   { label: '团购商品', icon: 'i-lucide-ticket', to: '/groupbuy-deals', permission: 'settings.manage', group: '项目与卡' },
   { label: '角色与权限', icon: 'i-lucide-shield', to: '/roles', permission: 'role.manage', group: '设置' },
+  { label: 'AI 提醒', icon: 'i-lucide-bell-ring', to: '/ai-reminders', permission: 'settings.manage', group: '设置' },
   { label: '门店设置', icon: 'i-lucide-settings', to: '/settings', permission: '', group: '设置' }
 ]
 

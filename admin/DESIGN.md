@@ -388,6 +388,7 @@ AI 只出现在下面四处，都用文字标明是 AI，不用专门的颜色�
 | 团购商品 | groupbuy 的商品 | 已有 |
 | 门店设置 | settings 全部，顾客来源，门店改名 `rename_store` | 已有；改名待补 |
 | 角色与权限 | staff 的角色 | 已有 |
+| AI 提醒 | reminders 的规则档位、观察汇总、样例评价。窄栏：每条规则一节，说明和检查时刻在左、「关 / 观察 / 开」分段切换在右（员工提醒卡做好前「开」灰掉）；下面一句话汇总最近 7 天（检查几天、几天有事、本来会发几条、拦下多少、哪天没检查成），再列最近几条样例：灰字「日期 · 给谁 · AI 写的 / 固定文案」、正文、「有用」「没用」 | 已有 |
 | 数据导入 | dataio 全部，`register_historical_debt` | 待做 |
 | 个人菜单 | `clock_in`、`list_my_attendance`、`change_my_password` | 已有 |
 | 不进后台 | miniprogram 全部、`customer_login`（顾客小程序用） | — |
