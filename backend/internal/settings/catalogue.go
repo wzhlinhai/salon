@@ -33,28 +33,26 @@ const (
 	GroupAI SettingGroup = "ai"
 )
 
-// settingGroupOrder 是设置页分组的显示顺序。
-var settingGroupOrder = []SettingGroup{
-	GroupBusiness, GroupBooking, GroupRotation, GroupCashier,
-	GroupAftersale, GroupPerformance, GroupReceipt, GroupAI,
-}
-
-// settingGroupLabels 是每个分组的显示名。
-var settingGroupLabels = map[SettingGroup]string{
-	GroupBusiness:    "营业",
-	GroupBooking:     "预约",
-	GroupRotation:    "轮牌",
-	GroupCashier:     "收银与卡",
-	GroupAftersale:   "售后",
-	GroupPerformance: "业绩与提成",
-	GroupReceipt:     "小票",
-	GroupAI:          "AI 提醒",
+// settingGroups 是设置页分组的有序表，顺序即显示顺序，也是分组合法性的唯一来源。
+var settingGroups = []SettingGroupInfo{
+	{Key: GroupBusiness, Label: "营业"},
+	{Key: GroupBooking, Label: "预约"},
+	{Key: GroupRotation, Label: "轮牌"},
+	{Key: GroupCashier, Label: "收银与卡"},
+	{Key: GroupAftersale, Label: "售后"},
+	{Key: GroupPerformance, Label: "业绩与提成"},
+	{Key: GroupReceipt, Label: "小票"},
+	{Key: GroupAI, Label: "AI 提醒"},
 }
 
 // known 报告 g 是否是设置页的已知分组。
 func (g SettingGroup) known() bool {
-	_, ok := settingGroupLabels[g]
-	return ok
+	for _, group := range settingGroups {
+		if group.Key == g {
+			return true
+		}
+	}
+	return false
 }
 
 const (

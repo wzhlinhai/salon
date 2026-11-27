@@ -151,7 +151,7 @@ func listSettings(ctx context.Context, env ops.Env, day time.Time) (*SettingList
 		return nil, err
 	}
 	out := &SettingList{BusinessDate: day.Format(DateLayout), Settings: make([]Setting, 0, len(Catalogue))}
-	present := make(map[SettingGroup]bool, len(settingGroupOrder))
+	present := make(map[SettingGroup]bool, len(settingGroups))
 	for _, d := range Catalogue {
 		now := h.at(d, day)
 		st := Setting{Key: d.Key, Label: d.Label, Hint: d.Hint, Kind: d.Kind, Group: d.Group, Options: d.Options, Min: d.Min, Max: d.Max, Value: now.value, Default: d.Default, IsDefault: now.isDefault, Upcoming: []ScheduledValue{}}
@@ -165,9 +165,9 @@ func listSettings(ctx context.Context, env ops.Env, day time.Time) (*SettingList
 		present[d.Group] = true
 	}
 	out.Groups = make([]SettingGroupInfo, 0, len(present))
-	for _, g := range settingGroupOrder {
-		if present[g] {
-			out.Groups = append(out.Groups, SettingGroupInfo{Key: g, Label: settingGroupLabels[g]})
+	for _, g := range settingGroups {
+		if present[g.Key] {
+			out.Groups = append(out.Groups, g)
 		}
 	}
 	return out, nil
