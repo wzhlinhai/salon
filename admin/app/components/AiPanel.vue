@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { MAX_MESSAGE } from '~/composables/useAiChat'
 
-// 右侧滑出的「问 AI」（样稿 24）：人说的话是墨色气泡靠右，AI 的回话是浅灰气泡靠左；
+// 右侧滑出的「问 AI」（样稿 24）：照 Notion AI，人说的话是浅灰圆气泡靠右，AI 的回话不套气泡就是正文；
 // 写操作只生成草稿，画成能拿在手里的小卡片，在这里或"待确认"里由人确认。
 const { open, entries, sending, editing, input: text, loadingConversation, expanded, send, startNew, setExpanded, restoreExpanded } = useAiChat()
 const { can } = useMe()
@@ -90,6 +90,21 @@ const ui = computed(() => ({
   footer: `ai-chat border-t-0 px-4 pt-0 pb-4 sm:px-4 ${centered.value ? 'flex-1 items-start' : ''}`
 }))
 
+// AI 回话下面的复制按钮（照 Notion AI）：复制整段话，按钮变成勾一会儿再变回来。剪贴板用不了（非安全来源等）就什么也不做。
+const copied = ref<number | null>(null)
+
+async function copy(index: number, content: string) {
+  try {
+    await navigator.clipboard.writeText(content)
+  } catch {
+    return
+  }
+  copied.value = index
+  setTimeout(() => {
+    if (copied.value === index) copied.value = null
+  }, 1500)
+}
+
 watch(() => [entries.value.length, sending.value], async () => {
   await nextTick()
   scroller.value?.scrollTo({ top: scroller.value.scrollHeight })
@@ -158,13 +173,24 @@ watch(() => [entries.value.length, sending.value], async () => {
             </ul>
           </div>
           <div v-for="(entry, index) in entries" :key="index" :data-role="entry.role" data-testid="ai-entry">
-            <div v-if="entry.role === 'user'" class="ms-auto w-fit max-w-[85%] rounded-card bg-inverted px-4 py-2 text-sm whitespace-pre-wrap text-inverted">
-              <p v-if="entry.editing" class="mb-1 text-xs text-inverted/70">修改：{{ entry.editing }}</p>
+            <div v-if="entry.role === 'user'" class="ms-auto w-fit max-w-[85%] rounded-bubble bg-elevated px-4 py-2 text-sm whitespace-pre-wrap text-highlighted">
+              <p v-if="entry.editing" class="mb-1 text-xs text-muted">修改：{{ entry.editing }}</p>
               {{ entry.content }}
             </div>
             <div v-else class="space-y-3">
-              <p class="w-fit max-w-[85%] rounded-card px-4 py-2 text-sm whitespace-pre-wrap text-pretty" :class="entry.failed ? 'bg-tag-red' : 'bg-elevated'">{{ entry.content }}</p>
+              <p class="text-sm leading-relaxed whitespace-pre-wrap text-pretty" :class="entry.failed ? 'text-ink-red' : 'text-highlighted'">{{ entry.content }}</p>
               <DraftCard v-for="draft in entry.drafts ?? []" :key="draft.id" :draft="draft" compact />
+              <UButton
+                v-if="!entry.failed"
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                :icon="copied === index ? 'i-lucide-check' : 'i-lucide-copy'"
+                :aria-label="copied === index ? '已复制' : '复制'"
+                class="-ms-1 text-muted"
+                data-testid="ai-copy"
+                @click="copy(index, entry.content)"
+              />
             </div>
           </div>
           <p v-if="sending" class="flex items-center gap-2 text-sm text-muted" data-testid="ai-thinking">
