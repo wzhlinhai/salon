@@ -82,7 +82,8 @@ async function loadHead() {
 }
 
 // 名字（是否认出是谁）是页面异步查的，查清后再取一次。
-watch(() => [order.value?.customer_id, order.value && props.identifiedCustomers[order.value.customer_id]], () => void loadHead())
+// 名册每次刷新都换一份新对象，所以看原始值：顾客没换、是否认出没变就不重取。
+watch(() => order.value ? `${order.value.customer_id}:${props.identifiedCustomers[order.value.customer_id]}` : '', () => void loadHead())
 
 // 卡折扣：应收减去试算后的实收（团购、次卡另列）。
 const discountTotal = computed(() => order.value && preview.value ? Math.max(0, cents(order.value.receivable) - cents(preview.value.net)) : 0)

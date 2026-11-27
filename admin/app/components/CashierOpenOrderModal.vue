@@ -128,9 +128,9 @@ defineExpose({ begin, open })
         <div>
           <p class="mb-2 text-meta text-muted">顾客</p>
           <div class="flex items-center gap-3 rounded-card bg-side px-4 py-3" data-testid="open-order-customer">
-            <PersonAvatar :name="customer?.name || '散'" />
+            <PersonAvatar :name="customer ? customerLabel(customer) : '未'" />
             <div class="min-w-0 flex-1">
-              <p class="truncate font-medium" :class="customer ? '' : 'text-muted'">{{ customer?.name || '散客（没认出是谁）' }}</p>
+              <p class="truncate font-medium" :class="customer ? '' : 'text-muted'">{{ customer ? customerLabel(customer) : UNIDENTIFIED_CUSTOMER }}</p>
               <p v-if="customerLine" class="truncate text-meta text-muted">{{ customerLine }}</p>
             </div>
             <span v-if="customer?.active_safety_labels.length" class="tag shrink-0 bg-tag-red">有安全提醒</span>

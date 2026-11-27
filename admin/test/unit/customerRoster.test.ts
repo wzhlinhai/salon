@@ -77,6 +77,7 @@ describe('customerRosterState', () => {
     pending.resolve([customer('a', '王女士')])
     await first
     expect(roster.label('a', '')).toBe('王女士')
+    expect(roster.label('b', '')).toBe('b')
   })
 
   it('每次都重新取，改过的名字下次刷新看得到；读失败不记，问了没返回的去掉', async () => {
@@ -91,6 +92,13 @@ describe('customerRosterState', () => {
     expect(roster.label('a', '')).toBe('王女士')
     expect(roster.identified('a')).toBe(true)
     expect(roster.label('b', '顾客')).toBe('顾客')
+  })
+
+  it('分批时一批读失败，另一批照常写进名册', async () => {
+    const roster = customerRosterState(async ids => ids[0] === 'c0' ? null : ids.map(id => customer(id, id)), () => true)
+    await roster.resolve(Array.from({ length: 201 }, (_, i) => `c${i}`))
+    expect(roster.label('c0', '顾客')).toBe('顾客')
+    expect(roster.label('c200', '')).toBe('c200')
   })
 
   it('读出错（抛异常）后正在取的标记清掉，下次还能取', async () => {

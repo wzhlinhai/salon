@@ -356,14 +356,14 @@ onMounted(init)
         <p class="text-meta text-muted">找到 {{ customerMatches.length }} 位顾客，选择一位：</p>
         <div class="flex flex-wrap gap-2">
           <UButton v-for="customer in customerMatches" :key="customer.id" color="neutral" variant="outline" @click="pickCustomer(customer)">
-            {{ customer.name || '未识别' }} · {{ customer.phone || '无手机号' }}
+            {{ customerLabel(customer) }} · {{ customer.phone || '无手机号' }}
           </UButton>
         </div>
       </div>
 
       <div v-if="pickedCustomer" class="box flex flex-wrap items-center gap-2" data-testid="picked-customer">
         <span class="text-meta text-muted">已选顾客</span>
-        <span class="font-medium">{{ pickedCustomer.name || '未识别' }}</span>
+        <span class="font-medium">{{ customerLabel(pickedCustomer) }}</span>
         <UButton size="sm" color="neutral" variant="outline" @click="openOrderBegin(pickedCustomer)">为这位顾客开单</UButton>
         <template v-if="pickedOpenOrders.length">
           <span class="text-meta text-muted">还有 {{ pickedOpenOrders.length }} 张挂单：</span>

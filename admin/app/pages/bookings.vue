@@ -174,7 +174,7 @@ function entryStyle(entry: Appointment) {
 function entryTitle(entry: Appointment) {
   if (entry.kind === 'block') return '私约占位'
   const late = lateMinutes(entry)
-  const name = entry.customer?.name ?? UNNAMED_CUSTOMER
+  const name = entry.customer?.name || UNNAMED_CUSTOMER
   return late ? `${name} · 过了 ${late} 分钟没到` : name
 }
 
@@ -930,7 +930,7 @@ function actorLabel(actor: Actor) {
                 <CustomerPeek v-if="detail.kind !== 'block' && detail.customer?.name && can('customer.view')" :customer-id="detail.customer.id">
                   <button type="button" class="hover:underline focus-visible:underline" aria-haspopup="dialog" data-detail-customer>{{ detail.customer.name }}</button>
                 </CustomerPeek>
-                <span v-else data-detail-customer>{{ detail.kind === 'block' ? '私约占位' : (detail.customer?.name ?? UNNAMED_CUSTOMER) }}</span>
+                <span v-else data-detail-customer>{{ detail.kind === 'block' ? '私约占位' : (detail.customer?.name || UNNAMED_CUSTOMER) }}</span>
               </p>
               <p v-if="detail.customer?.phone" class="text-meta text-muted tabular-nums">{{ detail.customer.phone }}</p>
             </div>
