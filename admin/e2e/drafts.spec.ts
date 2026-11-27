@@ -443,6 +443,8 @@ test('历史对话：分组列出，打开接着聊带上对话编号；归档�
   await expect(history.getByText('今天', { exact: true })).toBeVisible()
   await expect(history.getByText('更早', { exact: true })).toBeVisible()
   await expect(history.getByTestId('ai-history-item')).toHaveCount(2)
+  // 搜索平时是右上角的放大镜，点了才出输入框。
+  await history.getByTestId('ai-history-search-open').click()
   await history.getByTestId('ai-history-search').fill('上个月')
   await expect(history.getByTestId('ai-history-item')).toHaveCount(1)
   expect(queries).toContain('上个月')
