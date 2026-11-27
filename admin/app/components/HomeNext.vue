@@ -139,7 +139,7 @@ function appointmentRow(entry: Appointment): Row {
     near: false
   }
   if (entry.kind === 'block') return { ...base, title: entry.note || '私约占位', note: '', customerId: null, state: 'hold' }
-  const title = entry.customer?.name || '未留名顾客'
+  const title = entry.customer?.name || UNNAMED_CUSTOMER
   if (entry.order_id) {
     const left = -minutesFrom(entry.ends_at)
     return { ...base, title, state: 'serving', remain: left > 0 ? `还要 ${left} 分钟` : '' }
@@ -214,7 +214,7 @@ const later = computed(() => {
     .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
   const first = rest[0]
   if (!first) return ''
-  return `还有 ${rest.length} 位 · ${clock(first.starts_at)} ${first.customer?.name || '未留名顾客'}`
+  return `还有 ${rest.length} 位 · ${clock(first.starts_at)} ${first.customer?.name || UNNAMED_CUSTOMER}`
 })
 
 // 第二行：正在做和快到的写上次的配方；其余写是第几次来、卡里还有多少。

@@ -147,9 +147,9 @@ function moneyText(row: Row) {
             :data-kind="row.card_type.kind"
             class="-mx-3 flex items-center gap-3 rounded-card px-3 py-3 hover:bg-hover"
           >
-            <PersonAvatar :name="row.customer.name ?? '散'" />
+            <PersonAvatar :name="row.customer.name || UNNAMED_CUSTOMER" />
             <div class="min-w-0 flex-1">
-              <p class="font-medium">{{ row.customer.name ?? '未识别顾客' }}</p>
+              <p class="font-medium">{{ row.customer.name || UNNAMED_CUSTOMER }}</p>
               <p class="truncate text-meta text-muted">{{ rowMeta(row) }}</p>
             </div>
             <div class="shrink-0 text-right">

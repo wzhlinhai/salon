@@ -1126,6 +1126,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/get_customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 按 ID 批量查看顾客档案 */
+        post: operations["get_customers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/get_day_close": {
         parameters: {
             query?: never;
@@ -5394,6 +5411,9 @@ export interface components {
             date?: string;
             /** Format: int32 */
             version?: number;
+        };
+        GetCustomersInput: {
+            ids: string[];
         };
         GetImportBatchInput: {
             batch_id: string;
@@ -9924,6 +9944,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CustomerSourceReport"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    get_customers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GetCustomersInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerList"];
                 };
             };
             /** @description Error */

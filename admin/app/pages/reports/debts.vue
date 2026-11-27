@@ -136,9 +136,9 @@ function cell(value: string) {
             :data-kind="d.kind"
             class="-mx-3 flex items-center gap-3 rounded-card px-3 py-3 hover:bg-hover"
           >
-            <PersonAvatar :name="d.customer.name ?? '散'" />
+            <PersonAvatar :name="d.customer.name || UNNAMED_CUSTOMER" />
             <div class="min-w-0 flex-1">
-              <p class="font-medium">{{ d.customer.name ?? '散客' }}</p>
+              <p class="font-medium">{{ d.customer.name || UNNAMED_CUSTOMER }}</p>
               <p class="truncate text-meta text-muted">{{ rowMeta(d) }}</p>
             </div>
             <div class="shrink-0 text-right">

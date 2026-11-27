@@ -34,9 +34,9 @@ watch(open, async (value) => {
         <p v-else-if="failed || !glance" class="text-muted">取不到这位顾客的资料</p>
         <template v-else>
           <div class="flex items-center gap-3">
-            <span class="grid size-10 shrink-0 place-items-center rounded-full bg-tag-gray text-figure" aria-hidden="true">{{ (glance.customer.name || '散').slice(0, 1) }}</span>
+            <span class="grid size-10 shrink-0 place-items-center rounded-full bg-tag-gray text-figure" aria-hidden="true">{{ customerLabel(glance.customer).slice(0, 1) }}</span>
             <div class="min-w-0">
-              <p class="truncate text-base font-semibold">{{ glance.customer.name || '未识别' }}</p>
+              <p class="truncate text-base font-semibold">{{ customerLabel(glance.customer) }}</p>
               <p class="truncate text-meta text-muted tabular-nums">
                 {{ [glance.customer.phone, glance.balance ? `储值卡余 ${yuan(money(glance.balance))}` : ''].filter(Boolean).join(' · ') || '没留手机号' }}
               </p>
