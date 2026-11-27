@@ -519,6 +519,7 @@ test('先点的历史对话迟到时不盖住后点的；换人登录后历史�
   await page.getByTestId('ai-fab').click()
   const panel = aiPanel(page)
   const history = page.getByTestId('ai-history')
+  // 不等滑出动画完就点历史：动画结束时不能把焦点抢回输入框、关掉刚打开的下拉。
   await panel.getByTestId('ai-history-trigger').click()
   await history.getByRole('button', { name: '对话甲' }).click()
   await panel.getByTestId('ai-history-trigger').click()
