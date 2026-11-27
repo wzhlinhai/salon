@@ -1007,6 +1007,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/get_card_balance_report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 列出还有余额或次数的卡，按到期日从近到远 */
+        post: operations["get_card_balance_report"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/get_card_report": {
         parameters: {
             query?: never;
@@ -1392,6 +1409,23 @@ export interface paths {
         put?: never;
         /** 查看当前门店的信息 */
         post: operations["get_store"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/get_stored_value_report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看卡内余额逐日变动 */
+        post: operations["get_stored_value_report"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4031,6 +4065,81 @@ export interface components {
         };
         CardAdjustmentType: {
             id: string;
+            name: string;
+        };
+        CardBalanceCustomer: {
+            id: string;
+            name: string | null;
+        };
+        CardBalanceItem: {
+            /** Format: int64 */
+            gift_remaining: number;
+            item_id: string;
+            item_name: string;
+            /** Format: int64 */
+            paid_remaining: number;
+            unit_price: string;
+        };
+        CardBalanceReport: {
+            rows: components["schemas"]["CardBalanceRow"][];
+            totals: components["schemas"]["CardBalanceTotals"];
+            /** @description 符合条件的卡多于行数上限，rows 只含前面一部分 */
+            truncated: boolean;
+        };
+        CardBalanceReportInput: {
+            /**
+             * Format: int64
+             * @description 只列出到期日在今天起这么多天内（含已过期）的卡，不填为全部
+             */
+            expiring_within_days?: number;
+            /**
+             * @description 只列出这种卡类型的卡，不填为全部
+             * @enum {string}
+             */
+            kind?: "stored_value" | "count" | "package";
+        };
+        CardBalanceRow: {
+            bonus: string;
+            card_id: string;
+            card_type: components["schemas"]["CardBalanceType"];
+            customer: components["schemas"]["CardBalanceCustomer"];
+            /**
+             * Format: int64
+             * @description 到期日减今天，已过期为负
+             */
+            days_left: number | null;
+            /** Format: date */
+            expires_on: string | null;
+            items: components["schemas"]["CardBalanceItem"][];
+            /** Format: date */
+            opened_on: string;
+            principal: string;
+            /**
+             * Format: int64
+             * @description 剩余次数，购买和赠送之和
+             */
+            remaining_counts: number;
+            /** @description 剩余购买次数按开卡单价折算加本金，赠送次数和赠送金不计 */
+            remaining_value: string;
+        };
+        CardBalanceTotals: {
+            bonus: string;
+            /** Format: int64 */
+            cards: number;
+            /**
+             * Format: int64
+             * @description 今天起 30 天内到期的张数，不受到期天数筛选影响
+             */
+            expiring_in_30_days: number;
+            principal: string;
+            /** Format: int64 */
+            remaining_counts: number;
+            remaining_value: string;
+        };
+        CardBalanceType: {
+            id: string;
+            /** @enum {string} */
+            kind: "stored_value" | "count" | "package";
             name: string;
         };
         CardCountEntry: {
@@ -7157,6 +7266,64 @@ export interface components {
             /** @description 门店名称 */
             name: string;
         };
+        StoredValueDay: {
+            /** @description 开卡和充值的赠送金 */
+            added_bonus: string;
+            /** @description 开卡和充值的本金 */
+            added_principal: string;
+            /** @description 调整、转入、转出和导入的赠送金净额，有正有负 */
+            adjusted_bonus: string;
+            /** @description 调整、转入、转出和导入的本金净额，有正有负 */
+            adjusted_principal: string;
+            /** Format: date */
+            business_date: string;
+            /** @description 当天结束时所有卡的赠送金 */
+            closing_bonus: string;
+            /** @description 当天结束时所有卡的本金 */
+            closing_principal: string;
+            /** @description 耗卡赠送金，口径同耗卡本金 */
+            consumed_bonus: string;
+            /** @description 耗卡本金，撤单退回和售后退回卡内的已冲抵，正数表示花掉 */
+            consumed_principal: string;
+            /** @description 当天开始前所有卡的赠送金 */
+            opening_bonus: string;
+            /** @description 当天开始前所有卡的本金 */
+            opening_principal: string;
+            /** @description 退卡清零的赠送金，正数表示退出 */
+            refunded_bonus: string;
+            /** @description 退卡清零的本金，正数表示退出 */
+            refunded_principal: string;
+            /** @description 升级补入的赠送金 */
+            upgrade_bonus: string;
+            /** @description 升级补入的本金 */
+            upgrade_principal: string;
+        };
+        StoredValueReport: {
+            rows: components["schemas"]["StoredValueDay"][];
+            totals: components["schemas"]["StoredValueTotals"];
+        };
+        StoredValueReportInput: {
+            /** Format: date */
+            from: string;
+            /** Format: date */
+            to: string;
+        };
+        StoredValueTotals: {
+            added_bonus: string;
+            added_principal: string;
+            adjusted_bonus: string;
+            adjusted_principal: string;
+            closing_bonus: string;
+            closing_principal: string;
+            consumed_bonus: string;
+            consumed_principal: string;
+            opening_bonus: string;
+            opening_principal: string;
+            refunded_bonus: string;
+            refunded_principal: string;
+            upgrade_bonus: string;
+            upgrade_principal: string;
+        };
         Summary: {
             amount: string;
             historical: components["schemas"]["Totals"];
@@ -9348,6 +9515,39 @@ export interface operations {
             };
         };
     };
+    get_card_balance_report: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CardBalanceReportInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardBalanceReport"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     get_card_report: {
         parameters: {
             query?: never;
@@ -10094,6 +10294,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Store"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    get_stored_value_report: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoredValueReportInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredValueReport"];
                 };
             };
             /** @description Error */

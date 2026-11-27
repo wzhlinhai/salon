@@ -222,6 +222,8 @@ Reconcile 按 `collections.business_date`（补录单写入纸单日；为空的
 | get_item_report | report.view | AIDirect | 营业日范围最多 92 天；按项目/商品返回；实收降序，再按名称、ID 升序 |
 | get_card_report | report.view | AIDirect | 营业日范围最多 92 天；返回范围内有活动或期末余额/剩余次数不为零的卡类型，按名称、ID 升序 |
 | get_customer_source_report | report.view | AIDirect | 营业日范围最多 92 天；每个本店来源一行（启用的来源始终返回，停用的只在有数据时返回），未填来源始终最后；来源按名称、ID 升序；另返回无法归属到顾客的单数 |
+| get_stored_value_report | report.view | AIDirect | 营业日范围最多 92 天；范围内每个营业日一行（无流水的日子也有），按日期升序；本店所有卡的 card_ledger 钱流水，本金和赠送分开：open、recharge 归“充入”，upgrade 归“升级”，consume、void、aftersale_refund 归“耗卡”（与 get_card_report 同口径，撤单和售后退回为负），refund 归“退卡”，adjust、transfer_in、transfer_out、import 归“调整”；遇到未知 kind 报错；期初为范围前每张卡最后一笔余额之和，期末 = 期初 + 各列流水，与 get_card_report 期末余额合计一致 |
+| get_card_balance_report | report.view + customer.view | AIDirect | 无日期范围；本店 active 卡里钱余额（本金+赠送）或剩余次数（购买+赠送）大于 0 的卡，按到期日从近到远，无到期日的排最后，同一天按开卡时间；可按 expiring_within_days（含已过期）和卡类型 kind 筛选；上限 1000 行，超出时 truncated；合计按全部符合条件的卡算，expiring_in_30_days 不受到期天数筛选影响；剩余价值 = 剩余购买次数 × 开卡单价 + 本金，赠送次数和赠送金不计 |
 
 日期归属统一按营业日：补录单按纸单营业日计入开单、结账、业绩、客次、卡流水和收款；撤单和售后退款不重写原营业日，而是在撤单/审批营业日冲回或退款。营业日报的现场/非现场收款方式、客数、结账单数和撤单数逐日与 `preview_day_close` 的 `SystemFigures` 完全一致；实现复用同一组账本口径（结账支付、卡本金/赠送金拆分、欠款还款、销售收款、退卡退款、售后退款、撤单和撤单卡拆分），只是改成范围聚合。
 

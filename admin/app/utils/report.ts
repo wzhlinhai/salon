@@ -11,8 +11,11 @@ export const reportCatalog: { key: string, label: string, description: string, p
   { key: 'business', label: '营业报表', description: '每天或每月的实收、办卡充值、客数，按收款方式分列', permission: 'report.view' },
   { key: 'debts', label: '欠款对账', description: '到现在为止的挂账和历史欠款，已还多少、还剩多少', permission: 'report.view' },
   { key: 'staff', label: '员工业绩', description: '每人的项目、耗卡、销售业绩和客数、提成；发型师只看自己', permission: 'performance.view' },
+  { key: 'wages', label: '业绩工资', description: '每月每人的业绩和工资放在一起，工资占业绩几成', permission: 'payroll.manage' },
   { key: 'items', label: '项目报表', description: '每个服务、卖品做了几次、收了多少，实收前 10 名', permission: 'report.view' },
   { key: 'cards', label: '卡项报表', description: '每种卡开卡、充值、耗卡、退卡多少，结束时余额', permission: 'report.view' },
+  { key: 'stored-value', label: '储值余额', description: '卡里的钱每天进多少、用多少、还剩多少，本金和赠送分开', permission: 'report.view' },
+  { key: 'card-balances', label: '卡结余和到期', description: '谁的卡还剩多少次、多少钱，什么时候到期；到期近的在上', permission: 'report.view' },
   { key: 'sources', label: '新客来源', description: '新客从哪来、几个回头、花了多少；只有人数，不列顾客', permission: 'report.view' }
 ]
 

@@ -52,6 +52,8 @@ func TestReportQueryCounts(t *testing.T) {
 		{"get_item_report", map[string]any{"from": "2026-11-02", "to": "2026-11-02"}, "rows"},
 		{"get_card_report", map[string]any{"from": "2026-11-02", "to": "2026-11-02"}, "rows"},
 		{"get_customer_source_report", map[string]any{"from": "2026-11-02", "to": "2026-11-02"}, "rows"},
+		{"get_stored_value_report", map[string]any{"from": "2026-11-02", "to": "2026-11-02"}, ""},
+		{"get_card_balance_report", map[string]any{}, "rows"},
 	}
 	baseline := map[string]map[string]int64{}
 	rowCounts := map[string]int{}
@@ -96,14 +98,20 @@ func TestReportQueryCounts(t *testing.T) {
 		f.now(day, 12)
 		f.checkout(f.order(customer, []uuid.UUID{f.staffA}, true, "female", f.item), payment("cash", "100"))
 	}
-	for _, ch := range app.Channels() {
-		counter.count.Store(0)
-		r := ch.Call(t, caller, "get_business_report", map[string]any{"from": "2026-11-02", "to": "2026-11-04", "granularity": "day"})
-		if r.Status != 200 || len(r.Body["rows"].([]any)) != 3 {
-			t.Fatal(ch.Name, r)
+	for _, name := range []string{"get_business_report", "get_stored_value_report"} {
+		args := map[string]any{"from": "2026-11-02", "to": "2026-11-04"}
+		if name == "get_business_report" {
+			args["granularity"] = "day"
 		}
-		if got := counter.count.Load(); got != baseline["get_business_report"][ch.Name] {
-			t.Fatalf("%s business report queries grow with days: %d -> %d", ch.Name, baseline["get_business_report"][ch.Name], got)
+		for _, ch := range app.Channels() {
+			counter.count.Store(0)
+			r := ch.Call(t, caller, name, args)
+			if r.Status != 200 || len(r.Body["rows"].([]any)) != 3 {
+				t.Fatal(ch.Name, r)
+			}
+			if got := counter.count.Load(); got != baseline[name][ch.Name] {
+				t.Fatalf("%s %s queries grow with days: %d -> %d", ch.Name, name, baseline[name][ch.Name], got)
+			}
 		}
 	}
 }

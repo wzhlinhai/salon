@@ -821,6 +821,237 @@ func (q *Queries) ItemReport(ctx context.Context, arg ItemReportParams) ([]ItemR
 	return items, nil
 }
 
+const reportCardBalanceItems = `-- name: ReportCardBalanceItems :many
+SELECT latest.card_id,latest.item_id,i.name AS item_name,latest.paid_after,latest.gift_after,ci.unit_price::text AS unit_price
+FROM (
+  SELECT DISTINCT ON (l.card_id,l.item_id) l.tenant_id,l.card_id,l.item_id,l.paid_after,l.gift_after
+  FROM card_count_ledger l
+  WHERE l.store_id=$1 AND l.card_id=ANY($2::uuid[])
+  ORDER BY l.card_id,l.item_id,l.at DESC,l.id DESC
+) latest
+JOIN card_items ci ON ci.tenant_id=latest.tenant_id AND ci.card_id=latest.card_id AND ci.item_id=latest.item_id
+JOIN items i ON i.tenant_id=ci.tenant_id AND i.id=ci.item_id
+ORDER BY latest.card_id,i.name,latest.item_id
+`
+
+type ReportCardBalanceItemsParams struct {
+	StoreID uuid.UUID
+	CardIds []uuid.UUID
+}
+
+type ReportCardBalanceItemsRow struct {
+	CardID    uuid.UUID
+	ItemID    uuid.UUID
+	ItemName  string
+	PaidAfter int32
+	GiftAfter int32
+	UnitPrice string
+}
+
+func (q *Queries) ReportCardBalanceItems(ctx context.Context, arg ReportCardBalanceItemsParams) ([]ReportCardBalanceItemsRow, error) {
+	rows, err := q.db.Query(ctx, reportCardBalanceItems, arg.StoreID, arg.CardIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReportCardBalanceItemsRow
+	for rows.Next() {
+		var i ReportCardBalanceItemsRow
+		if err := rows.Scan(
+			&i.CardID,
+			&i.ItemID,
+			&i.ItemName,
+			&i.PaidAfter,
+			&i.GiftAfter,
+			&i.UnitPrice,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const reportCardBalanceRows = `-- name: ReportCardBalanceRows :many
+WITH money AS (
+  SELECT DISTINCT ON (l.card_id) l.card_id,l.principal_after,l.bonus_after
+  FROM card_ledger l
+  WHERE l.store_id=$1
+  ORDER BY l.card_id,l.at DESC,l.id DESC
+),
+counts AS (
+  SELECT latest.card_id,
+         sum(latest.paid_after+latest.gift_after)::bigint AS remaining_counts,
+         sum(latest.paid_after*ci.unit_price) AS count_value
+  FROM (
+    SELECT DISTINCT ON (l.card_id,l.item_id) l.tenant_id,l.card_id,l.item_id,l.paid_after,l.gift_after
+    FROM card_count_ledger l
+    WHERE l.store_id=$1
+    ORDER BY l.card_id,l.item_id,l.at DESC,l.id DESC
+  ) latest
+  JOIN card_items ci ON ci.tenant_id=latest.tenant_id AND ci.card_id=latest.card_id AND ci.item_id=latest.item_id
+  GROUP BY latest.card_id
+)
+SELECT c.id AS card_id,c.customer_id,c.opened_at,c.expires_on,
+       t.id AS card_type_id,t.name AS card_type_name,t.kind AS card_type_kind,
+       (SELECT min(o.business_date) FROM card_ledger o WHERE o.tenant_id=c.tenant_id AND o.card_id=c.id AND o.kind IN ('open','import'))::date AS opened_on,
+       COALESCE(m.principal_after,0)::text AS principal,
+       COALESCE(m.bonus_after,0)::text AS bonus,
+       COALESCE(n.remaining_counts,0)::bigint AS remaining_counts,
+       (COALESCE(n.count_value,0)+COALESCE(m.principal_after,0))::text AS remaining_value
+FROM cards c
+JOIN card_types t ON t.tenant_id=c.tenant_id AND t.id=c.card_type_id
+LEFT JOIN money m ON m.card_id=c.id
+LEFT JOIN counts n ON n.card_id=c.id
+WHERE c.store_id=$1 AND c.status='active'
+  AND (COALESCE(m.principal_after,0)+COALESCE(m.bonus_after,0) > 0 OR COALESCE(n.remaining_counts,0) > 0)
+  AND ($2::text IS NULL OR t.kind=$2::text)
+  AND ($3::date IS NULL OR c.expires_on <= $3::date)
+ORDER BY c.expires_on ASC NULLS LAST,c.opened_at,c.id
+LIMIT $4
+`
+
+type ReportCardBalanceRowsParams struct {
+	StoreID        uuid.UUID
+	Kind           *string
+	ExpiringBefore pgtype.Date
+	RowLimit       int32
+}
+
+type ReportCardBalanceRowsRow struct {
+	CardID          uuid.UUID
+	CustomerID      uuid.UUID
+	OpenedAt        pgtype.Timestamptz
+	ExpiresOn       pgtype.Date
+	CardTypeID      uuid.UUID
+	CardTypeName    string
+	CardTypeKind    string
+	OpenedOn        pgtype.Date
+	Principal       string
+	Bonus           string
+	RemainingCounts int64
+	RemainingValue  string
+}
+
+func (q *Queries) ReportCardBalanceRows(ctx context.Context, arg ReportCardBalanceRowsParams) ([]ReportCardBalanceRowsRow, error) {
+	rows, err := q.db.Query(ctx, reportCardBalanceRows,
+		arg.StoreID,
+		arg.Kind,
+		arg.ExpiringBefore,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReportCardBalanceRowsRow
+	for rows.Next() {
+		var i ReportCardBalanceRowsRow
+		if err := rows.Scan(
+			&i.CardID,
+			&i.CustomerID,
+			&i.OpenedAt,
+			&i.ExpiresOn,
+			&i.CardTypeID,
+			&i.CardTypeName,
+			&i.CardTypeKind,
+			&i.OpenedOn,
+			&i.Principal,
+			&i.Bonus,
+			&i.RemainingCounts,
+			&i.RemainingValue,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const reportCardBalanceTotals = `-- name: ReportCardBalanceTotals :one
+WITH money AS (
+  SELECT DISTINCT ON (l.card_id) l.card_id,l.principal_after,l.bonus_after
+  FROM card_ledger l
+  WHERE l.store_id=$3
+  ORDER BY l.card_id,l.at DESC,l.id DESC
+),
+counts AS (
+  SELECT latest.card_id,
+         sum(latest.paid_after+latest.gift_after)::bigint AS remaining_counts,
+         sum(latest.paid_after*ci.unit_price) AS count_value
+  FROM (
+    SELECT DISTINCT ON (l.card_id,l.item_id) l.tenant_id,l.card_id,l.item_id,l.paid_after,l.gift_after
+    FROM card_count_ledger l
+    WHERE l.store_id=$3
+    ORDER BY l.card_id,l.item_id,l.at DESC,l.id DESC
+  ) latest
+  JOIN card_items ci ON ci.tenant_id=latest.tenant_id AND ci.card_id=latest.card_id AND ci.item_id=latest.item_id
+  GROUP BY latest.card_id
+),
+base AS (
+  SELECT c.expires_on,
+         COALESCE(m.principal_after,0) AS principal,
+         COALESCE(m.bonus_after,0) AS bonus,
+         COALESCE(n.remaining_counts,0) AS remaining_counts,
+         COALESCE(n.count_value,0) AS count_value
+  FROM cards c
+  JOIN card_types t ON t.tenant_id=c.tenant_id AND t.id=c.card_type_id
+  LEFT JOIN money m ON m.card_id=c.id
+  LEFT JOIN counts n ON n.card_id=c.id
+  WHERE c.store_id=$3 AND c.status='active'
+    AND (COALESCE(m.principal_after,0)+COALESCE(m.bonus_after,0) > 0 OR COALESCE(n.remaining_counts,0) > 0)
+    AND ($4::text IS NULL OR t.kind=$4::text)
+)
+SELECT count(*) FILTER (WHERE $1::date IS NULL OR expires_on <= $1::date)::bigint AS cards,
+       COALESCE(sum(remaining_counts) FILTER (WHERE $1::date IS NULL OR expires_on <= $1::date),0)::bigint AS remaining_counts,
+       COALESCE(sum(count_value+principal) FILTER (WHERE $1::date IS NULL OR expires_on <= $1::date),0)::text AS remaining_value,
+       COALESCE(sum(principal) FILTER (WHERE $1::date IS NULL OR expires_on <= $1::date),0)::text AS principal,
+       COALESCE(sum(bonus) FILTER (WHERE $1::date IS NULL OR expires_on <= $1::date),0)::text AS bonus,
+       count(*) FILTER (WHERE expires_on BETWEEN $2::date AND $2::date + 30)::bigint AS expiring_in_30_days
+FROM base
+`
+
+type ReportCardBalanceTotalsParams struct {
+	ExpiringBefore pgtype.Date
+	Today          pgtype.Date
+	StoreID        uuid.UUID
+	Kind           *string
+}
+
+type ReportCardBalanceTotalsRow struct {
+	Cards            int64
+	RemainingCounts  int64
+	RemainingValue   string
+	Principal        string
+	Bonus            string
+	ExpiringIn30Days int64
+}
+
+func (q *Queries) ReportCardBalanceTotals(ctx context.Context, arg ReportCardBalanceTotalsParams) (ReportCardBalanceTotalsRow, error) {
+	row := q.db.QueryRow(ctx, reportCardBalanceTotals,
+		arg.ExpiringBefore,
+		arg.Today,
+		arg.StoreID,
+		arg.Kind,
+	)
+	var i ReportCardBalanceTotalsRow
+	err := row.Scan(
+		&i.Cards,
+		&i.RemainingCounts,
+		&i.RemainingValue,
+		&i.Principal,
+		&i.Bonus,
+		&i.ExpiringIn30Days,
+	)
+	return i, err
+}
+
 const reportCardBalances = `-- name: ReportCardBalances :many
 WITH first_types AS (
   SELECT DISTINCT ON (u.card_id) u.card_id,u.type_before
@@ -1204,6 +1435,83 @@ func (q *Queries) ReportCardTypes(ctx context.Context, storeID uuid.UUID) ([]Rep
 		return nil, err
 	}
 	return items, nil
+}
+
+const reportStoredValueFlows = `-- name: ReportStoredValueFlows :many
+SELECT l.business_date,l.kind,
+       COALESCE(sum(l.principal_delta),0)::text AS principal_delta,
+       COALESCE(sum(l.bonus_delta),0)::text AS bonus_delta
+FROM card_ledger l
+WHERE l.store_id=$1 AND l.business_date BETWEEN $2::date AND $3::date
+GROUP BY l.business_date,l.kind
+ORDER BY l.business_date,l.kind
+`
+
+type ReportStoredValueFlowsParams struct {
+	StoreID  uuid.UUID
+	DateFrom pgtype.Date
+	DateTo   pgtype.Date
+}
+
+type ReportStoredValueFlowsRow struct {
+	BusinessDate   pgtype.Date
+	Kind           string
+	PrincipalDelta string
+	BonusDelta     string
+}
+
+func (q *Queries) ReportStoredValueFlows(ctx context.Context, arg ReportStoredValueFlowsParams) ([]ReportStoredValueFlowsRow, error) {
+	rows, err := q.db.Query(ctx, reportStoredValueFlows, arg.StoreID, arg.DateFrom, arg.DateTo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReportStoredValueFlowsRow
+	for rows.Next() {
+		var i ReportStoredValueFlowsRow
+		if err := rows.Scan(
+			&i.BusinessDate,
+			&i.Kind,
+			&i.PrincipalDelta,
+			&i.BonusDelta,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const reportStoredValueOpening = `-- name: ReportStoredValueOpening :one
+WITH latest AS (
+  SELECT DISTINCT ON (l.card_id) l.principal_after,l.bonus_after
+  FROM card_ledger l
+  WHERE l.store_id=$1 AND l.business_date < $2::date
+  ORDER BY l.card_id,l.at DESC,l.id DESC
+)
+SELECT COALESCE(sum(principal_after),0)::text AS principal,
+       COALESCE(sum(bonus_after),0)::text AS bonus
+FROM latest
+`
+
+type ReportStoredValueOpeningParams struct {
+	StoreID  uuid.UUID
+	DateFrom pgtype.Date
+}
+
+type ReportStoredValueOpeningRow struct {
+	Principal string
+	Bonus     string
+}
+
+func (q *Queries) ReportStoredValueOpening(ctx context.Context, arg ReportStoredValueOpeningParams) (ReportStoredValueOpeningRow, error) {
+	row := q.db.QueryRow(ctx, reportStoredValueOpening, arg.StoreID, arg.DateFrom)
+	var i ReportStoredValueOpeningRow
+	err := row.Scan(&i.Principal, &i.Bonus)
+	return i, err
 }
 
 const staffGuestVisits = `-- name: StaffGuestVisits :many
