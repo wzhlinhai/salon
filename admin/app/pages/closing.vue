@@ -421,8 +421,9 @@ function saveUnseal() {
                       v-model="actual[line.method as Method]"
                       inputmode="decimal"
                       :aria-label="`${line.label}实际`"
-                      class="w-28"
-                      :ui="{ base: 'text-end tabular-nums' }"
+                      variant="ghost"
+                      class="-me-2 w-28"
+                      :ui="{ base: 'h-8 py-1 px-2 text-sm text-end tabular-nums focus:bg-default' }"
                     />
                   </div>
                 </td>
