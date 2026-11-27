@@ -15,6 +15,11 @@ type CustomerIDInput struct {
 	ID uuid.UUID `json:"id"`
 }
 
+// GetCustomersInput 是按 ID 批量读取顾客的参数。
+type GetCustomersInput struct {
+	IDs []uuid.UUID `json:"ids" minItems:"1" maxItems:"200" uniqueItems:"true"`
+}
+
 // SearchCustomersInput 是顾客搜索条件。
 type SearchCustomersInput struct {
 	Query               string     `json:"query,omitempty"`
@@ -55,6 +60,38 @@ func Register(r *ops.Registry) {
 				return nil, err
 			}
 			return mask(env, out), nil
+		},
+	})
+	ops.Register(r, ops.Operation[GetCustomersInput, CustomerList]{
+		Name: "get_customers", Summary: "按 ID 批量查看顾客档案", Kind: ops.Read,
+		Permission: perm.CustomerView, AI: ops.AIDirect,
+		Handle: func(ctx context.Context, env ops.Env, in *GetCustomersInput) (*CustomerList, error) {
+			rows, err := env.Q.GetCustomers(ctx, dbgen.GetCustomersParams{StoreID: env.Caller.StoreID, Ids: in.IDs})
+			if err != nil {
+				return nil, err
+			}
+			visible := make(map[uuid.UUID]dbgen.Customer, len(rows))
+			for _, row := range rows {
+				if canView(env.Caller, row) {
+					visible[row.ID] = row
+				}
+			}
+			ordered := make([]dbgen.Customer, 0, len(visible))
+			for _, id := range in.IDs {
+				if row, ok := visible[id]; ok {
+					ordered = append(ordered, row)
+				}
+			}
+			items, err := views(ctx, env, ordered)
+			if err != nil {
+				return nil, err
+			}
+			out := &CustomerList{Items: make([]Customer, 0, len(items))}
+			for _, c := range items {
+				masked := mask(env, c)
+				out.Items = append(out.Items, *masked)
+			}
+			return out, nil
 		},
 	})
 	ops.Register(r, ops.Operation[SearchCustomersInput, CustomerList]{
