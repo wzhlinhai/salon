@@ -187,7 +187,7 @@ watch(() => [entries.value.length, sending.value], async () => {
                 size="xs"
                 :icon="copied === index ? 'i-lucide-check' : 'i-lucide-copy'"
                 :aria-label="copied === index ? '已复制' : '复制'"
-                class="-ms-1 text-muted"
+                class="text-muted"
                 data-testid="ai-copy"
                 @click="copy(index, entry.content)"
               />
