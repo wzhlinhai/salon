@@ -7240,6 +7240,11 @@ export interface components {
             default: unknown;
             /** Format: date */
             effective_from?: string;
+            /**
+             * @description 设置页里归在哪一组
+             * @enum {string}
+             */
+            group: "business" | "booking" | "rotation" | "cashier" | "aftersale" | "performance" | "receipt" | "ai";
             hint: string;
             /** @description 这一天用的是系统默认做法 */
             is_default: boolean;
@@ -7281,12 +7286,23 @@ export interface components {
         SettingChangeList: {
             changes: components["schemas"]["SettingChange"][];
         };
+        SettingGroupInfo: {
+            /**
+             * @description 分组标识
+             * @enum {string}
+             */
+            key: "business" | "booking" | "rotation" | "cashier" | "aftersale" | "performance" | "receipt" | "ai";
+            /** @description 分组显示名 */
+            label: string;
+        };
         SettingList: {
             /**
              * Format: date
              * @description 查看的营业日
              */
             business_date: string;
+            /** @description 这次返回的设置里实际有的分组，按设置页的显示顺序 */
+            groups: components["schemas"]["SettingGroupInfo"][];
             settings: components["schemas"]["Setting"][];
         };
         Settlement: {

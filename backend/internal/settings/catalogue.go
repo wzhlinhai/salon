@@ -11,6 +11,50 @@ import (
 // Kind 是设置值的形式，管理后台按它显示编辑控件。
 type Kind string
 
+// SettingGroup 是设置页里设置项所属的分组。
+type SettingGroup string
+
+const (
+	// GroupBusiness：营业，营业时段、营业日和补录等。
+	GroupBusiness SettingGroup = "business"
+	// GroupBooking：预约。
+	GroupBooking SettingGroup = "booking"
+	// GroupRotation：轮牌。
+	GroupRotation SettingGroup = "rotation"
+	// GroupCashier：收银与卡，支付、卡和收款通道。
+	GroupCashier SettingGroup = "cashier"
+	// GroupAftersale：售后。
+	GroupAftersale SettingGroup = "aftersale"
+	// GroupPerformance：业绩与提成。
+	GroupPerformance SettingGroup = "performance"
+	// GroupReceipt：小票。
+	GroupReceipt SettingGroup = "receipt"
+	// GroupAI：AI 提醒。
+	GroupAI SettingGroup = "ai"
+)
+
+// settingGroups 是设置页分组的有序表，顺序即显示顺序，也是分组合法性的唯一来源。
+var settingGroups = []SettingGroupInfo{
+	{Key: GroupBusiness, Label: "营业"},
+	{Key: GroupBooking, Label: "预约"},
+	{Key: GroupRotation, Label: "轮牌"},
+	{Key: GroupCashier, Label: "收银与卡"},
+	{Key: GroupAftersale, Label: "售后"},
+	{Key: GroupPerformance, Label: "业绩与提成"},
+	{Key: GroupReceipt, Label: "小票"},
+	{Key: GroupAI, Label: "AI 提醒"},
+}
+
+// known 报告 g 是否是设置页的已知分组。
+func (g SettingGroup) known() bool {
+	for _, group := range settingGroups {
+		if group.Key == g {
+			return true
+		}
+	}
+	return false
+}
+
 const (
 	// KindTime：一天中的时刻，"HH:MM"。
 	KindTime Kind = "time"
@@ -47,6 +91,8 @@ type Def struct {
 	Options []ChoiceOption
 	Min     int
 	Max     int
+	// Group 是设置页里归在哪一组。
+	Group SettingGroup
 	// Default 是系统默认做法，门店没有设置时使用。
 	Default any
 	// check 校验 JSON 值，返回面向人的错误说明。
@@ -111,99 +157,113 @@ const (
 
 // Catalogue 是全部门店设置，顺序即设置页面的显示顺序。后续模块的业务规则在这里添加。
 var Catalogue = []Def{
-	{Key: KeyDraftDualConfirm, Label: "金额草稿双人确认", Kind: KindChoice, Default: "off", Options: []ChoiceOption{{Value: "off", Label: "不强制"}, {Value: "on", Label: "必须另一人确认"}}},
+	{Group: GroupBusiness, Key: KeyDraftDualConfirm, Label: "金额草稿双人确认", Kind: KindChoice, Default: "off", Options: []ChoiceOption{{Value: "off", Label: "不强制"}, {Value: "on", Label: "必须另一人确认"}}},
 	{
-		Key: KeyMemberPriceRule, Label: "会员价取价", Kind: KindChoice,
+		Group: GroupCashier,
+		Key:   KeyMemberPriceRule, Label: "会员价取价", Kind: KindChoice,
 		Hint: "持卡顾客做有级别价的项目时，会员价和级别价取哪个", Default: "member_first",
 		Options: []ChoiceOption{{Value: "member_first", Label: "会员价优先"}, {Value: "lowest", Label: "取较低价"}},
 	},
 	{
-		Key: KeyPointsPerRechargeYuan, Label: "充值积分", Kind: KindInteger, Min: 0, Max: 100000,
+		Group: GroupCashier,
+		Key:   KeyPointsPerRechargeYuan, Label: "充值积分", Kind: KindInteger, Min: 0, Max: 100000,
 		Hint: "每充值多少元本金积 1 分，0 为不积分，不足一分的部分不计", Default: 0,
 	},
-	{Key: KeyCardDeductionOrder, Label: "扣款顺序", Hint: "用卡余额付钱时先扣本金还是先扣赠送金，先扣的不够再扣另一部分", Kind: KindChoice, Default: "principal_first", Options: []ChoiceOption{{Value: "principal_first", Label: "先扣本金"}, {Value: "bonus_first", Label: "先扣赠送金"}}},
-	{Key: KeyOthersCardPayment, Label: "用别人的卡", Hint: "顾客能否用别人（例如家人）的卡余额付自己的单", Kind: KindChoice, Default: "not_allowed", Options: []ChoiceOption{{Value: "not_allowed", Label: "不允许"}, {Value: "allowed", Label: "允许"}}},
-	{Key: KeyCardCountOrder, Label: "扣次顺序", Hint: "扣次时先扣购买次数还是赠送次数，先扣的用完再扣另一种", Kind: KindChoice, Default: "paid_first", Options: []ChoiceOption{{Value: "paid_first", Label: "先扣购买次数"}, {Value: "gift_first", Label: "先扣赠送次数"}}},
-	{Key: KeyCardSelection, Label: "选卡规则", Hint: "结账只说用卡余额付、不指定哪张卡时怎么挑卡：手动选卡必须指定；按折扣率先扣这单实收最低的卡；按余额先扣余额少的卡，一张不够接着扣下一张", Kind: KindChoice, Default: "manual", Options: []ChoiceOption{{Value: "manual", Label: "手动选卡"}, {Value: "by_discount", Label: "按折扣率"}, {Value: "by_balance", Label: "按余额"}}},
-	{Key: KeyGuestCountSplit, Label: "客数归属", Kind: KindChoice, Default: "first_slot", Options: []ChoiceOption{{Value: "first_slot", Label: "第一个岗位的员工"}, {Value: "equal", Label: "单上员工均分"}}, Hint: "每张结账单的客次记给谁"},
-	{Key: KeyPerformanceSplit, Label: "多人分业绩", Kind: KindChoice, Default: "by_position", Options: []ChoiceOption{{Value: "by_position", Label: "按岗位比例"}, {Value: "equal", Label: "均分"}, {Value: "full", Label: "每人各记全额"}}, Hint: "一个项目几个人做时业绩怎么分；项目没设岗位比例时均分；选每人各记全额时每个岗位上的员工都记全额，全店业绩合计会大于实收"},
-	{Key: KeyCommissionSplit, Label: "提成按什么分", Kind: KindChoice, Default: "same", Options: []ChoiceOption{{Value: "same", Label: "跟业绩分法一样"}, {Value: "equal", Label: "均分"}, {Value: "by_position", Label: "按岗位比例"}}, Hint: "只在多人分业绩选「每人各记全额」时起作用；其他分法下提成跟业绩一样；结账时固定，之后改设置不影响已结账的单；固定金额提成按人计，不分摊"},
-	{Key: KeyPerformanceRatioCash, Label: "现金业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
-	{Key: KeyPerformanceRatioUnionpay, Label: "银联业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
-	{Key: KeyPerformanceRatioWechat, Label: "微信业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
-	{Key: KeyPerformanceRatioAlipay, Label: "支付宝业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
-	{Key: KeyPerformanceRatioGroupbuy, Label: "团购业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
-	{Key: KeyPerformanceRatioDebt, Label: "挂账业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
-	{Key: KeyPerformanceRatioCardPrincipal, Label: "卡余额本金业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
-	{Key: KeyPerformanceRatioCardBonus, Label: "卡余额赠送金业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 0, Hint: "这种支付方式付的钱按百分之几计入业绩"},
-	{Key: KeyPerformanceRatioRedPacket, Label: "红包业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 0, Hint: "这种支付方式付的钱按百分之几计入业绩"},
-	{Key: KeyPerformanceRatioCountPaid, Label: "购买次数耗卡业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "扣次时按单次金额的百分之几计入耗卡业绩"},
-	{Key: KeyPerformanceRatioCountGift, Label: "赠送次数耗卡业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 0, Hint: "扣次时按单次金额的百分之几计入耗卡业绩"},
+	{Group: GroupCashier, Key: KeyCardDeductionOrder, Label: "扣款顺序", Hint: "用卡余额付钱时先扣本金还是先扣赠送金，先扣的不够再扣另一部分", Kind: KindChoice, Default: "principal_first", Options: []ChoiceOption{{Value: "principal_first", Label: "先扣本金"}, {Value: "bonus_first", Label: "先扣赠送金"}}},
+	{Group: GroupCashier, Key: KeyOthersCardPayment, Label: "用别人的卡", Hint: "顾客能否用别人（例如家人）的卡余额付自己的单", Kind: KindChoice, Default: "not_allowed", Options: []ChoiceOption{{Value: "not_allowed", Label: "不允许"}, {Value: "allowed", Label: "允许"}}},
+	{Group: GroupCashier, Key: KeyCardCountOrder, Label: "扣次顺序", Hint: "扣次时先扣购买次数还是赠送次数，先扣的用完再扣另一种", Kind: KindChoice, Default: "paid_first", Options: []ChoiceOption{{Value: "paid_first", Label: "先扣购买次数"}, {Value: "gift_first", Label: "先扣赠送次数"}}},
+	{Group: GroupCashier, Key: KeyCardSelection, Label: "选卡规则", Hint: "结账只说用卡余额付、不指定哪张卡时怎么挑卡：手动选卡必须指定；按折扣率先扣这单实收最低的卡；按余额先扣余额少的卡，一张不够接着扣下一张", Kind: KindChoice, Default: "manual", Options: []ChoiceOption{{Value: "manual", Label: "手动选卡"}, {Value: "by_discount", Label: "按折扣率"}, {Value: "by_balance", Label: "按余额"}}},
+	{Group: GroupPerformance, Key: KeyGuestCountSplit, Label: "客数归属", Kind: KindChoice, Default: "first_slot", Options: []ChoiceOption{{Value: "first_slot", Label: "第一个岗位的员工"}, {Value: "equal", Label: "单上员工均分"}}, Hint: "每张结账单的客次记给谁"},
+	{Group: GroupPerformance, Key: KeyPerformanceSplit, Label: "多人分业绩", Kind: KindChoice, Default: "by_position", Options: []ChoiceOption{{Value: "by_position", Label: "按岗位比例"}, {Value: "equal", Label: "均分"}, {Value: "full", Label: "每人各记全额"}}, Hint: "一个项目几个人做时业绩怎么分；项目没设岗位比例时均分；选每人各记全额时每个岗位上的员工都记全额，全店业绩合计会大于实收"},
+	{Group: GroupPerformance, Key: KeyCommissionSplit, Label: "提成按什么分", Kind: KindChoice, Default: "same", Options: []ChoiceOption{{Value: "same", Label: "跟业绩分法一样"}, {Value: "equal", Label: "均分"}, {Value: "by_position", Label: "按岗位比例"}}, Hint: "只在多人分业绩选「每人各记全额」时起作用；其他分法下提成跟业绩一样；结账时固定，之后改设置不影响已结账的单；固定金额提成按人计，不分摊"},
+	{Group: GroupPerformance, Key: KeyPerformanceRatioCash, Label: "现金业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
+	{Group: GroupPerformance, Key: KeyPerformanceRatioUnionpay, Label: "银联业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
+	{Group: GroupPerformance, Key: KeyPerformanceRatioWechat, Label: "微信业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
+	{Group: GroupPerformance, Key: KeyPerformanceRatioAlipay, Label: "支付宝业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
+	{Group: GroupPerformance, Key: KeyPerformanceRatioGroupbuy, Label: "团购业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
+	{Group: GroupPerformance, Key: KeyPerformanceRatioDebt, Label: "挂账业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
+	{Group: GroupPerformance, Key: KeyPerformanceRatioCardPrincipal, Label: "卡余额本金业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "这种支付方式付的钱按百分之几计入业绩"},
+	{Group: GroupPerformance, Key: KeyPerformanceRatioCardBonus, Label: "卡余额赠送金业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 0, Hint: "这种支付方式付的钱按百分之几计入业绩"},
+	{Group: GroupPerformance, Key: KeyPerformanceRatioRedPacket, Label: "红包业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 0, Hint: "这种支付方式付的钱按百分之几计入业绩"},
+	{Group: GroupPerformance, Key: KeyPerformanceRatioCountPaid, Label: "购买次数耗卡业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 100, Hint: "扣次时按单次金额的百分之几计入耗卡业绩"},
+	{Group: GroupPerformance, Key: KeyPerformanceRatioCountGift, Label: "赠送次数耗卡业绩比例", Kind: KindInteger, Min: 0, Max: 100, Default: 0, Hint: "扣次时按单次金额的百分之几计入耗卡业绩"},
 	{
-		Key: KeyCardRefundBonus, Label: "退卡赠送金", Kind: KindChoice, Default: "forfeit",
+		Group: GroupCashier,
+		Key:   KeyCardRefundBonus, Label: "退卡赠送金", Kind: KindChoice, Default: "forfeit",
 		Options: []ChoiceOption{{Value: "forfeit", Label: "不退、作废"}, {Value: "deduct_used", Label: "扣回已用掉的赠送金"}},
 		Hint:    "退卡时剩余赠送金都作废；选扣回时，退款里再减去这张卡结账时用掉的赠送金",
 	},
 	{
-		Key: KeyCardRefundFeePercent, Label: "退卡手续费", Kind: KindInteger, Min: 0, Max: 100, Default: 0,
+		Group: GroupCashier,
+		Key:   KeyCardRefundFeePercent, Label: "退卡手续费", Kind: KindInteger, Min: 0, Max: 100, Default: 0,
 		Hint: "按退款金额的百分比收取，0 为不收",
 	},
 	{
-		Key: KeyVoidWindowMinutes, Label: "撤单授权窗口", Kind: KindInteger, Min: 0, Max: 60,
+		Group: GroupCashier,
+		Key:   KeyVoidWindowMinutes, Label: "撤单授权窗口", Kind: KindInteger, Min: 0, Max: 60,
 		Hint: "开启后，撤单前要本人重新输入登录密码开一个窗口，窗口内只有本人能撤，过期要重开；单位分钟，0 为关闭", Default: 0,
 	},
-	{Key: KeyAttendanceGraceMinutes, Label: "考勤宽限分钟", Kind: KindInteger, Min: 0, Max: 60, Default: 0, Hint: "上班晚于、下班早于班次时间多少分钟以内不算迟到、早退"},
-	{Key: KeyRotationOrderRule, Label: "轮牌顺序规则", Hint: "每天轮牌队列的顺序从哪里来", Kind: KindChoice, Default: "first_come", Options: []ChoiceOption{{Value: "first_come", Label: "先到先排"}, {Value: "continue_yesterday", Label: "接昨天顺序"}, {Value: "reset_nightly", Label: "每晚按成员顺序重置"}}},
-	{Key: KeyRotationDesignatedTakesTurn, Label: "点客占轮", Hint: "点客服务结账后，这名员工是否排到队尾", Kind: KindChoice, Default: "yes", Options: []ChoiceOption{{Value: "yes", Label: "占轮，排到队尾"}, {Value: "no", Label: "不占轮，顺序不变"}}},
-	{Key: KeyRotationSkipWhenServingDesignated, Label: "点牌跳牌", Hint: "队首员工正在服务点客时，是否自动跳过并记录", Kind: KindChoice, Default: "yes", Options: []ChoiceOption{{Value: "yes", Label: "自动跳过"}, {Value: "no", Label: "不自动跳过"}}},
-	{Key: KeyRotationSkipPolicy, Label: "轮牌跳牌", Hint: "员工被跳过时排到队尾还是保留原位下次优先", Kind: KindChoice, Default: "to_tail", Options: []ChoiceOption{{Value: "to_tail", Label: "排到队尾算一轮"}, {Value: "keep_position", Label: "保留原位下次优先"}}},
-	{Key: KeyRotationHalfRule, Label: "半轮规则", Hint: "按价格、项目或预约判断一次服务是否只算半轮", Kind: KindChoice, Default: "none", Options: []ChoiceOption{{Value: "none", Label: "不记半轮"}, {Value: "by_price", Label: "按价格"}, {Value: "by_item", Label: "按项目"}, {Value: "by_appointment", Label: "按预约"}}},
-	{Key: KeyRotationHalfPriceBelow, Label: "半轮价格线", Hint: "按价格记半轮时，实收低于多少元算半轮；0 表示不按价格记半轮", Kind: KindInteger, Min: 0, Max: 1000000, Default: 0},
-	{Key: KeyBookingMinLeadMinutes, Label: "预约提前量", Hint: "顾客自助预约至少要提前多少分钟；0 为不限制。前台代约不受此项限制", Kind: KindInteger, Min: 0, Max: 10080, Default: 0},
-	{Key: KeyBookingMaxDaysAhead, Label: "可约天数", Hint: "从今天起最多可以预约多少天内的时段，0 为只能约今天", Kind: KindInteger, Min: 0, Max: 365, Default: 30},
-	{Key: KeyBookingDefaultMinutes, Label: "默认服务时长", Hint: "预约没选项目或项目都没设时长时默认占用的分钟数；挂单的项目都没设时长时同样按此占用", Kind: KindInteger, Min: 1, Max: 600, Default: 60},
+	{Group: GroupBusiness, Key: KeyAttendanceGraceMinutes, Label: "考勤宽限分钟", Kind: KindInteger, Min: 0, Max: 60, Default: 0, Hint: "上班晚于、下班早于班次时间多少分钟以内不算迟到、早退"},
+	{Group: GroupRotation, Key: KeyRotationOrderRule, Label: "轮牌顺序规则", Hint: "每天轮牌队列的顺序从哪里来", Kind: KindChoice, Default: "first_come", Options: []ChoiceOption{{Value: "first_come", Label: "先到先排"}, {Value: "continue_yesterday", Label: "接昨天顺序"}, {Value: "reset_nightly", Label: "每晚按成员顺序重置"}}},
+	{Group: GroupRotation, Key: KeyRotationDesignatedTakesTurn, Label: "点客占轮", Hint: "点客服务结账后，这名员工是否排到队尾", Kind: KindChoice, Default: "yes", Options: []ChoiceOption{{Value: "yes", Label: "占轮，排到队尾"}, {Value: "no", Label: "不占轮，顺序不变"}}},
+	{Group: GroupRotation, Key: KeyRotationSkipWhenServingDesignated, Label: "点牌跳牌", Hint: "队首员工正在服务点客时，是否自动跳过并记录", Kind: KindChoice, Default: "yes", Options: []ChoiceOption{{Value: "yes", Label: "自动跳过"}, {Value: "no", Label: "不自动跳过"}}},
+	{Group: GroupRotation, Key: KeyRotationSkipPolicy, Label: "轮牌跳牌", Hint: "员工被跳过时排到队尾还是保留原位下次优先", Kind: KindChoice, Default: "to_tail", Options: []ChoiceOption{{Value: "to_tail", Label: "排到队尾算一轮"}, {Value: "keep_position", Label: "保留原位下次优先"}}},
+	{Group: GroupRotation, Key: KeyRotationHalfRule, Label: "半轮规则", Hint: "按价格、项目或预约判断一次服务是否只算半轮", Kind: KindChoice, Default: "none", Options: []ChoiceOption{{Value: "none", Label: "不记半轮"}, {Value: "by_price", Label: "按价格"}, {Value: "by_item", Label: "按项目"}, {Value: "by_appointment", Label: "按预约"}}},
+	{Group: GroupRotation, Key: KeyRotationHalfPriceBelow, Label: "半轮价格线", Hint: "按价格记半轮时，实收低于多少元算半轮；0 表示不按价格记半轮", Kind: KindInteger, Min: 0, Max: 1000000, Default: 0},
+	{Group: GroupBooking, Key: KeyBookingMinLeadMinutes, Label: "预约提前量", Hint: "顾客自助预约至少要提前多少分钟；0 为不限制。前台代约不受此项限制", Kind: KindInteger, Min: 0, Max: 10080, Default: 0},
+	{Group: GroupBooking, Key: KeyBookingMaxDaysAhead, Label: "可约天数", Hint: "从今天起最多可以预约多少天内的时段，0 为只能约今天", Kind: KindInteger, Min: 0, Max: 365, Default: 30},
+	{Group: GroupBooking, Key: KeyBookingDefaultMinutes, Label: "默认服务时长", Hint: "预约没选项目或项目都没设时长时默认占用的分钟数；挂单的项目都没设时长时同样按此占用", Kind: KindInteger, Min: 1, Max: 600, Default: 60},
 	{
-		Key: KeyAftersaleWindowDays, Label: "售后期限", Kind: KindInteger, Min: 0, Max: 36500, Default: 30,
+		Group: GroupAftersale,
+		Key:   KeyAftersaleWindowDays, Label: "售后期限", Kind: KindInteger, Min: 0, Max: 36500, Default: 30,
 		Hint: "原单营业日到当前营业日不超过多少天可以开售后单，0 为只能当天售后",
 	},
 	{
-		Key: KeyAftersaleApprovalMode, Label: "售后审批方式", Kind: KindChoice, Default: "self",
+		Group: GroupAftersale,
+		Key:   KeyAftersaleApprovalMode, Label: "售后审批方式", Kind: KindChoice, Default: "self",
 		Options: []ChoiceOption{{Value: "self", Label: "本人可以审批"}, {Value: "other", Label: "须另一名员工审批"}},
 		Hint:    "开售后单的人和审批的人是否可以相同",
 	},
-	{Key: KeyAftersaleDeductPerformance, Label: "退款默认扣业绩", Kind: KindChoice, Default: "off", Options: []ChoiceOption{{Value: "off", Label: "不扣"}, {Value: "on", Label: "扣"}}, Hint: "审批退款售后单时默认是否扣原单项目业绩，审批时可以逐单改"},
-	{Key: KeyAftersaleDeductCommission, Label: "退款默认扣提成", Kind: KindChoice, Default: "off", Options: []ChoiceOption{{Value: "off", Label: "不扣"}, {Value: "on", Label: "扣"}}, Hint: "按业绩计算；选择扣提成时必须同时扣业绩"},
+	{Group: GroupAftersale, Key: KeyAftersaleDeductPerformance, Label: "退款默认扣业绩", Kind: KindChoice, Default: "off", Options: []ChoiceOption{{Value: "off", Label: "不扣"}, {Value: "on", Label: "扣"}}, Hint: "审批退款售后单时默认是否扣原单项目业绩，审批时可以逐单改"},
+	{Group: GroupAftersale, Key: KeyAftersaleDeductCommission, Label: "退款默认扣提成", Kind: KindChoice, Default: "off", Options: []ChoiceOption{{Value: "off", Label: "不扣"}, {Value: "on", Label: "扣"}}, Hint: "按业绩计算；选择扣提成时必须同时扣业绩"},
 	{
-		Key: KeyPayrollAutoLockDay, Label: "工资自动锁定日", Kind: KindInteger, Min: 1, Max: 28, Default: 15,
+		Group: GroupPerformance,
+		Key:   KeyPayrollAutoLockDay, Label: "工资自动锁定日", Kind: KindInteger, Min: 1, Max: 28, Default: 15,
 		Hint: "每月几号自动锁定上个月的工资，当天生效",
 	},
 	{
-		Key: KeyAIReminderDailyCap, Label: "每人每天最多几条 AI 提醒", Kind: KindInteger, Min: 1, Max: 20, Default: 3,
+		Group: GroupAI,
+		Key:   KeyAIReminderDailyCap, Label: "每人每天最多几条 AI 提醒", Kind: KindInteger, Min: 1, Max: 20, Default: 3,
 		Hint: "同一档位下每位员工每天最多收到几条不紧急的 AI 提醒；不马上处理会损失钱的提醒不占这个上限",
 	},
 	{
-		Key: KeyBackfillMaxDays, Label: "可补录天数", Kind: KindInteger, Min: 0, Max: 31, Default: 3,
+		Group: GroupBusiness,
+		Key:   KeyBackfillMaxDays, Label: "可补录天数", Kind: KindInteger, Min: 0, Max: 31, Default: 3,
 		Hint: "断网后用纸单补录时，最多能补录今天之前多少个营业日的单；0 为只能补录当天",
 	},
 	{
-		Key: KeyReceiptPaperWidth, Label: "小票纸宽", Kind: KindChoice, Default: "80mm",
+		Group: GroupReceipt,
+		Key:   KeyReceiptPaperWidth, Label: "小票纸宽", Kind: KindChoice, Default: "80mm",
 		Options: []ChoiceOption{{Value: "58mm", Label: "58mm"}, {Value: "80mm", Label: "80mm"}},
 		Hint:    "浏览器打印小票时使用的纸宽",
 	},
 	{
-		Key: KeyReceiptHeader, Label: "小票抬头", Kind: KindText, Max: 60, Default: "",
+		Group: GroupReceipt,
+		Key:   KeyReceiptHeader, Label: "小票抬头", Kind: KindText, Max: 60, Default: "",
 		Hint: "打印在小票最上方的一行文字，最多 60 字；留空时打印门店名称",
 	},
 	{
-		Key: KeyReceiptFooter, Label: "小票页尾", Kind: KindText, Max: 60, Default: "谢谢惠顾",
+		Group: GroupReceipt,
+		Key:   KeyReceiptFooter, Label: "小票页尾", Kind: KindText, Max: 60, Default: "谢谢惠顾",
 		Hint: "打印在小票最下方的一行文字，最多 60 字；可以留空",
 	},
-	{Key: KeyReceiptShowCustomerName, Label: "小票显示顾客姓名", Kind: KindChoice, Default: "show", Options: []ChoiceOption{{Value: "show", Label: "显示"}, {Value: "hide", Label: "不显示"}}},
-	{Key: KeyReceiptShowStaff, Label: "小票显示服务员工", Kind: KindChoice, Default: "show", Options: []ChoiceOption{{Value: "show", Label: "显示"}, {Value: "hide", Label: "不显示"}}},
-	{Key: KeyReceiptShowPayments, Label: "小票显示支付明细", Kind: KindChoice, Default: "show", Options: []ChoiceOption{{Value: "show", Label: "显示"}, {Value: "hide", Label: "不显示"}}},
-	{Key: KeyReceiptShowCardBalance, Label: "小票显示卡余额", Kind: KindChoice, Default: "show", Options: []ChoiceOption{{Value: "show", Label: "显示"}, {Value: "hide", Label: "不显示"}}},
+	{Group: GroupReceipt, Key: KeyReceiptShowCustomerName, Label: "小票显示顾客姓名", Kind: KindChoice, Default: "show", Options: []ChoiceOption{{Value: "show", Label: "显示"}, {Value: "hide", Label: "不显示"}}},
+	{Group: GroupReceipt, Key: KeyReceiptShowStaff, Label: "小票显示服务员工", Kind: KindChoice, Default: "show", Options: []ChoiceOption{{Value: "show", Label: "显示"}, {Value: "hide", Label: "不显示"}}},
+	{Group: GroupReceipt, Key: KeyReceiptShowPayments, Label: "小票显示支付明细", Kind: KindChoice, Default: "show", Options: []ChoiceOption{{Value: "show", Label: "显示"}, {Value: "hide", Label: "不显示"}}},
+	{Group: GroupReceipt, Key: KeyReceiptShowCardBalance, Label: "小票显示卡余额", Kind: KindChoice, Default: "show", Options: []ChoiceOption{{Value: "show", Label: "显示"}, {Value: "hide", Label: "不显示"}}},
 	{
-		Key: KeyBusinessHours, Label: "营业时段", Kind: KindTimeRange,
+		Group: GroupBusiness,
+		Key:   KeyBusinessHours, Label: "营业时段", Kind: KindTimeRange,
 		Hint:    "每天开门和关门的时间，预约等按它限制",
 		Default: TimeRange{Open: "09:00", Close: "22:00"},
 		check: func(raw json.RawMessage) error {
@@ -218,7 +278,8 @@ var Catalogue = []Def{
 		},
 	},
 	{
-		Key: KeyBusinessDayEnd, Label: "营业日结束时间", Kind: KindTime,
+		Group: GroupBusiness,
+		Key:   KeyBusinessDayEnd, Label: "营业日结束时间", Kind: KindTime,
 		Hint:    "次日几点之前发生的业务算前一天。草稿过期、日结都按它划分营业日",
 		Default: "00:00",
 		check: func(raw json.RawMessage) error {
@@ -293,10 +354,25 @@ func (d Def) validate(raw json.RawMessage) error {
 	}
 }
 
+// init 在启动时校验目录里的每项设置都有已知的分组。
+func init() {
+	for _, d := range Catalogue {
+		validateGroup(d)
+	}
+}
+
+// validateGroup 在设置的 Group 为空或不是已知分组时 panic。
+func validateGroup(d Def) {
+	if !d.Group.known() {
+		panic(fmt.Sprintf("settings: setting %s has invalid group %q", d.Key, d.Group))
+	}
+}
+
 // Declare 在启动时声明模块注册表生成的设置项。
 func Declare(def Def) {
 	if _, exists := Lookup(def.Key); exists {
 		panic("settings: duplicate key " + def.Key)
 	}
+	validateGroup(def)
 	Catalogue = append(Catalogue, def)
 }

@@ -56,6 +56,20 @@ func (r Rules) decode(key string, v any) {
 	}
 }
 
+// text 返回设置 key 的文字值。
+func (r Rules) text(key string) string {
+	var v string
+	r.decode(key, &v)
+	return v
+}
+
+// integer 返回设置 key 的整数值。
+func (r Rules) integer(key string) int {
+	var v int
+	r.decode(key, &v)
+	return v
+}
+
 // BusinessHours 返回营业时段。
 func (r Rules) BusinessHours() TimeRange {
 	var v TimeRange
@@ -65,23 +79,17 @@ func (r Rules) BusinessHours() TimeRange {
 
 // BusinessDayEnd 返回营业日结束时间（"HH:MM"）：次日这个时刻之前发生的业务算前一天。
 func (r Rules) BusinessDayEnd() string {
-	var v string
-	r.decode(KeyBusinessDayEnd, &v)
-	return v
+	return r.text(KeyBusinessDayEnd)
 }
 
 // MemberPriceRule 返回会员价与级别价的取价做法。
 func (r Rules) MemberPriceRule() string {
-	var v string
-	r.decode(KeyMemberPriceRule, &v)
-	return v
+	return r.text(KeyMemberPriceRule)
 }
 
 // PointsPerRechargeYuan 返回每积一分所需充值本金元数，零表示不积分。
 func (r Rules) PointsPerRechargeYuan() int {
-	var v int
-	r.decode(KeyPointsPerRechargeYuan, &v)
-	return v
+	return r.integer(KeyPointsPerRechargeYuan)
 }
 
 // change 是一次设置修改中选值用到的部分。
@@ -194,121 +202,87 @@ func pgDate(d time.Time) pgtype.Date { return pgtype.Date{Time: d, Valid: true} 
 
 // RotationOrderRule 返回每日轮牌队列的初始顺序规则。
 func (r Rules) RotationOrderRule() string {
-	var v string
-	r.decode(KeyRotationOrderRule, &v)
-	return v
+	return r.text(KeyRotationOrderRule)
 }
 
 // RotationDesignatedTakesTurn 返回点客服务结账后是否排到队尾。
 func (r Rules) RotationDesignatedTakesTurn() string {
-	var v string
-	r.decode(KeyRotationDesignatedTakesTurn, &v)
-	return v
+	return r.text(KeyRotationDesignatedTakesTurn)
 }
 
 // RotationSkipWhenServingDesignated 返回队首正在服务点客时是否自动跳过。
 func (r Rules) RotationSkipWhenServingDesignated() string {
-	var v string
-	r.decode(KeyRotationSkipWhenServingDesignated, &v)
-	return v
+	return r.text(KeyRotationSkipWhenServingDesignated)
 }
 
 // RotationSkipPolicy 返回被跳过的员工排到队尾还是保留原位。
 func (r Rules) RotationSkipPolicy() string {
-	var v string
-	r.decode(KeyRotationSkipPolicy, &v)
-	return v
+	return r.text(KeyRotationSkipPolicy)
 }
 
 // RotationHalfRule 返回半轮规则：none、by_price 或 by_item。
 func (r Rules) RotationHalfRule() string {
-	var v string
-	r.decode(KeyRotationHalfRule, &v)
-	return v
+	return r.text(KeyRotationHalfRule)
 }
 
 // RotationHalfPriceBelow 返回按价格记半轮的实收上限（元），0 表示不按价格判断。
 func (r Rules) RotationHalfPriceBelow() int {
-	var v int
-	r.decode(KeyRotationHalfPriceBelow, &v)
-	return v
+	return r.integer(KeyRotationHalfPriceBelow)
 }
 
 // CardDeductionOrder 返回卡余额支付先扣本金还是赠送金。
 func (r Rules) CardDeductionOrder() string {
-	var v string
-	r.decode(KeyCardDeductionOrder, &v)
-	return v
+	return r.text(KeyCardDeductionOrder)
 }
 
 // OthersCardPayment 返回是否允许用别人的卡余额支付。
 func (r Rules) OthersCardPayment() string {
-	var v string
-	r.decode(KeyOthersCardPayment, &v)
-	return v
+	return r.text(KeyOthersCardPayment)
 }
 
 // CardCountOrder 返回扣次时先扣购买次数还是赠送次数。
 func (r Rules) CardCountOrder() string {
-	var v string
-	r.decode(KeyCardCountOrder, &v)
-	return v
+	return r.text(KeyCardCountOrder)
 }
 
 // CardSelection 返回未指定卡余额支付的选卡规则。
 func (r Rules) CardSelection() string {
-	var v string
-	r.decode(KeyCardSelection, &v)
-	return v
+	return r.text(KeyCardSelection)
 }
 
 // VoidWindowMinutes 返回撤单授权窗口的分钟数，零表示关闭。
 func (r Rules) VoidWindowMinutes() int {
-	var v int
-	r.decode(KeyVoidWindowMinutes, &v)
-	return v
+	return r.integer(KeyVoidWindowMinutes)
 }
 
 // CardRefundBonus 返回退卡赠送金的处理规则。
 func (r Rules) CardRefundBonus() string {
-	var v string
-	r.decode(KeyCardRefundBonus, &v)
-	return v
+	return r.text(KeyCardRefundBonus)
 }
 
 // CardRefundFeePercent 返回退卡手续费百分比。
 func (r Rules) CardRefundFeePercent() int {
-	var v int
-	r.decode(KeyCardRefundFeePercent, &v)
-	return v
+	return r.integer(KeyCardRefundFeePercent)
 }
 
 // PerformanceSplit 返回多人分业绩的做法。
 func (r Rules) PerformanceSplit() string {
-	var v string
-	r.decode(KeyPerformanceSplit, &v)
-	return v
+	return r.text(KeyPerformanceSplit)
 }
 
 // CommissionSplit 返回多人做同一个项目时提成的分配做法。
 func (r Rules) CommissionSplit() string {
-	var v string
-	r.decode(KeyCommissionSplit, &v)
-	return v
+	return r.text(KeyCommissionSplit)
 }
 
 // GuestCountSplit 返回每张结账单客次的归属做法。
 func (r Rules) GuestCountSplit() string {
-	var v string
-	r.decode(KeyGuestCountSplit, &v)
-	return v
+	return r.text(KeyGuestCountSplit)
 }
 
 // PerformanceRatio 返回设置键对应的业绩比例。
 func (r Rules) PerformanceRatio(key string) int {
-	var v int
-	r.decode(key, &v)
-	return v
+	return r.integer(key)
 }
 
 // BusinessDates 批量按 BusinessDate 的相同规则换算时刻，设置历史只查询一次。
@@ -339,72 +313,52 @@ func businessDayEnd(h history, t time.Time) (string, error) {
 
 // PayrollAutoLockDay 返回每月自动锁定上个月工资的日期。
 func (r Rules) PayrollAutoLockDay() int {
-	var v int
-	r.decode(KeyPayrollAutoLockDay, &v)
-	return v
+	return r.integer(KeyPayrollAutoLockDay)
 }
 
 // AIReminderDailyCap 返回每位员工每天最多收到几条不紧急的 AI 提醒。
 func (r Rules) AIReminderDailyCap() int {
-	var v int
-	r.decode(KeyAIReminderDailyCap, &v)
-	return v
+	return r.integer(KeyAIReminderDailyCap)
 }
 
 // AttendanceGraceMinutes 返回判断迟到、早退的宽限分钟数。
 func (r Rules) AttendanceGraceMinutes() int {
-	var v int
-	r.decode(KeyAttendanceGraceMinutes, &v)
-	return v
+	return r.integer(KeyAttendanceGraceMinutes)
 }
 
 // BookingMinLeadMinutes 返回顾客自助预约至少提前的分钟数，0 表示不限制。
 func (r Rules) BookingMinLeadMinutes() int {
-	var v int
-	r.decode(KeyBookingMinLeadMinutes, &v)
-	return v
+	return r.integer(KeyBookingMinLeadMinutes)
 }
 
 // BookingMaxDaysAhead 返回从今天起最多可以预约的天数，0 表示只能约今天。
 func (r Rules) BookingMaxDaysAhead() int {
-	var v int
-	r.decode(KeyBookingMaxDaysAhead, &v)
-	return v
+	return r.integer(KeyBookingMaxDaysAhead)
 }
 
 // BookingDefaultMinutes 返回没有选择项目时预约默认占用的分钟数。
 func (r Rules) BookingDefaultMinutes() int {
-	var v int
-	r.decode(KeyBookingDefaultMinutes, &v)
-	return v
+	return r.integer(KeyBookingDefaultMinutes)
 }
 
 // AftersaleWindowDays 返回售后期限的营业日天数。
 func (r Rules) AftersaleWindowDays() int {
-	var v int
-	r.decode(KeyAftersaleWindowDays, &v)
-	return v
+	return r.integer(KeyAftersaleWindowDays)
 }
 
 // AftersaleApprovalMode 返回售后审批方式：self 或 other。
 func (r Rules) AftersaleApprovalMode() string {
-	var v string
-	r.decode(KeyAftersaleApprovalMode, &v)
-	return v
+	return r.text(KeyAftersaleApprovalMode)
 }
 
 // AftersaleDeductPerformance 返回退款默认是否扣业绩。
 func (r Rules) AftersaleDeductPerformance() bool {
-	var v string
-	r.decode(KeyAftersaleDeductPerformance, &v)
-	return v == "on"
+	return r.text(KeyAftersaleDeductPerformance) == "on"
 }
 
 // AftersaleDeductCommission 返回退款默认是否扣提成。
 func (r Rules) AftersaleDeductCommission() bool {
-	var v string
-	r.decode(KeyAftersaleDeductCommission, &v)
-	return v == "on"
+	return r.text(KeyAftersaleDeductCommission) == "on"
 }
 
 // EffectiveDays 一次加载设置历史，按输入顺序返回各营业日执行的设置。
@@ -431,16 +385,12 @@ func rulesAt(h history, day time.Time) Rules {
 
 // CollectionChannelEnabled 返回该收款通道是否启用。
 func (r Rules) CollectionChannelEnabled(code string) bool {
-	var value string
-	r.decode("collection_channel_"+code, &value)
-	return value == "on"
+	return r.text("collection_channel_"+code) == "on"
 }
 
 // DraftDualConfirm 返回金额草稿是否需要另一人确认。
 func (r Rules) DraftDualConfirm() bool {
-	var v string
-	r.decode(KeyDraftDualConfirm, &v)
-	return v == "on"
+	return r.text(KeyDraftDualConfirm) == "on"
 }
 
 // BusinessDayDeadline 返回营业日 day 在次日的结束时刻，使用该营业日执行的设置。
@@ -459,56 +409,40 @@ func BusinessDayDeadline(ctx context.Context, q *dbgen.Queries, storeID uuid.UUI
 
 // BackfillMaxDays 返回可补录的营业日天数，0 表示只能补录当天。
 func (r Rules) BackfillMaxDays() int {
-	var v int
-	r.decode(KeyBackfillMaxDays, &v)
-	return v
+	return r.integer(KeyBackfillMaxDays)
 }
 
 // ReceiptPaperWidth 返回小票纸宽，58mm 或 80mm。
 func (r Rules) ReceiptPaperWidth() string {
-	var v string
-	r.decode(KeyReceiptPaperWidth, &v)
-	return v
+	return r.text(KeyReceiptPaperWidth)
 }
 
 // ReceiptHeader 返回小票抬头文字。
 func (r Rules) ReceiptHeader() string {
-	var v string
-	r.decode(KeyReceiptHeader, &v)
-	return v
+	return r.text(KeyReceiptHeader)
 }
 
 // ReceiptFooter 返回小票页尾文字。
 func (r Rules) ReceiptFooter() string {
-	var v string
-	r.decode(KeyReceiptFooter, &v)
-	return v
+	return r.text(KeyReceiptFooter)
 }
 
 // ReceiptShowCustomerName 返回小票是否显示顾客姓名。
 func (r Rules) ReceiptShowCustomerName() bool {
-	var v string
-	r.decode(KeyReceiptShowCustomerName, &v)
-	return v == "show"
+	return r.text(KeyReceiptShowCustomerName) == "show"
 }
 
 // ReceiptShowStaff 返回小票是否显示服务员工。
 func (r Rules) ReceiptShowStaff() bool {
-	var v string
-	r.decode(KeyReceiptShowStaff, &v)
-	return v == "show"
+	return r.text(KeyReceiptShowStaff) == "show"
 }
 
 // ReceiptShowPayments 返回小票是否显示支付明细。
 func (r Rules) ReceiptShowPayments() bool {
-	var v string
-	r.decode(KeyReceiptShowPayments, &v)
-	return v == "show"
+	return r.text(KeyReceiptShowPayments) == "show"
 }
 
 // ReceiptShowCardBalance 返回小票是否显示卡余额或剩余次数。
 func (r Rules) ReceiptShowCardBalance() bool {
-	var v string
-	r.decode(KeyReceiptShowCardBalance, &v)
-	return v == "show"
+	return r.text(KeyReceiptShowCardBalance) == "show"
 }

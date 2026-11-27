@@ -11,7 +11,7 @@ const api = useApi()
 const toast = useToast()
 const { can } = useMe()
 
-const { businessDate: today, settings, setting: settingOf, error: todayError, load: loadToday } = useStoreToday()
+const { businessDate: today, settings, groups, setting: settingOf, error: todayError, load: loadToday } = useStoreToday()
 const changes = useCursorList(async (beforeId) => {
   const { data, error } = await api.POST('/api/ops/list_setting_changes', { body: { before_id: beforeId } })
   return { data: data?.changes, error }
@@ -47,23 +47,10 @@ function show(setting: Setting | undefined, value: unknown): string {
   return String(value)
 }
 
-// 设置页分组（DESIGN.md 设置页）：按键名归到几组，组内保持后端目录的顺序；认不出的放最后"其他"。
-const SETTING_GROUPS: { label: string, match: (key: string) => boolean }[] = [
-  { label: '营业', match: k => ['business_hours', 'business_day_end', 'backfill_max_days', 'attendance_grace_minutes', 'draft_dual_confirm'].includes(k) },
-  { label: '预约', match: k => k.startsWith('booking_') },
-  { label: '轮牌', match: k => k.startsWith('rotation_') },
-  { label: '收银与卡', match: k => k.startsWith('card_') || k.startsWith('collection_channel_') || ['member_price_rule', 'others_card_payment', 'points_per_recharge_yuan', 'void_window_minutes'].includes(k) },
-  { label: '售后', match: k => k.startsWith('aftersale_') },
-  { label: '业绩与提成', match: k => k.startsWith('performance_') || ['guest_count_split', 'commission_split', 'payroll_auto_lock_day'].includes(k) },
-  { label: '小票', match: k => k.startsWith('receipt_') }
-]
-
-const settingGroups = computed(() => {
-  const groups = [...SETTING_GROUPS, { label: '其他', match: () => true }]
-    .map(g => ({ label: g.label, match: g.match, items: [] as Setting[] }))
-  for (const setting of settings.value) groups.find(g => g.match(setting.key))!.items.push(setting)
-  return groups.filter(g => g.items.length)
-})
+// 设置页分组（DESIGN.md 设置页）：分组和每项归哪组都由后端给，组内保持后端目录的顺序。
+const settingGroups = computed(() => groups.value
+  .map(g => ({ label: g.label, items: settings.value.filter(s => s.group === g.key) }))
+  .filter(g => g.items.length))
 
 // 编辑中的设置。改的时候要挑生效日期，所以在弹窗里改，行上只写现在的值和「修改」。值按形式分开存，保存时再组装。
 const editorGuard = useRequestGuard()

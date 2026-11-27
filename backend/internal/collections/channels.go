@@ -52,7 +52,7 @@ func RegisterChannel(r Registration) {
 			panic("collections: duplicate payment method")
 		}
 	}
-	settings.Declare(settings.Def{Key: "collection_channel_" + r.Code, Label: r.Name, Kind: settings.KindChoice, Default: "on", Options: []settings.ChoiceOption{{Value: "on", Label: "启用"}, {Value: "off", Label: "停用"}}})
+	settings.Declare(settings.Def{Key: "collection_channel_" + r.Code, Label: r.Name, Kind: settings.KindChoice, Group: settings.GroupCashier, Default: "on", Options: []settings.ChoiceOption{{Value: "on", Label: "启用"}, {Value: "off", Label: "停用"}}})
 	registry[r.Code] = r
 	if r.PaymentMethod != "" {
 		methods[r.PaymentMethod] = r.Code

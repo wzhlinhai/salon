@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { monthStart, storeTodayState, type StoreSetting, type StoreToday, type StoreTodayResult } from '~/utils/storeToday'
 
 function snapshot(day: string, cap: number): StoreToday {
-  const setting: StoreSetting = { key: 'backfill_max_days', label: '补录天数', hint: '', kind: 'integer', min: 0, max: 30, default: 3, is_default: false, upcoming: [], value: cap }
-  return { business_date: day, settings: [setting] }
+  const setting: StoreSetting = { key: 'backfill_max_days', label: '补录天数', hint: '', kind: 'integer', group: 'business', min: 0, max: 30, default: 3, is_default: false, upcoming: [], value: cap }
+  return { business_date: day, groups: [{ key: 'business', label: '营业' }], settings: [setting] }
 }
 
 function deferred<T>() {
@@ -22,6 +22,7 @@ describe('storeTodayState', () => {
     expect(store.businessDate.value).toBe('2026-11-27')
     expect(store.value('backfill_max_days')).toBe(5)
     expect(store.value('no_such_key')).toBeUndefined()
+    expect(store.groups.value).toEqual([{ key: 'business', label: '营业' }])
     expect(store.error.value).toBe('')
   })
 
