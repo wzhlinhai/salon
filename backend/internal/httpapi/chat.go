@@ -11,33 +11,25 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/wzhlinhai/salon/backend/internal/ai"
+	"github.com/wzhlinhai/salon/backend/internal/aiconversations"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 )
 
-const (
-	// MaxChatMessages 是一次 AI 对话最多携带的历史消息条数。
-	MaxChatMessages = 20
-	// MaxChatContentLength 是单条消息最多的字符数。
-	MaxChatContentLength = 4000
-)
-
-type chatMessage struct {
-	Role    string `json:"role" enum:"user,assistant" doc:"user 或 assistant"`
-	Content string `json:"content" doc:"消息内容，最多 4000 字"`
-}
-
 type chatInput struct {
 	Body struct {
-		Messages []chatMessage `json:"messages" doc:"对话历史，最多 20 条"`
-		DraftID  *uuid.UUID    `json:"draft_id,omitempty" doc:"人点了「修改」的那张草稿；本次对话只允许改这张和本次新起草的"`
+		ConversationID *uuid.UUID `json:"conversation_id,omitempty" format:"uuid" doc:"要接着聊的本人历史会话；不填时新建对话"`
+		Content        string     `json:"content" doc:"用户说的这句话，最多 4000 字"`
+		Sent           string     `json:"sent,omitempty" doc:"实际发给模型的话，修改草稿时带草稿编号；最多 4000 字"`
+		Editing        string     `json:"editing,omitempty" doc:"正在修改的草稿摘要，用于显示「正在改：…」"`
+		DraftID        *uuid.UUID `json:"draft_id,omitempty" doc:"人点了「修改」的那张草稿；本次对话只允许改这张和本次新起草的"`
 	}
 }
 
 type chatOutput struct {
-	Body ai.Answer
+	Body aiconversations.ChatAnswer
 }
 
-func registerChat(api huma.API, chat *ai.Chat) {
+func registerChat(api huma.API, chat *aiconversations.ChatService) {
 	huma.Register(api, huma.Operation{
 		OperationID: "ai_chat",
 		Method:      http.MethodPost,
@@ -46,17 +38,17 @@ func registerChat(api huma.API, chat *ai.Chat) {
 	}, chatHandler(chat))
 }
 
-func chatHandler(chat *ai.Chat) func(context.Context, *chatInput) (*chatOutput, error) {
+func chatHandler(chat *aiconversations.ChatService) func(context.Context, *chatInput) (*chatOutput, error) {
 	return func(ctx context.Context, in *chatInput) (*chatOutput, error) {
 		caller, ok := ops.CallerFrom(ctx)
 		if !ok || caller.StaffID == uuid.Nil {
 			return nil, huma.Error401Unauthorized("unauthenticated")
 		}
-		history, err := chatHistory(in)
+		input, err := chatRequest(in)
 		if err != nil {
 			return nil, err
 		}
-		answer, err := chat.Ask(ctx, caller, in.Body.DraftID, history)
+		answer, err := chat.Ask(ctx, caller, input)
 		switch {
 		case errors.Is(err, ai.ErrNotConfigured):
 			return nil, huma.Error503ServiceUnavailable("AI 未启用")
@@ -74,22 +66,22 @@ func chatHandler(chat *ai.Chat) func(context.Context, *chatInput) (*chatOutput, 
 	}
 }
 
-func chatHistory(in *chatInput) ([]ai.Message, error) {
-	if len(in.Body.Messages) == 0 || len(in.Body.Messages) > MaxChatMessages {
-		return nil, huma.Error422UnprocessableEntity("消息最多 20 条，且至少一条")
+func chatRequest(in *chatInput) (aiconversations.ChatInput, error) {
+	content := strings.TrimSpace(in.Body.Content)
+	if content == "" {
+		return aiconversations.ChatInput{}, huma.Error422UnprocessableEntity("消息内容不能为空")
 	}
-	out := make([]ai.Message, 0, len(in.Body.Messages))
-	for _, message := range in.Body.Messages {
-		if message.Role != ai.RoleUser && message.Role != ai.RoleAssistant {
-			return nil, huma.Error422UnprocessableEntity("消息角色只能是 user 或 assistant")
-		}
-		if strings.TrimSpace(message.Content) == "" {
-			return nil, huma.Error422UnprocessableEntity("消息内容不能为空")
-		}
-		if utf8.RuneCountInString(message.Content) > MaxChatContentLength {
-			return nil, huma.Error422UnprocessableEntity("单条消息最多 4000 字")
-		}
-		out = append(out, ai.Message{Role: message.Role, Content: message.Content})
+	if utf8.RuneCountInString(content) > aiconversations.MaxContentRunes {
+		return aiconversations.ChatInput{}, huma.Error422UnprocessableEntity("单条消息最多 4000 字")
 	}
-	return out, nil
+	if utf8.RuneCountInString(strings.TrimSpace(in.Body.Sent)) > aiconversations.MaxContentRunes {
+		return aiconversations.ChatInput{}, huma.Error422UnprocessableEntity("单条消息最多 4000 字")
+	}
+	return aiconversations.ChatInput{
+		ConversationID: in.Body.ConversationID,
+		Content:        content,
+		Sent:           in.Body.Sent,
+		Editing:        in.Body.Editing,
+		DraftID:        in.Body.DraftID,
+	}, nil
 }

@@ -191,6 +191,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/archive_ai_conversation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 归档本人的 AI 历史会话 */
+        post: operations["archive_ai_conversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/assign_customer_responsible": {
         parameters: {
             query?: never;
@@ -939,6 +956,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/get_ai_conversation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 打开本人的 AI 历史会话 */
+        post: operations["get_ai_conversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/get_appointment": {
         parameters: {
             query?: never;
@@ -1443,6 +1477,23 @@ export interface paths {
         put?: never;
         /** 按营业日范围、状态或原单查看售后单 */
         post: operations["list_aftersales"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_ai_conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 列出本人的 AI 历史会话 */
+        post: operations["list_ai_conversations"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3183,6 +3234,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/unarchive_ai_conversation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 解开本人 AI 历史会话的归档 */
+        post: operations["unarchive_ai_conversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/uncover_turn": {
         parameters: {
             query?: never;
@@ -3635,11 +3703,6 @@ export interface components {
             created_at: string;
             id: string;
             method: string;
-        };
-        Answer: {
-            drafts: components["schemas"]["DraftView"][];
-            reply: string;
-            sources: components["schemas"]["Source"][];
         };
         Appointment: {
             /** Format: date-time */
@@ -4191,20 +4254,27 @@ export interface components {
                 [key: string]: number;
             };
         };
-        ChatInputBody: {
-            /** @description 人点了「修改」的那张草稿；本次对话只允许改这张和本次新起草的 */
-            draft_id?: string;
-            /** @description 对话历史，最多 20 条 */
-            messages: components["schemas"]["ChatMessage"][];
+        ChatAnswer: {
+            conversation_id: string;
+            drafts: components["schemas"]["DraftView"][];
+            reply: string;
+            sources: components["schemas"]["Source"][];
+            title: string;
         };
-        ChatMessage: {
-            /** @description 消息内容，最多 4000 字 */
+        ChatInputBody: {
+            /** @description 用户说的这句话，最多 4000 字 */
             content: string;
             /**
-             * @description user 或 assistant
-             * @enum {string}
+             * Format: uuid
+             * @description 要接着聊的本人历史会话；不填时新建对话
              */
-            role: "user" | "assistant";
+            conversation_id?: string;
+            /** @description 人点了「修改」的那张草稿；本次对话只允许改这张和本次新起草的 */
+            draft_id?: string;
+            /** @description 正在修改的草稿摘要，用于显示「正在改：…」 */
+            editing?: string;
+            /** @description 实际发给模型的话，修改草稿时带草稿编号；最多 4000 字 */
+            sent?: string;
         };
         CheckoutOrderInput: {
             order_id: string;
@@ -4437,6 +4507,35 @@ export interface components {
             id: string;
             /** Format: int32 */
             version: number;
+        };
+        ConversationDetail: {
+            archived: boolean;
+            id: string;
+            messages: components["schemas"]["ConversationMessage"][];
+            title: string;
+        };
+        ConversationIDInput: {
+            id: string;
+        };
+        ConversationList: {
+            conversations: components["schemas"]["ConversationSummary"][];
+        };
+        ConversationMessage: {
+            content: string;
+            /** Format: date-time */
+            created_at: string;
+            drafts: components["schemas"]["DraftView"][];
+            editing: string | null;
+            id: string;
+            /** @enum {string} */
+            role: "user" | "assistant";
+        };
+        ConversationSummary: {
+            archived: boolean;
+            id: string;
+            title: string;
+            /** Format: date-time */
+            updated_at: string;
         };
         CouponRequest: {
             coupon_code: string;
@@ -5500,6 +5599,12 @@ export interface components {
             /** @enum {string} */
             source?: "item" | "consume" | "labor" | "sale";
             staff_id?: string;
+        };
+        ListConversationsInput: {
+            /** @description 是否只看已归档的会话 */
+            archived?: boolean;
+            /** @description 按标题和消息内容搜索，最多 50 字 */
+            q?: string;
         };
         ListCustomerCardsInput: {
             customer_id: string;
@@ -7243,7 +7348,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Answer"];
+                    "application/json": components["schemas"]["ChatAnswer"];
                 };
             };
             /** @description Error */
@@ -7574,6 +7679,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AttendanceApproval"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    archive_ai_conversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversationIDInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationSummary"];
                 };
             };
             /** @description Error */
@@ -9039,6 +9177,39 @@ export interface operations {
             };
         };
     };
+    get_ai_conversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversationIDInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationDetail"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     get_appointment: {
         parameters: {
             query?: never;
@@ -10016,6 +10187,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AftersaleList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_ai_conversations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListConversationsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationList"];
                 };
             };
             /** @description Error */
@@ -13382,6 +13586,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardTransferResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    unarchive_ai_conversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversationIDInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationSummary"];
                 };
             };
             /** @description Error */

@@ -60,6 +60,13 @@ type Detail struct {
 	PreviewError string          `json:"preview_error,omitempty"`
 }
 
+// DraftView 是草稿的当前状态和只读预览，供 AI 回答和 AI 对话历史共用。
+type DraftView struct {
+	Draft
+	Preview      json.RawMessage `json:"preview,omitempty"`
+	PreviewError string          `json:"preview_error,omitempty"`
+}
+
 // CreateInput 是人工或模型提供的原始起草内容。
 type CreateInput struct {
 	Operation string         `json:"operation" minLength:"1"`
@@ -149,6 +156,42 @@ func redact(env ops.Env, raw json.RawMessage) (json.RawMessage, error) {
 		return raw, nil
 	}
 	return audit.MaskPhones(raw)
+}
+
+// ViewsByIDs 按 ID 批量读取调用者现在可见的草稿，附带当前状态和预览。
+// 不存在或不可见的草稿直接略去；只对仍为 pending 的草稿生成预览。
+func ViewsByIDs(ctx context.Context, registry *ops.Registry, env ops.Env, ids []uuid.UUID) (map[uuid.UUID]DraftView, error) {
+	out := map[uuid.UUID]DraftView{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := env.Q.DraftsByIDs(ctx, dbgen.DraftsByIDsParams{StoreID: env.Caller.StoreID, Column2: ids})
+	if err != nil {
+		return nil, err
+	}
+	s := service{registry: registry}
+	for _, d := range rows {
+		visible := s.visible(env, d)
+		if !visible {
+			continue
+		}
+		item, err := view(env, d)
+		if err != nil {
+			return nil, err
+		}
+		v := DraftView{Draft: *item}
+		if item.Status == "pending" {
+			v.Preview, err = PreviewDraft(ctx, registry, env, d.Operation, d.Params)
+			if err != nil {
+				if ops.StatusOf(err) >= 500 {
+					return nil, err
+				}
+				v.PreviewError = err.Error()
+			}
+		}
+		out[item.ID] = v
+	}
+	return out, nil
 }
 
 // PreviewDraft 生成草稿预览并按调用者权限打码；没有预览时返回 nil。

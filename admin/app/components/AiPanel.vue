@@ -3,7 +3,7 @@ import { MAX_MESSAGE } from '~/composables/useAiChat'
 
 // 右侧滑出的「问 AI」（样稿 24）：人说的话是墨色气泡靠右，AI 的回话是浅灰气泡靠左；
 // 写操作只生成草稿，画成能拿在手里的小卡片，在这里或"待确认"里由人确认。
-const { open, entries, sending, editing, input: text, send, reset } = useAiChat()
+const { open, entries, sending, editing, input: text, loadingConversation, expanded, send, startNew, setExpanded, restoreExpanded } = useAiChat()
 const { can } = useMe()
 const scroller = ref<HTMLElement | null>(null)
 const input = useTemplateRef<{ textareaRef?: HTMLTextAreaElement }>('input')
@@ -42,7 +42,7 @@ watch(text, (value) => {
 
 async function submit() {
   const value = text.value
-  if (!value.trim() || sending.value) return
+  if (!value.trim() || sending.value || loadingConversation.value) return
   text.value = ''
   starter.value = null
   await send(value)
@@ -56,10 +56,26 @@ function onKeydown(event: KeyboardEvent) {
   void submit()
 }
 
-// 打开时把焦点放在输入框，不让对话框自动聚焦标题栏的按钮：从指令框回车打开时，回车会误按到"清空对话"。
+// 打开时把焦点放在输入框，不让对话框自动聚焦标题栏的按钮：从指令框回车打开时，回车会误按到"新对话"。
 function focusInput() {
   input.value?.textareaRef?.focus()
 }
+
+// 侧栏还是全屏记在本机，下次打开照上次的样子。
+onMounted(() => {
+  try {
+    restoreExpanded()
+  } catch {
+    // 本机存不了就用侧栏。
+  }
+})
+
+function toggleExpanded() {
+  setExpanded(!expanded.value)
+}
+
+// 全屏时内容区不铺满，居中一栏，读起来不累。
+const column = computed(() => expanded.value ? 'mx-auto w-full max-w-3xl' : '')
 
 watch(() => [entries.value.length, sending.value], async () => {
   await nextTick()
@@ -72,61 +88,74 @@ watch(() => [entries.value.length, sending.value], async () => {
     v-model:open="open"
     side="right"
     :content="{ onOpenAutoFocus: (event: Event) => event.preventDefault() }"
-    :ui="{ content: 'max-w-md', wrapper: 'flex-1 min-w-0', close: 'static', body: 'p-0 sm:p-0 flex flex-col', footer: 'ai-chat' }"
+    :ui="{ content: expanded ? 'max-w-none sm:max-w-none' : 'max-w-md', wrapper: 'flex-1 min-w-0', close: 'static', body: 'p-0 sm:p-0 flex flex-col', footer: 'ai-chat' }"
     data-testid="ai-panel"
     @after:enter="focusInput"
   >
     <template #title>
-      <span class="flex items-center gap-2"><AiMark class="size-7 shrink-0" />问 AI</span>
+      <span class="flex min-w-0 items-center gap-1"><AiMark class="size-7 shrink-0" /><span class="sr-only">问 AI</span><AiHistory /></span>
     </template>
     <template #actions>
       <UButton
-        v-if="entries.length"
         color="neutral"
         variant="ghost"
         size="sm"
-        icon="i-lucide-rotate-ccw"
-        aria-label="清空对话"
-        @click="reset(); open = true"
+        icon="i-lucide-square-pen"
+        aria-label="新对话"
+        data-testid="ai-new"
+        @click="startNew"
+      />
+      <UButton
+        color="neutral"
+        variant="ghost"
+        size="sm"
+        :icon="expanded ? 'i-lucide-minimize-2' : 'i-lucide-maximize-2'"
+        :aria-label="expanded ? '退出全屏' : '全屏'"
+        :aria-pressed="expanded"
+        data-testid="ai-expand"
+        @click="toggleExpanded"
       />
     </template>
 
     <template #body>
-      <div ref="scroller" class="flex-1 space-y-4 overflow-y-auto p-4" data-testid="ai-messages">
-        <!-- 还没说话时照 Notion 的 AI 面板：形象和一句招呼落在底部，挨着输入框。 -->
-        <div v-if="!entries.length" class="flex min-h-full flex-col justify-end gap-3 pb-2">
-          <span class="grid size-16 place-items-center rounded-full bg-white shadow-lift"><AiMark class="size-11" /></span>
-          <p class="text-base font-semibold text-highlighted">店里的事，跟我说。</p>
-          <p class="text-sm text-muted text-pretty">要改数据时 AI 先起草，由你确认。</p>
-          <!-- 正在改一张草稿时不列：这时发的话都算在改那张草稿上。 -->
-          <ul v-if="quick.length && !editing" class="-mx-2" data-testid="ai-quick">
-            <li v-for="q in quick" :key="q.label">
-              <button type="button" class="flex w-full items-center gap-3 rounded-md px-2 py-2 text-start text-sm text-default hover:bg-hover focus-visible:bg-hover focus-visible:outline-2 focus-visible:outline-primary" :disabled="sending" @click="pick(q)">
-                <UIcon :name="q.icon" class="size-5 shrink-0 text-muted" aria-hidden="true" />
-                {{ q.label }}
-              </button>
-            </li>
-          </ul>
-        </div>
-        <div v-for="(entry, index) in entries" :key="index" :data-role="entry.role" data-testid="ai-entry">
-          <div v-if="entry.role === 'user'" class="ms-auto w-fit max-w-[85%] rounded-card bg-inverted px-4 py-2 text-sm whitespace-pre-wrap text-inverted">
-            <p v-if="entry.editing" class="mb-1 text-xs text-inverted/70">修改：{{ entry.editing }}</p>
-            {{ entry.content }}
+      <div ref="scroller" class="flex-1 overflow-y-auto p-4" data-testid="ai-messages">
+        <div class="flex min-h-full flex-col gap-4" :class="column">
+          <ListSkeleton v-if="loadingConversation" :rows="3" />
+          <!-- 还没说话时照 Notion 的 AI 面板：形象和一句招呼落在底部，挨着输入框。 -->
+          <div v-else-if="!entries.length" class="flex flex-1 flex-col justify-end gap-3 pb-2">
+            <span class="grid size-16 place-items-center rounded-full bg-white shadow-lift"><AiMark class="size-11" /></span>
+            <p class="text-base font-semibold text-highlighted">店里的事，跟我说。</p>
+            <p class="text-sm text-muted text-pretty">要改数据时 AI 先起草，由你确认。</p>
+            <!-- 正在改一张草稿时不列：这时发的话都算在改那张草稿上。 -->
+            <ul v-if="quick.length && !editing" class="-mx-2" data-testid="ai-quick">
+              <li v-for="q in quick" :key="q.label">
+                <button type="button" class="flex w-full items-center gap-3 rounded-md px-2 py-2 text-start text-sm text-default hover:bg-hover focus-visible:bg-hover focus-visible:outline-2 focus-visible:outline-primary" :disabled="sending" @click="pick(q)">
+                  <UIcon :name="q.icon" class="size-5 shrink-0 text-muted" aria-hidden="true" />
+                  {{ q.label }}
+                </button>
+              </li>
+            </ul>
           </div>
-          <div v-else class="space-y-3">
-            <p class="w-fit max-w-[85%] rounded-card px-4 py-2 text-sm whitespace-pre-wrap text-pretty" :class="entry.failed ? 'bg-tag-red' : 'bg-elevated'">{{ entry.content }}</p>
-            <DraftCard v-for="draft in entry.drafts ?? []" :key="draft.id" :draft="draft" compact />
+          <div v-for="(entry, index) in entries" :key="index" :data-role="entry.role" data-testid="ai-entry">
+            <div v-if="entry.role === 'user'" class="ms-auto w-fit max-w-[85%] rounded-card bg-inverted px-4 py-2 text-sm whitespace-pre-wrap text-inverted">
+              <p v-if="entry.editing" class="mb-1 text-xs text-inverted/70">修改：{{ entry.editing }}</p>
+              {{ entry.content }}
+            </div>
+            <div v-else class="space-y-3">
+              <p class="w-fit max-w-[85%] rounded-card px-4 py-2 text-sm whitespace-pre-wrap text-pretty" :class="entry.failed ? 'bg-tag-red' : 'bg-elevated'">{{ entry.content }}</p>
+              <DraftCard v-for="draft in entry.drafts ?? []" :key="draft.id" :draft="draft" compact />
+            </div>
           </div>
+          <p v-if="sending" class="flex items-center gap-2 text-sm text-muted" data-testid="ai-thinking">
+            <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin" />
+            正在想…
+          </p>
         </div>
-        <p v-if="sending" class="flex items-center gap-2 text-sm text-muted" data-testid="ai-thinking">
-          <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin" />
-          正在想…
-        </p>
       </div>
     </template>
 
     <template #footer>
-      <div class="w-full space-y-2">
+      <div class="w-full space-y-2" :class="column">
         <div v-if="editing" class="flex items-center gap-2 text-xs text-muted" data-testid="ai-editing">
           <UIcon name="i-lucide-pencil" class="size-3.5 shrink-0" />
           <span class="truncate">修改：{{ editing.summary }}</span>

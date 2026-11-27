@@ -25,6 +25,9 @@ function card(page: Page, id: string) {
   return page.locator(`[data-testid="draft-card"][data-draft-id="${id}"]`)
 }
 
+interface ChatBody { conversation_id?: string, content: string, sent?: string, editing?: string, draft_id?: string }
+const CONVERSATION = '00000000-0000-4000-8000-000000000001'
+
 function aiPanel(page: Page) {
   return page.getByRole('dialog', { name: '问 AI' })
 }
@@ -82,15 +85,15 @@ test('拒绝草稿必须写原因，拒绝后不执行并显示原因', async ({
 
 test('首页指令框把话交给 AI，回复里的草稿可在面板里直接确认，后续追问带上前文', async ({ page }) => {
   const { draft } = await draftCategory('加个造型分类')
-  const bodies: { messages: { role: string, content: string }[] }[] = []
+  const bodies: ChatBody[] = []
   await page.route('**/api/ai/chat', async (route) => {
     bodies.push(route.request().postDataJSON())
     if (bodies.length === 1) {
-      await route.fulfill({ json: { reply: '好的，已起草，请确认。', sources: [], drafts: [{ ...draft, preview_error: '' }] } })
+      await route.fulfill({ json: { reply: '好的，已起草，请确认。', sources: [], drafts: [{ ...draft, preview_error: '' }], conversation_id: CONVERSATION, title: '加个造型分类' } })
     } else if (bodies.length === 2) {
       await route.fulfill({ status: 502, json: { detail: 'AI 响应超时，请重试' } })
     } else {
-      await route.fulfill({ json: { reply: '今天实收 ¥0。', sources: [], drafts: [] } })
+      await route.fulfill({ json: { reply: '今天实收 ¥0。', sources: [], drafts: [], conversation_id: CONVERSATION, title: '加个造型分类' } })
     }
   })
   await login(page, owner.account, owner.password)
@@ -111,11 +114,11 @@ test('首页指令框把话交给 AI，回复里的草稿可在面板里直接�
   await panel.getByTestId('ai-input').fill('今天实收多少')
   await panel.getByTestId('ai-input').press('Enter')
   await expect(panel.getByText('今天实收 ¥0。')).toBeVisible()
-  expect(bodies[2]!.messages).toEqual([
-    { role: 'user', content: '加个造型分类' },
-    { role: 'assistant', content: '好的，已起草，请确认。' },
-    { role: 'user', content: '今天实收多少' }
-  ])
+  // 第一句是新对话；后面每句只发这一句，带上服务端给的对话编号，前文由服务端取。
+  expect(bodies[0]!.conversation_id).toBeUndefined()
+  expect(bodies[2]).toMatchObject({ conversation_id: CONVERSATION, content: '今天实收多少' })
+  expect(bodies[2]).not.toHaveProperty('messages')
+  await expect(panel.getByTestId('ai-history-trigger')).toHaveText('加个造型分类')
 })
 
 test('修改：在面板里说怎么改，发给 AI 的话带上草稿编号；没发成时重说仍带编号', async ({ page }) => {
@@ -125,7 +128,7 @@ test('修改：在面板里说怎么改，发给 AI 的话带上草稿编号；�
   let calls = 0
   await page.route('**/api/ai/chat', async (route) => {
     const body = route.request().postDataJSON()
-    sent = body.messages.at(-1).content
+    sent = body.sent
     draftID = body.draft_id
     if (++calls === 1) {
       await route.fulfill({ status: 502, json: { detail: 'AI 响应超时，请重试' } })
@@ -282,11 +285,11 @@ test('对话里的草稿卡片是旧版本时不能确认，要去看最新内�
   await expect(row.getByTestId('draft-confirm')).toHaveCount(0)
 })
 
-test('AI 回了空话，后面的对话照常发，空话不进历史', async ({ page }) => {
-  const bodies: { messages: { role: string, content: string }[] }[] = []
+test('AI 回了空话，后面的对话照常发，仍在同一个对话里', async ({ page }) => {
+  const bodies: ChatBody[] = []
   await page.route('**/api/ai/chat', async (route) => {
     bodies.push(route.request().postDataJSON())
-    await route.fulfill({ json: { reply: bodies.length === 1 ? '' : '好的。', sources: [], drafts: [] } })
+    await route.fulfill({ json: { reply: bodies.length === 1 ? '' : '好的。', sources: [], drafts: [], conversation_id: CONVERSATION, title: '第一句' } })
   })
   await login(page, owner.account, owner.password)
   await sayToAi(page, '第一句')
@@ -295,22 +298,21 @@ test('AI 回了空话，后面的对话照常发，空话不进历史', async ({
   await panel.getByTestId('ai-input').fill('第二句')
   await panel.getByTestId('ai-input').press('Enter')
   await expect(panel.getByText('好的。')).toBeVisible()
-  expect(bodies[1]!.messages).toEqual([
-    { role: 'user', content: '第一句' },
-    { role: 'user', content: '第二句' }
-  ])
+  expect(bodies[1]).toMatchObject({ conversation_id: CONVERSATION, content: '第二句' })
 })
 
-test('AI 还在回上一句时说的话放进输入框；清空对话后迟到的回复不再出现', async ({ page }) => {
+test('AI 还在回上一句时说的话放进输入框；开新对话后迟到的回复不再出现', async ({ page }) => {
   let release: () => void = () => {}
   const held = new Promise<void>((resolve) => {
     release = resolve
   })
   let calls = 0
+  let lastBody: ChatBody | undefined
   await page.route('**/api/ai/chat', async (route) => {
+    lastBody = route.request().postDataJSON()
     if (++calls === 1) {
       await held
-      await route.fulfill({ json: { reply: '迟到的回复', sources: [], drafts: [] } })
+      await route.fulfill({ json: { reply: '迟到的回复', sources: [], drafts: [], conversation_id: CONVERSATION, title: '第一句' } })
       return
     }
     await route.fulfill({ json: { reply: '新回复', sources: [], drafts: [] } })
@@ -331,8 +333,8 @@ test('AI 还在回上一句时说的话放进输入框；清空对话后迟到�
     await expect(panel.getByTestId('ai-input')).toHaveValue('第二句', { timeout: 1000 })
   }).toPass()
 
-  // 清空对话，再放出上一句的回复：不能出现在新对话里。
-  await panel.getByRole('button', { name: '清空对话' }).click()
+  // 开新对话，再放出上一句的回复：不能出现在新对话里，也不能把新对话接到旧对话上。
+  await panel.getByRole('button', { name: '新对话' }).click()
   await expect(panel.getByTestId('ai-thinking')).toHaveCount(0)
   const late = page.waitForResponse('**/api/ai/chat')
   release()
@@ -342,10 +344,11 @@ test('AI 还在回上一句时说的话放进输入框；清空对话后迟到�
   await expect(panel.getByText('新回复')).toBeVisible()
   await expect(panel.getByText('迟到的回复')).toHaveCount(0)
   await expect(panel.getByTestId('ai-entry')).toHaveCount(2)
+  expect(lastBody?.conversation_id).toBeUndefined()
 })
 
 test('面板空着时列常用的事：开单先填开头和提示，补完再发；问数的直接发；按权限出', async ({ page }) => {
-  const bodies: { messages: { role: string, content: string }[] }[] = []
+  const bodies: ChatBody[] = []
   await page.route('**/api/ai/chat', async (route) => {
     bodies.push(route.request().postDataJSON())
     await route.fulfill({ json: { reply: '收到。', sources: [], drafts: [] } })
@@ -369,13 +372,13 @@ test('面板空着时列常用的事：开单先填开头和提示，补完再�
   await input.pressSequentially('陈女士 剪发')
   await input.press('Enter')
   await expect(panel.getByText('收到。')).toBeVisible()
-  expect(bodies[0]!.messages.at(-1)).toEqual({ role: 'user', content: '开单：陈女士 剪发' })
+  expect(bodies[0]!.content).toBe('开单：陈女士 剪发')
   await expect(panel.getByTestId('ai-starter')).toHaveCount(0)
 
-  await panel.getByRole('button', { name: '清空对话' }).click()
+  await panel.getByRole('button', { name: '新对话' }).click()
   await quick.getByRole('button', { name: '今天收了多少' }).click()
   await expect.poll(() => bodies.length).toBe(2)
-  expect(bodies[1]!.messages).toEqual([{ role: 'user', content: '今天实收多少？按付款方式分开说' }])
+  expect(bodies[1]!.content).toBe('今天实收多少？按付款方式分开说')
 })
 
 test('面板常用的事按权限出：发型师没有充值和报表', async ({ page }) => {
@@ -385,4 +388,162 @@ test('面板常用的事按权限出：发型师没有充值和报表', async ({
   const quick = aiPanel(page).getByTestId('ai-quick')
   await expect(quick.getByRole('button', { name: '会员卡充值' })).toHaveCount(0)
   await expect(quick.getByRole('button', { name: '今天收了多少' })).toHaveCount(0)
+})
+
+test('历史对话：分组列出，打开接着聊带上对话编号；归档后从列表里去掉，在已归档里能取消归档', async ({ page }) => {
+  const { draft } = await draftCategory()
+  const now = new Date()
+  const older = new Date(now.getTime() - 30 * 86400000)
+  const OLD = '00000000-0000-4000-8000-000000000002'
+  const list = {
+    active: [
+      { id: CONVERSATION, title: '今天的对话', updated_at: now.toISOString(), archived: false },
+      { id: OLD, title: '上个月的对话', updated_at: older.toISOString(), archived: false }
+    ],
+    archived: [] as { id: string, title: string, updated_at: string, archived: boolean }[]
+  }
+  const queries: string[] = []
+  await page.route('**/api/ops/list_ai_conversations', async (route) => {
+    const body = route.request().postDataJSON()
+    if (body.q) queries.push(body.q)
+    const rows = body.archived ? list.archived : list.active
+    await route.fulfill({ json: { conversations: rows.filter(c => !body.q || c.title.includes(body.q)) } })
+  })
+  await page.route('**/api/ops/get_ai_conversation', route => route.fulfill({ json: {
+    id: OLD,
+    title: '上个月的对话',
+    archived: false,
+    messages: [
+      { id: 'm1', role: 'user', content: '加个分类', editing: null, created_at: older.toISOString(), drafts: [] },
+      { id: 'm2', role: 'assistant', content: '已起草。', editing: null, created_at: older.toISOString(), drafts: [{ ...draft, preview_error: '' }] }
+    ]
+  } }))
+  await page.route('**/api/ops/archive_ai_conversation', async (route) => {
+    const moved = list.active.splice(list.active.findIndex(c => c.id === route.request().postDataJSON().id), 1)[0]!
+    list.archived.push({ ...moved, archived: true })
+    await route.fulfill({ json: { ...moved, archived: true } })
+  })
+  await page.route('**/api/ops/unarchive_ai_conversation', async (route) => {
+    const moved = list.archived.splice(list.archived.findIndex(c => c.id === route.request().postDataJSON().id), 1)[0]!
+    list.active.push({ ...moved, archived: false })
+    await route.fulfill({ json: { ...moved, archived: false } })
+  })
+  const bodies: ChatBody[] = []
+  await page.route('**/api/ai/chat', async (route) => {
+    bodies.push(route.request().postDataJSON())
+    await route.fulfill({ json: { reply: '接着说。', sources: [], drafts: [], conversation_id: OLD, title: '上个月的对话' } })
+  })
+  await login(page, owner.account, owner.password)
+  await page.getByTestId('ai-fab').click()
+  const panel = aiPanel(page)
+  await expect(panel.getByTestId('ai-history-trigger')).toHaveText('新的 AI 对话')
+
+  await panel.getByTestId('ai-history-trigger').click()
+  const history = page.getByTestId('ai-history')
+  await expect(history.getByText('今天', { exact: true })).toBeVisible()
+  await expect(history.getByText('更早', { exact: true })).toBeVisible()
+  await expect(history.getByTestId('ai-history-item')).toHaveCount(2)
+  await history.getByTestId('ai-history-search').fill('上个月')
+  await expect(history.getByTestId('ai-history-item')).toHaveCount(1)
+  expect(queries).toContain('上个月')
+
+  // 打开旧对话：消息和草稿卡片都在，草稿按现在的状态显示（这张还没确认，能确认）。
+  await history.getByRole('button', { name: '上个月的对话' }).click()
+  await expect(history).toHaveCount(0)
+  await expect(panel.getByTestId('ai-history-trigger')).toHaveText('上个月的对话')
+  await expect(panel.getByTestId('ai-entry')).toHaveCount(2)
+  await expect(panel.locator(`[data-testid="draft-card"][data-draft-id="${draft.id}"]`).getByTestId('draft-confirm')).toBeVisible()
+  await panel.getByTestId('ai-input').fill('再加一个')
+  await panel.getByTestId('ai-input').press('Enter')
+  await expect(panel.getByText('接着说。')).toBeVisible()
+  expect(bodies[0]).toMatchObject({ conversation_id: OLD, content: '再加一个' })
+
+  // 归档正开着的对话：列表里去掉，面板换成新对话。
+  await panel.getByTestId('ai-history-trigger').click()
+  const row = history.getByTestId('ai-history-item').filter({ hasText: '上个月的对话' })
+  await row.hover()
+  await row.getByRole('button', { name: '归档' }).click()
+  await expect(history.getByTestId('ai-history-item')).toHaveCount(1)
+  await expect(panel.getByTestId('ai-entry')).toHaveCount(0)
+  await expect(panel.getByTestId('ai-history-trigger')).toHaveText('新的 AI 对话')
+
+  await history.getByTestId('ai-history-archived').click()
+  const archivedRow = history.getByTestId('ai-history-item').filter({ hasText: '上个月的对话' })
+  await expect(archivedRow).toHaveCount(1)
+  await archivedRow.hover()
+  await archivedRow.getByRole('button', { name: '取消归档' }).click()
+  await expect(history.getByText('没有归档的对话')).toBeVisible()
+  await history.getByTestId('ai-history-archived').click()
+  await expect(history.getByTestId('ai-history-item')).toHaveCount(2)
+})
+
+test('AI 面板全屏和侧栏一键切换，刷新后照上次的样子', async ({ page }) => {
+  await login(page, owner.account, owner.password)
+  await page.getByTestId('ai-fab').click()
+  const panel = aiPanel(page)
+  const narrow = (await panel.boundingBox())!.width
+  await panel.getByRole('button', { name: '全屏' }).click()
+  await expect(panel.getByRole('button', { name: '退出全屏' })).toBeVisible()
+  await expect.poll(async () => (await panel.boundingBox())!.width).toBeGreaterThan(narrow + 200)
+
+  await page.reload()
+  await page.getByTestId('ai-fab').click()
+  await expect(panel.getByRole('button', { name: '退出全屏' })).toBeVisible()
+  await panel.getByRole('button', { name: '退出全屏' }).click()
+  await expect(panel.getByRole('button', { name: '全屏' })).toBeVisible()
+  await expect.poll(async () => (await panel.boundingBox())!.width).toBeLessThanOrEqual(narrow)
+})
+
+test('先点的历史对话迟到时不盖住后点的；换人登录后历史列表不留上一个人的', async ({ page }) => {
+  const now = new Date().toISOString()
+  const A = '00000000-0000-4000-8000-00000000000a'
+  const B = '00000000-0000-4000-8000-00000000000b'
+  let release: () => void = () => {}
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/api/ops/list_ai_conversations', route => route.fulfill({ json: { conversations: [
+    { id: A, title: '对话甲', updated_at: now, archived: false },
+    { id: B, title: '对话乙', updated_at: now, archived: false }
+  ] } }))
+  await page.route('**/api/ops/get_ai_conversation', async (route) => {
+    const id = route.request().postDataJSON().id
+    if (id === A) await held
+    const name = id === A ? '甲' : '乙'
+    await route.fulfill({ json: { id, title: `对话${name}`, archived: false, messages: [
+      { id: `${name}1`, role: 'user', content: `${name}的问题`, editing: null, created_at: now, drafts: [] }
+    ] } })
+  })
+  const stylist = await hire('发型师')
+  await login(page, owner.account, owner.password)
+  await page.getByTestId('ai-fab').click()
+  const panel = aiPanel(page)
+  const history = page.getByTestId('ai-history')
+  await panel.getByTestId('ai-history-trigger').click()
+  await history.getByRole('button', { name: '对话甲' }).click()
+  await panel.getByTestId('ai-history-trigger').click()
+  await history.getByRole('button', { name: '对话乙' }).click()
+  await expect(panel.getByText('乙的问题')).toBeVisible()
+  const late = page.waitForResponse('**/api/ops/get_ai_conversation')
+  release()
+  await late
+  await expect(panel.getByText('甲的问题')).toHaveCount(0)
+  await expect(panel.getByTestId('ai-history-trigger')).toHaveText('对话乙')
+  // 点完历史下拉后焦点不在面板里，在输入框上按 Esc 关面板。
+  await panel.getByTestId('ai-input').press('Escape')
+  await expect(panel).toHaveCount(0)
+
+  await page.unroute('**/api/ops/list_ai_conversations')
+  await page.getByTestId('personal-menu').click()
+  await page.getByRole('menuitem', { name: '退出登录' }).click()
+  await expect(page).toHaveURL(/\/login$/)
+  await page.getByLabel('账号').fill(stylist.account)
+  await page.getByLabel('密码').fill(stylist.password)
+  await page.getByRole('button', { name: '登录' }).click()
+  await page.getByTestId('home-greeting').waitFor()
+  await page.getByTestId('ai-fab').click()
+  await expect(panel.getByTestId('ai-history-trigger')).toHaveText('新的 AI 对话')
+  await expect(panel.getByTestId('ai-entry')).toHaveCount(0)
+  await panel.getByTestId('ai-history-trigger').click()
+  await expect(history.getByText('还没有对话')).toBeVisible()
 })

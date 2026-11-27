@@ -54,6 +54,31 @@ type AftersaleRefund struct {
 	CreatedAt    pgtype.Timestamptz
 }
 
+type AiConversation struct {
+	TenantID   uuid.UUID
+	StoreID    uuid.UUID
+	ID         uuid.UUID
+	StaffID    uuid.UUID
+	Title      string
+	ArchivedAt pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
+type AiConversationMessage struct {
+	TenantID       uuid.UUID
+	StoreID        uuid.UUID
+	ID             uuid.UUID
+	ConversationID uuid.UUID
+	Ordinal        *int64
+	Role           string
+	Content        string
+	Sent           *string
+	Editing        *string
+	DraftIds       []uuid.UUID
+	CreatedAt      pgtype.Timestamptz
+}
+
 type AiDraft struct {
 	ID             uuid.UUID
 	TenantID       uuid.UUID

@@ -77,7 +77,14 @@ func chatCall(t *testing.T, s *optest.Shop, token string, messages []map[string]
 
 func chatCallWithDraft(t *testing.T, s *optest.Shop, token, draftID string, messages []map[string]any) optest.Result {
 	t.Helper()
-	payload := map[string]any{"messages": messages}
+	content := ""
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i]["role"] == "user" {
+			content, _ = messages[i]["content"].(string)
+			break
+		}
+	}
+	payload := map[string]any{"content": content}
 	if draftID != "" {
 		payload["draft_id"] = draftID
 	}
@@ -472,12 +479,8 @@ func TestChatUnconfiguredValidationAndOpenAPI(t *testing.T) {
 	if r := chatCall(t, s, "", []map[string]any{user("你好")}); r.Status != http.StatusUnauthorized || r.Body["detail"] != "unauthenticated" {
 		t.Fatalf("unauthenticated = %d %v", r.Status, r.Body)
 	}
-	many := make([]map[string]any, 21)
-	for i := range many {
-		many[i] = user("x")
-	}
-	if r := chatCall(t, s, s.Owner, many); r.Status != http.StatusUnprocessableEntity || r.Body["detail"] != "消息最多 20 条，且至少一条" {
-		t.Fatalf("too many = %d %v", r.Status, r.Body)
+	if r := chatCall(t, s, s.Owner, []map[string]any{user("   ")}); r.Status != http.StatusUnprocessableEntity || r.Body["detail"] != "消息内容不能为空" {
+		t.Fatalf("empty = %d %v", r.Status, r.Body)
 	}
 	if r := chatCall(t, s, s.Owner, []map[string]any{user(strings.Repeat("字", 4001))}); r.Status != http.StatusUnprocessableEntity || r.Body["detail"] != "单条消息最多 4000 字" {
 		t.Fatalf("too long = %d %v", r.Status, r.Body)
