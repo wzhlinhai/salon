@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { components } from '~/utils/api'
 
-definePageMeta({ permission: 'settings.manage', title: 'AI 提醒', width: 'narrow', description: '规则看到店里有事，AI 写成一句话提醒该管的人。新规则先观察：只记下来给你看，不打扰任何人，你觉得有用再打开。', art: 'clock' })
+definePageMeta({ permission: 'settings.manage', title: 'AI 提醒', width: 'narrow', description: '规则看到店里有事，AI 写成一句话提醒该管的人。新规则先观察：只记下来给你看，不打扰任何人，你觉得有用再打开。', art: 'roller' })
 
 type Rule = components['schemas']['ReminderRuleView']
 type Summary = components['schemas']['ReminderSummary']

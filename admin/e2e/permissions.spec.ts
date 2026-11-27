@@ -7,7 +7,7 @@ const ownerPages = ['/cashier', ...managementPages]
 
 test('老板看到全部页面', async ({ page }) => {
   await login(page, owner.account, owner.password)
-  expect(await navLabels(page)).toEqual(['首页', '收银', '预约', '轮牌', '顾客', '日结', '报表', '团购对账', '员工', '考勤', '工资表', '提成规则', '级别与岗位', '项目与价格', '卡类型', '团购商品', '角色与权限', '门店设置'])
+  expect(await navLabels(page)).toEqual(['首页', '收银', '预约', '轮牌', '顾客', '日结', '报表', '团购对账', '员工', '考勤', '工资表', '提成规则', '级别与岗位', '项目与价格', '卡类型', '团购商品', '角色与权限', 'AI 提醒', '门店设置'])
   for (const path of ownerPages) {
     await page.goto(path)
     await expect(page).toHaveURL(path)
