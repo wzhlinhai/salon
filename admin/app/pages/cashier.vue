@@ -121,12 +121,13 @@ const ordersLoading = ref(false)
 const ordersGuard = useRequestGuard()
 const selectedOrderID = ref('')
 const checkoutSaving = ref(false)
-const customerNames = ref<Record<string, string>>({})
-// 已识别顾客才能挂账，和结账规则一致；要靠 get_customer 得知，所以没有 customer.view 时不显示挂账。
-const identifiedCustomers = ref<Record<string, boolean>>({})
+// 顾客名在名册里批量取（没有 customer.view 就不取，只写「顾客」）。
+const roster = useCustomerRoster()
+// 已识别顾客才能挂账，和结账规则一致；要靠名册得知，所以没有 customer.view 时不显示挂账。
+const identifiedCustomers = computed(() => Object.fromEntries(Object.entries(roster.entries.value).map(([id, entry]) => [id, entry.identified])))
 
 function customerName(id: string) {
-  return customerNames.value[id] || '未识别'
+  return roster.label(id, '顾客')
 }
 
 // 在做列表的第二行：项目 · 做的人（去重，没填的不写）。
@@ -140,16 +141,7 @@ function staffName(id: string | null | undefined) {
 }
 
 async function resolveNames(orders: Order[]) {
-  if (!can('customer.view')) return
-  const ids = [...new Set(orders.map(o => o.customer_id))].filter(id => !(id in customerNames.value))
-  if (!ids.length) return
-  const results = await Promise.all(ids.map(id => api.POST('/api/ops/get_customer', { body: { id } })))
-  for (const result of results) {
-    const customer = result.data
-    if (!customer) continue
-    customerNames.value[customer.id] = customer.name || '未识别'
-    identifiedCustomers.value[customer.id] = !customer.unidentified
-  }
+  await roster.resolve(orders.map(o => o.customer_id))
 }
 
 async function loadOrders() {
@@ -414,7 +406,7 @@ onMounted(init)
                 {{ customerName(order.customer_id).slice(0, 1) }}
               </button>
             </CustomerPeek>
-            <span v-else class="grid size-7 shrink-0 place-items-center rounded-full bg-tag-gray text-xs" aria-hidden="true">{{ identifiedCustomers[order.customer_id] === false ? '散' : customerName(order.customer_id).slice(0, 1) }}</span>
+            <span v-else class="grid size-7 shrink-0 place-items-center rounded-full bg-tag-gray text-xs" aria-hidden="true">{{ identifiedCustomers[order.customer_id] === false ? '未' : customerName(order.customer_id).slice(0, 1) }}</span>
             <button
               type="button"
               class="flex min-h-14 min-w-0 flex-1 items-center gap-2 py-2 pe-3 ps-1 text-left"
@@ -425,7 +417,7 @@ onMounted(init)
               @click="selectOrder(order)"
             >
               <span class="min-w-0 flex-1">
-                <span class="block truncate text-sm" :title="customerName(order.customer_id)">{{ identifiedCustomers[order.customer_id] === false ? '散客' : customerName(order.customer_id) }}</span>
+                <span class="block truncate text-sm" :title="customerName(order.customer_id)">{{ customerName(order.customer_id) }}</span>
                 <span class="mt-0.5 flex items-center gap-2 text-meta text-muted">
                   <span v-if="order.backfill" data-testid="backfill-badge" class="tag bg-tag-yellow">补录 {{ order.business_date }}</span>
                   <span class="truncate" :title="orderItemNames(order)">{{ orderLine(order) }}</span>

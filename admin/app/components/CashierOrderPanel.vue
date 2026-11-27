@@ -52,10 +52,10 @@ const itemOptions = computed(() => props.items.map(i => ({ label: `${i.name}（$
 const { load: loadGlance } = useCustomerGlance()
 const glance = ref<CustomerGlance | null>(null)
 const glanceGuard = useRequestGuard()
-// 散客才写「散客」；还没查清的先按名字显示（和左栏一致）。
+// 称呼和左栏一样从名册来（未识别顾客、未留姓名的顾客）；还没查清的先算认出了。
 const identified = computed(() => !!order.value && props.identifiedCustomers[order.value.customer_id] !== false)
-const headName = computed(() => order.value ? (identified.value ? props.customerName(order.value.customer_id) : '散客') : '')
-const initial = computed(() => identified.value ? headName.value.slice(0, 1) : '散')
+const headName = computed(() => order.value ? props.customerName(order.value.customer_id) : '')
+const initial = computed(() => identified.value ? headName.value.slice(0, 1) : '未')
 // 只用这张单顾客的那份：换单后新顾客的还没取回来时，不拿上一位的配方和余额顶着。
 const orderGlance = computed(() => order.value && glance.value?.customer.id === order.value.customer_id ? glance.value : null)
 const headMeta = computed(() => {
@@ -81,7 +81,7 @@ async function loadHead() {
   if (current() && order.value?.customer_id === target.customer_id) glance.value = data
 }
 
-// 名字（是否散客）是页面异步查的，查清后再取一次。
+// 名字（是否认出是谁）是页面异步查的，查清后再取一次。
 watch(() => [order.value?.customer_id, order.value && props.identifiedCustomers[order.value.customer_id]], () => void loadHead())
 
 // 卡折扣：应收减去试算后的实收（团购、次卡另列）。
@@ -554,7 +554,7 @@ async function checkout() {
     method: 'count', card_id: payment.card_id, order_item_id: payment.order_item_id, amount: payment.amount
   }))
   // 结好后的提示条要写的：谁、收了多少；认出的顾客带一步「记配方」去档案（样稿 19）。
-  const doneName = identified.value ? headName.value : '散客'
+  const doneName = headName.value
   const doneTotal = preview.value.net
   const doneCustomer = identified.value && can('customer.view') ? target.customer_id : ''
   const current = orderGuard.hold()

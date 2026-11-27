@@ -354,7 +354,8 @@ function tallyText(staffId: string) {
 
 const canOrders = computed(() => can('order.create'))
 const orders = ref<Order[]>([])
-const customerNames = ref<Record<string, string>>({})
+// 单上顾客的称呼从名册批量取；没有 customer.view 时名册不取，只写「接客」。
+const roster = useCustomerRoster()
 const ordersGuard = useRequestGuard()
 
 // 和轮牌一起刷新；没有开单权限的只写「接客」，不写接的是谁。
@@ -367,12 +368,7 @@ async function loadOrders() {
   ])
   if (!request() || !open.data) return
   orders.value = [...open.data.items, ...(done.data?.items ?? [])]
-  if (!can('customer.view')) return
-  const ids = [...new Set(orders.value.map(o => o.customer_id))].filter(id => !(id in customerNames.value))
-  const found = await Promise.all(ids.map(id => api.POST('/api/ops/get_customer', { body: { id } })))
-  for (const { data } of found) {
-    if (data) customerNames.value[data.id] = data.unidentified ? '散客' : (data.name || '未留名顾客')
-  }
+  await roster.resolve(orders.value.map(o => o.customer_id))
 }
 
 // 接客之后开的、他在单上、还没被别人认走的挂单里，最早开的那张。
@@ -388,7 +384,7 @@ function orderOf(id: string | null) {
 }
 
 function customerOf(order: Order | null) {
-  return order ? customerNames.value[order.customer_id] ?? '' : ''
+  return order ? roster.label(order.customer_id, '') : ''
 }
 
 function roundText(r: Round) {
@@ -397,10 +393,10 @@ function roundText(r: Round) {
   return { who: name ? `接 ${name}` : '接客', name, items: order ? orderItemNames(order).replaceAll('、', ' · ') : '' }
 }
 
-// 认得出的顾客点名字弹小卡片（样稿 26）；散客没有档案可看。
+// 认得出的顾客点名字弹小卡片（样稿 26）；未识别顾客没有档案可看。
 function peekId(r: Round) {
   const order = orderOf(r.orderId)
-  return order && can('customer.view') && customerNames.value[order.customer_id] && customerNames.value[order.customer_id] !== '散客' ? order.customer_id : null
+  return order && can('customer.view') && roster.identified(order.customer_id) ? order.customer_id : null
 }
 
 // 椅子上那一行：在做的写做谁，其余写在干什么。

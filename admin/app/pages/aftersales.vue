@@ -34,21 +34,15 @@ const laneRows = computed(() => Object.fromEntries(lanes.map(l => [l.status, row
 const windowDays = computed(() => Number(settingValue('aftersale_window_days')))
 const approvalByOther = computed(() => settingValue('aftersale_approval_mode') === 'other')
 
-// 顾客名：有看顾客的权限才逐个取，取不到写「顾客」。
-const customerNames = ref<Record<string, string>>({})
+// 顾客名：从名册批量取（有看顾客的权限才取），取不到写「顾客」。
+const roster = useCustomerRoster()
 
 function customerName(id: string) {
-  return customerNames.value[id] || '顾客'
+  return roster.label(id, '顾客')
 }
 
 async function resolveNames(ids: string[]) {
-  if (!can('customer.view')) return
-  const missing = [...new Set(ids)].filter(id => !(id in customerNames.value))
-  if (!missing.length) return
-  const results = await Promise.all(missing.map(id => api.POST('/api/ops/get_customer', { body: { id } })))
-  for (const result of results) {
-    if (result.data) customerNames.value[result.data.id] = result.data.name || '未识别顾客'
-  }
+  await roster.resolve(ids)
 }
 
 async function load() {

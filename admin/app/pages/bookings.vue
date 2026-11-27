@@ -174,7 +174,7 @@ function entryStyle(entry: Appointment) {
 function entryTitle(entry: Appointment) {
   if (entry.kind === 'block') return '私约占位'
   const late = lateMinutes(entry)
-  const name = entry.customer?.name ?? '未识别顾客'
+  const name = entry.customer?.name ?? UNNAMED_CUSTOMER
   return late ? `${name} · 过了 ${late} 分钟没到` : name
 }
 
@@ -871,7 +871,7 @@ function actorLabel(actor: Actor) {
           </UFormField>
           <UFormField label="顾客">
             <div v-if="selectedCustomer" class="flex items-center gap-2 rounded-card bg-side p-2">
-              <span class="flex-1 text-sm">已选顾客：{{ selectedCustomer.name ?? '未识别顾客' }}{{ selectedCustomer.phone ? ` · ${selectedCustomer.phone}` : '' }}</span>
+              <span class="flex-1 text-sm">已选顾客：{{ customerLabel(selectedCustomer) }}{{ selectedCustomer.phone ? ` · ${selectedCustomer.phone}` : '' }}</span>
               <UButton size="xs" variant="ghost" @click="clearCustomer">更换</UButton>
             </div>
             <div v-else class="space-y-2">
@@ -881,7 +881,7 @@ function actorLabel(actor: Actor) {
               </div>
               <div v-if="customerResults.length" class="space-y-1 rounded-card bg-side p-2" data-customer-results>
                 <UButton v-for="customer in customerResults" :key="customer.id" size="xs" variant="ghost" class="w-full justify-start" @click="pickCustomer(customer)">
-                  {{ customer.name ?? '未识别顾客' }}{{ customer.phone ? ` · ${customer.phone}` : '' }}
+                  {{ customerLabel(customer) }}{{ customer.phone ? ` · ${customer.phone}` : '' }}
                 </UButton>
               </div>
               <div class="grid grid-cols-2 gap-2">
@@ -930,7 +930,7 @@ function actorLabel(actor: Actor) {
                 <CustomerPeek v-if="detail.kind !== 'block' && detail.customer?.name && can('customer.view')" :customer-id="detail.customer.id">
                   <button type="button" class="hover:underline focus-visible:underline" aria-haspopup="dialog" data-detail-customer>{{ detail.customer.name }}</button>
                 </CustomerPeek>
-                <span v-else data-detail-customer>{{ detail.kind === 'block' ? '私约占位' : (detail.customer?.name ?? '未识别顾客') }}</span>
+                <span v-else data-detail-customer>{{ detail.kind === 'block' ? '私约占位' : (detail.customer?.name ?? UNNAMED_CUSTOMER) }}</span>
               </p>
               <p v-if="detail.customer?.phone" class="text-meta text-muted tabular-nums">{{ detail.customer.phone }}</p>
             </div>
