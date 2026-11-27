@@ -83,7 +83,7 @@
   --ui-text: #2c2c2b;
   --ui-text-toned: #5f5e5b;
   --ui-text-muted: #6c6964;
-  --ui-text-dimmed: #7d7a75;
+  --ui-text-dimmed: #787570; /* 白底 4.59:1；原来 #7d7a75 只有 4.27:1（2026-11-27 评审） */
   --ui-bg-muted: #f7f7f5;
   --ui-bg-elevated: #f1f1ef;
   --ui-bg-accented: #e3e2e0;

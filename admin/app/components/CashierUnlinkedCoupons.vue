@@ -108,8 +108,9 @@ defineExpose({ load })
 </script>
 
 <template>
-  <!-- 没有未关联的券就整块不出现（DESIGN.md 取舍：不写「没有」的区块），平时收银台少一块。 -->
-  <section v-if="canGroupbuy && unlinked.length" data-testid="unlinked-coupons">
+  <!-- 没有未关联的券就整块不出现（DESIGN.md 取舍：不写「没有」的区块），平时收银台少一块。
+       单根加 v-show：原来区块 v-if 和弹窗并列成两个根，区块从无到有时 Vue 偶发 nextSibling 空引用；弹窗本来就传送到 body。 -->
+  <section v-show="canGroupbuy && unlinked.length" data-testid="unlinked-coupons">
     <h2 class="sec">未关联团购券<span class="ms-1 font-normal text-dimmed">{{ unlinked.length }}</span><span class="ms-auto text-meta font-normal text-dimmed">近 90 天</span></h2>
     <div class="border-y border-default">
       <div v-for="row in unlinked" :key="row.id" class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-default px-3 py-2 text-sm first:border-t-0 hover:bg-hover">
@@ -120,18 +121,18 @@ defineExpose({ load })
         <UButton size="sm" color="error" variant="ghost" :loading="revoking" @click="revokeCoupon(row)">撤销核销</UButton>
       </div>
     </div>
+    <UModal v-model:open="linkOpen" title="关联团购券到挂单" :description="`券码 ${linkTarget?.coupon_code ?? ''}（${linkTarget ? platformLabel(linkTarget.platform) : ''}）`">
+      <template #body>
+        <div class="space-y-5">
+          <UFormField label="团购商品"><USelect v-model="linkDealID" :items="dealItems" class="w-full" aria-label="关联团购商品" /></UFormField>
+          <UFormField label="挂单"><USelect v-model="linkTargetOrderID" :items="[{ label: '选择挂单', value: NONE }, ...linkOrderItems]" class="w-full" aria-label="关联到挂单" /></UFormField>
+        </div>
+      </template>
+      <template #footer>
+        <ModalActions @cancel="linkOpen = false">
+          <UButton :loading="linkSaving" @click="saveLink">关联</UButton>
+        </ModalActions>
+      </template>
+    </UModal>
   </section>
-  <UModal v-model:open="linkOpen" title="关联团购券到挂单" :description="`券码 ${linkTarget?.coupon_code ?? ''}（${linkTarget ? platformLabel(linkTarget.platform) : ''}）`">
-    <template #body>
-      <div class="space-y-5">
-        <UFormField label="团购商品"><USelect v-model="linkDealID" :items="dealItems" class="w-full" aria-label="关联团购商品" /></UFormField>
-        <UFormField label="挂单"><USelect v-model="linkTargetOrderID" :items="[{ label: '选择挂单', value: NONE }, ...linkOrderItems]" class="w-full" aria-label="关联到挂单" /></UFormField>
-      </div>
-    </template>
-    <template #footer>
-      <ModalActions @cancel="linkOpen = false">
-        <UButton :loading="linkSaving" @click="saveLink">关联</UButton>
-      </ModalActions>
-    </template>
-  </UModal>
 </template>
