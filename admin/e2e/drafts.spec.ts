@@ -530,8 +530,8 @@ test('先点的历史对话迟到时不盖住后点的；换人登录后历史�
   await late
   await expect(panel.getByText('甲的问题')).toHaveCount(0)
   await expect(panel.getByTestId('ai-history-trigger')).toHaveText('对话乙')
-  // 点完历史下拉后焦点不在面板里，在输入框上按 Esc 关面板。
-  await panel.getByTestId('ai-input').press('Escape')
+  // 点面板的关闭按钮关面板：Esc 要看焦点落在哪一层，点完历史下拉后不稳。
+  await panel.getByRole('button', { name: '关闭', exact: true }).click()
   await expect(panel).toHaveCount(0)
 
   await page.unroute('**/api/ops/list_ai_conversations')
