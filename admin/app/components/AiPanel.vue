@@ -3,7 +3,7 @@ import { MAX_MESSAGE } from '~/composables/useAiChat'
 
 // 右侧滑出的「问 AI」（样稿 24）：照 Notion AI，人说的话是浅灰圆气泡靠右，AI 的回话不套气泡就是正文；
 // 写操作只生成草稿，画成能拿在手里的小卡片，在这里或"待确认"里由人确认。
-const { open, entries, sending, editing, input: text, loadingConversation, expanded, send, startNew, setExpanded, restoreExpanded } = useAiChat()
+const { open, entries, sending, editing, input: text, loadingConversation, rewinding, expanded, send, startNew, rewind, revise, setExpanded, restoreExpanded } = useAiChat()
 const { can } = useMe()
 const scroller = ref<HTMLElement | null>(null)
 const input = useTemplateRef<{ textareaRef?: HTMLTextAreaElement }>('input')
@@ -40,9 +40,30 @@ watch(text, (value) => {
   if (starter.value && !value.startsWith(starter.value.prefix ?? '')) starter.value = null
 })
 
+// AI 在回话、旧对话在打开、正在撤回时，不发新话也不撤回。
+const busy = computed(() => sending.value || loadingConversation.value || rewinding.value)
+
+// 撤回、修改后点的按钮跟着那句话没了，焦点放回输入框；修改的光标放在末尾接着改。
+async function focusEnd() {
+  await nextTick()
+  const el = input.value?.textareaRef
+  el?.focus()
+  el?.setSelectionRange(text.value.length, text.value.length)
+}
+
+async function rewindAt(index: number) {
+  if (await rewind(index)) await focusEnd()
+}
+
+async function reviseAt(index: number) {
+  if (!(await revise(index))) return
+  starter.value = null
+  await focusEnd()
+}
+
 async function submit() {
   const value = text.value
-  if (!value.trim() || sending.value || loadingConversation.value) return
+  if (!value.trim() || busy.value) return
   text.value = ''
   starter.value = null
   await send(value)
@@ -91,6 +112,9 @@ const ui = computed(() => ({
   body: 'p-0 sm:p-0 flex flex-col',
   footer: `ai-chat border-t-0 px-4 pt-0 pb-4 sm:px-4 ${centered.value ? 'flex-1 items-start' : ''}`
 }))
+
+// 对话里的小操作（复制、修改、撤回）：图标 14px、按钮 24px，比正文字还小一点，颜色再淡一档，不压过对话本身。
+const tinyAction = { leadingIcon: 'size-3.5', base: 'size-6 text-dimmed hover:text-muted' }
 
 // AI 回话下面的复制按钮（照 Notion AI）：复制整段话，按钮变成勾一会儿再变回来。剪贴板用不了（非安全来源等）就什么也不做。
 const copied = ref<number | null>(null)
@@ -175,9 +199,27 @@ watch(() => [entries.value.length, sending.value], async () => {
             </ul>
           </div>
           <div v-for="(entry, index) in entries" :key="index" :data-role="entry.role" data-testid="ai-entry">
-            <div v-if="entry.role === 'user'" class="ms-auto w-fit max-w-[85%] rounded-bubble bg-elevated px-4 py-2 text-sm whitespace-pre-wrap text-highlighted">
-              <p v-if="entry.editing" class="mb-1 text-xs text-muted">修改：{{ entry.editing }}</p>
-              {{ entry.content }}
+            <!-- 人说的话：悬停时气泡下面靠右出复制、修改、撤回（照 Notion AI），平时不占眼；按钮悬停底色的右边和气泡右边对齐。没发成的话服务端没存，只能复制。 -->
+            <div v-if="entry.role === 'user'" class="group flex flex-col items-end gap-1">
+              <div class="w-fit max-w-[85%] rounded-bubble bg-elevated px-4 py-2 text-sm whitespace-pre-wrap text-highlighted">
+                <p v-if="entry.editing" class="mb-1 text-xs text-muted">修改：{{ entry.editing }}</p>
+                {{ entry.content }}
+              </div>
+              <div class="flex opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100" data-testid="ai-user-actions">
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="xs"
+                  :icon="copied === index ? 'i-lucide-check' : 'i-lucide-copy'"
+                  :aria-label="copied === index ? '已复制' : '复制'"
+                  :ui="tinyAction"
+                  @click="copy(index, entry.content)"
+                />
+                <template v-if="entry.id && !entry.failed">
+                  <UButton color="neutral" variant="ghost" size="xs" icon="i-lucide-pencil" aria-label="修改" :ui="tinyAction" :disabled="busy" data-testid="ai-revise" @click="reviseAt(index)" />
+                  <UButton color="neutral" variant="ghost" size="xs" icon="i-lucide-undo-2" aria-label="撤回" :ui="tinyAction" :disabled="busy" data-testid="ai-rewind" @click="rewindAt(index)" />
+                </template>
+              </div>
             </div>
             <div v-else class="space-y-3">
               <p class="text-sm leading-relaxed whitespace-pre-wrap text-pretty" :class="entry.failed ? 'text-ink-red' : 'text-highlighted'">{{ entry.content }}</p>
@@ -189,7 +231,7 @@ watch(() => [entries.value.length, sending.value], async () => {
                 size="xs"
                 :icon="copied === index ? 'i-lucide-check' : 'i-lucide-copy'"
                 :aria-label="copied === index ? '已复制' : '复制'"
-                class="text-muted"
+                :ui="tinyAction"
                 data-testid="ai-copy"
                 @click="copy(index, entry.content)"
               />

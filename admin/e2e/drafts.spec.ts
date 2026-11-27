@@ -551,3 +551,59 @@ test('先点的历史对话迟到时不盖住后点的；换人登录后历史�
   await panel.getByTestId('ai-history-trigger').click()
   await expect(history.getByText('还没有对话')).toBeVisible()
 })
+
+test('撤回和修改自己说的话：撤回删掉这句和之后的；删空回到新对话，修改把原话放回输入框', async ({ page }) => {
+  const bodies: ChatBody[] = []
+  let said = 0
+  await page.route('**/api/ai/chat', async (route) => {
+    const body = route.request().postDataJSON() as ChatBody
+    bodies.push(body)
+    said++
+    await route.fulfill({ json: { reply: `回${said}`, sources: [], drafts: [], conversation_id: CONVERSATION, message_id: `00000000-0000-4000-8000-00000000010${said}`, title: '第一句' } })
+  })
+  const rewinds: { id: string, message_id: string }[] = []
+  await page.route('**/api/ops/rewind_ai_conversation', async (route) => {
+    const body = route.request().postDataJSON()
+    rewinds.push(body)
+    await route.fulfill({ json: { conversation_id: body.id, emptied: rewinds.length === 2 } })
+  })
+  await login(page, owner.account, owner.password)
+  const panel = aiPanel(page)
+  await sayToAi(page, '第一句')
+  await expect(panel.getByText('回1')).toBeVisible()
+  await sayToAi(page, '第二句')
+  await expect(panel.getByText('回2')).toBeVisible()
+  await expect(panel.getByTestId('ai-entry')).toHaveCount(4)
+
+  // 撤回第二句：它和 AI 的回话都没了，前面的留着。
+  const second = panel.locator('[data-role="user"]').nth(1)
+  await second.hover()
+  await second.getByTestId('ai-rewind').click()
+  await expect(panel.getByTestId('ai-entry')).toHaveCount(2)
+  expect(rewinds[0]).toEqual({ id: CONVERSATION, message_id: '00000000-0000-4000-8000-000000000102' })
+
+  // 修改第一句：对话删空，回到新对话，原话放回输入框；再发出去时不带旧对话编号。
+  const first = panel.locator('[data-role="user"]').first()
+  await first.hover()
+  await first.getByTestId('ai-revise').click()
+  await expect(panel.getByTestId('ai-entry')).toHaveCount(0)
+  expect(rewinds[1]).toEqual({ id: CONVERSATION, message_id: '00000000-0000-4000-8000-000000000101' })
+  await expect(panel.getByTestId('ai-input')).toHaveValue('第一句')
+  await expect(panel.getByTestId('ai-history-trigger')).toHaveText('新的 AI 对话')
+  await panel.getByTestId('ai-input').fill('第一句改了')
+  await panel.getByTestId('ai-input').press('Enter')
+  await expect(panel.getByText('回3')).toBeVisible()
+  expect(bodies[2]).toEqual({ content: '第一句改了' })
+})
+
+test('没发成的话只能复制，不能撤回和修改', async ({ page }) => {
+  await page.route('**/api/ai/chat', route => route.fulfill({ status: 502, json: { detail: 'AI 响应超时，请重试' } }))
+  await login(page, owner.account, owner.password)
+  const panel = aiPanel(page)
+  await sayToAi(page, '没发成')
+  const asked = panel.locator('[data-role="user"]').first()
+  await asked.hover()
+  await expect(asked.getByRole('button', { name: '复制' })).toBeVisible()
+  await expect(asked.getByTestId('ai-rewind')).toHaveCount(0)
+  await expect(asked.getByTestId('ai-revise')).toHaveCount(0)
+})
