@@ -19,6 +19,12 @@ type Change struct{ value decimal.Decimal }
 // String 返回固定两位小数。
 func (c Change) String() string { return c.value.StringFixed(2) }
 
+// Format 返回有符号金额变动的固定两位小数显示文本。
+func (c Change) Format() string { return c.value.StringFixed(2) }
+
+// IsZero 报告金额变动是否为零。
+func (c Change) IsZero() bool { return c.value.IsZero() }
+
 // MarshalJSON 将变动编码为两位小数的字符串。
 func (c Change) MarshalJSON() ([]byte, error) { return json.Marshal(c.String()) }
 

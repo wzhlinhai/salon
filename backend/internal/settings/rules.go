@@ -344,6 +344,13 @@ func (r Rules) PayrollAutoLockDay() int {
 	return v
 }
 
+// AIReminderDailyCap 返回每位员工每天最多收到几条不紧急的 AI 提醒。
+func (r Rules) AIReminderDailyCap() int {
+	var v int
+	r.decode(KeyAIReminderDailyCap, &v)
+	return v
+}
+
 // AttendanceGraceMinutes 返回判断迟到、早退的宽限分钟数。
 func (r Rules) AttendanceGraceMinutes() int {
 	var v int

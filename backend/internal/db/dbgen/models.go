@@ -113,6 +113,51 @@ type AiDraftEvent struct {
 	BeforeSummary *string
 }
 
+type AiReminder struct {
+	TenantID         uuid.UUID
+	StoreID          uuid.UUID
+	ID               uuid.UUID
+	RuleKey          string
+	RuleVersion      int32
+	Mode             string
+	RecipientStaffID uuid.UUID
+	SubjectKey       string
+	BusinessDate     pgtype.Date
+	Urgent           bool
+	Facts            []byte
+	FallbackText     string
+	AiText           *string
+	Outcome          string
+	Feedback         *string
+	FeedbackBy       *uuid.UUID
+	FeedbackAt       pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+}
+
+type AiReminderRule struct {
+	TenantID  uuid.UUID
+	StoreID   uuid.UUID
+	ID        uuid.UUID
+	RuleKey   string
+	Mode      string
+	UpdatedBy uuid.UUID
+	UpdatedAt pgtype.Timestamptz
+}
+
+type AiReminderRun struct {
+	TenantID     uuid.UUID
+	StoreID      uuid.UUID
+	ID           uuid.UUID
+	RuleKey      string
+	Mode         string
+	BusinessDate pgtype.Date
+	Status       string
+	Failures     int32
+	LastError    *string
+	Matched      int32
+	UpdatedAt    pgtype.Timestamptz
+}
+
 type Appointment struct {
 	TenantID          uuid.UUID
 	StoreID           uuid.UUID

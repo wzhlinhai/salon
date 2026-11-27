@@ -106,6 +106,7 @@ const (
 	KeyReceiptShowPayments               = "receipt_show_payments"
 	KeyReceiptShowCardBalance            = "receipt_show_card_balance"
 	KeyPayrollAutoLockDay                = "payroll_auto_lock_day"
+	KeyAIReminderDailyCap                = "ai_reminder_daily_cap"
 )
 
 // Catalogue 是全部门店设置，顺序即设置页面的显示顺序。后续模块的业务规则在这里添加。
@@ -175,6 +176,10 @@ var Catalogue = []Def{
 	{
 		Key: KeyPayrollAutoLockDay, Label: "工资自动锁定日", Kind: KindInteger, Min: 1, Max: 28, Default: 15,
 		Hint: "每月几号自动锁定上个月的工资，当天生效",
+	},
+	{
+		Key: KeyAIReminderDailyCap, Label: "每人每天最多几条 AI 提醒", Kind: KindInteger, Min: 1, Max: 20, Default: 3,
+		Hint: "同一档位下每位员工每天最多收到几条不紧急的 AI 提醒；不马上处理会损失钱的提醒不占这个上限",
 	},
 	{
 		Key: KeyBackfillMaxDays, Label: "可补录天数", Kind: KindInteger, Min: 0, Max: 31, Default: 3,

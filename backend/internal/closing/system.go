@@ -170,6 +170,11 @@ func systemFigures(ctx context.Context, env ops.Env, day time.Time) (*SystemFigu
 	return out, nil
 }
 
+// SystemFiguresForDay 按日结的系统应收口径汇总一个营业日，供提醒规则等只读使用。
+func SystemFiguresForDay(ctx context.Context, env ops.Env, day time.Time) (*SystemFigures, error) {
+	return systemFigures(ctx, env, day)
+}
+
 // businessDaysIn 返回 [from,to] 内按日结规则有营业的营业日，升序，YYYY-MM-DD。
 // 全店的时间戳只读取一次，查询次数不随范围天数增长。
 func businessDaysIn(ctx context.Context, env ops.Env, from, to time.Time) ([]string, error) {
@@ -235,6 +240,11 @@ func businessDaysIn(ctx context.Context, env ops.Env, from, to time.Time) ([]str
 		}
 	}
 	return out, nil
+}
+
+// BusinessDaysIn 返回 [from,to] 内按日结规则有营业的营业日，供提醒规则等只读使用。
+func BusinessDaysIn(ctx context.Context, env ops.Env, from, to time.Time) ([]string, error) {
+	return businessDaysIn(ctx, env, from, to)
 }
 
 func unrecordedSales(ctx context.Context, env ops.Env, day time.Time) (UnrecordedSales, error) {

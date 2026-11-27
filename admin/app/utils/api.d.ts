@@ -1296,6 +1296,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/get_reminder_summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看一条提醒规则最近几个营业日的观察汇总和样例 */
+        post: operations["get_reminder_summary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/get_rotation": {
         parameters: {
             query?: never;
@@ -2174,6 +2191,23 @@ export interface paths {
         put?: never;
         /** 按营业日范围列出本店团购核销记录 */
         post: operations["list_redemptions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/list_reminder_rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看全部提醒规则、当前档位和检查时刻 */
+        post: operations["list_reminder_rules"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3177,6 +3211,40 @@ export interface paths {
         put?: never;
         /** 替换轮牌队列成员及其默认顺序 */
         post: operations["set_queue_members"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/set_reminder_feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 给一条已发出的 AI 提醒评价有用或没用 */
+        post: operations["set_reminder_feedback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/set_reminder_rule_mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 把一条提醒规则改成关、观察或开 */
+        post: operations["set_reminder_rule_mode"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5228,6 +5296,14 @@ export interface components {
         GetReceiptInput: {
             checkout_id: string;
         };
+        GetReminderSummaryInput: {
+            /**
+             * Format: int64
+             * @description 最近几个营业日，默认 7
+             */
+            days?: number;
+            rule_key: string;
+        };
         GetRotationInput: {
             /**
              * Format: date
@@ -5774,6 +5850,7 @@ export interface components {
             date: string;
         };
         List_draftsRequest: Record<string, never>;
+        List_reminder_rulesRequest: Record<string, never>;
         LogList: {
             entries: components["schemas"]["Entry"][];
         };
@@ -6646,6 +6723,94 @@ export interface components {
             paid_remaining: number;
             unit_price: string;
         };
+        ReminderBlockedCounts: {
+            /** Format: int64 */
+            cooldown: number;
+            /** Format: int64 */
+            daily_cap: number;
+            /** Format: int64 */
+            deduped: number;
+            /** Format: int64 */
+            expired: number;
+            /** Format: int64 */
+            max_times: number;
+        };
+        ReminderFeedbackCounts: {
+            /** Format: int64 */
+            helpful: number;
+            /** Format: int64 */
+            not_helpful: number;
+        };
+        ReminderFeedbackResult: {
+            /** @enum {string|null} */
+            feedback: "helpful" | "not_helpful" | null;
+            id: string;
+        };
+        ReminderRuleList: {
+            rules: components["schemas"]["ReminderRuleView"][];
+        };
+        ReminderRuleView: {
+            /** @description 门店当地每天检查的时刻 HH:MM */
+            check_at: string;
+            description: string;
+            /** @description 门店没有设置过，使用规则在代码里的默认档位 */
+            is_default: boolean;
+            /** @enum {string} */
+            mode: "off" | "observe" | "on";
+            name: string;
+            rule_key: string;
+            /** Format: int64 */
+            version: number;
+        };
+        ReminderSample: {
+            ai_written: boolean;
+            /** Format: date */
+            business_date: string;
+            facts: unknown;
+            /** @enum {string|null} */
+            feedback: "helpful" | "not_helpful" | null;
+            id: string;
+            recipient_name: string;
+            /** @description 显示的话：AI 写的，或固定文案 */
+            text: string;
+        };
+        ReminderSummary: {
+            /** Format: double */
+            average_per_recipient_day: number;
+            blocked: components["schemas"]["ReminderBlockedCounts"];
+            /** Format: date */
+            date_from: string;
+            /** Format: date */
+            date_to: string;
+            /** Format: int64 */
+            days: number;
+            /**
+             * Format: int64
+             * @description 发出的提醒条数（含观察档）
+             */
+            emitted: number;
+            /**
+             * Format: int32
+             * @description 这条规则当前仍是出错状态的营业日数
+             */
+            error_days: number;
+            feedback: components["schemas"]["ReminderFeedbackCounts"];
+            /** Format: date */
+            last_error_date: string | null;
+            /**
+             * Format: int32
+             * @description 规则选中过至少一个对象的营业日数
+             */
+            matched_days: number;
+            /**
+             * Format: int32
+             * @description 检查跑了几天的营业日数
+             */
+            ran_days: number;
+            rule_key: string;
+            rule_name: string;
+            samples: components["schemas"]["ReminderSample"][];
+        };
         RemoveOrderItemInput: {
             order_id: string;
             order_item_id: string;
@@ -6929,6 +7094,16 @@ export interface components {
         SetQueueMembersInput: {
             queue_id: string;
             staff_ids: string[];
+        };
+        SetReminderFeedbackInput: {
+            /** @enum {string|null} */
+            feedback: "helpful" | "not_helpful" | null;
+            reminder_id: string;
+        };
+        SetReminderRuleModeInput: {
+            /** @enum {string} */
+            mode: "off" | "observe" | "on";
+            rule_key: string;
         };
         SetStaffLoginInput: {
             /** @description 登录账号，全系统唯一 */
@@ -9909,6 +10084,39 @@ export interface operations {
             };
         };
     };
+    get_reminder_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GetReminderSummaryInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderSummary"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     get_rotation: {
         parameters: {
             query?: never;
@@ -11612,6 +11820,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RedemptionList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    list_reminder_rules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["List_reminder_rulesRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderRuleList"];
                 };
             };
             /** @description Error */
@@ -13559,6 +13800,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Queue"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    set_reminder_feedback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetReminderFeedbackInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderFeedbackResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    set_reminder_rule_mode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetReminderRuleModeInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderRuleView"];
                 };
             };
             /** @description Error */
