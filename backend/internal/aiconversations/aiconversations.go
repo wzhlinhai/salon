@@ -1,4 +1,4 @@
-// Package aiconversations 保存员工本人的 AI 对话历史会话，并提供列表、查看和归档。
+// Package aiconversations 保存员工本人的 AI 对话历史会话，并提供列表、查看、归档和撤回。
 package aiconversations
 
 import (
@@ -41,11 +41,12 @@ type ChatInput struct {
 	DraftID        *uuid.UUID
 }
 
-// ChatAnswer 是一次对话的最终回答和保存到的历史会话。
+// ChatAnswer 是一次对话的最终回答、保存到的历史会话和本次保存的 user 消息。
 type ChatAnswer struct {
 	ai.Answer
 	ConversationID uuid.UUID `json:"conversation_id"`
 	Title          string    `json:"title"`
+	MessageID      uuid.UUID `json:"message_id"`
 }
 
 // ConversationSummary 是本人历史会话列表里的一项。
@@ -70,6 +71,18 @@ type ConversationList struct {
 // ConversationIDInput 指定一个本人历史会话。
 type ConversationIDInput struct {
 	ID uuid.UUID `json:"id"`
+}
+
+// RewindConversationInput 是撤回历史会话的输入：会话 ID 和从哪一条本人消息撤回。
+type RewindConversationInput struct {
+	ID        uuid.UUID `json:"id"`
+	MessageID uuid.UUID `json:"message_id"`
+}
+
+// RewindConversationResult 是撤回结果；Emptied 为 true 表示会话已整个删除。
+type RewindConversationResult struct {
+	ConversationID uuid.UUID `json:"conversation_id"`
+	Emptied        bool      `json:"emptied"`
 }
 
 // ConversationMessage 是历史会话里的一条消息，含它创建或修改的草稿当前状态。
@@ -145,6 +158,7 @@ func (s *ChatService) Ask(ctx context.Context, caller ops.Caller, in ChatInput) 
 	}
 
 	var conversation dbgen.AiConversation
+	var messageID uuid.UUID
 	err = db.InTenant(ctx, s.pool, caller.TenantID, func(q *dbgen.Queries) error {
 		if existing != nil {
 			c, err := q.TouchAIConversation(ctx, dbgen.TouchAIConversationParams{StoreID: caller.StoreID, StaffID: caller.StaffID, ID: existing.ID, UpdatedAt: stamp(now)})
@@ -162,17 +176,19 @@ func (s *ChatService) Ask(ctx context.Context, caller ops.Caller, in ChatInput) 
 			}
 			conversation = c
 		}
-		if _, err := q.AddAIConversationMessage(ctx, dbgen.AddAIConversationMessageParams{
+		userMessage, err := q.AddAIConversationMessage(ctx, dbgen.AddAIConversationMessageParams{
 			TenantID: caller.TenantID, StoreID: caller.StoreID, ConversationID: conversation.ID,
 			Role: ai.RoleUser, Content: content, Sent: sent, Editing: editing, DraftIds: []uuid.UUID{}, CreatedAt: stamp(now),
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
+		messageID = userMessage.ID
 		ids := make([]uuid.UUID, len(answer.Drafts))
 		for i, view := range answer.Drafts {
 			ids[i] = view.ID
 		}
-		_, err := q.AddAIConversationMessage(ctx, dbgen.AddAIConversationMessageParams{
+		_, err = q.AddAIConversationMessage(ctx, dbgen.AddAIConversationMessageParams{
 			TenantID: caller.TenantID, StoreID: caller.StoreID, ConversationID: conversation.ID,
 			Role: ai.RoleAssistant, Content: answer.Reply, DraftIds: ids, CreatedAt: stamp(now),
 		})
@@ -181,10 +197,10 @@ func (s *ChatService) Ask(ctx context.Context, caller ops.Caller, in ChatInput) 
 	if err != nil {
 		return ChatAnswer{}, err
 	}
-	return ChatAnswer{Answer: answer, ConversationID: conversation.ID, Title: conversation.Title}, nil
+	return ChatAnswer{Answer: answer, ConversationID: conversation.ID, Title: conversation.Title, MessageID: messageID}, nil
 }
 
-// Register 声明历史会话的四个业务操作：查看列表、打开会话、归档和解开归档。
+// Register 声明历史会话的五个业务操作：查看列表、打开会话、归档、解开归档和撤回。
 func Register(r *ops.Registry) {
 	s := service{registry: r}
 	ops.Register(r, ops.Operation[ListConversationsInput, ConversationList]{
@@ -198,6 +214,9 @@ func Register(r *ops.Registry) {
 	})
 	ops.Register(r, ops.Operation[ConversationIDInput, ConversationSummary]{
 		Name: "unarchive_ai_conversation", Summary: "解开本人 AI 历史会话的归档", Kind: ops.Write, Permission: ops.LoggedIn, AI: ops.AINone, Handle: s.unarchive,
+	})
+	ops.Register(r, ops.Operation[RewindConversationInput, RewindConversationResult]{
+		Name: "rewind_ai_conversation", Summary: "从本人的一句 user 消息撤回它和之后的消息", Kind: ops.Write, Permission: ops.LoggedIn, AI: ops.AINone, Handle: s.rewind,
 	})
 }
 
@@ -288,6 +307,50 @@ func (s service) unarchive(ctx context.Context, env ops.Env, in *ConversationIDI
 	}
 	out := conversationSummary(c)
 	return &out, nil
+}
+
+// 撤回和归档一样是本人的界面整理，不改业务数据，按任务约定不写操作日志。
+// 被删回话里起草的草稿留在待确认；会话一条消息都不剩时连同会话一起删除。
+func (s service) rewind(ctx context.Context, env ops.Env, in *RewindConversationInput) (*RewindConversationResult, error) {
+	c, err := env.Q.LockAIConversation(ctx, dbgen.LockAIConversationParams{StoreID: env.Caller.StoreID, StaffID: env.Caller.StaffID, ID: in.ID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ops.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	message, err := env.Q.GetAIConversationMessage(ctx, dbgen.GetAIConversationMessageParams{StoreID: env.Caller.StoreID, ConversationID: c.ID, ID: in.MessageID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ops.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if message.Role != ai.RoleUser {
+		return nil, ops.Rule("只能从自己说的话撤回")
+	}
+	if message.Ordinal == nil {
+		return nil, fmt.Errorf("AI conversation message %s has no ordinal", message.ID)
+	}
+	if err := env.Q.DeleteAIConversationMessagesFrom(ctx, dbgen.DeleteAIConversationMessagesFromParams{StoreID: env.Caller.StoreID, ConversationID: c.ID, Ordinal: message.Ordinal}); err != nil {
+		return nil, err
+	}
+	remaining, err := env.Q.CountAIConversationMessages(ctx, dbgen.CountAIConversationMessagesParams{StoreID: env.Caller.StoreID, ConversationID: c.ID})
+	if err != nil {
+		return nil, err
+	}
+	emptied := false
+	if remaining == 0 {
+		deleted, err := env.Q.DeleteAIConversation(ctx, dbgen.DeleteAIConversationParams{StoreID: env.Caller.StoreID, StaffID: env.Caller.StaffID, ID: c.ID})
+		if err != nil {
+			return nil, err
+		}
+		if deleted != 1 {
+			return nil, fmt.Errorf("delete AI conversation %s: deleted %d rows, want 1", c.ID, deleted)
+		}
+		emptied = true
+	}
+	return &RewindConversationResult{ConversationID: c.ID, Emptied: emptied}, nil
 }
 
 func conversationSummary(c dbgen.AiConversation) ConversationSummary {
