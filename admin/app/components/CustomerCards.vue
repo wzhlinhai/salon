@@ -448,14 +448,14 @@ onMounted(cardLoad)
       <div data-testid="card-history" class="contents">
         <div v-if="upgradeCardID" data-testid="card-upgrades" class="space-y-2 text-sm">
           <ListSkeleton v-if="upgrades.loading.value && !upgrades.items.value.length" :rows="2" />
-          <p v-for="entry in upgrades.items.value" :key="entry.id" data-testid="card-upgrade-entry">{{ entry.type_before.name }} → {{ entry.type_after.name }} · {{ entry.trigger === 'auto' ? '自动升级' : '手动升级' }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }} · {{ entry.actor.name }}</p>
+          <p v-for="entry in upgrades.items.value" :key="entry.id" data-testid="card-upgrade-entry">{{ entry.type_before.name }} → {{ entry.type_after.name }} · {{ entry.trigger === 'auto' ? '自动升级' : '手动升级' }} · {{ entry.business_date }} · {{ storeDateTime(entry.at) }} · {{ entry.actor.name }}</p>
           <p v-if="!upgrades.loading.value && !upgrades.items.value.length" class="text-muted">暂无升级记录</p>
           <UButton v-if="upgrades.hasMore.value" :loading="upgrades.loading.value" size="sm" color="neutral" variant="ghost" @click="upgrades.loadMore">加载更多</UButton>
         </div>
         <div v-if="pointsCard" data-testid="card-points" class="space-y-2 text-sm">
           <ListSkeleton v-if="cardPoints.loading.value && !cardPoints.items.value.length" :rows="2" />
           <p v-for="entry in cardPoints.items.value" :key="entry.id" data-testid="card-points-entry">
-            {{ ledgerKinds[entry.kind] || entry.kind }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }} · {{ entry.actor.name }}
+            {{ ledgerKinds[entry.kind] || entry.kind }} · {{ entry.business_date }} · {{ storeDateTime(entry.at) }} · {{ entry.actor.name }}
             积分 {{ entry.before }} + {{ entry.delta }} = {{ entry.after }} <span v-if="entry.reason">· 原因：{{ entry.reason }}</span>
           </p>
           <p v-if="!cardPoints.loading.value && !cardPoints.items.value.length" class="text-muted">暂无积分流水</p>
@@ -464,7 +464,7 @@ onMounted(cardLoad)
         <div v-if="countCard" data-testid="card-counts" class="space-y-2 text-sm">
           <ListSkeleton v-if="cardCounts.loading.value && !cardCounts.items.value.length" :rows="2" />
           <p v-for="entry in cardCounts.items.value" :key="entry.id" data-testid="card-count-entry">
-            {{ entry.item.name }} · {{ ledgerKinds[entry.kind] || entry.kind }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }} · {{ entry.actor.name }}
+            {{ entry.item.name }} · {{ ledgerKinds[entry.kind] || entry.kind }} · {{ entry.business_date }} · {{ storeDateTime(entry.at) }} · {{ entry.actor.name }}
             购买 {{ entry.paid_before }} + {{ entry.paid_delta }} = {{ entry.paid_after }}；赠送 {{ entry.gift_before }} + {{ entry.gift_delta }} = {{ entry.gift_after }}
             <span v-if="entry.reason">· 原因：{{ entry.reason }}</span>
           </p>
@@ -473,7 +473,7 @@ onMounted(cardLoad)
         <div v-if="adjustmentCard" data-testid="card-adjustments" class="space-y-2 text-sm">
           <ListSkeleton v-if="adjustments.loading.value && !adjustments.items.value.length" :rows="2" />
           <p v-for="entry in adjustments.items.value" :key="entry.id" data-testid="card-adjustment-entry">
-            {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }} · {{ entry.actor.name }} · 原因：{{ entry.reason }}
+            {{ entry.business_date }} · {{ storeDateTime(entry.at) }} · {{ entry.actor.name }} · 原因：{{ entry.reason }}
             <span v-for="change in entry.counts" :key="change.id">{{ change.item.name }}：购买 {{ change.paid_before }} → {{ change.paid_after }}；赠送 {{ change.gift_before }} → {{ change.gift_after }}</span>
             <span v-if="entry.balance">本金 {{ entry.balance.principal_before }} + {{ entry.balance.principal_delta }} = {{ entry.balance.principal_after }}；赠送金 {{ entry.balance.bonus_before }} + {{ entry.balance.bonus_delta }} = {{ entry.balance.bonus_after }}</span>
             <span v-if="entry.expiry_before && entry.expiry_after">有效期 {{ entry.expiry_before.expires_on || '不限' }} → {{ entry.expiry_after.expires_on || '不限' }}</span>
@@ -483,7 +483,7 @@ onMounted(cardLoad)
         </div>
         <div v-if="cardLedgerCard" data-testid="card-ledger" class="space-y-2 text-sm">
           <p v-for="entry in cardLedger.items.value" :key="entry.id" data-testid="card-ledger-entry">
-            {{ ledgerKinds[entry.kind] || entry.kind }} · {{ entry.business_date }} · {{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }} · {{ entry.actor.name }}
+            {{ ledgerKinds[entry.kind] || entry.kind }} · {{ entry.business_date }} · {{ storeDateTime(entry.at) }} · {{ entry.actor.name }}
             本金 {{ entry.principal_before }} + {{ entry.principal_delta }} = {{ entry.principal_after }}；赠送金 {{ entry.bonus_before }} + {{ entry.bonus_delta }} = {{ entry.bonus_after }}
             <span v-if="entry.reason">· 原因：{{ entry.reason }}</span>
             <span v-if="entry.other_card_id">· 对方卡：{{ entry.other_card_id }}</span>

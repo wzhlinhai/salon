@@ -22,7 +22,7 @@ const attendanceTried = ref(false)
 const serving = ref<Record<string, string>>({})
 
 const greeting = computed(() => {
-  const hour = new Date().getHours()
+  const hour = Math.floor(storeClock(new Date()).minutes / 60)
   if (hour < 5) return '夜深了'
   if (hour < 12) return '早上好'
   if (hour < 18) return '下午好'

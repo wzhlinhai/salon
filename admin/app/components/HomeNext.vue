@@ -15,10 +15,7 @@ type Totals = components['schemas']['BusinessReport']['totals']
 
 const api = useApi()
 const { can } = useMe()
-const TIME_ZONE = 'Asia/Shanghai'
 const WINDOW = 2 * 60 * 60_000
-// 开始超过 90 分钟还没开单的，多半不来了：不再挂在时间线上提醒打电话。
-const STALE = 90 * 60_000
 
 const entries = ref<Appointment[]>([])
 const walkIns = ref<Walkin[]>([])
@@ -97,7 +94,7 @@ onBeforeUnmount(() => {
 })
 
 function clock(value: string | number) {
-  return new Date(value).toLocaleTimeString('zh-CN', { timeZone: TIME_ZONE, hour: 'numeric', minute: '2-digit', hour12: false })
+  return storeTimeShort(value)
 }
 
 function monthDay(date: string) {
@@ -147,8 +144,9 @@ function appointmentRow(entry: Appointment): Row {
     const left = -minutesFrom(entry.ends_at)
     return { ...base, title, state: 'serving', remain: left > 0 ? `还要 ${left} 分钟` : '' }
   }
-  const late = minutesFrom(entry.starts_at)
-  if (late > 5) return { ...base, title, state: 'late', tag: `过了 ${late} 分钟没到 · 打个电话` }
+  // 到点没来的口径在 utils/storeClock.ts，和预约页共用；多半不来了的已在 rows 里滤掉。
+  const late = minutesLate(entry.starts_at, now.value)
+  if (late) return { ...base, title, state: 'late', tag: `过了 ${late} 分钟没到 · 打个电话` }
   return { ...base, title, state: 'waiting', tag: entry.status === 'pending' ? '待确认' : '' }
 }
 
@@ -158,8 +156,7 @@ const rows = computed<Row[]>(() => {
   const list = open.value
     .filter((entry) => {
       if (entry.order_id) return true
-      const start = new Date(entry.starts_at).getTime()
-      return start <= now.value + WINDOW && start > now.value - STALE
+      return new Date(entry.starts_at).getTime() <= now.value + WINDOW && !probablyNotComing(entry.starts_at, now.value)
     })
     .map(appointmentRow)
   for (const walk of walkIns.value) {

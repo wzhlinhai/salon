@@ -273,7 +273,7 @@ onMounted(loadSources)
           </thead>
           <tbody>
             <tr v-for="c in changes.items.value" :key="c.id">
-              <td class="tabular-nums whitespace-nowrap">{{ new Date(c.changed_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</td>
+              <td class="tabular-nums whitespace-nowrap">{{ storeDateTime(c.changed_at) }}</td>
               <td>{{ c.changed_by.name }}</td>
               <td>{{ c.label }}</td>
               <td>{{ show(settingOf(c.key), c.old_value) }}{{ c.old_is_default ? '（默认）' : '' }}</td>

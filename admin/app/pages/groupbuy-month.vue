@@ -16,8 +16,7 @@ const month = ref('')
 const data = ref<GroupbuyMonth | null>(null)
 
 function currentMonth() {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  return storeMonth()
 }
 
 // 读失败时丢掉上一个平台或月份的对账，原地给「重试」：不然看着的是别的月份的数，却以为是这个月的（hasData 恒为否）。
@@ -121,7 +120,7 @@ async function saveSettlement() {
         <div v-else class="overflow-x-auto">
           <UTable :data="data.history" :columns="historyColumns" data-testid="settlement-history">
             <template #created_at-cell="{ row }">
-              <span class="text-muted tabular-nums">{{ new Date(row.original.created_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</span>
+              <span class="text-muted tabular-nums">{{ storeDateTime(row.original.created_at) }}</span>
             </template>
             <template #amount-cell="{ row }">
               <span class="font-medium tabular-nums">{{ yuanFixed(row.original.amount) }}</span>

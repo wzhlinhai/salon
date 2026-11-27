@@ -17,6 +17,7 @@ npm run test:unit      # 单元测试（vitest，test/unit/）
 - 页面用 `definePageMeta({ permission: '...' })` 声明所需权限。导航只显示有权限的页面，直接访问会跳到无权限页。权限以后端检查为准，页面只是隐藏入口。
 - 生产环境用 `NUXT_PUBLIC_API_BASE` 指定后端地址。
 - 营业日和门店设置用 `useStoreToday()` 读（`load` 每次重新问后端，`value(key)` 是这一天执行的值，默认值由后端给，前端不另写）；只有按指定日期取设置（预约页的营业时间）才直接调 `get_settings`。
+- 门店墙上的日子和钟点、按门店日子拼时刻、「到点没来」的口径都用 `utils/storeClock.ts`（`storeClock`、`storeCalendarDay`、`storeTime`、`storeDateTime`、`storeInstant`、`minutesLate`、`probablyNotComing`），页面不写时区和 `+08:00`。
 - 单元测试只测不依赖 Nuxt 自动导入的模块：逻辑放在 `app/utils/` 里显式 import 的文件，composable 只做接线（例如 `utils/storeToday.ts` 和 `composables/useStoreToday.ts`）。页面和组件靠 e2e。
 - 页面一进来几路一起读的用 `usePageLoad({ fetch, apply, hasData, onFail?, optional? })`：`fetch` 返回各路请求（不用写 `Promise.all`），必须的几路都读到才 `apply`；读不到时页面还没有数据（`hasData` 为否）就给 `error` 原地重试并调 `onFail`，已有数据就留着、只弹提示；`optional` 里的几路读不到照样 `apply`，各弹一条提示；只有最后一次 `load` 能改页面，卸载时作废。逻辑在 `utils/pageLoad.ts`。
 - 其余单次请求用 `useRequestGuard` 判断结果是否过期（加载用 `next`，编辑窗口里的写操作用 `hold`，打开窗口或换对象时 `next`），卸载时自动作废；游标分页用 `useCursorList`。

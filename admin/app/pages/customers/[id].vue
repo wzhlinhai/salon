@@ -298,7 +298,7 @@ const logsOpen = computed({
 })
 
 const createdOn = computed(() => customer.value
-  ? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(new Date(customer.value.created_at))
+  ? storeCalendarDay(customer.value.created_at)
   : '')
 
 // 手机号
@@ -699,7 +699,7 @@ onBeforeUnmount(() => {
             <p class="flex flex-wrap items-center gap-x-2 text-meta text-muted">
               <span class="font-medium text-default">{{ actions[entry.action] || entry.action }}</span>
               <span>{{ entry.actor?.name ?? '系统' }}</span>
-              <span class="ms-auto tabular-nums">{{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</span>
+              <span class="ms-auto tabular-nums">{{ storeDateTime(entry.at) }}</span>
             </p>
             <p v-for="change in changes" :key="change.label" data-testid="log-change">
               <span class="me-2 text-meta text-muted">{{ change.label }}</span>
@@ -798,7 +798,7 @@ onBeforeUnmount(() => {
             <UInput v-model="mergeQuery" placeholder="手机号、后四位或姓名" :loading="searching" class="w-full" @keydown.enter="searchCandidates" />
           </UFormField>
           <div class="max-h-48 overflow-y-auto space-y-1">
-            <UButton v-for="c in candidates" :key="c.id" :data-customer-id="c.id" variant="outline" class="w-full justify-start" @click="selectCandidate(c)">{{ customerName(c) }} · {{ c.phone || '未留手机号' }} · {{ new Date(c.created_at).toLocaleString('zh-CN') }}</UButton>
+            <UButton v-for="c in candidates" :key="c.id" :data-customer-id="c.id" variant="outline" class="w-full justify-start" @click="selectCandidate(c)">{{ customerName(c) }} · {{ c.phone || '未留手机号' }} · {{ storeDateTime(c.created_at) }}</UButton>
           </div>
           <div class="flex items-center gap-3">
             <UButton variant="outline" :disabled="mergeOffset === 0 || searching" @click="changeMergePage(-1)">上一页</UButton>
@@ -815,7 +815,7 @@ onBeforeUnmount(() => {
                 <dd>来源：{{ c.source?.name || '未填写' }}</dd>
                 <dd>负责人：{{ c.responsible?.name || '不设' }}</dd>
                 <dd class="whitespace-pre-wrap">备注：{{ c.note || '无' }}</dd>
-                <dd>建档时间：{{ new Date(c.created_at).toLocaleString('zh-CN') }}</dd>
+                <dd>建档时间：{{ storeDateTime(c.created_at) }}</dd>
                 <dd>
                   <span v-for="l in c.active_safety_labels" :key="l.id" class="tag mr-1 bg-tag-red">{{ labelNames[l.kind] }}</span>
                 </dd>

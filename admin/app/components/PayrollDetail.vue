@@ -75,7 +75,7 @@ onMounted(() => Promise.all([commissions.reload(), adjustments.reload()]))
             <p>{{ a.name }} <span class="tabular-nums" :class="a.amount.startsWith('-') ? 'text-ink-red' : ''">{{ signed(a.amount) }}</span></p>
             <UButton v-if="!locked" size="sm" color="error" variant="ghost" class="opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 any-pointer-coarse:opacity-100" @click="askDelete(a)">删除</UButton>
           </div>
-          <p data-testid="adjustment-meta" class="text-meta text-muted"><template v-if="a.note">{{ a.note }} · </template>{{ a.created_by.name }} · {{ new Date(a.created_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</p>
+          <p data-testid="adjustment-meta" class="text-meta text-muted"><template v-if="a.note">{{ a.note }} · </template>{{ a.created_by.name }} · {{ storeDateTime(a.created_at) }}</p>
         </div>
         <p v-if="!adjustments.loading.value && !adjustments.items.value.length" class="px-3 py-2 text-sm text-muted">本月没有加减项</p>
       </div>

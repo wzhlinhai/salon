@@ -50,5 +50,5 @@ export function usePunch() {
 
 export function clockTime(value: string | null) {
   if (!value) return '—'
-  return new Date(value).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+  return storeTime(value)
 }

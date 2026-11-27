@@ -37,7 +37,7 @@ useHead(() => ({
 }))
 
 function timeText(iso: string) {
-  return new Date(iso).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })
+  return storeDateTime(iso)
 }
 
 function print() {
