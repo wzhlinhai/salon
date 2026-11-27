@@ -8,7 +8,6 @@ type Queue = components['schemas']['Queue']
 type Rotation = components['schemas']['Rotation']
 type Turn = components['schemas']['Turn']
 type RotationEvent = components['schemas']['RotationEvent']
-type Setting = components['schemas']['Setting']
 type SkipReason = components['schemas']['SkipStaffInput']['reason']
 
 const api = useApi()
@@ -438,15 +437,11 @@ function eventText(e: RotationEvent): string {
 }
 
 // ---- 门店规则（只读，改在门店设置） ----
-const rules = ref<Setting[]>([])
+const storeToday = useStoreToday()
+const rules = computed(() => storeToday.settings.value.filter(s => ['rotation_order_rule', 'rotation_skip_policy', 'rotation_half_rule'].includes(s.key)))
 
 async function loadRules() {
-  const { data, error } = await api.POST('/api/ops/get_settings', { body: {} })
-  if (!data) {
-    toast.add({ title: errorText(error), color: 'error' })
-    return
-  }
-  rules.value = data.settings.filter(s => ['rotation_order_rule', 'rotation_skip_policy', 'rotation_half_rule'].includes(s.key))
+  if (!await storeToday.load()) toast.add({ title: storeToday.error.value, color: 'error' })
 }
 
 const rulesText = computed(() => rules.value

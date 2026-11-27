@@ -15,8 +15,7 @@ const toast = useToast()
 const route = useRoute()
 const router = useRouter()
 const { me, can } = useMe()
-const businessDate = ref('')
-const settings = ref<Schema['Setting'][]>([])
+const { businessDate, value: settingValue, error: todayError, load: loadToday } = useStoreToday()
 const rows = ref<Aftersale[]>([])
 const loadError = ref('')
 const loading = ref(true)
@@ -32,12 +31,7 @@ const lanes: { status: Status, limit: number, tag: string }[] = [
 ]
 const laneRows = computed(() => Object.fromEntries(lanes.map(l => [l.status, rows.value.filter(r => r.status === l.status)])) as Record<Status, Aftersale[]>)
 
-function settingValue(key: string) {
-  const row = settings.value.find(s => s.key === key)
-  return row ? String(row.value) : ''
-}
-
-const windowDays = computed(() => Number(settingValue('aftersale_window_days') || 30))
+const windowDays = computed(() => Number(settingValue('aftersale_window_days')))
 const approvalByOther = computed(() => settingValue('aftersale_approval_mode') === 'other')
 
 // 顾客名：有看顾客的权限才逐个取，取不到写「顾客」。
@@ -62,15 +56,13 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const s = await api.POST('/api/ops/get_settings', { body: {} })
+    const today = await loadToday()
     if (!current()) return
-    if (!s.data) {
-      loadError.value = errorText(s.error)
+    if (!today) {
+      loadError.value = todayError.value
       return
     }
-    businessDate.value = s.data.business_date
-    settings.value = s.data.settings
-    const range = { date_from: addDays(s.data.business_date, -DAYS), date_to: s.data.business_date }
+    const range = { date_from: addDays(today.business_date, -DAYS), date_to: today.business_date }
     const results = await Promise.all(lanes.map(l => api.POST('/api/ops/list_aftersales', { body: { ...range, status: l.status, limit: l.limit } })))
     if (!current()) return
     const failed = results.find(r => !r.data)

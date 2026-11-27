@@ -11,7 +11,6 @@ type Item = components['schemas']['Item']
 type StaffOption = components['schemas']['StaffOption']
 type Deal = components['schemas']['Deal']
 type Redemption = components['schemas']['Redemption']
-type Setting = components['schemas']['Setting']
 type Platform = components['schemas']['CreateDealInput']['platform']
 
 const api = useApi()
@@ -43,15 +42,13 @@ function mayChange(permission: string, order: Order | null) {
 }
 
 // —— 设置、项目、员工 ——
+// 营业日等项目、员工一起读到了才填（填了才认网址里的开单请求），设置值随读随用。
 const businessDate = ref('')
-const settings = ref<Setting[]>([])
+const storeToday = useStoreToday()
 const items = ref<Item[]>([])
 const staffOptions = ref<StaffOption[]>([])
 const initGuard = useRequestGuard()
-const backfillMaxDays = computed(() => {
-  const value = settings.value.find(s => s.key === 'backfill_max_days')?.value
-  return Number(value ?? 3)
-})
+const backfillMaxDays = computed(() => Number(storeToday.value('backfill_max_days')))
 const staffItems = computed(() => staffOptions.value.map(s => ({ label: s.name, value: s.id })))
 const activeItems = computed(() => items.value.filter(i => i.active))
 
@@ -63,18 +60,17 @@ async function init() {
   const current = initGuard.next()
   initError.value = ''
   const [s, i, st] = await Promise.all([
-    api.POST('/api/ops/get_settings', { body: {} }),
+    storeToday.load(),
     api.POST('/api/ops/list_items', { body: {} }),
     api.POST('/api/ops/list_staff_options', { body: {} })
   ])
   if (!current()) return
-  if (!s.data || !i.data || !st.data) {
-    initError.value = errorText(s.error ?? i.error ?? st.error)
+  if (!s || !i.data || !st.data) {
+    initError.value = s ? errorText(i.error ?? st.error) : storeToday.error.value
     return
   }
   initError.value = ''
-  businessDate.value = s.data.business_date
-  settings.value = s.data.settings
+  businessDate.value = s.business_date
   items.value = i.data.items
   staffOptions.value = st.data.staff
   await loadOrders()

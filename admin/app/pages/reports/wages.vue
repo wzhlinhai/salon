@@ -21,7 +21,7 @@ const canPerformance = computed(() => {
   return g?.scope === 'store' && g.windowDays === null
 })
 
-const today = ref('')
+const { businessDate: today, error: todayError, load: loadToday } = useStoreToday()
 const months = ref<Schema['PayrollMonth'][]>([])
 const month = ref(typeof route.query.month === 'string' ? route.query.month : '')
 const payroll = ref<Schema['Payroll']>()
@@ -38,13 +38,12 @@ function monthEnd(value: string) {
 }
 
 async function boot() {
-  const [s, m] = await Promise.all([api.POST('/api/ops/get_settings', { body: {} }), api.POST('/api/ops/list_payroll_months', { body: {} })])
-  if (!s.data || !m.data) {
-    failed.value = errorText(s.error ?? m.error)
+  const [s, m] = await Promise.all([loadToday(), api.POST('/api/ops/list_payroll_months', { body: {} })])
+  if (!s || !m.data) {
+    failed.value = s ? errorText(m.error) : todayError.value
     toast.add({ title: failed.value, color: 'error' })
     return
   }
-  today.value = s.data.business_date
   months.value = m.data.entries
   if (!months.value.some(e => e.month === month.value)) month.value = months.value[0]?.month ?? ''
 }
@@ -89,7 +88,8 @@ onMounted(async () => {
 })
 
 function retry() {
-  void (today.value ? load() : boot().then(load))
+  // 营业日和工资月份都读到了才只重查这个月；缺一样就从头读（营业日读到、月份没读到时 today 已经有值）。
+  void (today.value && months.value.length ? load() : boot().then(load))
 }
 
 function performanceOf(p: Perf | undefined) {

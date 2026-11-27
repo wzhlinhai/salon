@@ -52,12 +52,13 @@ async function load() {
 // 本月每个项目做了几次（要 report.view）：补充信息，取不到就不写。
 const times = ref(new Map<string, number>())
 
+const storeToday = useStoreToday()
+
 async function loadTimes() {
   if (!can('report.view')) return
-  const settings = await api.POST('/api/ops/get_settings', { body: {} })
-  const today = settings.data?.business_date
+  const today = (await storeToday.load())?.business_date
   if (!today) return
-  const r = await api.POST('/api/ops/get_item_report', { body: { from: `${today.slice(0, 8)}01`, to: today } })
+  const r = await api.POST('/api/ops/get_item_report', { body: { from: monthStart(today), to: today } })
   if (r.data) times.value = new Map(r.data.rows.map(row => [row.item_id, row.times]))
 }
 

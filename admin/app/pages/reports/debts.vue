@@ -14,7 +14,7 @@ const toast = useToast()
 const { can } = useMe()
 const summary = ref<Summary | null>(null)
 const debts = ref<Debt[] | null>(null)
-const today = ref('')
+const { businessDate: today, load: loadToday } = useStoreToday()
 const failed = ref(false)
 const guard = useRequestGuard()
 
@@ -25,9 +25,9 @@ async function load() {
   const current = guard.next()
   failed.value = false
   const listed = can('customer.view')
-  const [s, settings, list] = await Promise.all([
+  const [s, , list] = await Promise.all([
     api.POST('/api/ops/debt_summary', { body: {} }),
-    api.POST('/api/ops/get_settings', { body: {} }),
+    loadToday(),
     listed ? api.POST('/api/ops/list_outstanding_debts', { body: {} }) : null
   ])
   if (!current()) return
@@ -37,7 +37,6 @@ async function load() {
     return
   }
   summary.value = s.data
-  today.value = settings.data?.business_date ?? ''
   debts.value = list?.data?.items ?? null
   if (list && !list.data) toast.add({ title: errorText(list.error), color: 'error' })
 }

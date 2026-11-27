@@ -13,7 +13,7 @@ const api = useApi()
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
-const today = ref('')
+const { businessDate: today, error: todayError, load: loadToday } = useStoreToday()
 const range = ref<ReportRange>({ granularity: 'day', from: '', to: '' })
 const report = ref<BusinessReport | null>(null)
 const previous = ref<BusinessReport | null>(null)
@@ -64,13 +64,11 @@ async function load() {
 // 先取营业日，再定范围；范围一变 watch 就去查。
 async function start() {
   failed.value = false
-  const settings = await api.POST('/api/ops/get_settings', { body: {} })
-  if (!settings.data) {
+  if (!await loadToday()) {
     failed.value = true
-    toast.add({ title: errorText(settings.error), color: 'error' })
+    toast.add({ title: todayError.value, color: 'error' })
     return
   }
-  today.value = settings.data.business_date
   range.value = fromQuery() ?? defaultRange('day', today.value)
 }
 

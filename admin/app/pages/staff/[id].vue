@@ -17,7 +17,7 @@ const editors = useTemplateRef('editors')
 
 const staff = ref<Staff | null>(null)
 const loadError = ref('')
-const today = ref('')
+const { businessDate: today, load: loadToday } = useStoreToday()
 const shift = ref<components['schemas']['Shift'] | null | undefined>(undefined)
 const report = ref<components['schemas']['StaffReportRow'] | null>(null)
 const recent = ref<Entry[]>([])
@@ -25,7 +25,7 @@ const attendance = ref<components['schemas']['AttendanceSummary'] | null>(null)
 const guard = useRequestGuard()
 const factsGuard = useRequestGuard()
 
-const monthStart = computed(() => today.value ? `${today.value.slice(0, 8)}01` : '')
+const monthFrom = computed(() => today.value ? monthStart(today.value) : '')
 
 async function load() {
   const current = guard.next()
@@ -48,11 +48,10 @@ async function load() {
 // 这个月的业绩、最近做的、班次和考勤：各取各的，取不到的那块不写，不挡整页。
 async function loadFacts() {
   const current = factsGuard.next()
-  const settings = await api.POST('/api/ops/get_settings', { body: {} })
-  if (!current() || !settings.data) return
-  today.value = settings.data.business_date
+  const loaded = await loadToday()
+  if (!current() || !loaded) return
   const staffID = id.value
-  const from = monthStart.value
+  const from = monthFrom.value
   const jobs: Promise<unknown>[] = []
   if (can('performance.view')) {
     jobs.push(api.POST('/api/ops/get_staff_report', { body: { from, to: today.value, staff_id: staffID } }).then((r) => {
@@ -183,7 +182,7 @@ const moreItems = computed(() => {
             <section v-if="report" data-testid="staff-month">
               <div class="flex items-center">
                 <h2 class="sec mt-0!">这个月</h2>
-                <NuxtLink :to="`/reports/staff?from=${monthStart}&to=${today}`" class="tap-area ms-auto inline-flex items-center text-meta text-muted hover:underline">业绩明细<UIcon name="i-lucide-chevron-right" class="size-4" aria-hidden="true" /></NuxtLink>
+                <NuxtLink :to="`/reports/staff?from=${monthFrom}&to=${today}`" class="tap-area ms-auto inline-flex items-center text-meta text-muted hover:underline">业绩明细<UIcon name="i-lucide-chevron-right" class="size-4" aria-hidden="true" /></NuxtLink>
               </div>
               <p class="text-base tabular-nums">{{ monthSentence }}</p>
             </section>

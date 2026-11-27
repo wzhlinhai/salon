@@ -84,7 +84,11 @@ const cancelReasonItems = [
   { label: '其他', value: '其他' }
 ]
 
+// 营业日和员工、项目一起读到了才填（网格等它出来），「今天」按钮另读一次门店当前状态。
 const businessDate = ref('')
+const storeToday = useStoreToday()
+// 「今天」按钮另用一份：和首屏读取各管各的，先发后到不互相作废。
+const todayStore = useStoreToday()
 const day = ref('')
 const hours = ref({ open: '09:00', close: '22:00' })
 const staff = ref<StaffOption[]>([])
@@ -208,18 +212,18 @@ const dayError = ref('')
 
 async function loadOptions() {
   const current = initGuard.next()
-  const [settingsResult, staffResult, itemsResult] = await Promise.all([
-    api.POST('/api/ops/get_settings', { body: {} }),
+  const [todayResult, staffResult, itemsResult] = await Promise.all([
+    storeToday.load(),
     api.POST('/api/ops/list_staff_options', { body: {} }),
     api.POST('/api/ops/list_items', { body: {} })
   ])
   if (!current()) return
-  if (!settingsResult.data || !staffResult.data || !itemsResult.data) {
-    optionsError.value = errorText(settingsResult.error ?? staffResult.error ?? itemsResult.error)
+  if (!todayResult || !staffResult.data || !itemsResult.data) {
+    optionsError.value = todayResult ? errorText(staffResult.error ?? itemsResult.error) : storeToday.error.value
     return
   }
   optionsError.value = ''
-  businessDate.value = settingsResult.data.business_date
+  businessDate.value = todayResult.business_date
   staff.value = staffResult.data.staff
   items.value = itemsResult.data.items
   // 读的时候人已经换了日期就不拉回今天。
@@ -275,10 +279,10 @@ function moveDay(delta: number) {
 
 async function goToday() {
   const current = todayGuard.next()
-  const { data, error } = await api.POST('/api/ops/get_settings', { body: {} })
+  const data = await todayStore.load()
   if (!current()) return
   if (data) day.value = data.business_date
-  else toast.add({ title: errorText(error), color: 'error' })
+  else toast.add({ title: todayStore.error.value, color: 'error' })
 }
 
 watch(day, () => {
