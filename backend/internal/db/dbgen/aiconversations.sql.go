@@ -58,6 +58,22 @@ func (q *Queries) AddAIConversationMessage(ctx context.Context, arg AddAIConvers
 	return i, err
 }
 
+const countAIConversationMessages = `-- name: CountAIConversationMessages :one
+SELECT count(*) FROM ai_conversation_messages WHERE store_id = $1 AND conversation_id = $2
+`
+
+type CountAIConversationMessagesParams struct {
+	StoreID        uuid.UUID
+	ConversationID uuid.UUID
+}
+
+func (q *Queries) CountAIConversationMessages(ctx context.Context, arg CountAIConversationMessagesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countAIConversationMessages, arg.StoreID, arg.ConversationID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAIConversation = `-- name: CreateAIConversation :one
 INSERT INTO ai_conversations (tenant_id, store_id, staff_id, title, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $5) RETURNING tenant_id, store_id, id, staff_id, title, archived_at, created_at, updated_at
@@ -93,6 +109,40 @@ func (q *Queries) CreateAIConversation(ctx context.Context, arg CreateAIConversa
 	return i, err
 }
 
+const deleteAIConversation = `-- name: DeleteAIConversation :execrows
+DELETE FROM ai_conversations WHERE store_id = $1 AND staff_id = $2 AND id = $3
+`
+
+type DeleteAIConversationParams struct {
+	StoreID uuid.UUID
+	StaffID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) DeleteAIConversation(ctx context.Context, arg DeleteAIConversationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteAIConversation, arg.StoreID, arg.StaffID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteAIConversationMessagesFrom = `-- name: DeleteAIConversationMessagesFrom :exec
+DELETE FROM ai_conversation_messages
+WHERE store_id = $1 AND conversation_id = $2 AND ordinal >= $3
+`
+
+type DeleteAIConversationMessagesFromParams struct {
+	StoreID        uuid.UUID
+	ConversationID uuid.UUID
+	Ordinal        *int64
+}
+
+func (q *Queries) DeleteAIConversationMessagesFrom(ctx context.Context, arg DeleteAIConversationMessagesFromParams) error {
+	_, err := q.db.Exec(ctx, deleteAIConversationMessagesFrom, arg.StoreID, arg.ConversationID, arg.Ordinal)
+	return err
+}
+
 const getAIConversation = `-- name: GetAIConversation :one
 SELECT tenant_id, store_id, id, staff_id, title, archived_at, created_at, updated_at FROM ai_conversations WHERE store_id = $1 AND staff_id = $2 AND id = $3
 `
@@ -115,6 +165,35 @@ func (q *Queries) GetAIConversation(ctx context.Context, arg GetAIConversationPa
 		&i.ArchivedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getAIConversationMessage = `-- name: GetAIConversationMessage :one
+SELECT tenant_id, store_id, id, conversation_id, ordinal, role, content, sent, editing, draft_ids, created_at FROM ai_conversation_messages WHERE store_id = $1 AND conversation_id = $2 AND id = $3
+`
+
+type GetAIConversationMessageParams struct {
+	StoreID        uuid.UUID
+	ConversationID uuid.UUID
+	ID             uuid.UUID
+}
+
+func (q *Queries) GetAIConversationMessage(ctx context.Context, arg GetAIConversationMessageParams) (AiConversationMessage, error) {
+	row := q.db.QueryRow(ctx, getAIConversationMessage, arg.StoreID, arg.ConversationID, arg.ID)
+	var i AiConversationMessage
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.ConversationID,
+		&i.Ordinal,
+		&i.Role,
+		&i.Content,
+		&i.Sent,
+		&i.Editing,
+		&i.DraftIds,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -263,6 +342,32 @@ func (q *Queries) ListRecentAIConversationMessages(ctx context.Context, arg List
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockAIConversation = `-- name: LockAIConversation :one
+SELECT tenant_id, store_id, id, staff_id, title, archived_at, created_at, updated_at FROM ai_conversations WHERE store_id = $1 AND staff_id = $2 AND id = $3 FOR UPDATE
+`
+
+type LockAIConversationParams struct {
+	StoreID uuid.UUID
+	StaffID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) LockAIConversation(ctx context.Context, arg LockAIConversationParams) (AiConversation, error) {
+	row := q.db.QueryRow(ctx, lockAIConversation, arg.StoreID, arg.StaffID, arg.ID)
+	var i AiConversation
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.StaffID,
+		&i.Title,
+		&i.ArchivedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const setAIConversationArchived = `-- name: SetAIConversationArchived :one

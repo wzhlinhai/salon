@@ -45,3 +45,19 @@ ORDER BY ordinal;
 -- name: AddAIConversationMessage :one
 INSERT INTO ai_conversation_messages (tenant_id, store_id, conversation_id, role, content, sent, editing, draft_ids, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *;
+
+-- name: LockAIConversation :one
+SELECT * FROM ai_conversations WHERE store_id = $1 AND staff_id = $2 AND id = $3 FOR UPDATE;
+
+-- name: GetAIConversationMessage :one
+SELECT * FROM ai_conversation_messages WHERE store_id = $1 AND conversation_id = $2 AND id = $3;
+
+-- name: DeleteAIConversationMessagesFrom :exec
+DELETE FROM ai_conversation_messages
+WHERE store_id = $1 AND conversation_id = $2 AND ordinal >= $3;
+
+-- name: CountAIConversationMessages :one
+SELECT count(*) FROM ai_conversation_messages WHERE store_id = $1 AND conversation_id = $2;
+
+-- name: DeleteAIConversation :execrows
+DELETE FROM ai_conversations WHERE store_id = $1 AND staff_id = $2 AND id = $3;
