@@ -86,6 +86,8 @@ const ui = computed(() => ({
   content: `${expanded.value ? 'max-w-none sm:max-w-none' : 'max-w-md'} divide-y-0`,
   wrapper: 'flex-1 min-w-0',
   close: 'static',
+  // 顶栏左右和内容区一样留 16：形象和正文首字、关闭按钮的悬停底色和输入卡右边对齐（默认 sm 是 24）。
+  header: 'px-4 sm:px-4',
   body: 'p-0 sm:p-0 flex flex-col',
   footer: `ai-chat border-t-0 px-4 pt-0 pb-4 sm:px-4 ${centered.value ? 'flex-1 items-start' : ''}`
 }))
