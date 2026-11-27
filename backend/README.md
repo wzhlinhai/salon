@@ -604,6 +604,33 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 汇总样例按批读取，查询条数不随样例数增长。本步只观察：员工端读取、已读/处理/忽略、首页和日结页提醒卡、起草草稿、连续忽略自动退回观察、出错提示老板都留给 #367/#368。
 
+## 门店 AI
+
+`internal/storeai` 是门店 AI always-on 骨架的第 1 步（ADR-0015）：只做存储与流转，运行本身由可注入的 `RunFunc` 提供，不接模型、工具或分类器。门店一个收件箱，每位员工一个；同一个收件箱同一时刻只有一个 worker。业务事件、定时器、交办、发件箱都只传编号和结构化字段，不传自由文字。
+
+表：
+
+- `ai_inboxes` 收件箱。门店收件箱 `staff_id` 为空，员工收件箱 `staff_id` 有值；部分唯一索引各保证一个。`lease_token`/`lease_until` 是单 worker 租约。
+- `ai_inbox_events` 持久事件。`(inbox_id, source_key)` 唯一，重复写入不报错也不新增；`subject_kind`/`subject_id` 同时为空或同时有值；`payload` 是 JSON 对象。本步的事件种类有 `follow_up_due`、`periodic_due`、`request`、`request_answered`、`late_answer`。
+- `ai_sessions` 会话。按收件箱和对象接回未关闭的会话；没有对象的事件总是新开会话。`messages` 是 JSON 数组，`status` 为 `active`/`waiting`/`closed`。
+- `ai_timers` 跟进和周期定时器。跟进到点置 `fired`；周期按 `settings.Location` 的本地时刻加天/周，错过几次只发一条。到点只写收件箱事件，从不直接启动运行。
+- `ai_memory_files` AI 记忆。门店一套、员工每人一套；路径只允许 `instructions.md`、`index.md`、`reported.md`、`notes/<名>.md`、`progress/<名>.md`，`<名>` 为 `^[a-z0-9][a-z0-9_-]{0,63}$`；每个文件不超过 16384 字节，每个收件箱最多 200 个。每次加载三个常驻文件，`notes/`、`progress/` 按需读。
+- `ai_outbox` AI 提醒的外发表。`tier` 为 `now`/`daily`/`weekly`，`body` 1–200 字，`parent_id` 是话题父条。同一收件人同一对象：还没发就替换，已经发过就接在话题父条下面，撤回则整件事的各收件人行都置 `withdrawn`。
+- `ai_requests` 交办。只有编号和结构化字段（`kind`、`subject`、`options`、`due_at`），没有自由文字列。员工只能选 `options` 里的短代码回答；改交后原条置 `reassigned`，原来那位晚到的回答作为 `late_answer` 事件交门店核对。
+
+流转：业务代码调用 `Emit` 写事件（或由调度器到点写 `follow_up_due`/`periodic_due`）；`RunOnce` 接受可注入时钟，每家门店先按这一轮开始时刻跑调度器和派发器，再挑出有待处理事件的收件箱。worker 用 `UPDATE ... WHERE lease_until IS NULL OR lease_until < now` 认领收件箱，重置上一个 worker 残留的 `running` 事件（`attempts` 到 3 的直接置 `failed`，`last_error` 写「多次运行中断」），再取最多 50 条 `pending`、到时间且 `attempts<3` 的事件置为 `running`、`attempts+1`。认领、续租、保存和失败退避都在各自时刻重新取时钟，续租不会用一轮开始时的旧时间。事件按对象分组，组内按 `created_at, id` 排序；有未关闭会话就接回，否则新建。运行成功在一个事务里校验租约、保存会话、把事件置 `done`；失败或 panic 时 `attempts<3` 的改回 `pending`，`not_before=失败时刻+attempts 分钟`，到 3 次置 `failed`，`last_error` 截到 200 字。不同收件箱并行度上限 4，每次运行 4 分钟，租约 5 分钟。`run` 为空时只跑调度器和派发器，不动收件箱。`RunLoop` 每 5 秒一轮，`Wake` 会提前叫醒；本步不在 `main.go` 启动它。
+
+派发器只把 `tier=now` 的 `queued` 行置为 `sent`；`daily`/`weekly` 本步留在 `queued`，第 2 步做当日/每周简报。记忆的路径、字节数和文件数在 Go 里先校验，数据库 CHECK 兜底；写新文件前锁住收件箱行再数，避免并发超过 200 个。发件箱对 `(store, recipient, subject)` 拿事务咨询锁，保证同一件事的并发写入只留一条。交办的收件人用 `FOR SHARE` 校验本店在职员工；回答和改交都先锁交办行、再锁员工行。
+
+「我的提醒」有两个操作，都是 `ops.LoggedIn` + `AINone`（不向 AI 开放）：
+
+| 操作 | 说明 |
+| --- | --- |
+| `list_my_reminders` | 只看本人已发出、未撤回的话题父条，按话题最近一次发出时间倒序，最多 50 条；`replies` 是同一话题已发出的子条；`unread_count` 是本人已发出且未读的父条和子条总数。父条和子条各一条查询。 |
+| `mark_my_reminder_read` | 把本人的一条话题父条和它已发出的子条中未读的置为已读；别人的、不存在的、撤回的、未发出的返回 404；已读再标不报错。这是阅读状态，不写操作日志。 |
+
+本步还没接：模型和 agent 循环、工具、分类器、团购核销写事件、转交和它的门店设置、`main.go` 里启动 `RunLoop`（B 步带 `AI_AGENT` 开关）、当日/每周简报的派发、员工对话进收件箱、前端页面。所有新表都按 `tenant_id` + `store_id` 隔离，`TestEveryTableIsTenantIsolated` 和 `TestBusinessForeignKeysIncludeTenant` 覆盖。
+
 ## AI 评测
 
 `internal/ai/eval` 是自建评测集（P0-32，ADR-0007）：40 条真实店务问题，覆盖营业额、业绩、顾客、卡余额/次数、预约、挂单、报表、团购核销，以及开单、改单补人、团购开单、调整单、修改草稿参数、预约起草和拒绝类问题。每条用例带标准答案、有序的期望工具调用（参数按子集匹配，支持 `any_of` 和字符串参数的 `$substring_of`）、禁止工具和回答关键词。期望参数用 `customer:王姐`、`staff:阿峰`、`item:洗剪吹`、`order:王姐挂单`、`card:王姐储值卡`、`redemption:美团1` 等符号引用，`$today`、`$tomorrow@15:00`、`$month` 等日期宏在固定门店 seed 后按门店时区解析。

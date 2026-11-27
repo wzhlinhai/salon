@@ -2078,6 +2078,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/list_my_reminders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看本人的 AI 提醒和未读数 */
+        post: operations["list_my_reminders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/list_open_orders": {
         parameters: {
             query?: never;
@@ -2446,6 +2463,23 @@ export interface paths {
         put?: never;
         /** 锁定月度工资与提成 */
         post: operations["lock_payroll_month"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/mark_my_reminder_read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 把一条 AI 提醒和它的回复标为已读 */
+        post: operations["mark_my_reminder_read"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5979,6 +6013,7 @@ export interface components {
             date: string;
         };
         List_draftsRequest: Record<string, never>;
+        List_my_remindersRequest: Record<string, never>;
         List_reminder_rulesRequest: Record<string, never>;
         LogList: {
             entries: components["schemas"]["Entry"][];
@@ -6005,6 +6040,13 @@ export interface components {
         };
         LookupInput: {
             key: string;
+        };
+        MarkMyReminderReadInput: {
+            /** Format: uuid */
+            id: string;
+        };
+        MarkMyReminderReadResult: {
+            id: string;
         };
         Me: {
             is_owner: boolean;
@@ -6160,6 +6202,36 @@ export interface components {
             phone: string | null;
             phone_masked: boolean;
             store_name: string;
+        };
+        MyReminder: {
+            body: string;
+            id: string;
+            /** Format: date-time */
+            read_at: string | null;
+            replies: components["schemas"]["MyReminderReply"][];
+            /** Format: date-time */
+            sent_at: string;
+            subject_id: string;
+            subject_kind: string;
+            /** @enum {string} */
+            tier: "now" | "daily" | "weekly";
+        };
+        MyReminderList: {
+            items: components["schemas"]["MyReminder"][];
+            /** Format: int64 */
+            unread_count: number;
+        };
+        MyReminderReply: {
+            body: string;
+            id: string;
+            /** Format: date-time */
+            read_at: string | null;
+            /** Format: date-time */
+            sent_at: string;
+            subject_id: string;
+            subject_kind: string;
+            /** @enum {string} */
+            tier: "now" | "daily" | "weekly";
         };
         My_appointmentsRequest: Record<string, never>;
         My_booking_optionsRequest: Record<string, never>;
@@ -11805,6 +11877,39 @@ export interface operations {
             };
         };
     };
+    list_my_reminders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["List_my_remindersRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyReminderList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     list_open_orders: {
         parameters: {
             query?: never;
@@ -12518,6 +12623,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Payroll"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    mark_my_reminder_read: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkMyReminderReadInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarkMyReminderReadResult"];
                 };
             };
             /** @description Error */
