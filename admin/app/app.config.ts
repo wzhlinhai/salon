@@ -143,12 +143,14 @@ export default defineAppConfig({
       slots: { content: 'rounded-card ring-0 shadow-lift' }
     },
     // 提示条（样稿 25）：墨色底白字一行，做完了说一声；出错是浅红底黑字，说清哪里不行。
+    // 照 Notion 的提示：矮矮一条、按字数收窄居中，不带关闭叉和进度条；同时只留一条，新的顶掉旧的（app.vue 的 toaster 设置）。
     toast: {
       slots: {
-        root: 'bg-inverted ring-0 shadow-lift rounded-card px-4 py-3',
-        title: 'text-inverted',
+        root: 'bg-inverted ring-0 shadow-lift rounded-md px-4 py-2 items-center w-fit max-w-full mx-auto',
+        wrapper: 'w-auto flex-initial',
+        title: 'text-inverted font-normal',
         description: 'text-inverted/70',
-        close: 'text-inverted/70 hover:text-inverted',
+        close: 'hidden',
         // 「撤销」「记配方」这类操作按钮在深底上要反白，默认的灰字看不清。
         actions: '[&_button]:text-inverted [&_button:hover]:text-inverted/80 [&_button]:underline [&_button]:underline-offset-2'
       },
@@ -156,7 +158,7 @@ export default defineAppConfig({
         color: {
           primary: { icon: 'text-inverted' },
           neutral: { icon: 'text-inverted' },
-          error: { root: 'bg-tag-red', title: 'text-highlighted', description: 'text-toned', close: 'text-toned hover:text-default', actions: '[&_button]:text-highlighted [&_button:hover]:text-default' }
+          error: { root: 'bg-tag-red', title: 'text-highlighted', description: 'text-toned', actions: '[&_button]:text-highlighted [&_button:hover]:text-default' }
         }
       }
     },
