@@ -123,7 +123,7 @@ func runStore(ctx context.Context, pool *pgxpool.Pool, tenantID, storeID uuid.UU
 			if now.In(settings.Location).Format("15:04") < rule.CheckAt {
 				continue
 			}
-			run, hasRun, err := reminderRun(ctx, q, storeID, rule.Key, businessDate)
+			run, hasRun, err := reminderRun(ctx, q, storeID, rule.Key, businessDate, mode)
 			if err != nil {
 				return err
 			}
@@ -145,7 +145,7 @@ func runStore(ctx context.Context, pool *pgxpool.Pool, tenantID, storeID uuid.UU
 				lastError := shortError(ruleErr.Error())
 				if _, err := q.UpsertReminderRun(ctx, dbgen.UpsertReminderRunParams{
 					TenantID: tenantID, StoreID: storeID, RuleKey: rule.Key, BusinessDate: pgDate(businessDate),
-					Status: runError, Failures: failures, LastError: &lastError, Matched: 0,
+					Mode: string(mode), Status: runError, Failures: failures, LastError: &lastError, Matched: 0,
 				}); err != nil {
 					return err
 				}
@@ -180,8 +180,8 @@ func effectiveModes(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID) (m
 	return out, nil
 }
 
-func reminderRun(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, ruleKey string, businessDate time.Time) (dbgen.AiReminderRun, bool, error) {
-	run, err := q.GetReminderRun(ctx, dbgen.GetReminderRunParams{StoreID: storeID, RuleKey: ruleKey, BusinessDate: pgDate(businessDate)})
+func reminderRun(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, ruleKey string, businessDate time.Time, mode Mode) (dbgen.AiReminderRun, bool, error) {
+	run, err := q.GetReminderRun(ctx, dbgen.GetReminderRunParams{StoreID: storeID, RuleKey: ruleKey, BusinessDate: pgDate(businessDate), Mode: string(mode)})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return dbgen.AiReminderRun{}, false, nil
 	}
@@ -199,7 +199,7 @@ func runRule(ctx context.Context, q *dbgen.Queries, tenantID, storeID uuid.UUID,
 	if len(matches) == 0 {
 		if _, err := q.UpsertReminderRun(ctx, dbgen.UpsertReminderRunParams{
 			TenantID: tenantID, StoreID: storeID, RuleKey: rule.Key, BusinessDate: pgDate(businessDate),
-			Status: runNoMatch, Failures: 0, Matched: 0,
+			Mode: string(mode), Status: runNoMatch, Failures: 0, Matched: 0,
 		}); err != nil {
 			return nil, err
 		}
@@ -230,7 +230,7 @@ func runRule(ctx context.Context, q *dbgen.Queries, tenantID, storeID uuid.UUID,
 	}
 	if _, err := q.UpsertReminderRun(ctx, dbgen.UpsertReminderRunParams{
 		TenantID: tenantID, StoreID: storeID, RuleKey: rule.Key, BusinessDate: pgDate(businessDate),
-		Status: runDone, Failures: 0, Matched: int32(len(matches)),
+		Mode: string(mode), Status: runDone, Failures: 0, Matched: int32(len(matches)),
 	}); err != nil {
 		return nil, err
 	}
@@ -250,7 +250,7 @@ func gate(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, rule Rule, m
 	}
 	if rule.Cooldown > 0 {
 		inCooldown, err := q.ReminderEmittedInCooldown(ctx, dbgen.ReminderEmittedInCooldownParams{
-			StoreID: storeID, RuleKey: rule.Key, RecipientStaffID: match.RecipientStaffID,
+			StoreID: storeID, RuleKey: rule.Key, Mode: string(mode), RecipientStaffID: match.RecipientStaffID,
 			SubjectKey: match.SubjectKey, FromDate: pgDate(businessDate.AddDate(0, 0, -rule.Cooldown)), BusinessDate: pgDate(businessDate),
 		})
 		if err != nil {
@@ -262,7 +262,7 @@ func gate(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, rule Rule, m
 	}
 	if rule.MaxTimes > 0 {
 		count, err := q.ReminderEmittedCount(ctx, dbgen.ReminderEmittedCountParams{
-			StoreID: storeID, RuleKey: rule.Key, RecipientStaffID: match.RecipientStaffID, SubjectKey: match.SubjectKey,
+			StoreID: storeID, RuleKey: rule.Key, Mode: string(mode), RecipientStaffID: match.RecipientStaffID, SubjectKey: match.SubjectKey,
 		})
 		if err != nil {
 			return "", err

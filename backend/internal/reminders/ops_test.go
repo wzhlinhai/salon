@@ -8,15 +8,18 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/wzhlinhai/salon/backend/internal/db"
+	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/optest"
+	"github.com/wzhlinhai/salon/backend/internal/reminders"
 )
 
 func TestReminderRuleListAndSetMode(t *testing.T) {
@@ -220,6 +223,166 @@ func TestReminderStoreIsolation(t *testing.T) {
 	}
 }
 
+func TestReminderStoreIsolationSummaryAndGate(t *testing.T) {
+	t.Run("summary", func(t *testing.T) {
+		f := open(t)
+		otherStore, _ := secondStore(t, f)
+		f.businessDay("2026-11-26")
+		f.SetNow(at("2026-11-27", 10, 0))
+		runDefault(t, f.Shop, at("2026-11-27", 10, 0), nil)
+		tx := dbtest.AppTx(t, f.Pool, f.Res.TenantID)
+		dbtest.Exec(t, tx, `INSERT INTO ai_reminder_runs (tenant_id,store_id,rule_key,business_date,mode,status,failures,matched) VALUES ($1,$2,'closing_yesterday_brief','2026-11-25','observe','done',0,1)`,
+			f.Res.TenantID, otherStore)
+		dbtest.Commit(t, tx)
+		insertReminderAtMode(t, f, otherStore, f.Res.OwnerID, "observe", "closing_yesterday_brief", "emitted", "2026-11-27", "other", nil)
+		insertReminderAtMode(t, f, otherStore, f.Res.OwnerID, "observe", "closing_yesterday_brief", "deduped", "2026-11-27", "other-2", nil)
+		r := f.Call(t, f.Owner, "get_reminder_summary", map[string]any{"rule_key": "closing_yesterday_brief", "days": 7}, 200)
+		if r.Body["ran_days"].(float64) != 1 || r.Body["matched_days"].(float64) != 1 || r.Body["error_days"].(float64) != 0 {
+			t.Fatalf("summary = %v", r.Body)
+		}
+		if r.Body["emitted"].(float64) != 1 || r.Body["blocked"].(map[string]any)["deduped"].(float64) != 0 {
+			t.Fatalf("summary = %v", r.Body)
+		}
+		samples := r.Body["samples"].([]any)
+		if len(samples) != 1 || samples[0].(map[string]any)["recipient_name"] == "第二家老板" {
+			t.Fatalf("samples = %v", samples)
+		}
+	})
+	t.Run("gate", func(t *testing.T) {
+		f := open(t)
+		otherStore, _ := secondStore(t, f)
+		setDailyCap(t, f, "2026-11-27", 1)
+		insertReminderAtMode(t, f, otherStore, f.Res.OwnerID, "observe", "gate_isolation_rule", "emitted", "2026-11-27", "same", nil)
+		rule := matchRule("gate_isolation_rule", func(rule *reminders.Rule) { rule.MaxTimes = 1 }, oneMatch(f.Shop, "same"))
+		runRules(t, f.Shop, at("2026-11-27", 10, 0), nil, []reminders.Rule{rule})
+		if got := outcomeBySubject(t, f.Shop, "gate_isolation_rule")["same"]; got != "emitted" {
+			t.Fatalf("outcome = %q", got)
+		}
+	})
+	t.Run("audit", func(t *testing.T) {
+		f := open(t)
+		otherStore, _ := secondStore(t, f)
+		f.businessDay("2026-11-26")
+		f.now("2026-11-26", 13, 0)
+		f.closeDay("2026-11-26", "100.00")
+		insertAuditAt(t, f.Shop, otherStore, "adjust_card", at("2026-11-26", 15, 0))
+		runDefault(t, f.Shop, at("2026-11-27", 10, 0), nil)
+		run := runRow(t, f.Shop, "closing_yesterday_brief", "2026-11-27")
+		if run == nil || run.Status != "no_match" || len(allReminders(t, f.Shop)) != 0 {
+			t.Fatalf("run = %+v reminders = %+v", run, allReminders(t, f.Shop))
+		}
+	})
+}
+
+func TestReminderSummaryBusinessDayBoundary(t *testing.T) {
+	f := open(t)
+	f.now("2026-11-25", 12, 0)
+	f.Call(t, f.Owner, "change_setting", map[string]any{"key": "business_day_end", "value": "03:00", "effective_from": "2026-11-26"}, 200)
+	insertRunRowMode(t, f, "closing_yesterday_brief", "2026-11-26", "observe", "error", 1)
+	insertRunRowMode(t, f, "closing_yesterday_brief", "2026-11-26", "on", "error", 1)
+	insertRunRowMode(t, f, "closing_yesterday_brief", "2026-11-27", "observe", "done", 0)
+	if runRowMode(t, f.Shop, "closing_yesterday_brief", "2026-11-26", "on") == nil {
+		t.Fatal("missing on-mode error run")
+	}
+	tx := dbtest.AppTx(t, f.Pool, f.Res.TenantID)
+	var errorRows int
+	if err := tx.QueryRow(context.Background(), "SELECT count(*) FROM ai_reminder_runs WHERE store_id=$1 AND rule_key='closing_yesterday_brief' AND business_date='2026-11-26' AND status='error'", f.Res.StoreID).Scan(&errorRows); err != nil {
+		dbtest.Rollback(t, tx)
+		t.Fatal(err)
+	}
+	dbtest.Rollback(t, tx)
+	if errorRows != 2 {
+		t.Fatalf("error rows = %d", errorRows)
+	}
+	f.SetNow(at("2026-11-27", 1, 0))
+	r := f.Call(t, f.Owner, "get_reminder_summary", map[string]any{"rule_key": "closing_yesterday_brief", "days": 1}, 200)
+	if r.Body["date_from"] != "2026-11-26" || r.Body["date_to"] != "2026-11-26" {
+		t.Fatalf("range = %v", r.Body)
+	}
+	if r.Body["ran_days"].(float64) != 1 || r.Body["error_days"].(float64) != 1 || r.Body["last_error_date"] != "2026-11-26" {
+		t.Fatalf("summary = %v", r.Body)
+	}
+}
+
+func TestSetReminderRuleModeWaitsForLock(t *testing.T) {
+	f := open(t)
+	caller := f.MustCaller(f.Owner)
+	tx, err := f.Pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbtest.Exec(t, tx, "SELECT pg_advisory_xact_lock(hashtextextended($1::text || '/ai_reminder_rule/' || $2,0))", f.Res.StoreID.String(), "closing_yesterday_brief")
+	type result struct{ r optest.Result }
+	done := make(chan result, 1)
+	go func() {
+		done <- result{r: f.HTTP(t, &caller, "set_reminder_rule_mode", map[string]any{"rule_key": "closing_yesterday_brief", "mode": "on"})}
+	}()
+	var early *optest.Result
+	select {
+	case got := <-done:
+		early = &got.r
+	case <-time.After(200 * time.Millisecond):
+	}
+	if err := tx.Rollback(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if early != nil {
+		t.Fatalf("set mode returned while lock held: %d %v", early.Status, early.Body)
+	}
+	select {
+	case got := <-done:
+		if got.r.Status != http.StatusOK {
+			t.Fatalf("set mode = %d %v", got.r.Status, got.r.Body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("set mode did not return after lock release")
+	}
+	tx = dbtest.AppTx(t, f.Pool, f.Res.TenantID)
+	var before, after []byte
+	if err := tx.QueryRow(context.Background(), "SELECT before,after FROM audit_log WHERE action='set_reminder_rule_mode' ORDER BY at DESC,id DESC LIMIT 1").Scan(&before, &after); err != nil {
+		dbtest.Rollback(t, tx)
+		t.Fatal(err)
+	}
+	dbtest.Rollback(t, tx)
+	var beforeMode, afterMode map[string]any
+	if err := json.Unmarshal(before, &beforeMode); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(after, &afterMode); err != nil {
+		t.Fatal(err)
+	}
+	if beforeMode["mode"] != "observe" || afterMode["mode"] != "on" {
+		t.Fatalf("audit = %s %s", before, after)
+	}
+}
+
+func TestFeedbackUpdateFiltersStore(t *testing.T) {
+	f := open(t)
+	otherStore, otherStaff := secondStore(t, f)
+	id := insertReminderAt(t, f, otherStore, otherStaff, "closing_yesterday_brief", "emitted", "2026-11-27", "other", nil)
+	tx := dbtest.AppTx(t, f.Pool, f.Res.TenantID)
+	rows, err := dbgen.New(tx).SetReminderFeedback(context.Background(), dbgen.SetReminderFeedbackParams{ID: id, StoreID: f.Res.StoreID})
+	dbtest.Rollback(t, tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows != 0 {
+		t.Fatalf("updated %d rows from another store", rows)
+	}
+}
+
+func TestFeedbackGetFiltersStore(t *testing.T) {
+	f := open(t)
+	otherStore, otherStaff := secondStore(t, f)
+	id := insertReminderAt(t, f, otherStore, otherStaff, "closing_yesterday_brief", "emitted", "2026-11-27", "other", nil)
+	tx := dbtest.AppTx(t, f.Pool, f.Res.TenantID)
+	_, err := dbgen.New(tx).GetReminderForFeedback(context.Background(), dbgen.GetReminderForFeedbackParams{ID: id, StoreID: f.Res.StoreID})
+	dbtest.Rollback(t, tx)
+	if !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("get from another store = %v", err)
+	}
+}
+
 func TestReminderSummaryQueryCount(t *testing.T) {
 	f := open(t)
 	for i := 0; i < 10; i++ {
@@ -238,7 +401,7 @@ func TestReminderSummaryQueryCount(t *testing.T) {
 	caller := f.MustCaller(f.Owner)
 	counts := []int64{}
 	for _, limit := range []int{1, 10} {
-		if _, err := f.Pool.Exec(t.Context(), "DELETE FROM ai_reminders WHERE subject_key <> $1", "subject-a"); err != nil {
+		if _, err := f.Pool.Exec(t.Context(), "DELETE FROM ai_reminders WHERE store_id = $1 AND subject_key <> $2", f.Res.StoreID, "subject-a"); err != nil {
 			t.Fatal(err)
 		}
 		for i := 1; i < limit; i++ {
@@ -267,16 +430,21 @@ func (*queryCounter) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEnd
 
 func insertReminderRow(t *testing.T, f *fixture, ruleKey, outcome, day, subject string, aiText *string) uuid.UUID {
 	t.Helper()
-	return insertReminderAt(t, f, f.Res.StoreID, f.Res.OwnerID, ruleKey, outcome, day, subject, aiText)
+	return insertReminderAtMode(t, f, f.Res.StoreID, f.Res.OwnerID, "observe", ruleKey, outcome, day, subject, aiText)
 }
 
 func insertReminderAt(t *testing.T, f *fixture, storeID, staffID uuid.UUID, ruleKey, outcome, day, subject string, aiText *string) uuid.UUID {
 	t.Helper()
+	return insertReminderAtMode(t, f, storeID, staffID, "observe", ruleKey, outcome, day, subject, aiText)
+}
+
+func insertReminderAtMode(t *testing.T, f *fixture, storeID, staffID uuid.UUID, mode, ruleKey, outcome, day, subject string, aiText *string) uuid.UUID {
+	t.Helper()
 	var id uuid.UUID
 	tx := dbtest.AppTx(t, f.Pool, f.Res.TenantID)
 	err := tx.QueryRow(context.Background(), `INSERT INTO ai_reminders (tenant_id,store_id,rule_key,rule_version,mode,recipient_staff_id,subject_key,business_date,urgent,facts,fallback_text,ai_text,outcome)
-		VALUES ($1,$2,$3,1,'observe',$4,$5,$6,false,'{}'::jsonb,'固定文案',$7,$8) RETURNING id`,
-		f.Res.TenantID, storeID, ruleKey, staffID, subject, day, aiText, outcome).Scan(&id)
+		VALUES ($1,$2,$3,1,$4,$5,$6,$7,false,'{}'::jsonb,'固定文案',$8,$9) RETURNING id`,
+		f.Res.TenantID, storeID, ruleKey, mode, staffID, subject, day, aiText, outcome).Scan(&id)
 	if err != nil {
 		dbtest.Rollback(t, tx)
 		t.Fatal(err)
@@ -287,9 +455,14 @@ func insertReminderAt(t *testing.T, f *fixture, storeID, staffID uuid.UUID, rule
 
 func insertRunRow(t *testing.T, f *fixture, ruleKey, day, status string, failures int) {
 	t.Helper()
+	insertRunRowMode(t, f, ruleKey, day, "observe", status, failures)
+}
+
+func insertRunRowMode(t *testing.T, f *fixture, ruleKey, day, mode, status string, failures int) {
+	t.Helper()
 	tx := dbtest.AppTx(t, f.Pool, f.Res.TenantID)
-	dbtest.Exec(t, tx, `INSERT INTO ai_reminder_runs (tenant_id,store_id,rule_key,business_date,status,failures,matched) VALUES ($1,$2,$3,$4,$5,$6,0) ON CONFLICT (tenant_id,store_id,rule_key,business_date) DO UPDATE SET status=EXCLUDED.status,failures=EXCLUDED.failures`,
-		f.Res.TenantID, f.Res.StoreID, ruleKey, day, status, failures)
+	dbtest.Exec(t, tx, `INSERT INTO ai_reminder_runs (tenant_id,store_id,rule_key,business_date,mode,status,failures,matched) VALUES ($1,$2,$3,$4,$5,$6,$7,0) ON CONFLICT (tenant_id,store_id,rule_key,business_date,mode) DO UPDATE SET status=EXCLUDED.status,failures=EXCLUDED.failures`,
+		f.Res.TenantID, f.Res.StoreID, ruleKey, day, mode, status, failures)
 	dbtest.Commit(t, tx)
 }
 

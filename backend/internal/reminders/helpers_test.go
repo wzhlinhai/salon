@@ -115,8 +115,15 @@ func modelFunc(model ai.Model) func() ai.Model {
 
 func runRow(t *testing.T, s *optest.Shop, ruleKey, day string) *dbgen.AiReminderRun {
 	t.Helper()
+	return runRowMode(t, s, ruleKey, day, string(reminders.ModeObserve))
+}
+
+func runRowMode(t *testing.T, s *optest.Shop, ruleKey, day, mode string) *dbgen.AiReminderRun {
+	t.Helper()
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
-	row, err := dbgen.New(tx).GetReminderRun(context.Background(), dbgen.GetReminderRunParams{StoreID: s.Res.StoreID, RuleKey: ruleKey, BusinessDate: pgtype.Date{Time: mustDate(day), Valid: true}})
+	row, err := dbgen.New(tx).GetReminderRun(context.Background(), dbgen.GetReminderRunParams{
+		StoreID: s.Res.StoreID, RuleKey: ruleKey, BusinessDate: pgtype.Date{Time: mustDate(day), Valid: true}, Mode: mode,
+	})
 	dbtest.Rollback(t, tx)
 	if err == pgx.ErrNoRows {
 		return nil
@@ -171,9 +178,14 @@ func mustDate(day string) time.Time {
 
 func insertAudit(t *testing.T, s *optest.Shop, action string, atTime time.Time) {
 	t.Helper()
+	insertAuditAt(t, s, s.Res.StoreID, action, atTime)
+}
+
+func insertAuditAt(t *testing.T, s *optest.Shop, storeID uuid.UUID, action string, atTime time.Time) {
+	t.Helper()
 	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
 	dbtest.Exec(t, tx, `INSERT INTO audit_log (tenant_id,store_id,action,target_kind,target_id,actor_id,at) VALUES ($1,$2,$3,'shift',$4,$5,$6)`,
-		s.Res.TenantID, s.Res.StoreID, action, uuid.New(), s.Res.OwnerID, pgtype.Timestamptz{Time: atTime, Valid: true})
+		s.Res.TenantID, storeID, action, uuid.New(), s.Res.OwnerID, pgtype.Timestamptz{Time: atTime, Valid: true})
 	dbtest.Commit(t, tx)
 }
 

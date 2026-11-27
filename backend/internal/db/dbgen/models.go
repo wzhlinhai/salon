@@ -149,6 +149,7 @@ type AiReminderRun struct {
 	StoreID      uuid.UUID
 	ID           uuid.UUID
 	RuleKey      string
+	Mode         string
 	BusinessDate pgtype.Date
 	Status       string
 	Failures     int32

@@ -21,11 +21,14 @@ const (
 // writerTimeout 是一次写话调用的期限；测试可以缩短。
 var writerTimeout = 15 * time.Second
 
-var numberPattern = regexp.MustCompile(`[0-9][0-9,]*(?:\.[0-9]+)?`)
+var numberPattern = regexp.MustCompile(`[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+`)
 
-const writerSystemPrompt = "你只把给定事实写成一句给店主看的中文提醒。只能用事实里出现的数字和判断，不补充、不推测，不写人名和手机号，不超过 80 字。"
+// chineseQuantityPattern 拦住“两笔”“三万元”“十次”这类中文数字加量词；不拦“一两句”这种不以量词结尾的用法。
+var chineseQuantityPattern = regexp.MustCompile(`[零〇一二两三四五六七八九十百千万亿]+[笔次元块个位天日号月年条单张]`)
 
-// GenerateText 让模型把事实写成一句提醒；模型出错、没配、超时、为空、过长或出现事实里没有的数字时返回 false。
+const writerSystemPrompt = "只把给定事实写成一两句给收件人看的中文提醒；数字一律用阿拉伯数字；不加事实里没有的数字和判断；不写人名和手机号；不超过 80 字。"
+
+// GenerateText 让模型把事实写成提醒；模型出错、没配、超时、为空、过长、用中文数字加量词或出现事实里没有的数字时返回 false。
 func GenerateText(ctx context.Context, model ai.Model, rule Rule, facts json.RawMessage) (string, bool) {
 	if model == nil || len(facts) == 0 {
 		return "", false
@@ -45,6 +48,9 @@ func GenerateText(ctx context.Context, model ai.Model, rule Rule, facts json.Raw
 	}
 	text := strings.TrimSpace(message.Content)
 	if text == "" || utf8.RuneCountInString(text) > writerMaxRunes {
+		return "", false
+	}
+	if chineseQuantityPattern.MatchString(text) {
 		return "", false
 	}
 	for _, number := range textNumbers(text) {

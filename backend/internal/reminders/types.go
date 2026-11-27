@@ -138,7 +138,7 @@ type ReminderSummary struct {
 	DateTo      string `json:"date_to" format:"date"`
 	RanDays     int32  `json:"ran_days" doc:"检查跑了几天的营业日数"`
 	MatchedDays int32  `json:"matched_days" doc:"规则选中过至少一个对象的营业日数"`
-	ErrorDays   int32  `json:"error_days" doc:"当前仍为出错状态的营业日数"`
+	ErrorDays   int32  `json:"error_days" doc:"这条规则当前仍是出错状态的营业日数"`
 	// LastErrorDate 是最近一条仍为出错状态的营业日，不带错误原文。
 	LastErrorDate *string `json:"last_error_date" nullable:"true" format:"date"`
 	Emitted       int64   `json:"emitted" doc:"发出的提醒条数（含观察档）"`

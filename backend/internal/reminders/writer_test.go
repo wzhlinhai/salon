@@ -40,6 +40,37 @@ func TestWriterRejectsUnknownNumber(t *testing.T) {
 	}
 }
 
+func TestWriterRejectsChineseQuantity(t *testing.T) {
+	facts := []byte(`{"count":2,"amount":30000}`)
+	rule := reminders.Rule{Name: "测试规则"}
+	for _, reply := range []string{"有两笔需要处理。", "金额三万元。", "已经提醒十次。"} {
+		model := &fakeModel{reply: reply}
+		if _, ok := reminders.GenerateText(t.Context(), model, rule, facts); ok {
+			t.Fatalf("reply %q accepted", reply)
+		}
+	}
+	model := &fakeModel{reply: "用一两句话说明。"}
+	if text, ok := reminders.GenerateText(t.Context(), model, rule, facts); !ok || text != model.reply {
+		t.Fatalf("reply %q rejected", model.reply)
+	}
+}
+
+func TestWriterAcceptsLeadingDecimalAndIgnoresSign(t *testing.T) {
+	rule := reminders.Rule{Name: "测试规则"}
+	for _, test := range []struct {
+		facts []byte
+		reply string
+	}{
+		{[]byte(`{"amount":0.5}`), "还差 .5 元。"},
+		{[]byte(`{"amount":-10.00}`), "差 10 元。"},
+	} {
+		model := &fakeModel{reply: test.reply}
+		if text, ok := reminders.GenerateText(t.Context(), model, rule, test.facts); !ok || text != test.reply {
+			t.Fatalf("reply %q rejected", test.reply)
+		}
+	}
+}
+
 func TestWriterKeepsReminderOnModelError(t *testing.T) {
 	f := open(t)
 	model := &fakeModel{err: errors.New("模型不可用")}

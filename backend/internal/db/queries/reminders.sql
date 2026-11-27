@@ -19,12 +19,13 @@ RETURNING *;
 
 -- name: GetReminderRun :one
 SELECT * FROM ai_reminder_runs
-WHERE store_id = sqlc.arg(store_id) AND rule_key = sqlc.arg(rule_key) AND business_date = sqlc.arg(business_date);
+WHERE store_id = sqlc.arg(store_id) AND rule_key = sqlc.arg(rule_key)
+  AND business_date = sqlc.arg(business_date) AND mode = sqlc.arg(mode);
 
 -- name: UpsertReminderRun :one
-INSERT INTO ai_reminder_runs (tenant_id, store_id, rule_key, business_date, status, failures, last_error, matched)
-VALUES (sqlc.arg(tenant_id), sqlc.arg(store_id), sqlc.arg(rule_key), sqlc.arg(business_date), sqlc.arg(status), sqlc.arg(failures), sqlc.narg(last_error), sqlc.arg(matched))
-ON CONFLICT (tenant_id, store_id, rule_key, business_date) DO UPDATE
+INSERT INTO ai_reminder_runs (tenant_id, store_id, rule_key, business_date, mode, status, failures, last_error, matched)
+VALUES (sqlc.arg(tenant_id), sqlc.arg(store_id), sqlc.arg(rule_key), sqlc.arg(business_date), sqlc.arg(mode), sqlc.arg(status), sqlc.arg(failures), sqlc.narg(last_error), sqlc.arg(matched))
+ON CONFLICT (tenant_id, store_id, rule_key, business_date, mode) DO UPDATE
 SET status = EXCLUDED.status, failures = EXCLUDED.failures, last_error = EXCLUDED.last_error,
     matched = EXCLUDED.matched, updated_at = clock_timestamp()
 RETURNING *;
@@ -41,6 +42,7 @@ SELECT EXISTS (
 SELECT EXISTS (
     SELECT 1 FROM ai_reminders
     WHERE store_id = sqlc.arg(store_id) AND rule_key = sqlc.arg(rule_key)
+      AND mode = sqlc.arg(mode)
       AND recipient_staff_id = sqlc.arg(recipient_staff_id) AND subject_key = sqlc.arg(subject_key)
       AND business_date >= sqlc.arg(from_date) AND business_date < sqlc.arg(business_date)
       AND outcome = 'emitted'
@@ -49,6 +51,7 @@ SELECT EXISTS (
 -- name: ReminderEmittedCount :one
 SELECT count(*)::bigint AS count FROM ai_reminders
 WHERE store_id = sqlc.arg(store_id) AND rule_key = sqlc.arg(rule_key)
+  AND mode = sqlc.arg(mode)
   AND recipient_staff_id = sqlc.arg(recipient_staff_id) AND subject_key = sqlc.arg(subject_key)
   AND outcome = 'emitted';
 
@@ -83,7 +86,7 @@ SELECT
     (SELECT count(DISTINCT r.business_date)::int FROM ai_reminder_runs r
      WHERE r.store_id = sqlc.arg(store_id) AND r.rule_key = sqlc.arg(rule_key)
        AND r.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date AND r.status = 'error') AS error_days,
-    (SELECT COALESCE(max(r.business_date)::text, '') FROM ai_reminder_runs r
+    (SELECT COALESCE(max(r.business_date)::text, '')::text FROM ai_reminder_runs r
      WHERE r.store_id = sqlc.arg(store_id) AND r.rule_key = sqlc.arg(rule_key)
        AND r.business_date BETWEEN sqlc.arg(date_from)::date AND sqlc.arg(date_to)::date AND r.status = 'error') AS last_error_date,
     (SELECT count(*)::bigint FROM ai_reminders r
@@ -135,7 +138,7 @@ FOR NO KEY UPDATE;
 -- name: SetReminderFeedback :execrows
 UPDATE ai_reminders
 SET feedback = sqlc.narg(feedback), feedback_by = sqlc.narg(feedback_by), feedback_at = sqlc.narg(feedback_at)
-WHERE id = sqlc.arg(id);
+WHERE id = sqlc.arg(id) AND store_id = sqlc.arg(store_id);
 
 -- name: SavepointReminderRule :exec
 SAVEPOINT reminder_rule;

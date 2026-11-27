@@ -23,6 +23,7 @@ CREATE TABLE ai_reminder_runs (
  store_id uuid NOT NULL,
  id uuid PRIMARY KEY DEFAULT uuidv7(),
  rule_key text NOT NULL CHECK (rule_key <> ''),
+ mode text NOT NULL CHECK (mode IN ('observe','on')),
  business_date date NOT NULL,
  status text NOT NULL CHECK (status IN ('no_match','done','error')),
  failures integer NOT NULL DEFAULT 0 CHECK (failures >= 0),
@@ -30,7 +31,7 @@ CREATE TABLE ai_reminder_runs (
  matched integer NOT NULL DEFAULT 0 CHECK (matched >= 0),
  updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  UNIQUE (tenant_id, id),
- UNIQUE (tenant_id, store_id, rule_key, business_date),
+ UNIQUE (tenant_id, store_id, rule_key, business_date, mode),
  FOREIGN KEY (tenant_id, store_id) REFERENCES stores (tenant_id, id)
 );
 CREATE INDEX ai_reminder_runs_range ON ai_reminder_runs (store_id, rule_key, business_date);
@@ -87,12 +88,12 @@ GRANT SELECT, INSERT ON ai_reminders TO salon_app;
 GRANT UPDATE (ai_text, feedback, feedback_by, feedback_at) ON ai_reminders TO salon_app;
 
 ALTER TABLE audit_log DROP CONSTRAINT audit_log_target_kind_check,
- ADD CONSTRAINT audit_log_target_kind_check CHECK (target_kind IN ('customer','staff','role','customer_source','item','card_type','card','card_upgrade_rule','order','red_packet','debt','commission_scheme','base_salary','payroll_adjustment','payroll_month','shift','staff_shift','punch','attendance_approval','collection','coupon_redemption','import_batch','data_export','rotation_queue','groupbuy_deal','groupbuy_settlement','appointment','appointment_block','day_close','closing','ai_reminder_rule'));
+ ADD CONSTRAINT audit_log_target_kind_check CHECK (target_kind IN ('customer','staff','role','customer_source','item','item_category','card_type','card','card_upgrade_rule','order','red_packet','debt','commission_scheme','base_salary','payroll_adjustment','payroll_month','shift','staff_shift','punch','attendance_approval','collection','coupon_redemption','import_batch','data_export','rotation_queue','groupbuy_deal','groupbuy_settlement','appointment','appointment_block','day_close','closing','aftersale','ai_reminder_rule'));
 
 -- +goose Down
 DELETE FROM audit_log WHERE target_kind = 'ai_reminder_rule';
 ALTER TABLE audit_log DROP CONSTRAINT audit_log_target_kind_check,
- ADD CONSTRAINT audit_log_target_kind_check CHECK (target_kind IN ('customer','staff','role','customer_source','item','card_type','card','card_upgrade_rule','order','red_packet','debt','commission_scheme','base_salary','payroll_adjustment','payroll_month','shift','staff_shift','punch','attendance_approval','collection','coupon_redemption','import_batch','data_export','rotation_queue','groupbuy_deal','groupbuy_settlement','appointment','appointment_block','day_close','closing'));
+ ADD CONSTRAINT audit_log_target_kind_check CHECK (target_kind IN ('customer','staff','role','customer_source','item','item_category','card_type','card','card_upgrade_rule','order','red_packet','debt','commission_scheme','base_salary','payroll_adjustment','payroll_month','shift','staff_shift','punch','attendance_approval','collection','coupon_redemption','import_batch','data_export','rotation_queue','groupbuy_deal','groupbuy_settlement','appointment','appointment_block','day_close','closing','aftersale'));
 DROP TABLE ai_reminders;
 DROP TABLE ai_reminder_runs;
 DROP TABLE ai_reminder_rules;

@@ -134,24 +134,32 @@ func (q *Queries) GetReminderRule(ctx context.Context, arg GetReminderRuleParams
 }
 
 const getReminderRun = `-- name: GetReminderRun :one
-SELECT tenant_id, store_id, id, rule_key, business_date, status, failures, last_error, matched, updated_at FROM ai_reminder_runs
-WHERE store_id = $1 AND rule_key = $2 AND business_date = $3
+SELECT tenant_id, store_id, id, rule_key, mode, business_date, status, failures, last_error, matched, updated_at FROM ai_reminder_runs
+WHERE store_id = $1 AND rule_key = $2
+  AND business_date = $3 AND mode = $4
 `
 
 type GetReminderRunParams struct {
 	StoreID      uuid.UUID
 	RuleKey      string
 	BusinessDate pgtype.Date
+	Mode         string
 }
 
 func (q *Queries) GetReminderRun(ctx context.Context, arg GetReminderRunParams) (AiReminderRun, error) {
-	row := q.db.QueryRow(ctx, getReminderRun, arg.StoreID, arg.RuleKey, arg.BusinessDate)
+	row := q.db.QueryRow(ctx, getReminderRun,
+		arg.StoreID,
+		arg.RuleKey,
+		arg.BusinessDate,
+		arg.Mode,
+	)
 	var i AiReminderRun
 	err := row.Scan(
 		&i.TenantID,
 		&i.StoreID,
 		&i.ID,
 		&i.RuleKey,
+		&i.Mode,
 		&i.BusinessDate,
 		&i.Status,
 		&i.Failures,
@@ -366,13 +374,15 @@ func (q *Queries) ReminderDailyCount(ctx context.Context, arg ReminderDailyCount
 const reminderEmittedCount = `-- name: ReminderEmittedCount :one
 SELECT count(*)::bigint AS count FROM ai_reminders
 WHERE store_id = $1 AND rule_key = $2
-  AND recipient_staff_id = $3 AND subject_key = $4
+  AND mode = $3
+  AND recipient_staff_id = $4 AND subject_key = $5
   AND outcome = 'emitted'
 `
 
 type ReminderEmittedCountParams struct {
 	StoreID          uuid.UUID
 	RuleKey          string
+	Mode             string
 	RecipientStaffID uuid.UUID
 	SubjectKey       string
 }
@@ -381,6 +391,7 @@ func (q *Queries) ReminderEmittedCount(ctx context.Context, arg ReminderEmittedC
 	row := q.db.QueryRow(ctx, reminderEmittedCount,
 		arg.StoreID,
 		arg.RuleKey,
+		arg.Mode,
 		arg.RecipientStaffID,
 		arg.SubjectKey,
 	)
@@ -393,8 +404,9 @@ const reminderEmittedInCooldown = `-- name: ReminderEmittedInCooldown :one
 SELECT EXISTS (
     SELECT 1 FROM ai_reminders
     WHERE store_id = $1 AND rule_key = $2
-      AND recipient_staff_id = $3 AND subject_key = $4
-      AND business_date >= $5 AND business_date < $6
+      AND mode = $3
+      AND recipient_staff_id = $4 AND subject_key = $5
+      AND business_date >= $6 AND business_date < $7
       AND outcome = 'emitted'
 ) AS exists
 `
@@ -402,6 +414,7 @@ SELECT EXISTS (
 type ReminderEmittedInCooldownParams struct {
 	StoreID          uuid.UUID
 	RuleKey          string
+	Mode             string
 	RecipientStaffID uuid.UUID
 	SubjectKey       string
 	FromDate         pgtype.Date
@@ -412,6 +425,7 @@ func (q *Queries) ReminderEmittedInCooldown(ctx context.Context, arg ReminderEmi
 	row := q.db.QueryRow(ctx, reminderEmittedInCooldown,
 		arg.StoreID,
 		arg.RuleKey,
+		arg.Mode,
 		arg.RecipientStaffID,
 		arg.SubjectKey,
 		arg.FromDate,
@@ -465,7 +479,7 @@ SELECT
     (SELECT count(DISTINCT r.business_date)::int FROM ai_reminder_runs r
      WHERE r.store_id = $1 AND r.rule_key = $2
        AND r.business_date BETWEEN $3::date AND $4::date AND r.status = 'error') AS error_days,
-    (SELECT COALESCE(max(r.business_date)::text, '') FROM ai_reminder_runs r
+    (SELECT COALESCE(max(r.business_date)::text, '')::text FROM ai_reminder_runs r
      WHERE r.store_id = $1 AND r.rule_key = $2
        AND r.business_date BETWEEN $3::date AND $4::date AND r.status = 'error') AS last_error_date,
     (SELECT count(*)::bigint FROM ai_reminders r
@@ -508,7 +522,7 @@ type ReminderSummaryCountsRow struct {
 	RanDays       int32
 	MatchedDays   int32
 	ErrorDays     int32
-	LastErrorDate interface{}
+	LastErrorDate string
 	Emitted       int64
 	Deduped       int64
 	Cooldown      int64
@@ -586,7 +600,7 @@ func (q *Queries) SetReminderAIText(ctx context.Context, arg SetReminderAITextPa
 const setReminderFeedback = `-- name: SetReminderFeedback :execrows
 UPDATE ai_reminders
 SET feedback = $1, feedback_by = $2, feedback_at = $3
-WHERE id = $4
+WHERE id = $4 AND store_id = $5
 `
 
 type SetReminderFeedbackParams struct {
@@ -594,6 +608,7 @@ type SetReminderFeedbackParams struct {
 	FeedbackBy *uuid.UUID
 	FeedbackAt pgtype.Timestamptz
 	ID         uuid.UUID
+	StoreID    uuid.UUID
 }
 
 func (q *Queries) SetReminderFeedback(ctx context.Context, arg SetReminderFeedbackParams) (int64, error) {
@@ -602,6 +617,7 @@ func (q *Queries) SetReminderFeedback(ctx context.Context, arg SetReminderFeedba
 		arg.FeedbackBy,
 		arg.FeedbackAt,
 		arg.ID,
+		arg.StoreID,
 	)
 	if err != nil {
 		return 0, err
@@ -647,12 +663,12 @@ func (q *Queries) UpsertReminderRule(ctx context.Context, arg UpsertReminderRule
 }
 
 const upsertReminderRun = `-- name: UpsertReminderRun :one
-INSERT INTO ai_reminder_runs (tenant_id, store_id, rule_key, business_date, status, failures, last_error, matched)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-ON CONFLICT (tenant_id, store_id, rule_key, business_date) DO UPDATE
+INSERT INTO ai_reminder_runs (tenant_id, store_id, rule_key, business_date, mode, status, failures, last_error, matched)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (tenant_id, store_id, rule_key, business_date, mode) DO UPDATE
 SET status = EXCLUDED.status, failures = EXCLUDED.failures, last_error = EXCLUDED.last_error,
     matched = EXCLUDED.matched, updated_at = clock_timestamp()
-RETURNING tenant_id, store_id, id, rule_key, business_date, status, failures, last_error, matched, updated_at
+RETURNING tenant_id, store_id, id, rule_key, mode, business_date, status, failures, last_error, matched, updated_at
 `
 
 type UpsertReminderRunParams struct {
@@ -660,6 +676,7 @@ type UpsertReminderRunParams struct {
 	StoreID      uuid.UUID
 	RuleKey      string
 	BusinessDate pgtype.Date
+	Mode         string
 	Status       string
 	Failures     int32
 	LastError    *string
@@ -672,6 +689,7 @@ func (q *Queries) UpsertReminderRun(ctx context.Context, arg UpsertReminderRunPa
 		arg.StoreID,
 		arg.RuleKey,
 		arg.BusinessDate,
+		arg.Mode,
 		arg.Status,
 		arg.Failures,
 		arg.LastError,
@@ -683,6 +701,7 @@ func (q *Queries) UpsertReminderRun(ctx context.Context, arg UpsertReminderRunPa
 		&i.StoreID,
 		&i.ID,
 		&i.RuleKey,
+		&i.Mode,
 		&i.BusinessDate,
 		&i.Status,
 		&i.Failures,

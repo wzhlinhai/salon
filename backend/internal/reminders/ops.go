@@ -144,16 +144,8 @@ func getReminderSummary(ctx context.Context, env ops.Env, in *GetReminderSummary
 		Feedback: ReminderFeedbackCounts{Helpful: counts.Helpful, NotHelpful: counts.NotHelpful},
 		Samples:  samples,
 	}
-	switch last := counts.LastErrorDate.(type) {
-	case string:
-		if last != "" {
-			out.LastErrorDate = &last
-		}
-	case []byte:
-		if len(last) > 0 {
-			value := string(last)
-			out.LastErrorDate = &value
-		}
+	if counts.LastErrorDate != "" {
+		out.LastErrorDate = &counts.LastErrorDate
 	}
 	return out, nil
 }
@@ -177,7 +169,7 @@ func setReminderFeedback(ctx context.Context, env ops.Env, in *SetReminderFeedba
 		feedbackAt = pgtype.Timestamptz{Time: env.Now, Valid: true}
 	}
 	rows, err := env.Q.SetReminderFeedback(ctx, dbgen.SetReminderFeedbackParams{
-		Feedback: in.Feedback, FeedbackBy: feedbackBy, FeedbackAt: feedbackAt, ID: in.ReminderID,
+		Feedback: in.Feedback, FeedbackBy: feedbackBy, FeedbackAt: feedbackAt, ID: in.ReminderID, StoreID: env.Caller.StoreID,
 	})
 	if err != nil {
 		return nil, err

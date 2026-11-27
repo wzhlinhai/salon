@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 	"github.com/wzhlinhai/salon/backend/internal/dbtest"
@@ -163,12 +164,133 @@ func TestObserveAndOnAreSeparate(t *testing.T) {
 	}
 }
 
+func TestObserveThenOnSameBusinessDayRunsAgain(t *testing.T) {
+	f := open(t)
+	f.businessDay("2026-11-26")
+	observe := f.now("2026-11-27", 9, 30)
+	runDefault(t, f.Shop, observe, nil)
+	f.SetNow(at("2026-11-27", 10, 0))
+	f.Call(t, f.Owner, "set_reminder_rule_mode", map[string]any{"rule_key": "closing_yesterday_brief", "mode": "on"}, 200)
+	runDefault(t, f.Shop, at("2026-11-27", 10, 5), nil)
+	rows := remindersByRule(t, f.Shop, "closing_yesterday_brief")
+	if len(rows) != 2 || rows[0].Mode != "observe" || rows[1].Mode != "on" {
+		t.Fatalf("rows = %+v", rows)
+	}
+	if rows[0].SubjectKey != "2026-11-26" || rows[1].SubjectKey != "2026-11-26" {
+		t.Fatalf("subjects = %q %q", rows[0].SubjectKey, rows[1].SubjectKey)
+	}
+	if rows[0].Outcome != "emitted" || rows[1].Outcome != "emitted" {
+		t.Fatalf("outcomes = %q %q", rows[0].Outcome, rows[1].Outcome)
+	}
+	for _, mode := range []string{"observe", "on"} {
+		if run := runRowMode(t, f.Shop, "closing_yesterday_brief", "2026-11-27", mode); run == nil || run.Status != "done" {
+			t.Fatalf("%s run = %+v", mode, run)
+		}
+	}
+	summary := f.Call(t, f.Owner, "get_reminder_summary", map[string]any{"rule_key": "closing_yesterday_brief", "days": 1}, 200)
+	if summary.Body["ran_days"].(float64) != 1 || summary.Body["matched_days"].(float64) != 1 {
+		t.Fatalf("summary = %v", summary.Body)
+	}
+}
+
+func TestCooldownSeparatesModes(t *testing.T) {
+	f := open(t)
+	rule := matchRule("cooldown_mode_rule", func(rule *reminders.Rule) { rule.Cooldown = 2 }, oneMatch(f.Shop, "same"))
+	runRules(t, f.Shop, at("2026-11-27", 10, 0), nil, []reminders.Rule{rule})
+	setRuleMode(t, f, "cooldown_mode_rule", "on")
+	runRules(t, f.Shop, at("2026-11-28", 10, 0), nil, []reminders.Rule{rule})
+	rows := remindersByRule(t, f.Shop, "cooldown_mode_rule")
+	if len(rows) != 2 || rows[0].Mode != "observe" || rows[1].Mode != "on" || rows[1].Outcome != "emitted" {
+		t.Fatalf("rows = %+v", rows)
+	}
+}
+
+func TestMaxTimesSeparatesModes(t *testing.T) {
+	f := open(t)
+	rule := matchRule("max_times_mode_rule", func(rule *reminders.Rule) { rule.MaxTimes = 1 }, oneMatch(f.Shop, "same"))
+	runRules(t, f.Shop, at("2026-11-27", 10, 0), nil, []reminders.Rule{rule})
+	setRuleMode(t, f, "max_times_mode_rule", "on")
+	runRules(t, f.Shop, at("2026-11-28", 10, 0), nil, []reminders.Rule{rule})
+	runRules(t, f.Shop, at("2026-11-29", 10, 0), nil, []reminders.Rule{rule})
+	rows := remindersByRule(t, f.Shop, "max_times_mode_rule")
+	if len(rows) != 3 || rows[1].Mode != "on" || rows[1].Outcome != "emitted" || rows[2].Outcome != "max_times" {
+		t.Fatalf("rows = %+v", rows)
+	}
+}
+
+func TestSavepointRollsBackFailedRule(t *testing.T) {
+	f := open(t)
+	bad := testRule("bad_rule", func(context.Context, *dbgen.Queries, uuid.UUID, time.Time, time.Time) ([]reminders.Match, error) {
+		return []reminders.Match{ownerMatch(f.Shop, "valid", map[string]any{"n": 1}), ownerMatch(f.Shop, "", map[string]any{"n": 2})}, nil
+	})
+	good := matchRule("good_rule", func(*reminders.Rule) {}, oneMatch(f.Shop, "good"))
+	runRules(t, f.Shop, at("2026-11-27", 10, 0), nil, []reminders.Rule{bad, good})
+	if rows := remindersByRule(t, f.Shop, "bad_rule"); len(rows) != 0 {
+		t.Fatalf("failed rule left reminders: %+v", rows)
+	}
+	run := runRow(t, f.Shop, "bad_rule", "2026-11-27")
+	if run == nil || run.Status != "error" || run.Failures != 1 || run.LastError == nil {
+		t.Fatalf("bad run = %+v", run)
+	}
+	if rows := remindersByRule(t, f.Shop, "good_rule"); len(rows) != 1 || rows[0].Outcome != "emitted" {
+		t.Fatalf("good rows = %+v", rows)
+	}
+}
+
+func TestRulePanicDoesNotStopOtherStore(t *testing.T) {
+	f := open(t)
+	otherStore, _ := secondStore(t, f)
+	rule := testRule("panic_rule", func(_ context.Context, _ *dbgen.Queries, storeID uuid.UUID, _, _ time.Time) ([]reminders.Match, error) {
+		if storeID == f.Res.StoreID {
+			panic("规则炸了")
+		}
+		return nil, nil
+	})
+	done := make(chan struct{})
+	panicked := false
+	go func() {
+		defer func() {
+			if recover() != nil {
+				panicked = true
+			}
+			close(done)
+		}()
+		reminders.RunOnceWithRules(t.Context(), f.Pool, at("2026-11-27", 10, 0), modelFunc(nil), discardLogger(), []reminders.Rule{rule})
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not return after panic")
+	}
+	if panicked {
+		t.Fatal("panic escaped store recovery")
+	}
+	if run := runAtStore(t, f, otherStore, "panic_rule", "2026-11-27"); run == nil || run.Status != "no_match" {
+		t.Fatalf("other store run = %+v", run)
+	}
+}
+
+func setRuleMode(t *testing.T, f *fixture, ruleKey, mode string) {
+	t.Helper()
+	tx := dbtest.AppTx(t, f.Pool, f.Res.TenantID)
+	dbtest.Exec(t, tx, `INSERT INTO ai_reminder_rules (tenant_id,store_id,rule_key,mode,updated_by) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (tenant_id,store_id,rule_key) DO UPDATE SET mode=EXCLUDED.mode,updated_by=EXCLUDED.updated_by,updated_at=clock_timestamp()`,
+		f.Res.TenantID, f.Res.StoreID, ruleKey, mode, f.Res.OwnerID)
+	dbtest.Commit(t, tx)
+}
+
 func TestOffSkipsRule(t *testing.T) {
 	f := open(t)
-	f.SetNow(at("2026-11-27", 10, 0))
-	f.Call(t, f.Owner, "set_reminder_rule_mode", map[string]any{"rule_key": "closing_yesterday_brief", "mode": "off"}, 200)
-	runDefault(t, f.Shop, at("2026-11-27", 10, 0), nil)
-	if run := runRow(t, f.Shop, "closing_yesterday_brief", "2026-11-27"); run != nil {
+	var calls atomic.Int32
+	rule := testRule("off_rule", func(context.Context, *dbgen.Queries, uuid.UUID, time.Time, time.Time) ([]reminders.Match, error) {
+		calls.Add(1)
+		return []reminders.Match{ownerMatch(f.Shop, "same", map[string]any{"n": 1})}, nil
+	})
+	setRuleMode(t, f, "off_rule", "off")
+	runRules(t, f.Shop, at("2026-11-27", 10, 0), nil, []reminders.Rule{rule})
+	if calls.Load() != 0 {
+		t.Fatalf("off rule evaluated %d times", calls.Load())
+	}
+	if run := runRow(t, f.Shop, "off_rule", "2026-11-27"); run != nil {
 		t.Fatalf("off rule ran: %+v", run)
 	}
 }
@@ -219,9 +341,9 @@ func TestStoreFailureDoesNotStopOtherStore(t *testing.T) {
 func runAtStore(t *testing.T, f *fixture, storeID uuid.UUID, ruleKey, day string) *dbgen.AiReminderRun {
 	t.Helper()
 	tx := dbtest.AppTx(t, f.Pool, f.Res.TenantID)
-	var row dbgen.AiReminderRun
-	err := tx.QueryRow(context.Background(), `SELECT tenant_id,store_id,id,rule_key,business_date,status,failures,last_error,matched,updated_at FROM ai_reminder_runs WHERE store_id=$1 AND rule_key=$2 AND business_date=$3`, storeID, ruleKey, day).
-		Scan(&row.TenantID, &row.StoreID, &row.ID, &row.RuleKey, &row.BusinessDate, &row.Status, &row.Failures, &row.LastError, &row.Matched, &row.UpdatedAt)
+	row, err := dbgen.New(tx).GetReminderRun(context.Background(), dbgen.GetReminderRunParams{
+		StoreID: storeID, RuleKey: ruleKey, BusinessDate: pgtype.Date{Time: mustDate(day), Valid: true}, Mode: string(reminders.ModeObserve),
+	})
 	dbtest.Rollback(t, tx)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil

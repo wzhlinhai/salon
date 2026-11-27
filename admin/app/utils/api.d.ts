@@ -6745,7 +6745,7 @@ export interface components {
             emitted: number;
             /**
              * Format: int32
-             * @description 当前仍为出错状态的营业日数
+             * @description 这条规则当前仍是出错状态的营业日数
              */
             error_days: number;
             feedback: components["schemas"]["ReminderFeedbackCounts"];
