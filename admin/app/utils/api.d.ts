@@ -3047,6 +3047,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/rewind_ai_conversation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 从本人的一句 user 消息撤回它和之后的消息 */
+        post: operations["rewind_ai_conversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/save_commission_scheme": {
         parameters: {
             query?: never;
@@ -4325,6 +4342,7 @@ export interface components {
         ChatAnswer: {
             conversation_id: string;
             drafts: components["schemas"]["DraftView"][];
+            message_id: string;
             reply: string;
             sources: components["schemas"]["Source"][];
             title: string;
@@ -6815,6 +6833,14 @@ export interface components {
         RevokeSafetyLabelInput: {
             customer_id: string;
             id: string;
+        };
+        RewindConversationInput: {
+            id: string;
+            message_id: string;
+        };
+        RewindConversationResult: {
+            conversation_id: string;
+            emptied: boolean;
         };
         Role: {
             id: string;
@@ -13398,6 +13424,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Customer"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    rewind_ai_conversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RewindConversationInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RewindConversationResult"];
                 };
             };
             /** @description Error */

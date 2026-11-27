@@ -225,6 +225,9 @@ func TestChatSavesConversationAndTitle(t *testing.T) {
 	if len(gotMessages) != 2 || gotMessages[0].(map[string]any)["role"] != ai.RoleUser || gotMessages[1].(map[string]any)["role"] != ai.RoleAssistant {
 		t.Fatalf("get order = %v", gotMessages)
 	}
+	if body["message_id"] != gotMessages[0].(map[string]any)["id"] {
+		t.Fatalf("message_id = %v, want user message %v", body["message_id"], gotMessages[0].(map[string]any)["id"])
+	}
 	list := call(t, s, s.Owner, "list_ai_conversations", map[string]any{}).Body
 	conversations := list["conversations"].([]any)
 	if len(conversations) != 1 {
@@ -371,10 +374,21 @@ func TestConversationOwnership(t *testing.T) {
 		return ai.Message{Role: ai.RoleAssistant, Content: "回答"}, nil
 	}}
 	s.SetAIModel(model)
-	stylistConversation := send(t, s, stylist, "发型师的私密对话", nil)["conversation_id"].(string)
-	ownerConversation := send(t, s, s.Owner, "老板的私密对话", nil)["conversation_id"].(string)
+	stylistBody := send(t, s, stylist, "发型师的私密对话", nil)
+	stylistConversation := stylistBody["conversation_id"].(string)
+	stylistMessage := stylistBody["message_id"].(string)
+	ownerBody := send(t, s, s.Owner, "老板的私密对话", nil)
+	ownerConversation := ownerBody["conversation_id"].(string)
+	ownerMessage := ownerBody["message_id"].(string)
 	stylistID := uuid.MustParse(stylistConversation)
 	ownerID := uuid.MustParse(ownerConversation)
+	conversationArgs := func(op, conversation, message string) map[string]any {
+		args := map[string]any{"id": conversation}
+		if op == "rewind_ai_conversation" {
+			args["message_id"] = message
+		}
+		return args
+	}
 	if got := call(t, s, stylist, "list_ai_conversations", map[string]any{}).Body["conversations"].([]any); len(got) != 1 {
 		t.Fatal(got)
 	}
@@ -382,10 +396,10 @@ func TestConversationOwnership(t *testing.T) {
 		t.Fatal(got)
 	}
 	before := count(t, s, "ai_conversation_messages")
-	for _, op := range []string{"get_ai_conversation", "archive_ai_conversation", "unarchive_ai_conversation"} {
-		rejected(t, s.HTTPWithToken(t, s.Owner, op, map[string]any{"id": stylistConversation}), 404, "not found")
-		rejected(t, s.HTTPWithToken(t, stylist, op, map[string]any{"id": ownerConversation}), 404, "not found")
-		rejected(t, s.HTTPWithToken(t, assistant, op, map[string]any{"id": stylistConversation}), 404, "not found")
+	for _, op := range []string{"get_ai_conversation", "archive_ai_conversation", "unarchive_ai_conversation", "rewind_ai_conversation"} {
+		rejected(t, s.HTTPWithToken(t, s.Owner, op, conversationArgs(op, stylistConversation, stylistMessage)), 404, "not found")
+		rejected(t, s.HTTPWithToken(t, stylist, op, conversationArgs(op, ownerConversation, ownerMessage)), 404, "not found")
+		rejected(t, s.HTTPWithToken(t, assistant, op, conversationArgs(op, stylistConversation, stylistMessage)), 404, "not found")
 	}
 	for _, token := range []string{s.Owner, assistant} {
 		rejected(t, chat(t, s, token, map[string]any{"conversation_id": stylistConversation, "content": "插一句"}), 404, "not found")
@@ -403,19 +417,21 @@ func TestConversationOwnership(t *testing.T) {
 	if got := call(t, s, otherToken, "list_ai_conversations", map[string]any{}).Body["conversations"].([]any); len(got) != 0 {
 		t.Fatal(got)
 	}
-	for _, op := range []string{"get_ai_conversation", "archive_ai_conversation", "unarchive_ai_conversation"} {
-		rejected(t, s.HTTPWithToken(t, otherToken, op, map[string]any{"id": stylistConversation}), 404, "not found")
+	for _, op := range []string{"get_ai_conversation", "archive_ai_conversation", "unarchive_ai_conversation", "rewind_ai_conversation"} {
+		rejected(t, s.HTTPWithToken(t, otherToken, op, conversationArgs(op, stylistConversation, stylistMessage)), 404, "not found")
 	}
 	rejected(t, chat(t, s, otherToken, map[string]any{"conversation_id": stylistConversation, "content": "跨租户"}), 404, "not found")
 	if count(t, s, "ai_conversation_messages") != before {
 		t.Fatal("cross-tenant chat inserted messages")
 	}
-	if slices.Contains(toolNames(s.Registry.ChatTools(s.MustCaller(s.Owner))), "list_ai_conversations") {
-		t.Fatal("history tools are visible to AI")
+	for _, op := range []string{"list_ai_conversations", "get_ai_conversation", "archive_ai_conversation", "unarchive_ai_conversation", "rewind_ai_conversation"} {
+		if slices.Contains(toolNames(s.Registry.ChatTools(s.MustCaller(s.Owner))), op) {
+			t.Fatalf("history tool %s is visible to AI", op)
+		}
 	}
-	for _, op := range []string{"list_ai_conversations", "get_ai_conversation", "archive_ai_conversation", "unarchive_ai_conversation"} {
-		rejected(t, s.AI(t, s.MustCaller(s.Owner), op, map[string]any{"id": stylistID.String()}), 404, "unknown operation")
-		rejected(t, s.AI(t, s.MustCaller(s.Owner), op, map[string]any{"id": ownerID.String()}), 404, "unknown operation")
+	for _, op := range []string{"list_ai_conversations", "get_ai_conversation", "archive_ai_conversation", "unarchive_ai_conversation", "rewind_ai_conversation"} {
+		rejected(t, s.AI(t, s.MustCaller(s.Owner), op, conversationArgs(op, stylistID.String(), stylistMessage)), 404, "unknown operation")
+		rejected(t, s.AI(t, s.MustCaller(s.Owner), op, conversationArgs(op, ownerID.String(), ownerMessage)), 404, "unknown operation")
 	}
 }
 
@@ -723,6 +739,300 @@ func TestArchiveDoesNotWriteAudit(t *testing.T) {
 	}
 }
 
+func conversationMessages(t *testing.T, s *optest.Shop, conversationID any) []map[string]any {
+	t.Helper()
+	raw := call(t, s, s.Owner, "get_ai_conversation", map[string]any{"id": conversationID}).Body["messages"].([]any)
+	out := make([]map[string]any, len(raw))
+	for i, item := range raw {
+		out[i] = item.(map[string]any)
+	}
+	return out
+}
+
+func TestRewindMiddleKeepsEarlierMessages(t *testing.T) {
+	s := optest.OpenShop(t)
+	base := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
+	s.SetNow(base)
+	s.SetAIModel(&fakeModel{reply: func(int, []ai.Message, []ops.Tool) (ai.Message, error) {
+		return ai.Message{Role: ai.RoleAssistant, Content: "回答"}, nil
+	}})
+	first := send(t, s, s.Owner, "第一句", nil)
+	conversationID := first["conversation_id"].(string)
+	s.Advance(time.Minute)
+	second := send(t, s, s.Owner, "第二句", map[string]any{"conversation_id": conversationID})
+	if got := call(t, s, s.Owner, "archive_ai_conversation", map[string]any{"id": conversationID}).Body; got["archived"] != true {
+		t.Fatal(got)
+	}
+
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	var title string
+	var updated time.Time
+	var archived *time.Time
+	if err := tx.QueryRow(context.Background(), "SELECT title,updated_at,archived_at FROM ai_conversations WHERE id=$1", conversationID).Scan(&title, &updated, &archived); err != nil {
+		t.Fatal(err)
+	}
+	dbtest.Rollback(t, tx)
+	if archived == nil {
+		t.Fatal("conversation was not archived before rewind")
+	}
+
+	result := call(t, s, s.Owner, "rewind_ai_conversation", map[string]any{"id": conversationID, "message_id": second["message_id"]}).Body
+	if result["conversation_id"] != conversationID || result["emptied"] != false {
+		t.Fatal(result)
+	}
+	messages := conversationMessages(t, s, conversationID)
+	if len(messages) != 2 || messages[0]["content"] != "第一句" || messages[1]["role"] != ai.RoleAssistant || messages[1]["content"] != "回答" {
+		t.Fatalf("messages = %v", messages)
+	}
+	tx = dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	var afterTitle string
+	var afterUpdated time.Time
+	var afterArchived *time.Time
+	if err := tx.QueryRow(context.Background(), "SELECT title,updated_at,archived_at FROM ai_conversations WHERE id=$1", conversationID).Scan(&afterTitle, &afterUpdated, &afterArchived); err != nil {
+		t.Fatal(err)
+	}
+	dbtest.Rollback(t, tx)
+	if afterTitle != title || !afterUpdated.Equal(updated) || afterArchived == nil || !afterArchived.Equal(*archived) {
+		t.Fatalf("conversation changed: title %q -> %q, updated %v -> %v, archived %v -> %v", title, afterTitle, updated, afterUpdated, archived, afterArchived)
+	}
+}
+
+func TestRewindFirstMessageDeletesConversation(t *testing.T) {
+	s := optest.OpenShop(t)
+	s.SetAIModel(&fakeModel{reply: func(int, []ai.Message, []ops.Tool) (ai.Message, error) {
+		return ai.Message{Role: ai.RoleAssistant, Content: "回答"}, nil
+	}})
+	body := send(t, s, s.Owner, "唯一一句", nil)
+	conversationID := body["conversation_id"].(string)
+	result := call(t, s, s.Owner, "rewind_ai_conversation", map[string]any{"id": conversationID, "message_id": body["message_id"]}).Body
+	if result["conversation_id"] != conversationID || result["emptied"] != true {
+		t.Fatal(result)
+	}
+	rejected(t, s.HTTPWithToken(t, s.Owner, "get_ai_conversation", map[string]any{"id": conversationID}), 404, "not found")
+	if got := call(t, s, s.Owner, "list_ai_conversations", map[string]any{}).Body["conversations"].([]any); len(got) != 0 {
+		t.Fatal(got)
+	}
+	if count(t, s, "ai_conversations") != 0 || count(t, s, "ai_conversation_messages") != 0 {
+		t.Fatal("emptied conversation was not deleted")
+	}
+}
+
+func TestRewindKeepsDrafts(t *testing.T) {
+	s := optest.OpenShop(t)
+	caller := s.MustCaller(s.Owner)
+	draftID := seedDraft(t, s, caller.StaffID, "create_customer", "pending")
+	conversationID := seedConversation(t, s, caller, "起草", time.Now(), []seedMessage{
+		{role: ai.RoleUser, content: "帮我建顾客", at: time.Now()},
+		{role: ai.RoleAssistant, content: "已起草", draftIDs: []uuid.UUID{draftID}, at: time.Now().Add(time.Second)},
+	})
+	userMessageID := conversationMessages(t, s, conversationID)[0]["id"]
+	result := call(t, s, s.Owner, "rewind_ai_conversation", map[string]any{"id": conversationID, "message_id": userMessageID}).Body
+	if result["emptied"] != true {
+		t.Fatal(result)
+	}
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	var status string
+	if err := tx.QueryRow(context.Background(), "SELECT status FROM ai_drafts WHERE id=$1", draftID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	dbtest.Rollback(t, tx)
+	if status != "pending" {
+		t.Fatalf("draft status = %q, want pending", status)
+	}
+}
+
+func TestRewindRejectsAssistantMessage(t *testing.T) {
+	s := optest.OpenShop(t)
+	s.SetAIModel(&fakeModel{reply: func(int, []ai.Message, []ops.Tool) (ai.Message, error) {
+		return ai.Message{Role: ai.RoleAssistant, Content: "回答"}, nil
+	}})
+	body := send(t, s, s.Owner, "第一句", nil)
+	conversationID := body["conversation_id"].(string)
+	assistantMessageID := conversationMessages(t, s, conversationID)[1]["id"]
+	before := count(t, s, "ai_conversation_messages")
+	rejected(t, s.HTTPWithToken(t, s.Owner, "rewind_ai_conversation", map[string]any{"id": conversationID, "message_id": assistantMessageID}), 409, "只能从自己说的话撤回")
+	if after := count(t, s, "ai_conversation_messages"); after != before {
+		t.Fatalf("messages = %d, want %d", after, before)
+	}
+}
+
+func TestRewindRejectsForeignOrMissingTargets(t *testing.T) {
+	s := optest.OpenShop(t)
+	_, stylist := s.Hire("发型师", "107", "rewind-stylist", s.Role("发型师"))
+	s.SetAIModel(&fakeModel{reply: func(int, []ai.Message, []ops.Tool) (ai.Message, error) {
+		return ai.Message{Role: ai.RoleAssistant, Content: "回答"}, nil
+	}})
+	owner := send(t, s, s.Owner, "老板会话", nil)
+	stylistBody := send(t, s, stylist, "发型师会话", nil)
+	before := count(t, s, "ai_conversation_messages")
+	for _, args := range []map[string]any{
+		{"id": stylistBody["conversation_id"], "message_id": stylistBody["message_id"]},
+		{"id": owner["conversation_id"], "message_id": stylistBody["message_id"]},
+		{"id": owner["conversation_id"], "message_id": uuid.NewString()},
+		{"id": uuid.NewString(), "message_id": owner["message_id"]},
+	} {
+		rejected(t, s.HTTPWithToken(t, s.Owner, "rewind_ai_conversation", args), 404, "not found")
+	}
+	if after := count(t, s, "ai_conversation_messages"); after != before {
+		t.Fatalf("messages = %d, want %d", after, before)
+	}
+}
+
+func TestRewindDoesNotWriteAudit(t *testing.T) {
+	s := optest.OpenShop(t)
+	s.SetAIModel(&fakeModel{reply: func(int, []ai.Message, []ops.Tool) (ai.Message, error) {
+		return ai.Message{Role: ai.RoleAssistant, Content: "回答"}, nil
+	}})
+	first := send(t, s, s.Owner, "第一句", nil)
+	conversationID := first["conversation_id"].(string)
+	second := send(t, s, s.Owner, "第二句", map[string]any{"conversation_id": conversationID})
+	before := count(t, s, "audit_log")
+	call(t, s, s.Owner, "rewind_ai_conversation", map[string]any{"id": conversationID, "message_id": second["message_id"]})
+	if after := count(t, s, "audit_log"); after != before {
+		t.Fatalf("audit rows = %d, want %d", after, before)
+	}
+}
+
+func TestRewindExcludedFromNextHistory(t *testing.T) {
+	s := optest.OpenShop(t)
+	model := &fakeModel{reply: func(call int, _ []ai.Message, _ []ops.Tool) (ai.Message, error) {
+		return ai.Message{Role: ai.RoleAssistant, Content: fmt.Sprintf("回答%d", call)}, nil
+	}}
+	s.SetAIModel(model)
+	first := send(t, s, s.Owner, "第一句", nil)
+	conversationID := first["conversation_id"].(string)
+	second := send(t, s, s.Owner, "第二句", map[string]any{"conversation_id": conversationID})
+	call(t, s, s.Owner, "rewind_ai_conversation", map[string]any{"id": conversationID, "message_id": second["message_id"]})
+	send(t, s, s.Owner, "第三句", map[string]any{"conversation_id": conversationID})
+	requests := model.captured()
+	history := requests[len(requests)-1][1:]
+	if len(history) != 3 || history[0].Content != "第一句" || history[1].Content != "回答1" || history[2].Content != "第三句" {
+		t.Fatalf("history = %+v", history)
+	}
+	for _, message := range history {
+		if strings.Contains(message.Content, "第二句") || strings.Contains(message.Content, "回答2") {
+			t.Fatalf("rewound message leaked into history: %+v", history)
+		}
+	}
+}
+
+func TestRewindWaitsForConversationLock(t *testing.T) {
+	s := optest.OpenShop(t)
+	s.SetAIModel(&fakeModel{reply: func(int, []ai.Message, []ops.Tool) (ai.Message, error) {
+		return ai.Message{Role: ai.RoleAssistant, Content: "回答"}, nil
+	}})
+	first := send(t, s, s.Owner, "第一句", nil)
+	conversationID := first["conversation_id"].(string)
+	second := send(t, s, s.Owner, "第二句", map[string]any{"conversation_id": conversationID})
+
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	dbtest.Exec(t, tx, "SELECT id FROM ai_conversations WHERE id=$1 FOR KEY SHARE", conversationID)
+	done := make(chan optest.Result, 1)
+	go func() {
+		done <- s.HTTPWithToken(t, s.Owner, "rewind_ai_conversation", map[string]any{"id": conversationID, "message_id": second["message_id"]})
+	}()
+	optest.AssertWaiting(t, s.Pool, done, 1)
+	dbtest.Rollback(t, tx)
+	optest.WaitResult(t, done, 200)
+	if messages := conversationMessages(t, s, conversationID); len(messages) != 2 || messages[0]["content"] != "第一句" {
+		t.Fatalf("messages = %v", messages)
+	}
+}
+
+func TestRewindOnlyTouchesTargetConversation(t *testing.T) {
+	open := func(t *testing.T) *optest.Shop {
+		t.Helper()
+		s := optest.OpenShop(t)
+		s.SetAIModel(&fakeModel{reply: func(int, []ai.Message, []ops.Tool) (ai.Message, error) {
+			return ai.Message{Role: ai.RoleAssistant, Content: "回答"}, nil
+		}})
+		return s
+	}
+
+	t.Run("older conversation first message", func(t *testing.T) {
+		s := open(t)
+		aFirst := send(t, s, s.Owner, "A 第一句", nil)
+		aID := aFirst["conversation_id"].(string)
+		send(t, s, s.Owner, "A 第二句", map[string]any{"conversation_id": aID})
+		bFirst := send(t, s, s.Owner, "B 第一句", nil)
+		bID := bFirst["conversation_id"].(string)
+		send(t, s, s.Owner, "B 第二句", map[string]any{"conversation_id": bID})
+		bTitle := call(t, s, s.Owner, "get_ai_conversation", map[string]any{"id": bID}).Body["title"]
+		bBefore := conversationMessages(t, s, bID)
+
+		result := call(t, s, s.Owner, "rewind_ai_conversation", map[string]any{"id": aID, "message_id": aFirst["message_id"]}).Body
+		if result["conversation_id"] != aID || result["emptied"] != true {
+			t.Fatal(result)
+		}
+		rejected(t, s.HTTPWithToken(t, s.Owner, "get_ai_conversation", map[string]any{"id": aID}), 404, "not found")
+		if got := call(t, s, s.Owner, "get_ai_conversation", map[string]any{"id": bID}).Body["title"]; got != bTitle {
+			t.Fatalf("B title = %v, want %v", got, bTitle)
+		}
+		bAfter := conversationMessages(t, s, bID)
+		if len(bAfter) != len(bBefore) {
+			t.Fatalf("B messages = %d, want %d", len(bAfter), len(bBefore))
+		}
+		for i := range bBefore {
+			if bAfter[i]["id"] != bBefore[i]["id"] || bAfter[i]["content"] != bBefore[i]["content"] {
+				t.Fatalf("B message %d changed: %v -> %v", i, bBefore[i], bAfter[i])
+			}
+		}
+	})
+
+	t.Run("newer conversation second message", func(t *testing.T) {
+		s := open(t)
+		aFirst := send(t, s, s.Owner, "A 第一句", nil)
+		aID := aFirst["conversation_id"].(string)
+		send(t, s, s.Owner, "A 第二句", map[string]any{"conversation_id": aID})
+		bFirst := send(t, s, s.Owner, "B 第一句", nil)
+		bID := bFirst["conversation_id"].(string)
+		bSecond := send(t, s, s.Owner, "B 第二句", map[string]any{"conversation_id": bID})
+		aTitle := call(t, s, s.Owner, "get_ai_conversation", map[string]any{"id": aID}).Body["title"]
+		aBefore := conversationMessages(t, s, aID)
+
+		result := call(t, s, s.Owner, "rewind_ai_conversation", map[string]any{"id": bID, "message_id": bSecond["message_id"]}).Body
+		if result["conversation_id"] != bID || result["emptied"] != false {
+			t.Fatal(result)
+		}
+		if got := call(t, s, s.Owner, "get_ai_conversation", map[string]any{"id": aID}).Body["title"]; got != aTitle {
+			t.Fatalf("A title = %v, want %v", got, aTitle)
+		}
+		aAfter := conversationMessages(t, s, aID)
+		if len(aAfter) != len(aBefore) {
+			t.Fatalf("A messages = %d, want %d", len(aAfter), len(aBefore))
+		}
+		for i := range aBefore {
+			if aAfter[i]["id"] != aBefore[i]["id"] || aAfter[i]["content"] != aBefore[i]["content"] {
+				t.Fatalf("A message %d changed: %v -> %v", i, aBefore[i], aAfter[i])
+			}
+		}
+		bAfter := conversationMessages(t, s, bID)
+		if len(bAfter) != 2 || bAfter[0]["content"] != "B 第一句" || bAfter[1]["role"] != ai.RoleAssistant || bAfter[1]["content"] != "回答" {
+			t.Fatalf("B messages = %v", bAfter)
+		}
+	})
+}
+
+func TestRewindLockSelectsTargetConversation(t *testing.T) {
+	s := optest.OpenShop(t)
+	caller := s.MustCaller(s.Owner)
+	base := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
+	older := seedConversation(t, s, caller, "先建", base, nil)
+	newer := seedConversation(t, s, caller, "后建", base.Add(time.Minute), nil)
+	tx := dbtest.AppTx(t, s.Pool, s.Res.TenantID)
+	dbtest.Exec(t, tx, "SET LOCAL enable_indexscan = off")
+	dbtest.Exec(t, tx, "SET LOCAL enable_bitmapscan = off")
+	dbtest.Exec(t, tx, "SET LOCAL enable_seqscan = on")
+	row, err := dbgen.New(tx).LockAIConversation(context.Background(), dbgen.LockAIConversationParams{StoreID: caller.StoreID, StaffID: caller.StaffID, ID: newer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbtest.Rollback(t, tx)
+	if row.ID != newer {
+		t.Fatalf("locked conversation = %s, want %s (older %s)", row.ID, newer, older)
+	}
+}
+
 func TestListOrderByUpdatedAt(t *testing.T) {
 	s := optest.OpenShop(t)
 	base := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
@@ -755,12 +1065,27 @@ func TestConversationStoreIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	message, err := dbgen.New(tx).AddAIConversationMessage(context.Background(), dbgen.AddAIConversationMessageParams{
+		TenantID: caller.TenantID, StoreID: otherStore.ID, ConversationID: conversation.ID,
+		Role: ai.RoleUser, Content: "别店的一句话", DraftIds: []uuid.UUID{}, CreatedAt: pgtypeStamp(time.Now()),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	dbtest.Commit(t, tx)
 	if got := call(t, s, s.Owner, "list_ai_conversations", map[string]any{}).Body["conversations"].([]any); len(got) != 0 {
 		t.Fatal(got)
 	}
-	for _, op := range []string{"get_ai_conversation", "archive_ai_conversation", "unarchive_ai_conversation"} {
-		rejected(t, s.HTTPWithToken(t, s.Owner, op, map[string]any{"id": conversation.ID}), 404, "not found")
+	before := count(t, s, "ai_conversation_messages")
+	for _, op := range []string{"get_ai_conversation", "archive_ai_conversation", "unarchive_ai_conversation", "rewind_ai_conversation"} {
+		args := map[string]any{"id": conversation.ID}
+		if op == "rewind_ai_conversation" {
+			args["message_id"] = message.ID
+		}
+		rejected(t, s.HTTPWithToken(t, s.Owner, op, args), 404, "not found")
+	}
+	if after := count(t, s, "ai_conversation_messages"); after != before {
+		t.Fatalf("messages = %d, want %d", after, before)
 	}
 	rejected(t, chat(t, s, s.Owner, map[string]any{"conversation_id": conversation.ID, "content": "别店"}), 404, "not found")
 }
@@ -1032,7 +1357,7 @@ func TestConversationPrivileges(t *testing.T) {
 		SELECT has_table_privilege('salon_app','ai_conversations','SELECT')
 		   AND has_table_privilege('salon_app','ai_conversations','INSERT')
 		   AND NOT has_table_privilege('salon_app','ai_conversations','UPDATE')
-		   AND NOT has_table_privilege('salon_app','ai_conversations','DELETE')
+		   AND has_table_privilege('salon_app','ai_conversations','DELETE')
 		   AND has_column_privilege('salon_app','ai_conversations','archived_at','UPDATE')
 		   AND has_column_privilege('salon_app','ai_conversations','updated_at','UPDATE')
 		   AND NOT has_column_privilege('salon_app','ai_conversations','title','UPDATE')
@@ -1046,7 +1371,7 @@ func TestConversationPrivileges(t *testing.T) {
 		SELECT has_table_privilege('salon_app','ai_conversation_messages','SELECT')
 		   AND has_table_privilege('salon_app','ai_conversation_messages','INSERT')
 		   AND NOT has_table_privilege('salon_app','ai_conversation_messages','UPDATE')
-		   AND NOT has_table_privilege('salon_app','ai_conversation_messages','DELETE')
+		   AND has_table_privilege('salon_app','ai_conversation_messages','DELETE')
 		   AND NOT has_column_privilege('salon_app','ai_conversation_messages','content','UPDATE')`).Scan(&messages); err != nil {
 		t.Fatal(err)
 	}

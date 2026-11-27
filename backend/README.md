@@ -555,7 +555,7 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 ## AI 对话
 
-`POST /api/ai/chat` 是对话入口，请求体为 `{conversation_id?, content, sent?, editing?, draft_id?}`。`content` 必填、去空白后非空、最多 4000 字（rune）；`sent` 是实际发给模型的话（修改草稿时带草稿编号），最多 4000 字；`editing` 是正在修改的那张草稿的摘要，前端显示「修改：…」；`draft_id` 是人点了「修改」的那张草稿。内容为空或超过长度返回 422；需要登录，权限与本人一致（ADR-0009）。响应为 `{reply, sources, drafts, conversation_id, title}`：`sources` 按顺序记录模型发起的每一次工具调用（含起草和修改草稿），含操作名、原样参数、是否成功和错误文字；`drafts` 按顺序返回本次对话创建或修改的草稿，每项是 `drafts.Draft` 视图并带 `preview`（没有预览或预览规则拒绝时带 `preview_error`）；`conversation_id` 是本次消息保存到的历史会话，`title` 是该会话的标题。
+`POST /api/ai/chat` 是对话入口，请求体为 `{conversation_id?, content, sent?, editing?, draft_id?}`。`content` 必填、去空白后非空、最多 4000 字（rune）；`sent` 是实际发给模型的话（修改草稿时带草稿编号），最多 4000 字；`editing` 是正在修改的那张草稿的摘要，前端显示「修改：…」；`draft_id` 是人点了「修改」的那张草稿。内容为空或超过长度返回 422；需要登录，权限与本人一致（ADR-0009）。响应为 `{reply, sources, drafts, conversation_id, message_id, title}`：`sources` 按顺序记录模型发起的每一次工具调用（含起草和修改草稿），含操作名、原样参数、是否成功和错误文字；`drafts` 按顺序返回本次对话创建或修改的草稿，每项是 `drafts.Draft` 视图并带 `preview`（没有预览或预览规则拒绝时带 `preview_error`）；`conversation_id` 是本次消息保存到的历史会话，`message_id` 是本次保存的 user 消息，`title` 是该会话的标题。
 
 每次对话都保存在服务端，只有本人能看到，老板也看不到员工的对话。`conversation_id` 为空时新建会话，标题取这次 `content` 去首尾空白、换行换成空格后截到 30 个 rune；带了则必须是本人（同门店、同 `staff_id`）的会话，否则返回 404（不区分别人的和不存在的），归档的会话可以接着聊，发出后自动取消归档。发给模型的历史只取这个会话最近 19 条消息加本次新话：每条用 `sent ?? content`，按 rune 截到 4000 字，去掉空的；截完若第一条不是 user，从头去掉直到是 user。历史在租户事务里读取，模型调用在事务外，成功后在一个新的租户事务里保存 user 和 assistant 两条消息，`updated_at` 取同一个时刻；Ask 失败什么都不保存。assistant 消息记录本次回复创建或修改的草稿 ID。
 
@@ -571,9 +571,11 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 ### AI 历史会话
 
-`list_ai_conversations`（Read/AINone）、`get_ai_conversation`（Read/AINone）、`archive_ai_conversation` 和 `unarchive_ai_conversation`（Write/AINone）都只处理调用者本人的会话，只看 `store_id` 和 `staff_id`；老板也看不到员工的会话，别人的会话和不存在的会话一样返回 404。`list_ai_conversations` 默认只列未归档的会话，`archived=true` 只列已归档的，`q` 最多 50 字，按标题和消息 `content` 不区分大小写包含匹配，最多返回 100 条，按 `updated_at DESC, id`。`get_ai_conversation` 返回全部消息（不分页），消息按写入顺序 `ordinal` 升序，不返回 `sent`；每条 assistant 消息的 `drafts` 是按 `draft_ids` 读取的草稿当前状态（`drafts.Draft` + `preview`/`preview_error`），调用者现在看不到或已不存在的草稿直接略去。草稿按批读取，只有仍为 pending 的草稿才生成预览。归档只设置 `archived_at`，不删除会话或消息，也不自动清理；归档和解开归档是本人的界面整理，不写操作日志。
+`list_ai_conversations` 和 `get_ai_conversation`（Read/AINone），以及 `archive_ai_conversation`、`unarchive_ai_conversation`、`rewind_ai_conversation`（Write/AINone）都只处理调用者本人的会话，只看 `store_id` 和 `staff_id`；老板也看不到员工的会话，别人的会话和不存在的会话一样返回 404。`list_ai_conversations` 默认只列未归档的会话，`archived=true` 只列已归档的，`q` 最多 50 字，按标题和消息 `content` 不区分大小写包含匹配，最多返回 100 条，按 `updated_at DESC, id`。`get_ai_conversation` 返回全部消息（不分页），消息按写入顺序 `ordinal` 升序，不返回 `sent`；每条 assistant 消息的 `drafts` 是按 `draft_ids` 读取的草稿当前状态（`drafts.Draft` + `preview`/`preview_error`），调用者现在看不到或已不存在的草稿直接略去。草稿按批读取，只有仍为 pending 的草稿才生成预览。归档只设置 `archived_at`，不删除会话或消息，也不自动清理；归档和解开归档是本人的界面整理，不写操作日志。
 
-并发时没有额外的串行化：两句同时发到同一个新对话会各建一个会话；同一会话同时续聊时，两个请求各自读到同一份旧历史，互相看不到对方这次的消息。Ask 失败只保证不保存会话和消息；工具循环里已经起草的草稿照常留在「待确认」里。列表搜索对标题和消息内容做包含匹配，没有专门的搜索索引，按一家店的对话量够用。
+`rewind_ai_conversation` 的输入是 `{id, message_id}`，从本人的一句 user 消息撤回：删除该会话里 `ordinal` 不小于这条消息的全部消息（含 AI 的回话），返回 `{conversation_id, emptied}`。从 assistant 消息撤回返回 409「只能从自己说的话撤回」；消息不属于这个会话、会话不属于本人或不存在都返回 404。撤回不动草稿，被删回话里起草的草稿照旧留在「待确认」；一条消息都不剩时连同会话删除并返回 `emptied=true`，否则标题、`updated_at` 和归档状态都不改并返回 `emptied=false`。撤回和归档一样是本人的界面整理，不改业务数据，不写操作日志。
+
+除撤回时锁住会话行外，并发时没有额外的串行化：两句同时发到同一个新对话会各建一个会话；同一会话同时续聊时，两个请求各自读到同一份旧历史，互相看不到对方这次的消息。撤回先以 `FOR UPDATE` 锁住会话行，并发的续聊保存会排队；续聊若在会话已删除后才保存，会因找不到会话返回 404，否则接在剩余消息后面。Ask 失败只保证不保存会话和消息；工具循环里已经起草的草稿照常留在「待确认」里。列表搜索对标题和消息内容做包含匹配，没有专门的搜索索引，按一家店的对话量够用。
 
 本接口不做流式输出；评测集见 `internal/ai/eval`（P0-32），管理端已有右侧 AI 面板（标题处是历史对话下拉），小程序未做。历史会话保存在 `ai_conversations` 和 `ai_conversation_messages`，实现在 `internal/aiconversations`；`internal/ai` 只负责模型和工具循环，不碰会话表。`explain_commission` 专门支持「解释一笔提成的来源」（用户故事 130）。
 

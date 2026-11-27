@@ -114,7 +114,7 @@ onBeforeUnmount(() => clearInterval(draftTimer))
 </script>
 
 <template>
-  <UApp :locale="zh_cn" :toaster="{ position: 'bottom-center' }">
+  <UApp :locale="zh_cn" :toaster="{ position: 'bottom-center', expand: false, progress: false, max: 1, duration: 4000 }">
     <NuxtPage v-if="isLogin" />
     <!-- 外壳照原型 J：暖灰侧栏（门店名、搜索、待确认、分组导航、本人），一行顶栏（面包屑、首页切换）。 -->
     <UDashboardGroup v-else unit="rem" storage-key="salon-dashboard">

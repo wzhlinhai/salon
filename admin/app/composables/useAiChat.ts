@@ -2,7 +2,9 @@ import type { DraftView } from '~/composables/useDrafts'
 
 // 一条对话记录。content 是显示给人看的话；修改草稿时发给 AI 的话另带草稿编号，由服务端存成 sent。
 // failed 的记录只在本页显示，服务端没有保存（AI 没回成什么都不存）。
+// id 是服务端保存的消息编号，人说的话靠它撤回；没发成的话没有。
 export interface ChatEntry {
+  id?: string
   role: 'user' | 'assistant'
   content: string
   editing?: string
@@ -33,6 +35,8 @@ export function useAiChat() {
   const conversationId = useState<string | null>('ai-conversation', () => null)
   const title = useState<string>('ai-title', () => '')
   const loadingConversation = useState<boolean>('ai-loading-conversation', () => false)
+  // 正在撤回：这时不发新话，免得新话接在要删的消息后面。
+  const rewinding = useState<boolean>('ai-rewinding', () => false)
   // 全屏还是侧栏，记在本机。
   const expanded = useState<boolean>('ai-expanded', () => false)
   // 面板输入框里的字。AI 还在回上一句时，从别处说的话先放在这里，不丢。
@@ -42,10 +46,11 @@ export function useAiChat() {
 
   async function send(text: string) {
     const content = text.trim().slice(0, MAX_MESSAGE)
-    if (!content || sending.value || loadingConversation.value || !me.value) return
+    if (!content || sending.value || loadingConversation.value || rewinding.value || !me.value) return
     const target = editing.value
     editing.value = null
-    entries.value.push({ role: 'user', content, editing: target?.summary })
+    // 记下这句的位置：回话回来时给它补上消息编号（发出期间不能撤回，位置不会变）。
+    const at = entries.value.push({ role: 'user', content, editing: target?.summary }) - 1
     const current = generation.value
     sending.value = true
     try {
@@ -63,7 +68,7 @@ export function useAiChat() {
       if (!data) {
         entries.value.push({ role: 'assistant', content: errorText(error), failed: true })
         // 没回成的那句服务端没存，标成失败，重说一遍即可。
-        const asked = entries.value.at(-2)
+        const asked = entries.value[at]
         if (asked) asked.failed = true
         // 修改草稿那句没发成，重说时仍然是在改这张草稿。
         if (target && !editing.value) editing.value = target
@@ -71,6 +76,8 @@ export function useAiChat() {
       }
       conversationId.value = data.conversation_id ?? null
       title.value = data.title ?? ''
+      const saved = entries.value[at]
+      if (saved) saved.id = data.message_id
       entries.value.push({ role: 'assistant', content: data.reply, drafts: data.drafts })
       if (data.drafts.length || target) void loadDrafts()
     } finally {
@@ -104,6 +111,7 @@ export function useAiChat() {
     title.value = ''
     sending.value = false
     loadingConversation.value = false
+    rewinding.value = false
   }
 
   // 新对话：面板留着，输入框里的字也留着。
@@ -127,6 +135,7 @@ export function useAiChat() {
       }
       title.value = data.title
       entries.value = data.messages.map(m => ({
+        id: m.id,
         role: m.role === 'user' ? 'user' : 'assistant',
         content: m.content,
         editing: m.editing ?? undefined,
@@ -135,6 +144,44 @@ export function useAiChat() {
     } finally {
       if (current === generation.value) loadingConversation.value = false
     }
+  }
+
+  // 撤回人说的一句话：服务端删掉这句和之后的全部消息（含 AI 的回话和别的话），草稿照旧留在待确认。
+  // 一句不剩时服务端连对话一起删，面板回到新对话。成功返回 true，出错时提示原因。
+  async function rewind(index: number): Promise<boolean> {
+    const entry = entries.value[index]
+    const id = conversationId.value
+    if (!entry?.id || entry.role !== 'user' || !id || sending.value || loadingConversation.value || rewinding.value) return false
+    const current = generation.value
+    rewinding.value = true
+    let result
+    try {
+      result = await api.POST('/api/ops/rewind_ai_conversation', { body: { id, message_id: entry.id } })
+    } finally {
+      if (current === generation.value) rewinding.value = false
+    }
+    if (current !== generation.value) return false
+    const { data, error } = result
+    if (!data) {
+      useToast().add({ title: errorText(error), color: 'error' })
+      return false
+    }
+    // 正在改的草稿不受影响：撤回不删草稿，「修改：…」照旧留着。
+    entries.value = entries.value.slice(0, index)
+    if (data.emptied) {
+      conversationId.value = null
+      title.value = ''
+    }
+    return true
+  }
+
+  // 修改人说的一句话：先撤回，再把原话放回输入框，人改完重发。输入框里已经打了字的，原话放前面，打的字留着。
+  async function revise(index: number): Promise<boolean> {
+    const content = entries.value[index]?.content ?? ''
+    if (!(await rewind(index))) return false
+    const typed = input.value.trim()
+    input.value = typed ? `${content}\n${typed}` : content
+    return true
   }
 
   // 本机存不了（隐私模式等）也照样切换，只是下次不记得。
@@ -158,5 +205,5 @@ export function useAiChat() {
     open.value = false
   }
 
-  return { open, entries, sending, editing, input, conversationId, title, loadingConversation, expanded, send, ask, editDraft, startNew, openConversation, setExpanded, restoreExpanded, reset }
+  return { open, entries, sending, editing, input, conversationId, title, loadingConversation, rewinding, expanded, send, ask, editDraft, startNew, openConversation, rewind, revise, setExpanded, restoreExpanded, reset }
 }
