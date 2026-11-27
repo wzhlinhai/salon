@@ -15,6 +15,8 @@ export function storeTodayState(fetch: () => Promise<StoreTodayResult>) {
   const error = ref('')
   const businessDate = computed(() => data.value?.business_date ?? '')
   const settings = computed(() => data.value?.settings ?? [])
+  // 设置页的分组，按显示顺序；每项设置的 group 指向其中一组。
+  const groups = computed(() => data.value?.groups ?? [])
 
   function setting(key: string): StoreSetting | undefined {
     return settings.value.find(s => s.key === key)
@@ -39,7 +41,7 @@ export function storeTodayState(fetch: () => Promise<StoreTodayResult>) {
     return result.data
   }
 
-  return { businessDate, settings, setting, value, error, load }
+  return { businessDate, settings, groups, setting, value, error, load }
 }
 
 // 营业日所在月的 1 号。
