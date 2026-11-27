@@ -222,6 +222,9 @@ async function removeItem(item: OrderItem) {
     toast.add({
       title: `去掉了${item.item_name}`,
       color: 'neutral',
+      // 带「撤销」的多留一会儿，默认 4 秒来不及点。
+      duration: 8000,
+      orientation: 'horizontal',
       actions: [{ label: '撤销', color: 'neutral', variant: 'link', onClick: () => void undoRemove(target.id, item) }]
     })
     await afterEdit(target.id)
@@ -566,6 +569,8 @@ async function checkout() {
     toast.add({
       title: `${doneName}结好了 ${yuanFixed(doneTotal)}`,
       color: 'success',
+      duration: doneCustomer ? 8000 : undefined,
+      orientation: 'horizontal',
       actions: doneCustomer ? [{ label: '记配方', color: 'neutral', variant: 'link', onClick: () => void navigateTo(`/customers/${doneCustomer}`) }] : undefined
     })
     emit('checked-out', data.items[0]?.checkout_id)
