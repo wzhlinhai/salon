@@ -603,3 +603,82 @@ func TestTextSettingValidationAndReadBack(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+// TestEveryCatalogueSettingHasKnownGroup 检查目录里每项设置都有设置页的已知分组。
+func TestEveryCatalogueSettingHasKnownGroup(t *testing.T) {
+	known := map[settings.SettingGroup]bool{
+		settings.GroupBusiness:    true,
+		settings.GroupBooking:     true,
+		settings.GroupRotation:    true,
+		settings.GroupCashier:     true,
+		settings.GroupAftersale:   true,
+		settings.GroupPerformance: true,
+		settings.GroupReceipt:     true,
+		settings.GroupAI:          true,
+	}
+	for _, d := range settings.Catalogue {
+		if !known[d.Group] {
+			t.Errorf("%s: group %q is not a known setting group", d.Key, d.Group)
+		}
+	}
+}
+
+// TestGetSettingsReturnsGroupsInDisplayOrder 检查 get_settings 返回分组和每项设置的 group。
+func TestGetSettingsReturnsGroupsInDisplayOrder(t *testing.T) {
+	s := open(t)
+	want := []map[string]any{
+		{"key": "business", "label": "营业"},
+		{"key": "booking", "label": "预约"},
+		{"key": "rotation", "label": "轮牌"},
+		{"key": "cashier", "label": "收银与卡"},
+		{"key": "aftersale", "label": "售后"},
+		{"key": "performance", "label": "业绩与提成"},
+		{"key": "receipt", "label": "小票"},
+		{"key": "ai", "label": "AI 提醒"},
+	}
+	for _, ch := range s.Channels() {
+		t.Run(ch.Name, func(t *testing.T) {
+			r := ch.Call(t, s.owner, "get_settings", map[string]any{})
+			if r.Status != http.StatusOK {
+				t.Fatalf("get_settings: %d %v %v", r.Status, r.Body, r.Err)
+			}
+			got := r.Body["groups"].([]any)
+			if len(got) != len(want) {
+				t.Fatalf("groups = %v, want %d groups", got, len(want))
+			}
+			for i, w := range want {
+				g := got[i].(map[string]any)
+				if g["key"] != w["key"] || g["label"] != w["label"] {
+					t.Errorf("group %d = %v, want %v", i, g, w)
+				}
+			}
+			if group := setting(t, r, settings.KeyAIReminderDailyCap)["group"]; group != "ai" {
+				t.Fatalf("ai_reminder_daily_cap group = %v, want ai", group)
+			}
+			if group := setting(t, r, "collection_channel_cash")["group"]; group != "cashier" {
+				t.Fatalf("collection_channel_cash group = %v, want cashier", group)
+			}
+		})
+	}
+}
+
+// TestDeclareRejectsInvalidGroup 检查 Declare 拒绝没有分组或分组未知的设置。
+func TestDeclareRejectsInvalidGroup(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		group settings.SettingGroup
+		want  string
+	}{
+		{"missing", "", `settings: setting declare_invalid_group has invalid group ""`},
+		{"unknown", "no_such_group", `settings: setting declare_invalid_group has invalid group "no_such_group"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if got := recover(); got != tc.want {
+					t.Fatalf("Declare panicked with %v, want %s", got, tc.want)
+				}
+			}()
+			settings.Declare(settings.Def{Key: "declare_invalid_group", Group: tc.group})
+		})
+	}
+}

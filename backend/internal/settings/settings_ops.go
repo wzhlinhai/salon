@@ -22,6 +22,7 @@ type Setting struct {
 	Label     string         `json:"label"`
 	Hint      string         `json:"hint"`
 	Kind      Kind           `json:"kind" enum:"time,time_range,choice,integer,text" doc:"值的形式：时刻、时段、选项、整数或文字"`
+	Group     SettingGroup   `json:"group" enum:"business,booking,rotation,cashier,aftersale,performance,receipt,ai" doc:"设置页里归在哪一组"`
 	Value     any            `json:"value" doc:"这一天执行的值"`
 	Default   any            `json:"default" doc:"系统默认做法"`
 	IsDefault bool           `json:"is_default" doc:"这一天用的是系统默认做法"`
@@ -38,10 +39,17 @@ type ScheduledValue struct {
 	IsDefault     bool   `json:"is_default" doc:"从这一天起恢复系统默认做法"`
 }
 
+// SettingGroupInfo 是设置页里的一个分组，按显示顺序排列。
+type SettingGroupInfo struct {
+	Key   SettingGroup `json:"key" enum:"business,booking,rotation,cashier,aftersale,performance,receipt,ai" doc:"分组标识"`
+	Label string       `json:"label" doc:"分组显示名"`
+}
+
 // SettingList 是 get_settings 的返回值。
 type SettingList struct {
-	BusinessDate string    `json:"business_date" format:"date" doc:"查看的营业日"`
-	Settings     []Setting `json:"settings"`
+	BusinessDate string             `json:"business_date" format:"date" doc:"查看的营业日"`
+	Groups       []SettingGroupInfo `json:"groups" doc:"这次返回的设置里实际有的分组，按设置页的显示顺序"`
+	Settings     []Setting          `json:"settings"`
 }
 
 // GetSettingsInput 是 get_settings 的参数。
@@ -143,9 +151,10 @@ func listSettings(ctx context.Context, env ops.Env, day time.Time) (*SettingList
 		return nil, err
 	}
 	out := &SettingList{BusinessDate: day.Format(DateLayout), Settings: make([]Setting, 0, len(Catalogue))}
+	present := make(map[SettingGroup]bool, len(settingGroupOrder))
 	for _, d := range Catalogue {
 		now := h.at(d, day)
-		st := Setting{Key: d.Key, Label: d.Label, Hint: d.Hint, Kind: d.Kind, Options: d.Options, Min: d.Min, Max: d.Max, Value: now.value, Default: d.Default, IsDefault: now.isDefault, Upcoming: []ScheduledValue{}}
+		st := Setting{Key: d.Key, Label: d.Label, Hint: d.Hint, Kind: d.Kind, Group: d.Group, Options: d.Options, Min: d.Min, Max: d.Max, Value: now.value, Default: d.Default, IsDefault: now.isDefault, Upcoming: []ScheduledValue{}}
 		if !now.isDefault {
 			st.EffectiveFrom = new(now.from.Format(DateLayout))
 		}
@@ -153,6 +162,13 @@ func listSettings(ctx context.Context, env ops.Env, day time.Time) (*SettingList
 			st.Upcoming = append(st.Upcoming, ScheduledValue{EffectiveFrom: u.from.Format(DateLayout), Value: u.value, IsDefault: u.isDefault})
 		}
 		out.Settings = append(out.Settings, st)
+		present[d.Group] = true
+	}
+	out.Groups = make([]SettingGroupInfo, 0, len(present))
+	for _, g := range settingGroupOrder {
+		if present[g] {
+			out.Groups = append(out.Groups, SettingGroupInfo{Key: g, Label: settingGroupLabels[g]})
+		}
 	}
 	return out, nil
 }
