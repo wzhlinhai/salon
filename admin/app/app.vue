@@ -118,6 +118,8 @@ onBeforeUnmount(() => clearInterval(draftTimer))
     <NuxtPage v-if="isLogin" />
     <!-- 外壳照原型 J：暖灰侧栏（门店名、搜索、待确认、分组导航、本人），一行顶栏（面包屑、首页切换）。 -->
     <UDashboardGroup v-else unit="rem" storage-key="salon-dashboard">
+      <!-- 键盘用户第一下 Tab 落在这里：跳过侧栏十几个链接直接到正文；平时看不见，聚焦时左上角出一个墨色小条。 -->
+      <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:start-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-inverted focus:px-3 focus:py-2 focus:text-sm focus:text-white" data-testid="skip-link">跳到正文</a>
       <UDashboardSidebar
         v-model:collapsed="sidebarCollapsed"
         collapsible
@@ -242,7 +244,7 @@ onBeforeUnmount(() => clearInterval(draftTimer))
           </UDashboardNavbar>
         </template>
         <template #body>
-          <main :class="pageWidth">
+          <main id="main" tabindex="-1" class="outline-none" :class="pageWidth">
             <!-- 页头：阅读页上画下字；工作台页（收银、预约）插画和标题并排一行，省出约 80px 给下面的列。 -->
             <!-- #title-actions 给 <PageActions> 用：主操作和标题同一行、靠右，有没有说明都一样高；窄屏折到标题下面。 -->
             <header v-if="showPageHeader" class="mb-5" data-testid="page-header">

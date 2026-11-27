@@ -81,6 +81,16 @@ test('店长从报表入口进营业报表：合计等于各行之和，切按�
   await page.getByTestId('range-trigger').click()
   await expect(page.getByRole('group', { name: '快捷范围' }).getByRole('button', { name: '本月' })).toHaveAttribute('aria-pressed', 'true')
   await page.keyboard.press('Escape')
+  // ‹ 翻到上个整月，› 翻回本月；本月再往后没有数，› 不能点。
+  await expect(page.getByTestId('range-later')).toBeDisabled()
+  const [year, month] = today.split('-').map(Number)
+  const lastMonth = month === 1 ? `${year - 1}-12` : `${year}-${String(month - 1).padStart(2, '0')}`
+  await page.getByTestId('range-earlier').click()
+  await expect(page).toHaveURL(new RegExp(`from=${lastMonth}-01`))
+  await expect(page.getByTestId('range-later')).toBeEnabled()
+  await page.getByTestId('range-later').click()
+  await expect(page.getByTestId('range-trigger')).toContainText('本月')
+  await expect(page.getByTestId('range-later')).toBeDisabled()
   const token = await apiLogin(manager.account, manager.password)
   const report = await api<{ rows: { period: string, on_site: { method: string, amount: string }[] }[], totals: { service_revenue: string } }>(token, 'get_business_report', { granularity: 'day', from: `${today.slice(0, 7)}-01`, to: today })
   const wechat = report.rows.find(r => r.period === today)!.on_site.find(m => m.method === 'wechat')!.amount

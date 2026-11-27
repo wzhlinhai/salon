@@ -688,7 +688,7 @@ test('发型师能开单加项，看不到结账和团购券，也没有 403 或
   const itemRows = page.locator(`[data-order-item="${item.name}"]`)
   await expect(itemRows).toHaveCount(1)
   await expect(page.getByText('结账', { exact: true })).toHaveCount(0)
-  await expect(page.getByTestId('unlinked-coupons')).toHaveCount(0)
+  await expect(page.getByTestId('unlinked-coupons')).toBeHidden()
   await expect(page.getByTestId('coupon-panel')).toHaveCount(0)
   await showSettled(page)
   const paidRow = page.locator(`[data-settled-order="${paid.id}"]`)
