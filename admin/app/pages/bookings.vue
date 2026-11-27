@@ -308,9 +308,12 @@ watch(loading, async (busy) => {
   if (busy || scrolledFor === day.value || !grid.value) return
   scrolledFor = day.value
   await nextTick()
+  // 等这一拍时可能已经切走了页面，格子没了就不滚。
+  const el = grid.value
+  if (!el) return
   const first = entries.value.filter(entry => entry.status !== 'cancelled').map(entry => clockMinutes(clockOf(entry.starts_at))).sort((a, b) => a - b)[0]
   const target = nowTop.value ?? (first === undefined ? 0 : ((first - openMinutes.value) / SLOT_MINUTES) * SLOT_HEIGHT)
-  grid.value.scrollTop = Math.max(0, target - SLOT_HEIGHT * 4)
+  el.scrollTop = Math.max(0, target - SLOT_HEIGHT * 4)
 })
 let clockTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {

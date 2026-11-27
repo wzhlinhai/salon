@@ -247,7 +247,8 @@ onBeforeUnmount(() => clearInterval(draftTimer))
           <main id="main" tabindex="-1" class="outline-none" :class="pageWidth">
             <!-- 页头：阅读页上画下字；工作台页（收银、预约）插画和标题并排一行，省出约 80px 给下面的列。 -->
             <!-- #title-actions 给 <PageActions> 用：主操作和标题同一行、靠右，有没有说明都一样高；窄屏折到标题下面。 -->
-            <header v-if="showPageHeader" class="mb-5" data-testid="page-header">
+            <!-- 用 v-show 不用 v-if：切到首页时路由先变、旧页面后卸，v-if 会先拆掉 #title-actions、#page-description，旧页面传送过去的按钮再更新就找不到节点（Vue 报 nextSibling / emitsOptions 为 null）。 -->
+            <header v-show="showPageHeader" class="mb-5" data-testid="page-header">
               <SpotArt v-if="route.meta.art && !route.meta.workbench" :name="route.meta.art" class="-ml-1 mb-1 w-[60px]" data-testid="page-art" />
               <div class="flex flex-wrap items-center gap-x-6 gap-y-3">
                 <div class="flex min-w-0 flex-1 basis-80 items-center gap-2">
