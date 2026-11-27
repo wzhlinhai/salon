@@ -1228,6 +1228,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/get_order_refundable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 查看一张已结账原单当前可退金额 */
+        post: operations["get_order_refundable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/get_payroll": {
         parameters: {
             query?: never;
@@ -3754,6 +3771,7 @@ export interface components {
             deduct_performance: boolean;
             events: components["schemas"]["AftersaleEvent"][];
             id: string;
+            order: components["schemas"]["AftersaleOrder"];
             order_id: string;
             reason: string;
             refund_lines: components["schemas"]["RefundLine"][];
@@ -3778,6 +3796,12 @@ export interface components {
         };
         AftersaleList: {
             items: components["schemas"]["Aftersale"][];
+        };
+        AftersaleOrder: {
+            /** Format: date */
+            business_date: string;
+            customer_id: string;
+            receivable: string;
         };
         AftersaleRefund: {
             amount: string;
@@ -6166,6 +6190,28 @@ export interface components {
             order_item_id: string;
             /** Format: int32 */
             paid: number;
+        };
+        OrderRefundable: {
+            approved_refunded: string;
+            cards: components["schemas"]["OrderRefundableCard"][];
+            order_id: string;
+            /** Format: int64 */
+            pending_count: number;
+            refundable: string;
+            refundable_base: string;
+            /** Format: date */
+            window_ends_on: string;
+            within_window: boolean;
+        };
+        OrderRefundableCard: {
+            card_id: string;
+            card_type_name: string;
+            paid: string;
+            refunded: string;
+            remaining: string;
+        };
+        OrderRefundableInput: {
+            order_id: string;
         };
         OrderStaffChange: {
             /** @description 改后各岗位员工，空岗位的员工为 null */
@@ -9893,6 +9939,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Order"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    get_order_refundable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrderRefundableInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderRefundable"];
                 };
             };
             /** @description Error */

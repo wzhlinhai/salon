@@ -73,7 +73,40 @@ type AftersaleEvent struct {
 	At    time.Time `json:"at"`
 }
 
-// Aftersale 是售后单视图，只引用原单 ID，不含顾客姓名或手机号。
+// OrderRefundableInput 是查询一张原单当前可退金额的参数。
+type OrderRefundableInput struct {
+	OrderID uuid.UUID `json:"order_id"`
+}
+
+// AftersaleOrder 是售后单原单的摘要，只引用顾客 ID，不含顾客姓名或手机号。
+type AftersaleOrder struct {
+	BusinessDate string    `json:"business_date" format:"date"`
+	CustomerID   uuid.UUID `json:"customer_id"`
+	Receivable   string    `json:"receivable"`
+}
+
+// OrderRefundableCard 是原单一张付过本金的卡及其已退和剩余本金，金额是两位小数文本。
+type OrderRefundableCard struct {
+	CardID       uuid.UUID `json:"card_id"`
+	CardTypeName string    `json:"card_type_name"`
+	Paid         string    `json:"paid"`
+	Refunded     string    `json:"refunded"`
+	Remaining    string    `json:"remaining"`
+}
+
+// OrderRefundable 是一张原单当前可退金额、卡本金和售后期限，金额是两位小数文本。
+type OrderRefundable struct {
+	OrderID          uuid.UUID             `json:"order_id"`
+	Refundable       string                `json:"refundable"`
+	RefundableBase   string                `json:"refundable_base"`
+	ApprovedRefunded string                `json:"approved_refunded"`
+	Cards            []OrderRefundableCard `json:"cards"`
+	WindowEndsOn     string                `json:"window_ends_on" format:"date"`
+	WithinWindow     bool                  `json:"within_window"`
+	PendingCount     int64                 `json:"pending_count"`
+}
+
+// Aftersale 是售后单视图，只引用原单和顾客 ID，不含顾客姓名或手机号。
 type Aftersale struct {
 	ApprovedBy        *staff.Ref        `json:"approved_by,omitempty"`
 	ApprovedAt        *time.Time        `json:"approved_at,omitempty"`
@@ -82,6 +115,7 @@ type Aftersale struct {
 	RejectNote        *string           `json:"reject_note,omitempty"`
 	ID                uuid.UUID         `json:"id"`
 	OrderID           uuid.UUID         `json:"order_id"`
+	Order             AftersaleOrder    `json:"order"`
 	Type              string            `json:"type" enum:"repair,redo,partial_refund,full_refund"`
 	Reason            string            `json:"reason"`
 	Status            string            `json:"status" enum:"pending,approved,rejected"`

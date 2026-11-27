@@ -22,9 +22,11 @@ func view(ctx context.Context, env ops.Env, row dbgen.Aftersale) (*Aftersale, er
 
 func views(ctx context.Context, env ops.Env, rows []dbgen.Aftersale) ([]Aftersale, error) {
 	ids := make([]uuid.UUID, len(rows))
+	orderIDs := make([]uuid.UUID, len(rows))
 	staffIDs := []uuid.UUID{}
 	for i, row := range rows {
 		ids[i] = row.ID
+		orderIDs[i] = row.OrderID
 		staffIDs = append(staffIDs, row.CreatedBy)
 		if row.ApprovedBy != nil {
 			staffIDs = append(staffIDs, *row.ApprovedBy)
@@ -43,6 +45,18 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Aftersale) ([]Aftersal
 	}
 	for _, event := range events {
 		staffIDs = append(staffIDs, event.ActorID)
+	}
+	orderRows, err := env.Q.AftersaleOrderSummaries(ctx, dbgen.AftersaleOrderSummariesParams{StoreID: env.Caller.StoreID, OrderIds: orderIDs})
+	if err != nil {
+		return nil, err
+	}
+	byOrder := map[uuid.UUID]AftersaleOrder{}
+	for _, row := range orderRows {
+		var receivable money.Total
+		if err := receivable.Scan(row.Receivable); err != nil {
+			return nil, err
+		}
+		byOrder[row.ID] = AftersaleOrder{BusinessDate: row.BusinessDate.Time.Format(time.DateOnly), CustomerID: row.CustomerID, Receivable: receivable.Format()}
 	}
 	refs, err := staff.References(ctx, env.Q, env.Caller.StoreID, staffIDs)
 	if err != nil {
@@ -74,7 +88,7 @@ func views(ctx context.Context, env ops.Env, rows []dbgen.Aftersale) ([]Aftersal
 			}
 		}
 		item := Aftersale{
-			ID: row.ID, OrderID: row.OrderID, Type: row.Type, Reason: row.Reason, Status: row.Status,
+			ID: row.ID, OrderID: row.OrderID, Order: byOrder[row.OrderID], Type: row.Type, Reason: row.Reason, Status: row.Status,
 			BusinessDate: row.BusinessDate.Time.Format(time.DateOnly), CreatedBy: refs[row.CreatedBy], CreatedAt: row.CreatedAt.Time,
 			DeductPerformance: row.DeductPerformance, DeductCommission: row.DeductCommission,
 			RefundLines: lines, Refunds: byRefund[row.ID], Events: byEvent[row.ID],

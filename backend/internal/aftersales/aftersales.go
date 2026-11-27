@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -29,6 +31,7 @@ func Register(r *ops.Registry) {
 	ops.Register(r, ops.Operation[RejectAftersaleInput, Aftersale]{Name: "reject_aftersale", Summary: "拒绝售后单", Kind: ops.Write, Permission: perm.AfterSalesManage, AI: ops.AINone, Handle: rejectAftersale})
 	ops.Register(r, ops.Operation[GetAftersaleInput, Aftersale]{Name: "get_aftersale", Summary: "查看一张售后单", Kind: ops.Read, Permission: perm.AfterSalesManage, AI: ops.AIDirect, Handle: getAftersale})
 	ops.Register(r, ops.Operation[ListAftersalesInput, AftersaleList]{Name: "list_aftersales", Summary: "按营业日范围、状态或原单查看售后单", Kind: ops.Read, Permission: perm.AfterSalesManage, AI: ops.AIDirect, Handle: listAftersales})
+	ops.Register(r, ops.Operation[OrderRefundableInput, OrderRefundable]{Name: "get_order_refundable", Summary: "查看一张已结账原单当前可退金额", Kind: ops.Read, Permission: perm.AfterSalesManage, AI: ops.AIDirect, Handle: getOrderRefundable})
 }
 
 func rowError(err error) error {
@@ -36,6 +39,12 @@ func rowError(err error) error {
 		return ops.ErrNotFound
 	}
 	return err
+}
+
+// aftersaleWindow 返回原单营业日的售后期限最后一天，以及今天是否还在期限内。
+func aftersaleWindow(orderDay, today time.Time, rules settings.Rules) (time.Time, bool) {
+	days := int(today.Sub(orderDay).Hours() / 24)
+	return orderDay.AddDate(0, 0, rules.AftersaleWindowDays()), days <= rules.AftersaleWindowDays()
 }
 
 func checkOrder(row dbgen.Order) error {
@@ -71,8 +80,7 @@ func createAftersale(ctx context.Context, env ops.Env, in *CreateAftersaleInput)
 	if err != nil {
 		return nil, err
 	}
-	days := int(today.Sub(order.BusinessDate.Time).Hours() / 24)
-	if days > rules.AftersaleWindowDays() {
+	if _, within := aftersaleWindow(order.BusinessDate.Time, today, rules); !within {
 		return nil, ops.Rule("已超过售后期限（" + strconv.Itoa(rules.AftersaleWindowDays()) + "天）")
 	}
 	if in.Type == "partial_refund" || in.Type == "full_refund" {
@@ -336,6 +344,57 @@ func rejectAftersale(ctx context.Context, env ops.Env, in *RejectAftersaleInput)
 		return nil, err
 	}
 	return out, nil
+}
+
+func getOrderRefundable(ctx context.Context, env ops.Env, in *OrderRefundableInput) (*OrderRefundable, error) {
+	order, err := env.Q.GetOrder(ctx, dbgen.GetOrderParams{StoreID: env.Caller.StoreID, ID: in.OrderID})
+	if err != nil {
+		return nil, rowError(err)
+	}
+	if err := checkOrder(order); err != nil {
+		return nil, err
+	}
+	state, err := loadRefundState(ctx, env, order.ID)
+	if err != nil {
+		return nil, err
+	}
+	today, err := settings.BusinessDate(ctx, env.Q, env.Caller.StoreID, env.Now)
+	if err != nil {
+		return nil, err
+	}
+	rules, err := settings.Effective(ctx, env.Q, env.Caller.StoreID, today)
+	if err != nil {
+		return nil, err
+	}
+	windowEndsOn, within := aftersaleWindow(order.BusinessDate.Time, today, rules)
+	pending, err := env.Q.AftersalePendingCount(ctx, dbgen.AftersalePendingCountParams{StoreID: env.Caller.StoreID, OrderID: order.ID})
+	if err != nil {
+		return nil, err
+	}
+	cardIDs := make([]uuid.UUID, 0, len(state.cardPaid))
+	for cardID := range state.cardPaid {
+		cardIDs = append(cardIDs, cardID)
+	}
+	slices.SortFunc(cardIDs, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
+	names := map[uuid.UUID]string{}
+	if len(cardIDs) > 0 {
+		rows, err := env.Q.AftersaleCardTypeNames(ctx, dbgen.AftersaleCardTypeNamesParams{StoreID: env.Caller.StoreID, CardIds: cardIDs})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			names[row.CardID] = row.CardTypeName
+		}
+	}
+	cards := make([]OrderRefundableCard, 0, len(cardIDs))
+	for _, cardID := range cardIDs {
+		paid, refunded := state.cardPaid[cardID], state.cardRefunded[cardID]
+		cards = append(cards, OrderRefundableCard{CardID: cardID, CardTypeName: names[cardID], Paid: paid.Format(), Refunded: refunded.Format(), Remaining: paid.DeductTotal(refunded).Format()})
+	}
+	return &OrderRefundable{
+		OrderID: order.ID, Refundable: state.remaining.Format(), RefundableBase: state.base.Format(), ApprovedRefunded: state.approved.Format(),
+		Cards: cards, WindowEndsOn: windowEndsOn.Format(settings.DateLayout), WithinWindow: within, PendingCount: pending,
+	}, nil
 }
 
 func getAftersale(ctx context.Context, env ops.Env, in *GetAftersaleInput) (*Aftersale, error) {
