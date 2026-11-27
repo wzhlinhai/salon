@@ -30,6 +30,9 @@ function same(a: ReportRange, b: ReportRange) {
   return a.granularity === b.granularity && a.from === b.from && a.to === b.to
 }
 
+const earlier = computed(() => stepRange(range.value, -1, props.today))
+const later = computed(() => stepRange(range.value, 1, props.today))
+
 function choose(value: ReportRange) {
   range.value = value
   open.value = false
@@ -48,45 +51,50 @@ function setTo(value: string) {
   <div class="space-y-2" data-testid="report-range">
     <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
       <ViewTabs v-if="!dayOnly" v-model="granularity" :items="granularityItems" label="按日或按月" />
-      <UPopover v-model:open="open" :content="{ align: 'start', sideOffset: 4 }">
-        <button
-          type="button"
-          class="inline-flex h-8 max-w-full items-center gap-2 rounded-full border border-default px-3 text-sm transition-colors hover:bg-hover focus-visible:outline-2 focus-visible:outline-primary"
-          aria-label="查哪段时间"
-          data-testid="range-trigger"
-        >
-          <UIcon name="i-lucide-calendar" class="size-4 shrink-0 text-muted" aria-hidden="true" />
-          <span v-if="preset" class="font-medium">{{ preset }}</span>
-          <span class="truncate tabular-nums" :class="preset ? 'text-muted' : 'font-medium'">{{ span }}</span>
-          <UIcon name="i-lucide-chevron-down" class="size-4 shrink-0 text-muted" aria-hidden="true" />
-        </button>
-        <template #content>
-          <div class="w-72 p-2 text-sm" data-testid="range-popover">
-            <ul role="group" aria-label="快捷范围">
-              <li v-for="p in presets" :key="p.label">
-                <button
-                  type="button"
-                  class="flex w-full items-center gap-2 rounded-md px-2 py-2 text-start transition-colors focus-visible:outline-2 focus-visible:outline-primary"
-                  :class="preset === p.label ? 'bg-selected' : 'hover:bg-hover'"
-                  :aria-pressed="preset === p.label"
-                  @click="choose(p.range)"
-                >
-                  <span class="flex-1">{{ p.label }}</span>
-                  <UIcon v-if="preset === p.label" name="i-lucide-check" class="size-4 shrink-0" aria-hidden="true" />
-                </button>
-              </li>
-            </ul>
-            <div class="mt-2 border-t border-default px-2 pt-3 pb-1">
-              <p class="mb-2 text-meta text-muted">自己填</p>
-              <div class="flex items-center gap-2">
-                <DateInput :key="`from-${range.granularity}`" :model-value="range.from" :month="month" :max="today" size="sm" class="min-w-0 flex-1" aria-label="开始" @update:model-value="setFrom" />
-                <span class="text-meta text-muted">至</span>
-                <DateInput :key="`to-${range.granularity}`" :model-value="range.to" :month="month" :max="today" size="sm" class="min-w-0 flex-1" aria-label="结束" @update:model-value="setTo" />
+      <!-- 范围按钮两边「‹ ›」：本月、上月这类整月一下翻一个月，不用点开弹层。 -->
+      <div class="flex min-w-0 items-center gap-1">
+        <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-chevron-left" class="size-8 justify-center" aria-label="往前一段" data-testid="range-earlier" :disabled="!earlier" @click="earlier && choose(earlier)" />
+        <UPopover v-model:open="open" :content="{ align: 'start', sideOffset: 4 }">
+          <button
+            type="button"
+            class="inline-flex h-8 max-w-full items-center gap-2 rounded-full border border-default px-3 text-sm transition-colors hover:bg-hover focus-visible:outline-2 focus-visible:outline-primary"
+            aria-label="查哪段时间"
+            data-testid="range-trigger"
+          >
+            <UIcon name="i-lucide-calendar" class="size-4 shrink-0 text-muted" aria-hidden="true" />
+            <span v-if="preset" class="font-medium">{{ preset }}</span>
+            <span class="truncate tabular-nums" :class="preset ? 'text-muted' : 'font-medium'">{{ span }}</span>
+            <UIcon name="i-lucide-chevron-down" class="size-4 shrink-0 text-muted" aria-hidden="true" />
+          </button>
+          <template #content>
+            <div class="w-72 p-2 text-sm" data-testid="range-popover">
+              <ul role="group" aria-label="快捷范围">
+                <li v-for="p in presets" :key="p.label">
+                  <button
+                    type="button"
+                    class="flex w-full items-center gap-2 rounded-md px-2 py-2 text-start transition-colors focus-visible:outline-2 focus-visible:outline-primary"
+                    :class="preset === p.label ? 'bg-selected' : 'hover:bg-hover'"
+                    :aria-pressed="preset === p.label"
+                    @click="choose(p.range)"
+                  >
+                    <span class="flex-1">{{ p.label }}</span>
+                    <UIcon v-if="preset === p.label" name="i-lucide-check" class="size-4 shrink-0" aria-hidden="true" />
+                  </button>
+                </li>
+              </ul>
+              <div class="mt-2 border-t border-default px-2 pt-3 pb-1">
+                <p class="mb-2 text-meta text-muted">自己填</p>
+                <div class="flex items-center gap-2">
+                  <DateInput :key="`from-${range.granularity}`" :model-value="range.from" :month="month" :max="today" size="sm" class="min-w-0 flex-1" aria-label="开始" @update:model-value="setFrom" />
+                  <span class="text-meta text-muted">至</span>
+                  <DateInput :key="`to-${range.granularity}`" :model-value="range.to" :month="month" :max="today" size="sm" class="min-w-0 flex-1" aria-label="结束" @update:model-value="setTo" />
+                </div>
               </div>
             </div>
-          </div>
-        </template>
-      </UPopover>
+          </template>
+        </UPopover>
+        <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-chevron-right" class="size-8 justify-center" aria-label="往后一段" data-testid="range-later" :disabled="!later" @click="later && choose(later)" />
+      </div>
     </div>
     <p v-if="problem" class="text-meta text-ink-orange" data-testid="range-problem">{{ problem }}</p>
   </div>

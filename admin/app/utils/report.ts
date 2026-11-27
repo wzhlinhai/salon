@@ -78,6 +78,32 @@ export function previousRange(range: ReportRange): ReportRange {
   return { granularity: 'day', from: addDays(range.from, -n), to: addDays(range.from, -1) }
 }
 
+// 报表顶栏的「‹ ›」：整月（1 日到月末，本月是到今天）按自然月翻，其余按同样长度往前或往后挪一段；
+// 往后最多到今天（本月），再往后没有数，返回 null。
+export function stepRange(range: ReportRange, direction: -1 | 1, today: string): ReportRange | null {
+  if (rangeProblem(range)) return null
+  if (range.granularity === 'month') {
+    const n = rangeLength(range)
+    const to = addMonths(range.to, direction * n)
+    if (to > today.slice(0, 7)) return null
+    return { granularity: 'month', from: addMonths(range.from, direction * n), to }
+  }
+  const monthEnd = (month: string) => addDays(`${addMonths(month, 1)}-01`, -1)
+  const month = range.from.slice(0, 7)
+  const end = monthEnd(month)
+  if (range.from === `${month}-01` && range.to === (end > today ? today : end)) {
+    const target = addMonths(month, direction)
+    if (`${target}-01` > today) return null
+    const targetEnd = monthEnd(target)
+    return { granularity: 'day', from: `${target}-01`, to: targetEnd > today ? today : targetEnd }
+  }
+  if (direction < 0) return previousRange(range)
+  const n = rangeLength(range)
+  const to = addDays(range.to, n)
+  if (to > today) return null
+  return { granularity: 'day', from: addDays(range.from, n), to }
+}
+
 export function previousLabel(range: ReportRange) {
   const n = rangeLength(range)
   if (range.granularity === 'month') return n === 1 ? '比上月' : `比前 ${n} 个月`

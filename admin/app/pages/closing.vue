@@ -47,6 +47,11 @@ function dayTitle(value: string) {
   return `${Number(m)} 月 ${Number(d)} 日日结`
 }
 
+function shortDay(value: string) {
+  const [, m, d] = value.split('-')
+  return `${Number(m)}月${Number(d)}日`
+}
+
 // 页头换日子那里写「11月24日 周一」。
 function dayLabel(value: string) {
   const [, m, d] = value.split('-')
@@ -228,6 +233,9 @@ const primaryLabel = computed(() => {
   return canSeal(date.value) ? '封账' : ''
 })
 
+// 数没读回来前不判断，免得首次进来先描边、读回来再变实心闪一下。
+const quietSeal = computed(() => !!figures.value && !needsClose.value && !business.value)
+
 const closing = ref(false)
 // 取数或存日结的时候不让换日子。
 const busy = computed(() => loading.value || closing.value)
@@ -368,7 +376,8 @@ function saveUnseal() {
 <template>
   <div class="space-y-6">
     <PageActions>
-      <UButton v-if="primaryLabel" :loading="closing" :disabled="loading" @click="primary">{{ primaryLabel }}</UButton>
+      <!-- 没营业的日子只剩「封账」这一步：照样要封（封账一天接一天），但不是这页的要紧事，退成描边。 -->
+      <UButton v-if="primaryLabel" :color="quietSeal ? 'neutral' : 'primary'" :variant="quietSeal ? 'outline' : 'solid'" :loading="closing" :disabled="loading" @click="primary">{{ primaryLabel }}</UButton>
     </PageActions>
 
     <div v-if="date" class="flex flex-wrap items-center gap-2">
@@ -387,6 +396,8 @@ function saveUnseal() {
 
       <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-meta text-muted">
         <span data-testid="sealed-through">{{ sealedThrough ? `已封账到 ${sealedThrough}` : '还没有封账' }}</span>
+        <!-- 默认落在昨天：今天还没营业完，后端也只收昨天及以前；不说一句，收银员会以为今天已经结过了。 -->
+        <span v-if="date === yesterday" data-testid="today-later">· 今天（{{ shortDay(today) }}）的账，营业日结束后再来日结</span>
         <button v-if="sealedThrough && sealedThrough !== date && can('closing.unseal')" type="button" class="inline-flex items-center hover:underline" :disabled="busy" @click="go(sealedThrough)">去 {{ sealedThrough.slice(5) }} 撤销封账<UIcon name="i-lucide-chevron-right" class="size-4" aria-hidden="true" /></button>
         <button v-if="nextSeal && nextSeal !== date && canSeal(nextSeal)" type="button" class="inline-flex items-center hover:underline" :disabled="busy" @click="go(nextSeal)">接着封 {{ nextSeal.slice(5) }}<UIcon name="i-lucide-chevron-right" class="size-4" aria-hidden="true" /></button>
         <UButton v-if="canUnseal" size="xs" color="neutral" variant="ghost" @click="openUnseal">撤销封账…</UButton>
@@ -421,8 +432,9 @@ function saveUnseal() {
                       v-model="actual[line.method as Method]"
                       inputmode="decimal"
                       :aria-label="`${line.label}实际`"
-                      class="w-28"
-                      :ui="{ base: 'text-end tabular-nums' }"
+                      variant="ghost"
+                      class="-me-2 w-28"
+                      :ui="{ base: 'h-8 py-1 px-2 text-sm text-end tabular-nums focus:bg-default' }"
                     />
                   </div>
                 </td>

@@ -279,7 +279,7 @@ onBeforeUnmount(() => {
       </template>
       <template v-else-if="payroll">
         <span>未锁定</span>
-        <span v-if="payroll.auto_lock_date">{{ dayLabel(payroll.auto_lock_date) }}自动锁定，之后不能再改</span>
+        <span v-if="payroll.auto_lock_date"><strong class="font-medium text-default">{{ dayLabel(payroll.auto_lock_date) }}</strong>自动锁定，之后不能再改</span>
       </template>
     </div>
 

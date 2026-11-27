@@ -289,9 +289,15 @@ const empty = computed(() => loaded.value && !rows.value.length && !done.value &
           </div>
         </li>
       </template>
-      <li v-if="nowIndex === rows.length && rows.length" class="now">
+      <li v-if="nowIndex === rows.length" class="now">
         <span class="time"><span class="sr-only">现在 </span><time :datetime="new Date(now).toISOString()">{{ clock(now) }}</time></span>
         <i aria-hidden="true" />
+      </li>
+      <!-- 只剩「之前」「之后」时，现在这条红线下面明说两小时内是空的，不让人对着一行「之前」猜。 -->
+      <li v-if="!rows.length" class="row" data-testid="next-none">
+        <span class="time" />
+        <span class="rail"><i class="dot" /></span>
+        <span class="body text-sm text-muted">两小时内没有预约，也没有在做的</span>
       </li>
       <li v-if="later" class="row" data-testid="next-later">
         <span class="time">之后</span>
