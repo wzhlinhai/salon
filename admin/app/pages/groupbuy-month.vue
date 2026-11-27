@@ -121,7 +121,7 @@ async function saveSettlement() {
         <div v-else class="overflow-x-auto">
           <UTable :data="data.history" :columns="historyColumns" data-testid="settlement-history">
             <template #created_at-cell="{ row }">
-              <span class="text-muted tabular-nums">{{ new Date(row.original.created_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</span>
+              <span class="text-muted tabular-nums">{{ storeDateTime(row.original.created_at) }}</span>
             </template>
             <template #amount-cell="{ row }">
               <span class="font-medium tabular-nums">{{ yuanFixed(row.original.amount) }}</span>

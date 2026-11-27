@@ -301,7 +301,7 @@ watch(ordersOpen, async (open) => {
 })
 
 function clock(value: string) {
-  return new Date(value).toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false })
+  return storeTime(value)
 }
 
 function payText(o: Order) {

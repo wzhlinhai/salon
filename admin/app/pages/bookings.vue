@@ -19,7 +19,6 @@ const { can } = useMe()
 
 const SLOT_MINUTES = 15
 const SLOT_HEIGHT = 24
-const TIME_ZONE = 'Asia/Shanghai'
 
 const statusLabels: Record<Appointment['status'], string> = {
   pending: '待确认',
@@ -58,12 +57,11 @@ function entryClass(entry: Appointment) {
   return 'entry bg-white'
 }
 
-// 过了开始时间 5 分钟还没开单的（只看今天），和首页「接下来」同一个口径：过了 90 分钟多半不来了，不再提醒。
+// 到点没来的（只看今天），口径在 utils/storeClock.ts，和首页「接下来」共用。
 function lateMinutes(entry: Appointment) {
   if (entry.kind !== 'appointment' || entry.order_id || day.value !== businessDate.value) return 0
   if (entry.status !== 'pending' && entry.status !== 'confirmed') return 0
-  const late = Math.floor((nowClock.value - new Date(entry.starts_at).getTime()) / 60_000)
-  return late > 5 && late <= 90 ? late : 0
+  return minutesLate(entry.starts_at, nowClock.value)
 }
 
 // 块里第二行：项目 · 现在怎样（确认过、还没到点的不写状态）；私约占位写备注。
@@ -111,38 +109,16 @@ function clockMinutes(value: string) {
   return (hour ?? 0) * 60 + (minute ?? 0)
 }
 
-function shanghai(iso: string) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23'
-  }).formatToParts(new Date(iso))
-  const part = (type: string) => parts.find(p => p.type === type)?.value ?? ''
-  return { date: `${part('year')}-${part('month')}-${part('day')}`, time: `${part('hour')}:${part('minute')}` }
-}
-
-function clockOf(iso: string) {
-  return shanghai(iso).time
-}
-
 function dateTimeText(iso: string) {
-  const value = shanghai(iso)
-  return `${value.date} ${value.time}`
+  const value = storeClock(iso)
+  return `${value.day} ${value.time}`
 }
 
 // 同一天的起止只写一次日期：「2026-11-25 14:00–15:30」。
 function rangeText(start: string, end: string) {
-  const a = shanghai(start)
-  const b = shanghai(end)
-  return a.date === b.date ? `${a.date} ${a.time}–${b.time}` : `${dateTimeText(start)}–${dateTimeText(end)}`
-}
-
-function isoAt(date: string, time: string) {
-  return `${date}T${time}:00+08:00`
+  const a = storeClock(start)
+  const b = storeClock(end)
+  return a.day === b.day ? `${a.day} ${a.time}–${b.time}` : `${dateTimeText(start)}–${dateTimeText(end)}`
 }
 
 const openMinutes = computed(() => clockMinutes(hours.value.open))
@@ -187,8 +163,8 @@ function visibleEntries(staffID: string) {
 }
 
 function entryStyle(entry: Appointment) {
-  const start = Math.max(openMinutes.value, clockMinutes(clockOf(entry.starts_at)))
-  const end = Math.max(start + 1, Math.min(closeMinutes.value, clockMinutes(clockOf(entry.ends_at))))
+  const start = Math.max(openMinutes.value, clockMinutes(storeTime(entry.starts_at)))
+  const end = Math.max(start + 1, Math.min(closeMinutes.value, clockMinutes(storeTime(entry.ends_at))))
   return {
     top: `${((start - openMinutes.value) / SLOT_MINUTES) * SLOT_HEIGHT}px`,
     height: `${Math.max(18, ((end - start) / SLOT_MINUTES) * SLOT_HEIGHT - 2)}px`
@@ -301,11 +277,11 @@ const dayTitle = computed(() => {
 const nowClock = ref(Date.now())
 const nowTop = computed(() => {
   if (!day.value || day.value !== businessDate.value) return null
-  const minutes = clockMinutes(shanghai(new Date(nowClock.value).toISOString()).time)
+  const minutes = clockMinutes(storeClock(nowClock.value).time)
   if (minutes < openMinutes.value || minutes >= closeMinutes.value) return null
   return ((minutes - openMinutes.value) / SLOT_MINUTES) * SLOT_HEIGHT
 })
-const nowText = computed(() => clockOf(new Date(nowClock.value).toISOString()))
+const nowText = computed(() => storeTime(nowClock.value))
 const grid = useTemplateRef<HTMLElement>('grid')
 let scrolledFor = ''
 watch(loading, async (busy) => {
@@ -315,7 +291,7 @@ watch(loading, async (busy) => {
   // 等这一拍时可能已经切走了页面，格子没了就不滚。
   const el = grid.value
   if (!el) return
-  const first = entries.value.filter(entry => entry.status !== 'cancelled').map(entry => clockMinutes(clockOf(entry.starts_at))).sort((a, b) => a - b)[0]
+  const first = entries.value.filter(entry => entry.status !== 'cancelled').map(entry => clockMinutes(storeTime(entry.starts_at))).sort((a, b) => a - b)[0]
   const target = nowTop.value ?? (first === undefined ? 0 : ((first - openMinutes.value) / SLOT_MINUTES) * SLOT_HEIGHT)
   el.scrollTop = Math.max(0, target - SLOT_HEIGHT * 4)
 })
@@ -388,9 +364,9 @@ function newBooking() {
   }
   let minutes = openMinutes.value
   if (day.value === businessDate.value) {
-    const now = shanghai(new Date(nowClock.value).toISOString())
+    const now = storeClock(nowClock.value)
     const next = Math.max(minutes, Math.ceil(clockMinutes(now.time) / SLOT_MINUTES) * SLOT_MINUTES)
-    if (now.date !== day.value || next > closeMinutes.value - SLOT_MINUTES) day.value = addDays(day.value, 1)
+    if (now.day !== day.value || next > closeMinutes.value - SLOT_MINUTES) day.value = addDays(day.value, 1)
     else minutes = next
   }
   openBooking(first.value, clockText(minutes))
@@ -441,10 +417,10 @@ async function saveBooking() {
   await bookingEditor.save(async (current) => {
     const body: components['schemas']['CreateAppointmentInput'] = {
       staff_id: booking.staff_id,
-      starts_at: isoAt(bookingDay.value, booking.start_time),
+      starts_at: storeInstant(bookingDay.value, booking.start_time),
       items: booking.item_ids.map(itemID => ({ item_id: itemID }))
     }
-    if (booking.end_time) body.ends_at = isoAt(bookingDay.value, booking.end_time)
+    if (booking.end_time) body.ends_at = storeInstant(bookingDay.value, booking.end_time)
     if (booking.note.trim()) body.note = booking.note.trim()
     if (selectedCustomer.value) {
       body.customer_id = selectedCustomer.value.id
@@ -489,8 +465,8 @@ async function saveBlock() {
   await blockEditor.save(async (current) => {
     const body: components['schemas']['CreateBlockInput'] = {
       staff_id: blockForm.staff_id,
-      starts_at: isoAt(blockDay.value, blockForm.start_time),
-      ends_at: isoAt(blockDay.value, blockForm.end_time)
+      starts_at: storeInstant(blockDay.value, blockForm.start_time),
+      ends_at: storeInstant(blockDay.value, blockForm.end_time)
     }
     if (blockForm.note.trim()) body.note = blockForm.note.trim()
     const { data, error } = await api.POST('/api/ops/create_block', { body })
@@ -611,8 +587,8 @@ function askReschedule() {
   if (!detail.value) return
   rescheduleEditor.begin(() => {
     Object.assign(reschedule, {
-      date: shanghai(detail.value!.starts_at).date,
-      start_time: clockOf(detail.value!.starts_at),
+      date: storeCalendarDay(detail.value!.starts_at),
+      start_time: storeTime(detail.value!.starts_at),
       end_time: '',
       staff_id: '',
       reason: ''
@@ -626,9 +602,9 @@ async function saveReschedule() {
   await rescheduleEditor.save(async (current) => {
     const body: components['schemas']['RescheduleAppointmentInput'] = {
       id,
-      starts_at: isoAt(reschedule.date, reschedule.start_time)
+      starts_at: storeInstant(reschedule.date, reschedule.start_time)
     }
-    if (reschedule.end_time) body.ends_at = isoAt(reschedule.date, reschedule.end_time)
+    if (reschedule.end_time) body.ends_at = storeInstant(reschedule.date, reschedule.end_time)
     if (reschedule.staff_id) body.staff_id = reschedule.staff_id
     if (reschedule.reason.trim()) body.reason = reschedule.reason.trim()
     const { data, error } = await api.POST('/api/ops/reschedule_appointment', { body })
@@ -706,7 +682,7 @@ function loadCompleteOrders(entry: Appointment) {
 
 function orderLine(order: Order) {
   const names = order.items.filter(i => !i.removed_at).map(i => i.item_name).join('、') || '无项目'
-  return `${clockOf(order.opened_at)} 开单 · ${names}`
+  return `${storeTime(order.opened_at)} 开单 · ${names}`
 }
 
 function askComplete() {
@@ -827,7 +803,7 @@ function actorLabel(actor: Actor) {
               :key="entry.id"
               type="button"
               class="absolute inset-x-1 z-10 flex flex-col justify-start overflow-hidden rounded-md px-2 py-1 text-left text-xs text-ink"
-              :title="`${clockOf(entry.starts_at)}–${clockOf(entry.ends_at)}`"
+              :title="`${storeTime(entry.starts_at)}–${storeTime(entry.ends_at)}`"
               :class="entryClass(entry)"
               :style="entryStyle(entry)"
               :data-entry="entry.id"
@@ -837,7 +813,7 @@ function actorLabel(actor: Actor) {
             >
               <span class="block truncate text-sm font-medium">{{ entryTitle(entry) }}</span>
               <span v-if="entryLine(entry)" class="block truncate" :class="entry.status === 'no_show' ? 'text-ink-red' : 'text-muted'">{{ entryLine(entry) }}</span>
-              <span class="sr-only">{{ clockOf(entry.starts_at) }}–{{ clockOf(entry.ends_at) }} · {{ statusLabels[entry.status] }}</span>
+              <span class="sr-only">{{ storeTime(entry.starts_at) }}–{{ storeTime(entry.ends_at) }} · {{ statusLabels[entry.status] }}</span>
             </button>
           </div>
         </div>

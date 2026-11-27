@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn, TableRow } from '@nuxt/ui'
 import type { components } from '~/utils/api'
-import { attendanceCalendarDate, attendancePunchAt } from '~/utils/attendance'
 
 definePageMeta({ permission: 'attendance.manage', title: '考勤', art: 'clock' })
 type Schema = components['schemas']
@@ -16,7 +15,7 @@ const tabs = [
 
 // 营业日没读出来时，月份和班次都定不下来：原地给「重试」，别留一片空白。
 const { businessDate: today, error: dayError, load: loadDay } = useStoreToday()
-const calendarToday = ref(attendanceCalendarDate())
+const calendarToday = ref(storeCalendarDay())
 const currentMonth = ref('')
 const month = ref('')
 const summary = ref<Schema['AttendanceSummary'][]>([])
@@ -111,7 +110,7 @@ async function savePunch() {
   await addPunchForm.save(async (current) => {
     const staffId = punchForm.staff_id
     const { error } = await api.POST('/api/ops/add_punch', {
-      body: { staff_id: staffId, at: attendancePunchAt(punchForm.date, punchForm.time), reason: punchForm.reason }
+      body: { staff_id: staffId, at: storeInstant(punchForm.date, punchForm.time), reason: punchForm.reason }
     })
     if (error) {
       if (current()) toast.add({ title: errorText(error), color: 'error' })

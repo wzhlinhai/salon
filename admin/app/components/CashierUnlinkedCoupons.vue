@@ -116,7 +116,7 @@ defineExpose({ load })
       <div v-for="row in unlinked" :key="row.id" class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-default px-3 py-2 text-sm first:border-t-0 hover:bg-hover">
         <span class="tag bg-tag-gray">{{ platformLabel(row.platform) }}</span>
         <span class="font-medium tabular-nums">{{ row.coupon_code }}</span>
-        <span class="text-meta text-muted">{{ row.redeemed_at ? new Date(row.redeemed_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '' }}</span>
+        <span class="text-meta text-muted">{{ row.redeemed_at ? storeDateTime(row.redeemed_at) : '' }}</span>
         <UButton size="sm" color="neutral" variant="outline" class="ms-auto" @click="linkBegin(row)">关联挂单</UButton>
         <UButton size="sm" color="error" variant="ghost" :loading="revoking" @click="revokeCoupon(row)">撤销核销</UButton>
       </div>

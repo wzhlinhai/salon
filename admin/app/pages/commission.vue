@@ -284,7 +284,7 @@ function changeSource(o: OverrideForm) {
               <td><button type="button" class="text-start font-medium whitespace-nowrap hover:underline" @click.stop="selectVersion(v.version)">版本 {{ v.version }}</button></td>
               <td class="tabular-nums">{{ v.effective_from }}</td>
               <td>{{ v.saved_by.name }}</td>
-              <td class="text-muted tabular-nums">{{ new Date(v.saved_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</td>
+              <td class="text-muted tabular-nums">{{ storeDateTime(v.saved_at) }}</td>
               <td><span v-if="inForce === v.version" class="tag bg-tag-gray">执行中</span><span v-else-if="v.effective_from > today" class="tag bg-tag-yellow">已安排</span></td>
             </tr>
           </tbody>

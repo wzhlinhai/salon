@@ -298,7 +298,7 @@ const logsOpen = computed({
 })
 
 const createdOn = computed(() => customer.value
-  ? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(new Date(customer.value.created_at))
+  ? storeCalendarDay(customer.value.created_at)
   : '')
 
 // 手机号
@@ -699,7 +699,7 @@ onBeforeUnmount(() => {
             <p class="flex flex-wrap items-center gap-x-2 text-meta text-muted">
               <span class="font-medium text-default">{{ actions[entry.action] || entry.action }}</span>
               <span>{{ entry.actor?.name ?? '系统' }}</span>
-              <span class="ms-auto tabular-nums">{{ new Date(entry.at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</span>
+              <span class="ms-auto tabular-nums">{{ storeDateTime(entry.at) }}</span>
             </p>
             <p v-for="change in changes" :key="change.label" data-testid="log-change">
               <span class="me-2 text-meta text-muted">{{ change.label }}</span>
