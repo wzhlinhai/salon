@@ -166,8 +166,8 @@ export function useAiChat() {
       useToast().add({ title: errorText(error), color: 'error' })
       return false
     }
+    // 正在改的草稿不受影响：撤回不删草稿，「修改：…」照旧留着。
     entries.value = entries.value.slice(0, index)
-    editing.value = null
     if (data.emptied) {
       conversationId.value = null
       title.value = ''
@@ -175,11 +175,12 @@ export function useAiChat() {
     return true
   }
 
-  // 修改人说的一句话：先撤回，再把原话放回输入框，人改完重发。
+  // 修改人说的一句话：先撤回，再把原话放回输入框，人改完重发。输入框里已经打了字的，原话放前面，打的字留着。
   async function revise(index: number): Promise<boolean> {
     const content = entries.value[index]?.content ?? ''
     if (!(await rewind(index))) return false
-    input.value = content
+    const typed = input.value.trim()
+    input.value = typed ? `${content}\n${typed}` : content
     return true
   }
 

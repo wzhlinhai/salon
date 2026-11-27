@@ -43,14 +43,22 @@ watch(text, (value) => {
 // AI 在回话、旧对话在打开、正在撤回时，不发新话也不撤回。
 const busy = computed(() => sending.value || loadingConversation.value || rewinding.value)
 
-// 修改：撤回这句，原话放回输入框，光标放到末尾接着改。
-async function reviseAt(index: number) {
-  if (!(await revise(index))) return
-  starter.value = null
+// 撤回、修改后点的按钮跟着那句话没了，焦点放回输入框；修改的光标放在末尾接着改。
+async function focusEnd() {
   await nextTick()
   const el = input.value?.textareaRef
   el?.focus()
   el?.setSelectionRange(text.value.length, text.value.length)
+}
+
+async function rewindAt(index: number) {
+  if (await rewind(index)) await focusEnd()
+}
+
+async function reviseAt(index: number) {
+  if (!(await revise(index))) return
+  starter.value = null
+  await focusEnd()
 }
 
 async function submit() {
@@ -104,6 +112,9 @@ const ui = computed(() => ({
   body: 'p-0 sm:p-0 flex flex-col',
   footer: `ai-chat border-t-0 px-4 pt-0 pb-4 sm:px-4 ${centered.value ? 'flex-1 items-start' : ''}`
 }))
+
+// 对话里的小操作（复制、修改、撤回）：图标 14px、按钮 24px，比正文字还小一点，颜色再淡一档，不压过对话本身。
+const tinyAction = { leadingIcon: 'size-3.5', base: 'size-6 text-dimmed hover:text-muted' }
 
 // AI 回话下面的复制按钮（照 Notion AI）：复制整段话，按钮变成勾一会儿再变回来。剪贴板用不了（非安全来源等）就什么也不做。
 const copied = ref<number | null>(null)
@@ -201,12 +212,12 @@ watch(() => [entries.value.length, sending.value], async () => {
                   size="xs"
                   :icon="copied === index ? 'i-lucide-check' : 'i-lucide-copy'"
                   :aria-label="copied === index ? '已复制' : '复制'"
-                  class="text-muted"
+                  :ui="tinyAction"
                   @click="copy(index, entry.content)"
                 />
                 <template v-if="entry.id && !entry.failed">
-                  <UButton color="neutral" variant="ghost" size="xs" icon="i-lucide-pencil" aria-label="修改" class="text-muted" :disabled="busy" data-testid="ai-revise" @click="reviseAt(index)" />
-                  <UButton color="neutral" variant="ghost" size="xs" icon="i-lucide-undo-2" aria-label="撤回" class="text-muted" :disabled="busy" data-testid="ai-rewind" @click="rewind(index)" />
+                  <UButton color="neutral" variant="ghost" size="xs" icon="i-lucide-pencil" aria-label="修改" :ui="tinyAction" :disabled="busy" data-testid="ai-revise" @click="reviseAt(index)" />
+                  <UButton color="neutral" variant="ghost" size="xs" icon="i-lucide-undo-2" aria-label="撤回" :ui="tinyAction" :disabled="busy" data-testid="ai-rewind" @click="rewindAt(index)" />
                 </template>
               </div>
             </div>
@@ -220,7 +231,7 @@ watch(() => [entries.value.length, sending.value], async () => {
                 size="xs"
                 :icon="copied === index ? 'i-lucide-check' : 'i-lucide-copy'"
                 :aria-label="copied === index ? '已复制' : '复制'"
-                class="text-muted"
+                :ui="tinyAction"
                 data-testid="ai-copy"
                 @click="copy(index, entry.content)"
               />
