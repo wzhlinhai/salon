@@ -148,6 +148,104 @@ func (q *Queries) AddAftersaleRefund(ctx context.Context, arg AddAftersaleRefund
 	return i, err
 }
 
+const aftersaleCardTypeNames = `-- name: AftersaleCardTypeNames :many
+SELECT c.id AS card_id,t.name AS card_type_name
+FROM cards c JOIN card_types t ON t.tenant_id=c.tenant_id AND t.id=c.card_type_id
+WHERE c.store_id=$1 AND c.id=ANY($2::uuid[])
+`
+
+type AftersaleCardTypeNamesParams struct {
+	StoreID uuid.UUID
+	CardIds []uuid.UUID
+}
+
+type AftersaleCardTypeNamesRow struct {
+	CardID       uuid.UUID
+	CardTypeName string
+}
+
+func (q *Queries) AftersaleCardTypeNames(ctx context.Context, arg AftersaleCardTypeNamesParams) ([]AftersaleCardTypeNamesRow, error) {
+	rows, err := q.db.Query(ctx, aftersaleCardTypeNames, arg.StoreID, arg.CardIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AftersaleCardTypeNamesRow
+	for rows.Next() {
+		var i AftersaleCardTypeNamesRow
+		if err := rows.Scan(&i.CardID, &i.CardTypeName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const aftersaleOrderSummaries = `-- name: AftersaleOrderSummaries :many
+SELECT o.id,o.business_date,o.customer_id,
+ COALESCE(sum(oi.price) FILTER (WHERE oi.removed_at IS NULL),0)::text AS receivable
+FROM orders o LEFT JOIN order_items oi ON oi.store_id=o.store_id AND oi.order_id=o.id
+WHERE o.store_id=$1 AND o.id=ANY($2::uuid[])
+GROUP BY o.id,o.business_date,o.customer_id
+`
+
+type AftersaleOrderSummariesParams struct {
+	StoreID  uuid.UUID
+	OrderIds []uuid.UUID
+}
+
+type AftersaleOrderSummariesRow struct {
+	ID           uuid.UUID
+	BusinessDate pgtype.Date
+	CustomerID   uuid.UUID
+	Receivable   string
+}
+
+func (q *Queries) AftersaleOrderSummaries(ctx context.Context, arg AftersaleOrderSummariesParams) ([]AftersaleOrderSummariesRow, error) {
+	rows, err := q.db.Query(ctx, aftersaleOrderSummaries, arg.StoreID, arg.OrderIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AftersaleOrderSummariesRow
+	for rows.Next() {
+		var i AftersaleOrderSummariesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BusinessDate,
+			&i.CustomerID,
+			&i.Receivable,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const aftersalePendingCount = `-- name: AftersalePendingCount :one
+SELECT count(*) FROM aftersales
+WHERE store_id=$1 AND order_id=$2 AND status='pending'
+`
+
+type AftersalePendingCountParams struct {
+	StoreID uuid.UUID
+	OrderID uuid.UUID
+}
+
+func (q *Queries) AftersalePendingCount(ctx context.Context, arg AftersalePendingCountParams) (int64, error) {
+	row := q.db.QueryRow(ctx, aftersalePendingCount, arg.StoreID, arg.OrderID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const approveAftersale = `-- name: ApproveAftersale :one
 UPDATE aftersales
 SET status='approved',approved_by=$1,approved_at=$2,deduct_performance=$3,deduct_commission=$4

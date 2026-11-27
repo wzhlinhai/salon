@@ -9,6 +9,7 @@ export const navItems: { label: string, icon: string, to: string, permission: st
   { label: '轮牌', icon: 'i-lucide-list-ordered', to: '/rotation', permission: 'queue.view', group: '门店' },
   { label: '顾客', icon: 'i-lucide-user', to: '/customers', permission: 'customer.view', group: '门店' },
   { label: '日结', icon: 'i-lucide-calculator', to: '/closing', permission: 'closing.daily', group: '经营' },
+  { label: '售后', icon: 'i-lucide-undo-2', to: '/aftersales', permission: 'aftersales.manage', group: '经营' },
   { label: '报表', icon: 'i-lucide-chart-column', to: '/reports', permission: REPORT_PERMISSIONS, group: '经营' },
   { label: '团购对账', icon: 'i-lucide-file-check', to: '/groupbuy-month', permission: 'report.view', group: '经营' },
   { label: '员工', icon: 'i-lucide-users', to: '/staff', permission: 'staff.manage', group: '员工' },

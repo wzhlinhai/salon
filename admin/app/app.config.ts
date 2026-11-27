@@ -117,7 +117,8 @@ export default defineAppConfig({
       slots: {
         // 后面不变暗（样稿 22）：遮罩还在，点空白处关掉，只是透明。
         overlay: 'bg-transparent',
-        content: 'sm:ring-0 sm:shadow-lift',
+        // 标题和正文之间不画线，只有按钮栏上方一道（样稿 22）。
+        content: 'divide-y-0 sm:ring-0 sm:shadow-lift',
         header: 'min-h-0 px-6 pt-5 pb-0 sm:px-6',
         title: 'text-base font-semibold text-highlighted',
         description: 'mt-1 text-sm text-muted',

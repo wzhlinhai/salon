@@ -99,3 +99,19 @@ SELECT p.reverses_id,COALESCE(sum(p.paid_amount),0)::text AS paid,COALESCE(sum(p
 FROM performance_entries p JOIN aftersales a ON a.tenant_id=p.tenant_id AND a.id=p.aftersale_id
 WHERE p.store_id=sqlc.arg(store_id) AND p.order_id=sqlc.arg(order_id) AND p.aftersale_id IS NOT NULL AND p.reverses_id IS NOT NULL AND a.status='approved'
 GROUP BY p.reverses_id;
+
+-- name: AftersalePendingCount :one
+SELECT count(*) FROM aftersales
+WHERE store_id=sqlc.arg(store_id) AND order_id=sqlc.arg(order_id) AND status='pending';
+
+-- name: AftersaleCardTypeNames :many
+SELECT c.id AS card_id,t.name AS card_type_name
+FROM cards c JOIN card_types t ON t.tenant_id=c.tenant_id AND t.id=c.card_type_id
+WHERE c.store_id=sqlc.arg(store_id) AND c.id=ANY(sqlc.arg(card_ids)::uuid[]);
+
+-- name: AftersaleOrderSummaries :many
+SELECT o.id,o.business_date,o.customer_id,
+ COALESCE(sum(oi.price) FILTER (WHERE oi.removed_at IS NULL),0)::text AS receivable
+FROM orders o LEFT JOIN order_items oi ON oi.store_id=o.store_id AND oi.order_id=o.id
+WHERE o.store_id=sqlc.arg(store_id) AND o.id=ANY(sqlc.arg(order_ids)::uuid[])
+GROUP BY o.id,o.business_date,o.customer_id;
