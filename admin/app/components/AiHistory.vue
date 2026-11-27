@@ -14,6 +14,8 @@ const guard = useRequestGuard()
 const open = ref(false)
 const archived = ref(false)
 const query = ref('')
+// 搜索平时只是右上角一个放大镜（照 Notion），点了才换成输入框。
+const searching = ref(false)
 const items = ref<Summary[]>([])
 const loading = ref(false)
 const loadError = ref('')
@@ -59,9 +61,17 @@ watch(open, (value) => {
     return
   }
   archived.value = false
+  searching.value = false
   query.value = ''
   void load()
 })
+
+function closeSearch() {
+  searching.value = false
+  if (!query.value) return
+  query.value = ''
+  void load()
+}
 
 // 换人登录：上一个人的列表不留。
 watch(() => me.value?.staff.id, () => {
@@ -113,10 +123,14 @@ async function setArchived(item: Summary, value: boolean) {
       <UIcon name="i-lucide-chevron-down" class="size-4 shrink-0 text-muted" aria-hidden="true" />
     </button>
     <template #content>
-      <div class="w-80 p-2 text-sm" data-testid="ai-history">
-        <UInput v-model="query" icon="i-lucide-search" size="sm" placeholder="搜索对话" aria-label="搜索对话" class="w-full" data-testid="ai-history-search" @update:model-value="search" />
-        <p v-if="archived" class="mt-2 px-2 text-xs text-dimmed">已归档的对话</p>
-        <div class="mt-2 max-h-96 overflow-y-auto">
+      <div class="relative w-80 p-2 text-sm" data-testid="ai-history">
+        <div v-if="searching" class="mb-1 flex items-center gap-1">
+          <UInput v-model="query" icon="i-lucide-search" size="sm" variant="ghost" placeholder="搜索对话" aria-label="搜索对话" autofocus class="min-w-0 flex-1" data-testid="ai-history-search" @update:model-value="search" @keydown.esc.stop.prevent="closeSearch" />
+          <UButton color="neutral" variant="ghost" size="xs" icon="i-lucide-x" aria-label="不搜了" @click="closeSearch" />
+        </div>
+        <UButton v-else color="neutral" variant="ghost" size="xs" icon="i-lucide-search" aria-label="搜索对话" class="absolute top-2 right-2 z-10" data-testid="ai-history-search-open" @click="searching = true" />
+        <p v-if="archived" class="px-2 pt-2 pb-1 text-xs text-dimmed">已归档的对话</p>
+        <div class="max-h-96 overflow-y-auto">
           <ListSkeleton v-if="loading && !items.length" :rows="3" />
           <LoadError v-else-if="loadError" title="历史对话没有读出来" :hint="loadError" @retry="load()" />
           <p v-else-if="!items.length" class="px-2 py-2 text-muted">{{ query.trim() ? '没有找到' : archived ? '没有归档的对话' : '还没有对话' }}</p>
@@ -124,7 +138,10 @@ async function setArchived(item: Summary, value: boolean) {
             <p class="px-2 pt-2 pb-1 text-xs text-dimmed">{{ g.label }}</p>
             <ul>
               <li v-for="item in g.items" :key="item.id" class="group flex items-center gap-1 rounded-md hover:bg-hover" :class="item.id === conversationId && 'bg-hover'" data-testid="ai-history-item">
-                <button type="button" class="min-w-0 flex-1 truncate rounded-md px-2 py-2 text-start text-default focus-visible:outline-2 focus-visible:outline-primary" :title="item.title" @click="choose(item)">{{ item.title }}</button>
+                <button type="button" class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2 text-start text-default focus-visible:outline-2 focus-visible:outline-primary" :title="item.title" @click="choose(item)">
+                  <UIcon name="i-lucide-message-circle" class="size-4 shrink-0 text-muted" aria-hidden="true" />
+                  <span class="truncate">{{ item.title }}</span>
+                </button>
                 <span class="shrink-0 text-xs text-muted tabular-nums">{{ formatShortStamp(item.updated_at) }}</span>
                 <UButton
                   color="neutral"

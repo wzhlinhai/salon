@@ -79,6 +79,16 @@ function toggleExpanded() {
 
 // 全屏时内容区不铺满，居中一栏，读起来不累。
 const column = computed(() => expanded.value ? 'mx-auto w-full max-w-3xl' : '')
+// 全屏又还没说话时照 Notion AI 首页：形象、大标题和输入卡一起落在页面正中，常用的事横排在输入卡下面。
+const centered = computed(() => expanded.value && !entries.value.length && !loadingConversation.value)
+// 输入卡和对话之间不画线（Notion 的输入卡自己浮在页面上）；居中时下面一半留给输入卡和常用的事。
+const ui = computed(() => ({
+  content: `${expanded.value ? 'max-w-none sm:max-w-none' : 'max-w-md'} divide-y-0`,
+  wrapper: 'flex-1 min-w-0',
+  close: 'static',
+  body: 'p-0 sm:p-0 flex flex-col',
+  footer: `ai-chat border-t-0 px-4 pt-0 pb-4 sm:px-4 ${centered.value ? 'flex-1 items-start' : ''}`
+}))
 
 watch(() => [entries.value.length, sending.value], async () => {
   await nextTick()
@@ -91,7 +101,7 @@ watch(() => [entries.value.length, sending.value], async () => {
     v-model:open="open"
     side="right"
     :content="{ onOpenAutoFocus: (event: Event) => event.preventDefault() }"
-    :ui="{ content: expanded ? 'max-w-none sm:max-w-none' : 'max-w-md', wrapper: 'flex-1 min-w-0', close: 'static', body: 'p-0 sm:p-0 flex flex-col', footer: 'ai-chat' }"
+    :ui="ui"
     data-testid="ai-panel"
     @after:enter="focusInput"
   >
@@ -103,7 +113,7 @@ watch(() => [entries.value.length, sending.value], async () => {
         color="neutral"
         variant="ghost"
         size="sm"
-        icon="i-lucide-square-pen"
+        icon="i-lucide-message-circle-plus"
         aria-label="新对话"
         data-testid="ai-new"
         @click="startNew"
@@ -124,7 +134,15 @@ watch(() => [entries.value.length, sending.value], async () => {
       <div ref="scroller" class="flex-1 overflow-y-auto p-4" data-testid="ai-messages">
         <div class="flex min-h-full flex-col gap-4" :class="column">
           <ListSkeleton v-if="loadingConversation" :rows="3" />
-          <!-- 还没说话时照 Notion 的 AI 面板：形象和一句招呼落在底部，挨着输入框。 -->
+          <!-- 全屏时形象和大标题居中，挨着下面的输入卡。 -->
+          <div v-else-if="centered" class="flex flex-1 flex-col items-center justify-end gap-6 pb-4 text-center">
+            <span class="grid size-20 place-items-center rounded-full bg-white shadow-lift"><AiMark class="size-14" /></span>
+            <div class="space-y-2">
+              <p class="text-title font-semibold text-highlighted">店里的事，跟我说。</p>
+              <p class="text-sm text-muted text-pretty">要改数据时 AI 先起草，由你确认。</p>
+            </div>
+          </div>
+          <!-- 侧栏还没说话时照 Notion 的 AI 面板：形象和一句招呼落在底部，挨着输入框。 -->
           <div v-else-if="!entries.length" class="flex flex-1 flex-col justify-end gap-3 pb-2">
             <span class="grid size-16 place-items-center rounded-full bg-white shadow-lift"><AiMark class="size-11" /></span>
             <p class="text-base font-semibold text-highlighted">店里的事，跟我说。</p>
@@ -168,30 +186,46 @@ watch(() => [entries.value.length, sending.value], async () => {
           <UIcon :name="starter.icon" class="size-3.5 shrink-0" />
           <span class="text-pretty">{{ starter.hint }}</span>
         </p>
-        <div class="flex items-end gap-2">
+        <!-- 输入卡（照 Notion AI）：一张平放的纸，字写在上面，圆形的发送按钮在右下角，没写字时是浅灰的。 -->
+        <div class="rounded-card bg-default shadow-paper transition-shadow focus-within:shadow-lift" data-testid="ai-composer">
           <UTextarea
             ref="input"
             v-model="text"
-            :rows="1"
+            variant="none"
+            :rows="centered ? 2 : 1"
             autoresize
-            :maxrows="6"
+            :maxrows="8"
             :maxlength="MAX_MESSAGE"
             :placeholder="editing ? '说说要怎么改' : '说一句，比如「明天下午谁有空」'"
             :aria-label="editing ? '说说要怎么改' : '跟 AI 说'"
-            class="flex-1"
+            class="w-full"
+            :ui="{ base: 'px-4 pt-3 pb-1 text-sm' }"
             data-testid="ai-input"
             @keydown="onKeydown"
           />
-          <UButton
-            color="neutral"
-            icon="i-lucide-arrow-up"
-            aria-label="发送"
-            :loading="sending"
-            :disabled="!text.trim()"
-            data-testid="ai-send"
-            @click="submit"
-          />
+          <div class="flex justify-end px-2 pb-2">
+            <UButton
+              color="neutral"
+              :variant="text.trim() ? 'solid' : 'soft'"
+              size="sm"
+              icon="i-lucide-arrow-up"
+              aria-label="发送"
+              class="rounded-full"
+              :loading="sending"
+              :disabled="!text.trim()"
+              data-testid="ai-send"
+              @click="submit"
+            />
+          </div>
         </div>
+        <ul v-if="centered && quick.length && !editing" class="flex flex-wrap justify-center gap-2 pt-4" data-testid="ai-quick">
+          <li v-for="q in quick" :key="q.label">
+            <button type="button" class="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted hover:bg-hover hover:text-default focus-visible:bg-hover focus-visible:outline-2 focus-visible:outline-primary" :disabled="sending" @click="pick(q)">
+              <UIcon :name="q.icon" class="size-4 shrink-0" aria-hidden="true" />
+              {{ q.label }}
+            </button>
+          </li>
+        </ul>
       </div>
     </template>
   </USlideover>
