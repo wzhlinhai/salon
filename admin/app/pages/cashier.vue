@@ -197,6 +197,8 @@ const scanLoading = ref(false)
 const customerMatches = ref<Customer[]>([])
 const pickedCustomer = ref<Customer | null>(null)
 const platform = ref<Platform>('meituan')
+// 扫码框旁的下拉单看「美团」不知道在选什么，写成「美团券」。
+const couponPlatformItems = platformItems.map(p => ({ ...p, label: `${p.label}券` }))
 
 function looksLikePhone(value: string) {
   return /^1\d{10}$/.test(value.replace(/\s/g, ''))
@@ -337,8 +339,8 @@ onMounted(init)
   <div class="space-y-4">
     <PageActions>
       <span v-if="businessDate" class="text-meta text-muted">营业日 {{ businessDate }}</span>
-      <!-- 每页只一个实心主按钮：选着一张单时主角是小票上的「结账」，顶栏的「开单」退成描边。 -->
-      <UButton :color="selectedOrderID ? 'neutral' : 'primary'" :variant="selectedOrderID ? 'outline' : 'solid'" @click="openOrderBegin(pickedCustomer)">开单</UButton>
+      <!-- 没选单时「开单」在右栏空白小票正中；选着一张单时主角是小票上的「结账」，「开单」才回到顶栏、退成描边。 -->
+      <UButton v-if="selectedOrderID" color="neutral" variant="outline" @click="openOrderBegin(pickedCustomer)">开单</UButton>
     </PageActions>
 
     <LoadError v-if="initError" title="收银台没有读出来" :hint="initError" @retry="init()" />
@@ -356,7 +358,7 @@ onMounted(init)
           data-testid="scan-input"
           class="min-w-64 flex-1"
         />
-        <USelect v-if="canGroupbuy" v-model="platform" :items="platformItems" size="lg" class="w-28" aria-label="券码平台" :disabled="coupon?.locked" />
+        <USelect v-if="canGroupbuy" v-model="platform" :items="couponPlatformItems" size="lg" class="w-32" aria-label="券码平台" :disabled="coupon?.locked" />
         <UButton type="submit" size="lg" color="neutral" variant="outline">确认</UButton>
         <span v-if="scanLoading" class="text-meta text-muted">搜索中…</span>
         <span v-if="scanKind" data-testid="scan-kind" class="tag bg-tag-gray">识别为{{ scanKind }}</span>
@@ -402,7 +404,7 @@ onMounted(init)
         <div class="space-y-1" data-testid="open-orders">
           <ListSkeleton v-if="ordersLoading && !openOrders.length" :rows="3" />
           <LoadError v-else-if="ordersError && !openOrders.length" title="在做的单没有读出来" :hint="ordersError" @retry="loadOrders()" />
-          <p v-else-if="!openOrders.length && !initError" class="py-2 text-sm text-muted">还没有在做的单。顾客到店开单后列在这里，做完再结账。</p>
+          <p v-else-if="!openOrders.length && !initError" class="py-2 text-sm text-muted">还没有在做的单</p>
           <!-- 一行一位：头像字点开顾客小卡片（样稿 26），其余整行点了选这张单；两个按钮并排，不嵌套。 -->
           <div
             v-for="order in openOrders"
@@ -463,6 +465,7 @@ onMounted(init)
           @changed="loadOrders"
           @coupons-changed="loadUnlinked"
           @checked-out="onCheckedOut"
+          @open="openOrderBegin(pickedCustomer)"
         />
       </div>
 
