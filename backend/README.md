@@ -31,6 +31,8 @@ DATABASE_URL=postgres://... JWT_SECRET=至少32字节 go run ./cmd/salon serve
 
 `serve` 的可选环境变量：`HTTP_ADDR`（默认 `:8080`）、`TOKEN_TTL`（默认 `12h`）。健康检查 `GET /healthz`，登录 `POST /api/auth/login`。AI 对话的环境变量：`AI_API_KEY`（设置后才启用 `/api/ai/chat`；未设置时返回 503「AI 未启用」）、`AI_BASE_URL`（默认 `https://api.deepseek.com`）、`AI_MODEL`（默认 `deepseek-flash`）、`AI_EXTRA_HEADERS`（可选，JSON 对象，每次模型请求附加的 HTTP 头；不能设置 `Authorization` 或 `Content-Type`）。密钥和扩展头的值不写日志，也不出现在错误或响应里。
 
+后台 AI 提醒循环默认随服务启动，`AI_REMINDERS=off` 关闭（开发环境和端到端测试使用）；它和 AI 对话共用 `AI_API_KEY`、`AI_BASE_URL`、`AI_MODEL`、`AI_EXTRA_HEADERS`，没有配置模型时只写固定文案。
+
 `bootstrap` 开一个新租户：门店、内置的老板角色、四个默认角色（初始权限见 ADR-0009）和第一名老板。
 
 ## 租户隔离（ADR-0003、ADR-0005）
@@ -574,6 +576,27 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 并发时没有额外的串行化：两句同时发到同一个新对话会各建一个会话；同一会话同时续聊时，两个请求各自读到同一份旧历史，互相看不到对方这次的消息。Ask 失败只保证不保存会话和消息；工具循环里已经起草的草稿照常留在「待确认」里。列表搜索对标题和消息内容做包含匹配，没有专门的搜索索引，按一家店的对话量够用。
 
 本接口不做流式输出；评测集见 `internal/ai/eval`（P0-32），管理端已有右侧 AI 面板（标题处是历史对话下拉），小程序未做。历史会话保存在 `ai_conversations` 和 `ai_conversation_messages`，实现在 `internal/aiconversations`；`internal/ai` 只负责模型和工具循环，不碰会话表。`explain_commission` 专门支持「解释一笔提成的来源」（用户故事 130）。
+
+## AI 提醒
+
+`internal/reminders` 按门店定时检查提醒规则（ADR-0012）。`RunLoop` 每 5 分钟一轮，每家门店单独超时和 panic 恢复；一家门店出错只记日志，不影响其他门店。每轮在 `db.InTenant` 事务里先拿门店级事务咨询锁 `pg_try_advisory_xact_lock(hashtextextended(store_id || '/ai_reminders'))`，拿不到就跳过这家、下一轮再试；同一门店的几条规则因此不会同时读到「今天还没满上限」。营业日和当天设置取 `settings.CurrentRules`，只跑此刻所属的营业日，过去的日子不补发。`ai_reminder_runs` 每个门店、规则、营业日一行：已有非 error 的行就跳过；error 且连续失败 3 次的当天不再重试；重启后同一天也不会重复。
+
+规则在 `internal/reminders/rules.go` 的包内注册表里，第一条是 `closing_yesterday_brief`「昨日日结简报」，版本 1，默认观察，09:30 检查，冷却 0、最多 1 次、最多回看 1 天。它只看昨天：用 `closing.BusinessDaysIn` 判断有没有营业，用 `closing.SystemFiguresForDay` 取删单数和未记方式，用 `closing.CurrentDayClose` 取当前日结和不为零的差额；再按营业日换算统计昨天操作日志里的 `adjust_card`、`reprice_order_item`、`remove_order_item`、`set_paid_item_staff` 次数。没日结、有差额、有删单、有未记方式或四类操作任一发生就选中；收件人是一次查出的本店在职员工里，逐个用 `auth.LoadCaller` 算出有 `closing.daily` 的人。固定文案只写事实里有的项，金额用两位小数。
+
+每条规则有 `off`、`observe`、`on` 三档；没有 `ai_reminder_rules` 行时用规则在代码里的默认档位，新规则默认观察。观察档只把「本来会提醒谁、说什么」写进 `ai_reminders` 给有门店设置权限的人看汇总，不显示给员工，也不建草稿。每个选中依次过门禁，第一个不通过的就是 `outcome`：同规则同档位同收件人同对象同营业日已发出为 `deduped`；同规则同收件人同对象在冷却营业日内发出过为 `cooldown`；发出次数到上限为 `max_times`；对象日期早于营业日 `max_age` 天为 `expired`；非紧急提醒当天同档位已到门店设置 `ai_reminder_daily_cap` 为 `daily_cap`。紧急提醒不占每日上限。拦下的行也写入，老板能看到「本来会发、为什么没发」。观察和开启各算一份：部分唯一索引只约束 `outcome='emitted'`，同一天从观察改成开不会互相挡住。
+
+事务提交后，对本轮发出的每一条在事务外调用一次不带工具的模型：只把事实 JSON 和规则名发给模型，系统提示要求只用事实里的数字和判断、不超过 80 字。15 秒超时、模型报错、没有配置模型、返回为空或超过 120 字、或话里出现 facts 导不出的数字（含小数和日期里的月日）时，不写 `ai_text`，界面使用固定文案；提醒本身仍然保留。写回 `ai_text` 用一个短事务。
+
+门店设置 `ai_reminder_daily_cap`「每人每天最多几条 AI 提醒」为 1–20，默认 3。管理操作全部需要 `settings.manage` 且不向 AI 开放（`AINone`）：
+
+| 操作 | 返回 |
+| --- | --- |
+| `list_reminder_rules` | 每条已注册规则：标识、名称、说明、当前档位、是否默认档位、检查时刻、版本 |
+| `set_reminder_rule_mode` | 把规则改成 `off`/`observe`/`on`；未知规则 409；档位有变化时写 `ai_reminder_rule` 操作日志，档位不变不写 |
+| `get_reminder_summary` | 最近 1–31 个营业日的检查天数、选中天数、出错天数（最近错误营业日）、发出条数、按收件人每天平均条数、各拦下原因条数、有用/没用条数和最近 10 条样例 |
+| `set_reminder_feedback` | 给一条已发出的提醒标 `helpful`/`not_helpful` 或清空；别的门店的、不存在的、被拦下的行都按 404；这是对 AI 写话的反馈，不写业务日志 |
+
+汇总样例按批读取，查询条数不随样例数增长。本步只观察：员工端读取、已读/处理/忽略、首页和日结页提醒卡、起草草稿、连续忽略自动退回观察、出错提示老板都留给 #367/#368。
 
 ## AI 评测
 

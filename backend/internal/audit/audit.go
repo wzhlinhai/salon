@@ -364,5 +364,8 @@ func AppointmentTarget(id, customerID uuid.UUID) Target {
 // AppointmentBlockTarget 创建不关联顾客的私约占位日志目标。
 func AppointmentBlockTarget(id uuid.UUID) Target { return Target{kind: "appointment_block", id: id} }
 
+// ReminderRuleTarget 创建不关联顾客的提醒规则档位日志目标。
+func ReminderRuleTarget(id uuid.UUID) Target { return Target{kind: "ai_reminder_rule", id: id} }
+
 // MaskPhones 对其他审计视图复用相同的 JSON 手机号打码规则。
 func MaskPhones(raw json.RawMessage) (json.RawMessage, error) { return maskPhones(raw) }

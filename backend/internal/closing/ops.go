@@ -143,6 +143,22 @@ func getDayClose(ctx context.Context, env ops.Env, in *DayInput) (*DayCloseDetai
 	return &DayCloseDetail{Current: versions[0], Versions: versions}, nil
 }
 
+// CurrentDayClose 返回一个营业日当前版本的日结；没有日结时 ok 为 false。
+func CurrentDayClose(ctx context.Context, env ops.Env, day time.Time) (*DayClose, bool, error) {
+	rows, err := env.Q.ListCurrentDayCloses(ctx, dbgen.ListCurrentDayClosesParams{StoreID: env.Caller.StoreID, DateFrom: pgDate(day), DateTo: pgDate(day)})
+	if err != nil {
+		return nil, false, err
+	}
+	if len(rows) == 0 {
+		return nil, false, nil
+	}
+	view, err := viewDayClose(rows[0])
+	if err != nil {
+		return nil, false, err
+	}
+	return view, true, nil
+}
+
 func listDayCloses(ctx context.Context, env ops.Env, in *ListDayClosesInput) (*DayCloseList, error) {
 	query, err := daterange.Parse(env.Caller, perm.ClosingDaily, in.DateFrom, in.DateTo, nil, 0)
 	if err != nil {
