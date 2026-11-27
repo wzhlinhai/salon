@@ -172,3 +172,112 @@ type CustomerSourceReport struct {
 }
 
 func dayKey(day time.Time) string { return day.Format("2006-01-02") }
+
+// StoredValueReportInput 是按营业日查询储值余额日报的参数。
+type StoredValueReportInput struct {
+	From string `json:"from" format:"date"`
+	To   string `json:"to" format:"date"`
+}
+
+// StoredValueDay 是一个营业日所有卡的钱余额变动，本金和赠送分开。
+type StoredValueDay struct {
+	BusinessDate      string       `json:"business_date" format:"date"`
+	OpeningPrincipal  money.Change `json:"opening_principal" doc:"当天开始前所有卡的本金"`
+	OpeningBonus      money.Change `json:"opening_bonus" doc:"当天开始前所有卡的赠送金"`
+	AddedPrincipal    money.Change `json:"added_principal" doc:"开卡和充值的本金"`
+	AddedBonus        money.Change `json:"added_bonus" doc:"开卡和充值的赠送金"`
+	UpgradePrincipal  money.Change `json:"upgrade_principal" doc:"升级补入的本金"`
+	UpgradeBonus      money.Change `json:"upgrade_bonus" doc:"升级补入的赠送金"`
+	ConsumedPrincipal money.Change `json:"consumed_principal" doc:"耗卡本金，撤单退回和售后退回卡内的已冲抵，正数表示花掉"`
+	ConsumedBonus     money.Change `json:"consumed_bonus" doc:"耗卡赠送金，口径同耗卡本金"`
+	RefundedPrincipal money.Change `json:"refunded_principal" doc:"退卡清零的本金，正数表示退出"`
+	RefundedBonus     money.Change `json:"refunded_bonus" doc:"退卡清零的赠送金，正数表示退出"`
+	AdjustedPrincipal money.Change `json:"adjusted_principal" doc:"调整、转入、转出和导入的本金净额，有正有负"`
+	AdjustedBonus     money.Change `json:"adjusted_bonus" doc:"调整、转入、转出和导入的赠送金净额，有正有负"`
+	ClosingPrincipal  money.Change `json:"closing_principal" doc:"当天结束时所有卡的本金"`
+	ClosingBonus      money.Change `json:"closing_bonus" doc:"当天结束时所有卡的赠送金"`
+}
+
+// StoredValueTotals 是范围内的储值余额合计：期初取第一天，期末取最后一天，其余各项求和。
+type StoredValueTotals struct {
+	OpeningPrincipal  money.Change `json:"opening_principal"`
+	OpeningBonus      money.Change `json:"opening_bonus"`
+	AddedPrincipal    money.Change `json:"added_principal"`
+	AddedBonus        money.Change `json:"added_bonus"`
+	UpgradePrincipal  money.Change `json:"upgrade_principal"`
+	UpgradeBonus      money.Change `json:"upgrade_bonus"`
+	ConsumedPrincipal money.Change `json:"consumed_principal"`
+	ConsumedBonus     money.Change `json:"consumed_bonus"`
+	RefundedPrincipal money.Change `json:"refunded_principal"`
+	RefundedBonus     money.Change `json:"refunded_bonus"`
+	AdjustedPrincipal money.Change `json:"adjusted_principal"`
+	AdjustedBonus     money.Change `json:"adjusted_bonus"`
+	ClosingPrincipal  money.Change `json:"closing_principal"`
+	ClosingBonus      money.Change `json:"closing_bonus"`
+}
+
+// StoredValueReport 是储值余额日报，范围内每个营业日一行。
+type StoredValueReport struct {
+	Rows   []StoredValueDay  `json:"rows"`
+	Totals StoredValueTotals `json:"totals"`
+}
+
+// CardBalanceReportInput 是套餐结余和到期报表的筛选条件。
+type CardBalanceReportInput struct {
+	ExpiringWithinDays *int    `json:"expiring_within_days,omitempty" minimum:"0" maximum:"3650" doc:"只列出到期日在今天起这么多天内（含已过期）的卡，不填为全部"`
+	Kind               *string `json:"kind,omitempty" enum:"stored_value,count,package" doc:"只列出这种卡类型的卡，不填为全部"`
+}
+
+// CardBalanceCustomer 是卡所属顾客的 id 和姓名。
+type CardBalanceCustomer struct {
+	ID   uuid.UUID `json:"id"`
+	Name *string   `json:"name" nullable:"true"`
+}
+
+// CardBalanceType 是卡当前的卡类型。
+type CardBalanceType struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+	Kind string    `json:"kind" enum:"stored_value,count,package"`
+}
+
+// CardBalanceItem 是卡上一个次数项目的剩余次数和开卡时的单价。
+type CardBalanceItem struct {
+	ItemID        uuid.UUID    `json:"item_id"`
+	ItemName      string       `json:"item_name"`
+	PaidRemaining int64        `json:"paid_remaining"`
+	GiftRemaining int64        `json:"gift_remaining"`
+	UnitPrice     money.Change `json:"unit_price"`
+}
+
+// CardBalanceRow 是一张还有余额或次数的卡。
+type CardBalanceRow struct {
+	CardID          uuid.UUID           `json:"card_id"`
+	Customer        CardBalanceCustomer `json:"customer"`
+	CardType        CardBalanceType     `json:"card_type"`
+	OpenedOn        string              `json:"opened_on" format:"date"`
+	ExpiresOn       *string             `json:"expires_on" nullable:"true" format:"date"`
+	DaysLeft        *int64              `json:"days_left" nullable:"true" doc:"到期日减今天，已过期为负"`
+	Principal       money.Change        `json:"principal"`
+	Bonus           money.Change        `json:"bonus"`
+	Items           []CardBalanceItem   `json:"items"`
+	RemainingCounts int64               `json:"remaining_counts" doc:"剩余次数，购买和赠送之和"`
+	RemainingValue  money.Change        `json:"remaining_value" doc:"剩余购买次数按开卡单价折算加本金，赠送次数和赠送金不计"`
+}
+
+// CardBalanceTotals 是全部符合条件的卡的合计，不受行数上限影响。
+type CardBalanceTotals struct {
+	Cards            int64        `json:"cards"`
+	RemainingCounts  int64        `json:"remaining_counts"`
+	RemainingValue   money.Change `json:"remaining_value"`
+	Principal        money.Change `json:"principal"`
+	Bonus            money.Change `json:"bonus"`
+	ExpiringIn30Days int64        `json:"expiring_in_30_days" doc:"今天起 30 天内到期的张数，不受到期天数筛选影响"`
+}
+
+// CardBalanceReport 是还有余额或次数的卡，按到期日从近到远。
+type CardBalanceReport struct {
+	Rows      []CardBalanceRow  `json:"rows"`
+	Totals    CardBalanceTotals `json:"totals"`
+	Truncated bool              `json:"truncated" doc:"符合条件的卡多于行数上限，rows 只含前面一部分"`
+}

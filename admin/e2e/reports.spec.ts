@@ -259,10 +259,100 @@ test('店长看新客来源：今天第一次结账的顾客算新客；新客�
   await expectBriefIsTotal(debts, 'debt-totals', 'outstanding')
 })
 
+// 储值余额表里的数换成分：零是长横，负数前面是减号（U+2212）。
+function signedAmount(text: string) {
+  const t = text.trim()
+  return t.startsWith('−') ? -amount(t.slice(1)) : amount(t)
+}
+
+test('店长看储值余额：今天开的储值卡算进充入，每天期末等于期初加进出，本金和赠送分开看加起来等于合起来', async ({ page }) => {
+  const { token, suffix, customerId, stylist, today } = await seedCheckout()
+  const type = await api<{ id: string }>(token, 'create_card_type', { name: `储值报表卡${suffix}`, kind: 'stored_value', validity_kind: 'none' })
+  await api(token, 'open_card', { customer_id: customerId, card_type_id: type.id, principal: '300.00', bonus: '30.00', sales_staff_ids: [stylist.id], payments: cash('300.00') })
+  const manager = await hire('店长')
+  await login(page, manager.account, manager.password)
+  await page.goto('/reports/stored-value')
+  const table = page.getByTestId('stored-value-table')
+  const todayRow = table.locator(`tbody tr[data-day="${today}"]`)
+  expect(signedAmount(await todayRow.locator('td[data-col="added"]').textContent() ?? '')).toBeGreaterThanOrEqual(33000)
+
+  // 有进出的每一天：期末 = 期初 + 充入 + 升级补差 − 耗卡 − 退卡 + 调整。
+  const rows = table.locator('tbody tr')
+  for (let i = 0; i < await rows.count(); i++) {
+    const row = rows.nth(i)
+    if (await row.locator('td[data-col="added"]').count() === 0) continue
+    const col = async (key: string) => {
+      const cell = row.locator(`td[data-col="${key}"]`)
+      return await cell.count() ? signedAmount(await cell.textContent() ?? '') : 0
+    }
+    const expected = await col('opening') + await col('added') + await col('upgrade') - await col('consumed') - await col('refunded') + await col('adjusted')
+    expect(await col('closing'), await row.getAttribute('data-day') ?? '').toBe(expected)
+  }
+
+  // 合计行：充入、耗卡是各天之和，期初是最早那天的期初，期末是今天的期末，也是顶上一句话里的数。
+  const totals = table.getByTestId('stored-value-totals')
+  const total = async (key: string) => signedAmount(await totals.locator(`td[data-col="${key}"]`).textContent() ?? '')
+  for (const key of ['added', 'consumed']) {
+    const cells = await table.locator(`tbody td[data-col="${key}"]`).allTextContents()
+    expect(await total(key), key).toBe(cells.reduce((s, t) => s + signedAmount(t), 0))
+  }
+  expect(await total('opening')).toBe(signedAmount(await rows.last().locator('td[data-col="opening"]').textContent() ?? ''))
+  expect(await total('closing')).toBe(signedAmount(await todayRow.locator('td[data-col="closing"]').textContent() ?? ''))
+  expect(amount(await page.getByTestId('report-brief').locator('[data-figure="closing"]').textContent() ?? '')).toBe(await total('closing'))
+
+  const all = await total('closing')
+  await page.getByTestId('stored-value-part-principal').click()
+  await expect(page.getByTestId('stored-value-heading')).toContainText('只看本金')
+  const principal = await total('closing')
+  await page.getByTestId('stored-value-part-bonus').click()
+  await expect(page.getByTestId('stored-value-heading')).toContainText('只看赠送')
+  const bonus = await total('closing')
+  expect(bonus).toBeGreaterThanOrEqual(3000)
+  expect(principal + bonus).toBe(all)
+})
+
+test('店长看卡结余和到期：10 天后到期的次卡在 30 天内到期里、写红，剩几次、值多少；只看储值卡时它不在', async ({ page }) => {
+  const { token, suffix, customerId, stylist, itemId, itemName } = await seedCheckout()
+  const type = await api<{ id: string }>(token, 'create_card_type', {
+    name: `到期次卡${suffix}`, kind: 'count', validity_kind: 'days_after_open', validity_days: 10,
+    items: [{ item_id: itemId, paid_count: 5, gift_count: 1, unit_price: '20.00' }]
+  })
+  await api(token, 'open_card', { customer_id: customerId, card_type_id: type.id, principal: '0.00', bonus: '0.00', sales_staff_ids: [stylist.id], payments: cash('100.00') })
+  const manager = await hire('店长')
+  await login(page, manager.account, manager.password)
+  await page.goto('/reports/card-balances')
+  await page.getByTestId('balance-within-30').click()
+  await page.getByTestId('balance-kind-count').click()
+
+  const row = page.getByTestId('balance-row').and(page.locator(`[href="/customers/${customerId}"]`))
+  // 购买 5 次 × ¥20 算价值，送的 1 次不算钱但算剩几次。
+  await expect(row.locator('[data-col="remaining_value"]')).toHaveText('¥100')
+  await expect(row).toContainText(`${itemName} 剩 6 次（送 1）`)
+  await expect(row.locator('[data-col="expiry"]')).toContainText(/还有 \d+ 天/)
+  await expect(row.locator('[data-col="expiry"]')).toHaveClass(/text-ink-red/)
+  await expect(page.getByTestId('report-brief')).toContainText('30 天内到期')
+
+  await page.getByTestId('balance-kind-stored_value').click()
+  await expect(page.locator('[data-testid="balance-row"][data-kind="count"]')).toHaveCount(0)
+  await expect(row).toHaveCount(0)
+})
+
+test('店长看业绩工资：本月结过账的发型师一行，项目业绩记在他名下，合计等于各行之和', async ({ page }) => {
+  const { stylist } = await seedCheckout()
+  const manager = await hire('店长')
+  await login(page, manager.account, manager.password)
+  await page.goto('/reports/wages')
+  const table = page.getByTestId('wages-table')
+  const row = table.locator(`tbody tr[data-staff="${stylist.name}"]`)
+  await expect(row.locator('td[data-col="item"]')).toHaveText('¥66')
+  await expect(row.locator('td[data-col="performance"]')).toHaveText('¥66')
+  await expectTotalsAreSums(table, 'wages-totals', 2, col => col === 'ratio')
+})
+
 test('发型师打不开只给店长看的报表', async ({ page }) => {
   const stylist = await hire('发型师')
   await login(page, stylist.account, stylist.password)
-  for (const path of ['/reports/items', '/reports/cards', '/reports/sources', '/reports/debts']) {
+  for (const path of ['/reports/items', '/reports/cards', '/reports/sources', '/reports/debts', '/reports/stored-value', '/reports/card-balances', '/reports/wages']) {
     await page.goto(path)
     await expect(page).toHaveURL('/forbidden')
   }

@@ -61,6 +61,8 @@ func TestReportPermissionsAndRanges(t *testing.T) {
 		{"get_item_report", "report.view", map[string]any{"from": "2026-11-02", "to": "2026-11-02"}},
 		{"get_card_report", "report.view", map[string]any{"from": "2026-11-02", "to": "2026-11-02"}},
 		{"get_customer_source_report", "report.view", map[string]any{"from": "2026-11-02", "to": "2026-11-02"}},
+		{"get_stored_value_report", "report.view", map[string]any{"from": "2026-11-02", "to": "2026-11-02"}},
+		{"get_card_balance_report", "report.view", map[string]any{}},
 	}
 	for _, tc := range cases {
 		denied := owner
@@ -90,6 +92,8 @@ func TestReportPermissionsAndRanges(t *testing.T) {
 		{"get_item_report", map[string]any{"from": "2026-01-01", "to": "2026-04-04"}, "查询范围最多 92 天"},
 		{"get_card_report", map[string]any{"from": "2026-01-01", "to": "2026-04-04"}, "查询范围最多 92 天"},
 		{"get_customer_source_report", map[string]any{"from": "2026-01-01", "to": "2026-04-04"}, "查询范围最多 92 天"},
+		{"get_stored_value_report", map[string]any{"from": "2026-01-01", "to": "2026-04-04"}, "查询范围最多 92 天"},
+		{"get_stored_value_report", map[string]any{"from": "2026-04-04", "to": "2026-01-01"}, "开始营业日不能晚于结束营业日"},
 	} {
 		for _, ch := range f.Channels() {
 			got := ch.Call(t, owner, tc.name, tc.args)
@@ -141,6 +145,16 @@ func TestReportPermissionsAndRanges(t *testing.T) {
 			}
 			if got.Body["unidentified_orders"].(float64) != 0 {
 				t.Fatalf("%s other store: %#v", tc.name, got.Body)
+			}
+			continue
+		}
+		if tc.name == "get_stored_value_report" {
+			for _, raw := range got.Body["rows"].([]any) {
+				for field, value := range raw.(map[string]any) {
+					if field != "business_date" && value != "0.00" {
+						t.Fatalf("%s other store: %s=%v", tc.name, field, value)
+					}
+				}
 			}
 			continue
 		}
