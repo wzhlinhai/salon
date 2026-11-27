@@ -28,7 +28,7 @@ async function submit() {
 
 // 楷体写一句问候（样稿 17）：按钟点换，早上是开门。
 const greeting = (() => {
-  const hour = new Date().getHours()
+  const hour = Math.floor(storeClock(new Date()).minutes / 60)
   if (hour < 5) return '夜深了，辛苦了'
   if (hour < 12) return '早上好，开门啦'
   if (hour < 18) return '下午好'

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { minutesLate, probablyNotComing, storeCalendarDay, storeClock, storeDateTime, storeInstant, storeTime } from '~/utils/storeClock'
+import { minutesLate, probablyNotComing, storeCalendarDay, storeClock, storeDateTime, storeInstant, storeMonth, storeTime, storeTimeShort } from '~/utils/storeClock'
 import { formatDate, formatStamp, recencyOf } from '~/utils/datetime'
 
 const start = '2026-11-27T14:00:00+08:00'
@@ -12,6 +12,9 @@ describe('门店时钟', () => {
     expect(storeCalendarDay('2026-03-04T16:00:00Z')).toBe('2026-03-05')
     expect(storeTime('2026-03-05T01:02:03Z')).toBe('09:02')
     expect(storeDateTime('2026-03-05T01:02:03Z')).toBe('2026/3/5 09:02:03')
+    expect(storeTimeShort('2026-03-05T01:02:03Z')).toBe('9:02')
+    expect(storeTimeShort('2026-11-27T16:05:00Z')).toBe('0:05')
+    expect(storeMonth('2026-11-30T16:30:00Z')).toBe('2026-12')
   })
 
   it('门店的日子和钟点拼成时刻，再读回来不变', () => {

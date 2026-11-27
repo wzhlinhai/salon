@@ -16,8 +16,7 @@ const month = ref('')
 const data = ref<GroupbuyMonth | null>(null)
 
 function currentMonth() {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  return storeMonth()
 }
 
 // 读失败时丢掉上一个平台或月份的对账，原地给「重试」：不然看着的是别的月份的数，却以为是这个月的（hasData 恒为否）。

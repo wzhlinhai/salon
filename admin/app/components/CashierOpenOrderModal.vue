@@ -108,7 +108,7 @@ const summary = computed(() => {
   if (!minutes || backfill.value) return `${list.length} 项`
   const end = new Date(Date.now() + minutes * 60_000)
   const hours = minutes >= 60 ? `${Math.round(minutes / 30) / 2} 小时` : `${minutes} 分钟`
-  return `${list.length} 项 · 约 ${hours} · 到 ${end.getHours()}:${String(end.getMinutes()).padStart(2, '0')}`
+  return `${list.length} 项 · 约 ${hours} · 到 ${storeTimeShort(end)}`
 })
 
 const customerLine = computed(() => {

@@ -17,8 +17,7 @@ const attendanceDays = ref<AttendanceDay[]>([])
 const passwordOpen = ref(false)
 
 function currentMonth() {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  return storeMonth()
 }
 
 function openAttendance() {

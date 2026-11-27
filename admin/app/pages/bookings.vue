@@ -277,7 +277,7 @@ const dayTitle = computed(() => {
 const nowClock = ref(Date.now())
 const nowTop = computed(() => {
   if (!day.value || day.value !== businessDate.value) return null
-  const minutes = clockMinutes(storeClock(nowClock.value).time)
+  const minutes = storeClock(nowClock.value).minutes
   if (minutes < openMinutes.value || minutes >= closeMinutes.value) return null
   return ((minutes - openMinutes.value) / SLOT_MINUTES) * SLOT_HEIGHT
 })
@@ -365,7 +365,7 @@ function newBooking() {
   let minutes = openMinutes.value
   if (day.value === businessDate.value) {
     const now = storeClock(nowClock.value)
-    const next = Math.max(minutes, Math.ceil(clockMinutes(now.time) / SLOT_MINUTES) * SLOT_MINUTES)
+    const next = Math.max(minutes, Math.ceil(now.minutes / SLOT_MINUTES) * SLOT_MINUTES)
     if (now.day !== day.value || next > closeMinutes.value - SLOT_MINUTES) day.value = addDays(day.value, 1)
     else minutes = next
   }

@@ -67,6 +67,17 @@ export function storeTime(at: Date | string | number) {
   return storeClock(at).time
 }
 
+// 不写前面的 0 的钟点，9:05（首页时间线、开单时估的结束时间）。
+export function storeTimeShort(at: Date | string | number) {
+  const time = storeTime(at)
+  return time.startsWith('0') ? time.slice(1) : time
+}
+
+// 门店墙上的月份，2026-11。
+export function storeMonth(at: Date | string | number = new Date()) {
+  return storeCalendarDay(at).slice(0, 7)
+}
+
 // 完整的日期和时间，2026/3/5 09:05:00（流水、日志里一条一条的时刻）。
 export function storeDateTime(at: Date | string | number) {
   return dateTimeText.format(new Date(at))

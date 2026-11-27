@@ -94,9 +94,7 @@ onBeforeUnmount(() => {
 })
 
 function clock(value: string | number) {
-  // 9:05，不写前面的 0。
-  const time = storeTime(value)
-  return time.startsWith('0') ? time.slice(1) : time
+  return storeTimeShort(value)
 }
 
 function monthDay(date: string) {

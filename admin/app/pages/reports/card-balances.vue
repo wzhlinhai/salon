@@ -86,7 +86,7 @@ const brief = computed(() => {
 })
 
 // 今年的日子写「12月10日」，别的年份带上年。
-const thisYear = String(new Date().getFullYear())
+const thisYear = storeCalendarDay().slice(0, 4)
 
 function dateText(day: string) {
   return day.startsWith(thisYear) ? shortDate(day) : `${day.slice(0, 4)}年${shortDate(day)}`
