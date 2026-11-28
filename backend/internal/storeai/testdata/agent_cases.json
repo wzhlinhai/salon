@@ -1,0 +1,105 @@
+[
+  {
+    "id": "coupon-redeemed-schedules",
+    "description": "券核销后按门店设置定跟进",
+    "inbox": "store",
+    "events": [
+      {
+        "kind": "coupon_redeemed",
+        "source_key": "eval:coupon_redeemed:抖音1",
+        "subject": "redemption:抖音1",
+        "payload": {
+          "redemption_id": "redemption:抖音1",
+          "platform": "douyin",
+          "redeemed_by": "staff:王老板",
+          "redeemed_at": "2026-11-10T12:00:00+08:00",
+          "revocable_until": "2026-11-10T13:00:00+08:00"
+        }
+      }
+    ],
+    "expected_calls": [
+      {"tool": "schedule_follow_up", "args": {"subject_kind": "coupon_redemption", "subject_id": "redemption:抖音1", "minutes": 30}}
+    ]
+  },
+  {
+    "id": "followup-due-unlinked-requests-redeemer",
+    "description": "跟进到点仍未关联，先查券再交办给核销人",
+    "inbox": "store",
+    "events": [
+      {
+        "kind": "follow_up_due",
+        "source_key": "eval:follow_up_due:抖音1",
+        "subject": "redemption:抖音1",
+        "payload": {"subject_kind": "coupon_redemption", "subject_id": "redemption:抖音1"}
+      }
+    ],
+    "expected_calls": [
+      {"tool": "list_redemptions", "args": {"from": "$today", "to": "$today", "unlinked_only": true}},
+      {"tool": "create_request", "args": {"to_staff_id": "staff:王老板", "kind": "inform", "subject_kind": "coupon_redemption", "subject_id": "redemption:抖音1", "due_at": "2026-11-10T13:00:00+08:00"}}
+    ]
+  },
+  {
+    "id": "followup-due-linked-finishes",
+    "description": "跟进到点但券已关联，结束不交办",
+    "inbox": "store",
+    "events": [
+      {
+        "kind": "follow_up_due",
+        "source_key": "eval:follow_up_due:美团1",
+        "subject": "redemption:美团1",
+        "payload": {"subject_kind": "coupon_redemption", "subject_id": "redemption:美团1"}
+      }
+    ],
+    "expected_calls": [
+      {"tool": "finish", "args": {"status": "closed"}}
+    ]
+  },
+  {
+    "id": "handover-followup-due",
+    "description": "交办的跟进到点，执行转交判断",
+    "inbox": "store",
+    "events": [
+      {
+        "kind": "follow_up_due",
+        "source_key": "eval:follow_up_due:request",
+        "subject": "redemption:抖音2",
+        "payload": {"subject_kind": "coupon_redemption", "subject_id": "redemption:抖音2", "request_id": "request:交办"}
+      }
+    ],
+    "expected_calls": [
+      {"tool": "hand_over", "args": {"request_id": "request:交办"}}
+    ]
+  },
+  {
+    "id": "coupon-linked-finishes",
+    "description": "券关联单据后结束",
+    "inbox": "store",
+    "events": [
+      {
+        "kind": "coupon_linked",
+        "source_key": "eval:coupon_linked:美团1",
+        "subject": "redemption:美团1",
+        "payload": {"redemption_id": "redemption:美团1", "order_id": "order:王姐挂单"}
+      }
+    ],
+    "expected_calls": [
+      {"tool": "finish", "args": {"status": "closed"}}
+    ]
+  },
+  {
+    "id": "employee-request-reminds-now",
+    "description": "员工收到交办，用本人权限写 now 提醒且正文不含手机号",
+    "inbox": "staff:阿峰",
+    "events": [
+      {
+        "kind": "request",
+        "source_key": "eval:request:员工待办",
+        "subject": "redemption:抖音2",
+        "payload": {"request_id": "request:员工待办", "kind": "inform", "subject": {"kind": "coupon_redemption", "id": "redemption:抖音2"}}
+      }
+    ],
+    "expected_calls": [
+      {"tool": "remind_me", "args": {"tier": "now", "subject_kind": "coupon_redemption", "subject_id": "redemption:抖音2"}}
+    ]
+  }
+]

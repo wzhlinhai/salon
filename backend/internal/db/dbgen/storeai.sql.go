@@ -261,6 +261,36 @@ func (q *Queries) DueTimers(ctx context.Context, arg DueTimersParams) ([]AiTimer
 	return items, nil
 }
 
+const existsReminderBody = `-- name: ExistsReminderBody :one
+SELECT EXISTS (
+  SELECT 1 FROM ai_outbox
+  WHERE store_id = $1 AND recipient_id = $2
+    AND subject_kind = $3 AND subject_id = $4
+    AND body = $5 AND status <> 'withdrawn'
+) AS exists
+`
+
+type ExistsReminderBodyParams struct {
+	StoreID     uuid.UUID
+	RecipientID uuid.UUID
+	SubjectKind string
+	SubjectID   uuid.UUID
+	Body        string
+}
+
+func (q *Queries) ExistsReminderBody(ctx context.Context, arg ExistsReminderBodyParams) (bool, error) {
+	row := q.db.QueryRow(ctx, existsReminderBody,
+		arg.StoreID,
+		arg.RecipientID,
+		arg.SubjectKind,
+		arg.SubjectID,
+		arg.Body,
+	)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const failOrRetryEvents = `-- name: FailOrRetryEvents :exec
 UPDATE ai_inbox_events
 SET status = CASE WHEN attempts >= $1::int THEN 'failed' ELSE 'pending' END,
@@ -809,6 +839,44 @@ func (q *Queries) IncrementRequestAttempt(ctx context.Context, arg IncrementRequ
 	return i, err
 }
 
+const insertClassifierCheck = `-- name: InsertClassifierCheck :exec
+INSERT INTO ai_classifier_checks (tenant_id, store_id, inbox_id, session_id, tool, args, decision, source, reason, model_reply, created_at)
+VALUES ($1, $2, $3, $4, $5,
+        $6::jsonb, $7, $8, $9, $10,
+        $11)
+`
+
+type InsertClassifierCheckParams struct {
+	TenantID   uuid.UUID
+	StoreID    uuid.UUID
+	InboxID    uuid.UUID
+	SessionID  *uuid.UUID
+	Tool       string
+	Args       []byte
+	Decision   string
+	Source     string
+	Reason     *string
+	ModelReply *string
+	CreatedAt  pgtype.Timestamptz
+}
+
+func (q *Queries) InsertClassifierCheck(ctx context.Context, arg InsertClassifierCheckParams) error {
+	_, err := q.db.Exec(ctx, insertClassifierCheck,
+		arg.TenantID,
+		arg.StoreID,
+		arg.InboxID,
+		arg.SessionID,
+		arg.Tool,
+		arg.Args,
+		arg.Decision,
+		arg.Source,
+		arg.Reason,
+		arg.ModelReply,
+		arg.CreatedAt,
+	)
+	return err
+}
+
 const insertInboxEvent = `-- name: InsertInboxEvent :execrows
 INSERT INTO ai_inbox_events (tenant_id, store_id, inbox_id, kind, source_key, subject_kind, subject_id, payload, status, attempts, not_before, created_at)
 VALUES ($1, $2, $3, $4, $5,
@@ -1011,6 +1079,60 @@ func (q *Queries) ListAlwaysMemoryFiles(ctx context.Context, inboxID uuid.UUID) 
 	for rows.Next() {
 		var i ListAlwaysMemoryFilesRow
 		if err := rows.Scan(&i.Path, &i.Content); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listClassifierReminders = `-- name: ListClassifierReminders :many
+SELECT tier, body, status, COALESCE(sent_at, withdrawn_at, queued_at) AS at
+FROM ai_outbox
+WHERE store_id = $1 AND recipient_id = $2
+  AND subject_kind = $3 AND subject_id = $4
+  AND status <> 'withdrawn'
+ORDER BY queued_at DESC, id DESC
+LIMIT 5
+`
+
+type ListClassifierRemindersParams struct {
+	StoreID     uuid.UUID
+	RecipientID uuid.UUID
+	SubjectKind string
+	SubjectID   uuid.UUID
+}
+
+type ListClassifierRemindersRow struct {
+	Tier   string
+	Body   string
+	Status string
+	At     pgtype.Timestamptz
+}
+
+func (q *Queries) ListClassifierReminders(ctx context.Context, arg ListClassifierRemindersParams) ([]ListClassifierRemindersRow, error) {
+	rows, err := q.db.Query(ctx, listClassifierReminders,
+		arg.StoreID,
+		arg.RecipientID,
+		arg.SubjectKind,
+		arg.SubjectID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListClassifierRemindersRow
+	for rows.Next() {
+		var i ListClassifierRemindersRow
+		if err := rows.Scan(
+			&i.Tier,
+			&i.Body,
+			&i.Status,
+			&i.At,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

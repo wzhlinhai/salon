@@ -1,0 +1,334 @@
+{
+  "model": "deepseek-v4.1-flash",
+  "base_url_host": "opencode.ai",
+  "case_file_hash": "45868f6e21e31e920c80058523aa2e3f82d9105ddf9cde7fad8ca4e05a2b5823",
+  "total": 6,
+  "pass": 1,
+  "accuracy": 0.16666666666666666,
+  "cases": [
+    {
+      "id": "coupon-redeemed-schedules",
+      "description": "券核销后按门店设置定跟进",
+      "expected": [
+        {
+          "tool": "schedule_follow_up",
+          "args": {
+            "minutes": 30,
+            "subject_id": "01a220d7-40f1-7387-b9ce-9fbab0593406",
+            "subject_kind": "coupon_redemption"
+          }
+        }
+      ],
+      "actual": [
+        {
+          "tool": "get_redemption",
+          "args": {
+            "key": "01a220d7-40f1-7387-b9ce-9fbab0593406"
+          }
+        },
+        {
+          "tool": "list_redemptions",
+          "args": {
+            "from": "2026-11-10",
+            "to": "2026-11-10"
+          }
+        },
+        {
+          "tool": "schedule_follow_up",
+          "args": {
+            "minutes": 30,
+            "subject_id": "01a220d7-40f1-7387-b9ce-9fbab0593406",
+            "subject_kind": "coupon_redemption"
+          }
+        },
+        {
+          "tool": "finish",
+          "args": {
+            "status": "waiting",
+            "waiting_for": "12:30 复查券是否已关联单据"
+          }
+        }
+      ],
+      "hit": false
+    },
+    {
+      "id": "followup-due-unlinked-requests-redeemer",
+      "description": "跟进到点仍未关联，先查券再交办给核销人",
+      "expected": [
+        {
+          "tool": "list_redemptions",
+          "args": {
+            "from": "2026-11-10",
+            "to": "2026-11-10",
+            "unlinked_only": true
+          }
+        },
+        {
+          "tool": "create_request",
+          "args": {
+            "due_at": "2026-11-10T13:00:00+08:00",
+            "kind": "inform",
+            "subject_id": "01a220d7-6e8d-7afb-9998-a39b01982850",
+            "subject_kind": "coupon_redemption",
+            "to_staff_id": "6c9ecf30-9236-413e-b711-0493ce7c4249"
+          }
+        }
+      ],
+      "actual": [
+        {
+          "tool": "get_redemption",
+          "args": {
+            "key": "01a220d7-6e8d-7afb-9998-a39b01982850"
+          }
+        },
+        {
+          "tool": "list_redemptions",
+          "args": {
+            "from": "2026-11-10",
+            "to": "2026-11-10"
+          }
+        },
+        {
+          "tool": "get_redemption",
+          "args": {
+            "key": "eval-douyin-1"
+          }
+        },
+        {
+          "tool": "get_groupbuy_month",
+          "args": {
+            "month": "2026-11",
+            "platform": "douyin"
+          }
+        },
+        {
+          "tool": "list_staff"
+        },
+        {
+          "tool": "list_orders",
+          "args": {
+            "business_date": "2026-11-10"
+          }
+        },
+        {
+          "tool": "list_audit_log",
+          "args": {
+            "target_id": "01a220d7-6e8d-7afb-9998-a39b01982850"
+          }
+        },
+        {
+          "tool": "list_setting_changes"
+        }
+      ],
+      "hit": false
+    },
+    {
+      "id": "followup-due-linked-finishes",
+      "description": "跟进到点但券已关联，结束不交办",
+      "expected": [
+        {
+          "tool": "finish",
+          "args": {
+            "status": "closed"
+          }
+        }
+      ],
+      "actual": [
+        {
+          "tool": "get_redemption",
+          "args": {
+            "key": "01a220d7-d0dd-76b5-913b-1ee6926ec5a0"
+          }
+        },
+        {
+          "tool": "list_redemptions",
+          "args": {
+            "from": "2026-11-01",
+            "to": "2026-11-10"
+          }
+        },
+        {
+          "tool": "finish",
+          "args": {
+            "status": "closed"
+          }
+        }
+      ],
+      "hit": false
+    },
+    {
+      "id": "handover-followup-due",
+      "description": "交办的跟进到点，执行转交判断",
+      "expected": [
+        {
+          "tool": "hand_over",
+          "args": {
+            "request_id": "01a220d7-f641-7c5b-9167-4e7c080e0784"
+          }
+        }
+      ],
+      "actual": [
+        {
+          "tool": "get_redemption",
+          "args": {
+            "key": "01a220d7-f60f-7ef4-bf12-e1b1c8cefafd"
+          }
+        },
+        {
+          "tool": "list_redemptions",
+          "args": {
+            "from": "2026-11-10",
+            "to": "2026-11-10"
+          }
+        },
+        {
+          "tool": "get_redemption",
+          "args": {
+            "key": "eval-douyin-2"
+          }
+        },
+        {
+          "tool": "hand_over",
+          "args": {
+            "request_id": "01a220d7-f641-7c5b-9167-4e7c080e0784"
+          }
+        },
+        {
+          "tool": "finish",
+          "args": {
+            "status": "waiting",
+            "waiting_for": "核销人补关联团购券 eval-douyin-2（提醒已再发，12:30 复查）"
+          }
+        }
+      ],
+      "hit": false
+    },
+    {
+      "id": "coupon-linked-finishes",
+      "description": "券关联单据后结束",
+      "expected": [
+        {
+          "tool": "finish",
+          "args": {
+            "status": "closed"
+          }
+        }
+      ],
+      "actual": [
+        {
+          "tool": "finish",
+          "args": {
+            "status": "closed"
+          }
+        }
+      ],
+      "hit": true
+    },
+    {
+      "id": "employee-request-reminds-now",
+      "description": "员工收到交办，用本人权限写 now 提醒且正文不含手机号",
+      "expected": [
+        {
+          "tool": "remind_me",
+          "args": {
+            "body": "这张券还没关联单据",
+            "subject_id": "01a220d8-55fe-7bd9-8381-80134276d244",
+            "subject_kind": "coupon_redemption",
+            "tier": "now"
+          }
+        }
+      ],
+      "actual": [
+        {
+          "tool": "get_me"
+        },
+        {
+          "tool": "get_settings"
+        },
+        {
+          "tool": "get_order",
+          "args": {
+            "id": "01a220d8-55fe-7bd9-8381-80134276d244"
+          }
+        },
+        {
+          "tool": "get_draft",
+          "args": {
+            "id": "01a220d8-55fe-7bd9-8381-80134276d244"
+          }
+        },
+        {
+          "tool": "get_appointment",
+          "args": {
+            "id": "01a220d8-55fe-7bd9-8381-80134276d244"
+          }
+        },
+        {
+          "tool": "list_orders",
+          "args": {
+            "business_date": "2026-11-10",
+            "limit": 100
+          }
+        },
+        {
+          "tool": "list_groupbuy_deals"
+        },
+        {
+          "tool": "list_open_orders"
+        },
+        {
+          "tool": "get_customer",
+          "args": {
+            "id": "d6bd4a6d-29cf-4434-a64e-a4d3a8e7cb52"
+          }
+        },
+        {
+          "tool": "list_appointments",
+          "args": {
+            "from": "2026-11-10",
+            "to": "2026-11-10"
+          }
+        },
+        {
+          "tool": "list_orders",
+          "args": {
+            "business_date": "2026-11-10",
+            "customer_id": "d6bd4a6d-29cf-4434-a64e-a4d3a8e7cb52",
+            "limit": 100,
+            "status": "all"
+          }
+        },
+        {
+          "tool": "list_drafts"
+        },
+        {
+          "tool": "list_guest_visits",
+          "args": {
+            "date_from": "2026-11-10",
+            "date_to": "2026-11-10"
+          }
+        },
+        {
+          "tool": "list_items"
+        },
+        {
+          "tool": "list_commissions",
+          "args": {
+            "date_from": "2026-11-10",
+            "date_to": "2026-11-10",
+            "staff_id": "29473c9f-97d9-4287-8a2c-2df476775dc7"
+          }
+        },
+        {
+          "tool": "list_performance",
+          "args": {
+            "date_from": "2026-11-10",
+            "date_to": "2026-11-10",
+            "staff_id": "29473c9f-97d9-4287-8a2c-2df476775dc7"
+          }
+        }
+      ],
+      "hit": false
+    }
+  ]
+}

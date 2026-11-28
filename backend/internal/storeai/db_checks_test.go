@@ -67,6 +67,36 @@ func TestDatabaseChecks(t *testing.T) {
 			      VALUES ($1,$2,$3,'ask','coupon_redemption',$4,'[]'::jsonb,'bogus',$5)`,
 			args: []any{shop.Res.TenantID, shop.Res.StoreID, shop.Res.OwnerID, subject.ID, now},
 		},
+		{
+			name: "classifier decision",
+			sql: `INSERT INTO ai_classifier_checks (tenant_id,store_id,inbox_id,tool,args,decision,source,reason,created_at)
+			      VALUES ($1,$2,$3,'remind_me','{}'::jsonb,'bogus','rule','x',$4)`,
+			args: []any{shop.Res.TenantID, shop.Res.StoreID, inbox.ID, now},
+		},
+		{
+			name: "classifier source",
+			sql: `INSERT INTO ai_classifier_checks (tenant_id,store_id,inbox_id,tool,args,decision,source,reason,created_at)
+			      VALUES ($1,$2,$3,'remind_me','{}'::jsonb,'allow','bogus',NULL,$4)`,
+			args: []any{shop.Res.TenantID, shop.Res.StoreID, inbox.ID, now},
+		},
+		{
+			name: "classifier block reason",
+			sql: `INSERT INTO ai_classifier_checks (tenant_id,store_id,inbox_id,tool,args,decision,source,reason,created_at)
+			      VALUES ($1,$2,$3,'remind_me','{}'::jsonb,'block','rule',NULL,$4)`,
+			args: []any{shop.Res.TenantID, shop.Res.StoreID, inbox.ID, now},
+		},
+		{
+			name: "classifier blank tool",
+			sql: `INSERT INTO ai_classifier_checks (tenant_id,store_id,inbox_id,tool,args,decision,source,reason,created_at)
+			      VALUES ($1,$2,$3,'   ','{}'::jsonb,'allow','rule',NULL,$4)`,
+			args: []any{shop.Res.TenantID, shop.Res.StoreID, inbox.ID, now},
+		},
+		{
+			name: "classifier blank block reason",
+			sql: `INSERT INTO ai_classifier_checks (tenant_id,store_id,inbox_id,tool,args,decision,source,reason,created_at)
+			      VALUES ($1,$2,$3,'remind_me','{}'::jsonb,'block','rule','   ',$4)`,
+			args: []any{shop.Res.TenantID, shop.Res.StoreID, inbox.ID, now},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -179,4 +209,21 @@ func TestOutboxParentColumnNotUpdatable(t *testing.T) {
 		t.Fatalf("update parent_id = %v, want privilege error", err)
 	}
 	dbtest.Rollback(t, tx)
+}
+
+func TestClassifierChecksNotUpdatable(t *testing.T) {
+	shop := open(t)
+	for _, sql := range []string{
+		"UPDATE ai_classifier_checks SET decision='allow'",
+		"DELETE FROM ai_classifier_checks",
+	} {
+		tx := dbtest.AppTx(t, shop.Pool, shop.Res.TenantID)
+		_, err := tx.Exec(context.Background(), sql)
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "42501" {
+			dbtest.Rollback(t, tx)
+			t.Fatalf("%s = %v, want privilege error", sql, err)
+		}
+		dbtest.Rollback(t, tx)
+	}
 }

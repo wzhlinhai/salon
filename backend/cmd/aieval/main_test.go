@@ -54,3 +54,23 @@ func TestCleanupErrorsNonZero(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestClassifierAndAgentRequireAPIKey(t *testing.T) {
+	t.Setenv("AI_API_KEY", "")
+	for _, suite := range []string{"classifier", "agent"} {
+		err := run([]string{suite})
+		if err == nil || !strings.Contains(err.Error(), "AI_API_KEY 未设置") {
+			t.Fatalf("%s err = %v", suite, err)
+		}
+	}
+}
+
+func TestSuiteOptionsRejectRecordAndReplay(t *testing.T) {
+	if _, err := parseSuiteOptions("classifier", []string{"--record", "a.json", "--replay", "b.json"}); err == nil {
+		t.Fatal("record and replay should be mutually exclusive")
+	}
+	opts, err := parseSuiteOptions("agent", []string{"--out", "report.json", "--record", "cassette.json"})
+	if err != nil || opts.out != "report.json" || opts.record != "cassette.json" {
+		t.Fatalf("opts = %+v err=%v", opts, err)
+	}
+}

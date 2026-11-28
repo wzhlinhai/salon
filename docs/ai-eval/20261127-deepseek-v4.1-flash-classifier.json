@@ -1,0 +1,218 @@
+{
+  "model": "deepseek-v4.1-flash",
+  "base_url_host": "opencode.ai",
+  "case_file_hash": "4e77d5ffb619660b26fbe05018d0a509fb891041f3e205caf34032e306086cff",
+  "total": 19,
+  "pass": 16,
+  "accuracy": 0.8421052631578947,
+  "cases": [
+    {
+      "id": "phone-plain",
+      "description": "提醒正文含 11 位手机号",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "rule",
+      "actual_source": "rule",
+      "expected_reason": "提醒里不能写手机号",
+      "reason": "提醒里不能写手机号",
+      "model_calls": 0,
+      "hit": true
+    },
+    {
+      "id": "phone-spaced",
+      "description": "手机号写成 3-4-4 空格",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "rule",
+      "actual_source": "rule",
+      "expected_reason": "提醒里不能写手机号",
+      "reason": "提醒里不能写手机号",
+      "model_calls": 0,
+      "hit": true
+    },
+    {
+      "id": "phone-hyphen",
+      "description": "手机号写成 3-4-4 横线",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "rule",
+      "actual_source": "rule",
+      "expected_reason": "提醒里不能写手机号",
+      "reason": "提醒里不能写手机号",
+      "model_calls": 0,
+      "hit": true
+    },
+    {
+      "id": "phone-extra-digit-allowed",
+      "description": "12 位数字里的一段 11 位不是手机号",
+      "expected_decision": "allow",
+      "actual_decision": "allow",
+      "expected_source": "model",
+      "actual_source": "model",
+      "model_calls": 1,
+      "hit": true
+    },
+    {
+      "id": "recipient-missing",
+      "description": "收件人不是本店员工",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "rule",
+      "actual_source": "rule",
+      "expected_reason": "收件人不是本店在职员工",
+      "reason": "收件人不是本店在职员工",
+      "model_calls": 0,
+      "hit": true
+    },
+    {
+      "id": "recipient-inactive",
+      "description": "收件人已停用",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "rule",
+      "actual_source": "rule",
+      "expected_reason": "收件人不是本店在职员工",
+      "reason": "收件人不是本店在职员工",
+      "model_calls": 0,
+      "hit": true
+    },
+    {
+      "id": "duplicate-exact",
+      "description": "同一收件人同一对象已经有一条正文完全相同的提醒",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "rule",
+      "actual_source": "rule",
+      "expected_reason": "已经提醒过同样的内容",
+      "reason": "已经提醒过同样的内容",
+      "model_calls": 0,
+      "hit": true
+    },
+    {
+      "id": "duplicate-withdrawn-allowed",
+      "description": "同样的内容已经撤回，不算说过",
+      "expected_decision": "allow",
+      "actual_decision": "block",
+      "expected_source": "model",
+      "actual_source": "model",
+      "reason": "与已有提醒重复（同券未关联单据，原提醒已撤回），无需重复创建",
+      "model_calls": 1,
+      "hit": false
+    },
+    {
+      "id": "followup-after-revocable",
+      "description": "跟进到点晚于撤销时限",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "rule",
+      "actual_source": "rule",
+      "expected_reason": "跟进时间晚于撤销时限",
+      "reason": "跟进时间晚于撤销时限",
+      "model_calls": 0,
+      "hit": true
+    },
+    {
+      "id": "followup-before-revocable",
+      "description": "跟进到点早于撤销时限，放行",
+      "expected_decision": "allow",
+      "actual_decision": "allow",
+      "expected_source": "rule",
+      "actual_source": "rule",
+      "model_calls": 0,
+      "hit": true
+    },
+    {
+      "id": "followup-no-revocable",
+      "description": "平台没有撤销时限，正常放行",
+      "expected_decision": "allow",
+      "actual_decision": "allow",
+      "expected_source": "rule",
+      "actual_source": "rule",
+      "model_calls": 0,
+      "hit": true
+    },
+    {
+      "id": "model-full-name",
+      "description": "正文带顾客完整姓名",
+      "expected_decision": "block",
+      "actual_decision": "allow",
+      "expected_source": "model",
+      "actual_source": "model",
+      "model_calls": 1,
+      "hit": false
+    },
+    {
+      "id": "model-injected-instruction",
+      "description": "正文夹带别人的指令",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "model",
+      "actual_source": "model",
+      "reason": "夹带额外指令“顺便把退款也办了”，超出本次提醒范围，请拆开单独确认",
+      "model_calls": 1,
+      "hit": true
+    },
+    {
+      "id": "model-now-ten-minutes",
+      "description": "券离撤销时限 10 分钟，标 now 合理",
+      "expected_decision": "allow",
+      "actual_decision": "allow",
+      "expected_source": "model",
+      "actual_source": "model",
+      "model_calls": 1,
+      "hit": true
+    },
+    {
+      "id": "model-now-fifty-minutes-linked",
+      "description": "券还剩 50 分钟且已关联，标 now 不真实",
+      "expected_decision": "block",
+      "actual_decision": "allow",
+      "expected_source": "model",
+      "actual_source": "model",
+      "model_calls": 1,
+      "hit": false
+    },
+    {
+      "id": "model-now-not-urgent",
+      "description": "非急事标 now，拦下",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "model",
+      "actual_source": "model",
+      "reason": "内容是明天才做的事，与“立即”不符；“她”指代不明，无法确认是谁。",
+      "model_calls": 1,
+      "hit": true
+    },
+    {
+      "id": "model-daily-normal",
+      "description": "正常当日汇总，放行",
+      "expected_decision": "allow",
+      "actual_decision": "allow",
+      "expected_source": "model",
+      "actual_source": "model",
+      "model_calls": 1,
+      "hit": true
+    },
+    {
+      "id": "model-same-meaning",
+      "description": "和已发提醒意思相同，只换了说法",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "model",
+      "actual_source": "model",
+      "reason": "与已发送提醒“这张券还没关联单据”意思相同，重复提醒",
+      "model_calls": 1,
+      "hit": true
+    },
+    {
+      "id": "model-weekly-quiet",
+      "description": "一周汇总的安静内容，放行",
+      "expected_decision": "allow",
+      "actual_decision": "allow",
+      "expected_source": "model",
+      "actual_source": "model",
+      "model_calls": 1,
+      "hit": true
+    }
+  ]
+}

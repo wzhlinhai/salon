@@ -356,3 +356,26 @@ UPDATE ai_timers SET status = 'cancelled'
 WHERE store_id = sqlc.arg(store_id) AND inbox_id = sqlc.arg(inbox_id) AND kind = 'follow_up' AND status = 'scheduled'
   AND subject_kind = sqlc.arg(subject_kind) AND subject_id = sqlc.arg(subject_id)
   AND payload->>'request_id' = sqlc.arg(request_id)::text;
+
+-- name: InsertClassifierCheck :exec
+INSERT INTO ai_classifier_checks (tenant_id, store_id, inbox_id, session_id, tool, args, decision, source, reason, model_reply, created_at)
+VALUES (sqlc.arg(tenant_id), sqlc.arg(store_id), sqlc.arg(inbox_id), sqlc.narg(session_id), sqlc.arg(tool),
+        sqlc.arg(args)::jsonb, sqlc.arg(decision), sqlc.arg(source), sqlc.narg(reason), sqlc.narg(model_reply),
+        sqlc.arg(created_at));
+
+-- name: ExistsReminderBody :one
+SELECT EXISTS (
+  SELECT 1 FROM ai_outbox
+  WHERE store_id = sqlc.arg(store_id) AND recipient_id = sqlc.arg(recipient_id)
+    AND subject_kind = sqlc.arg(subject_kind) AND subject_id = sqlc.arg(subject_id)
+    AND body = sqlc.arg(body) AND status <> 'withdrawn'
+) AS exists;
+
+-- name: ListClassifierReminders :many
+SELECT tier, body, status, COALESCE(sent_at, withdrawn_at, queued_at) AS at
+FROM ai_outbox
+WHERE store_id = sqlc.arg(store_id) AND recipient_id = sqlc.arg(recipient_id)
+  AND subject_kind = sqlc.arg(subject_kind) AND subject_id = sqlc.arg(subject_id)
+  AND status <> 'withdrawn'
+ORDER BY queued_at DESC, id DESC
+LIMIT 5;

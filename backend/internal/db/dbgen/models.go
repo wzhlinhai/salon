@@ -54,6 +54,21 @@ type AftersaleRefund struct {
 	CreatedAt    pgtype.Timestamptz
 }
 
+type AiClassifierCheck struct {
+	TenantID   uuid.UUID
+	StoreID    uuid.UUID
+	ID         uuid.UUID
+	InboxID    uuid.UUID
+	SessionID  *uuid.UUID
+	Tool       string
+	Args       []byte
+	Decision   string
+	Source     string
+	Reason     *string
+	ModelReply *string
+	CreatedAt  pgtype.Timestamptz
+}
+
 type AiConversation struct {
 	TenantID   uuid.UUID
 	StoreID    uuid.UUID

@@ -1,6 +1,8 @@
 // aieval 运行 AI 对话评测集，支持真实模型、离线重放和两份报告对比。
 //
 //	aieval run [--out 报告.json] [--record cassette.json | --replay cassette.json]
+//	aieval classifier [--out 报告.json] [--record cassette.json | --replay cassette.json]
+//	aieval agent [--out 报告.json] [--record cassette.json | --replay cassette.json]
 //	aieval replay cassette.json [--out 报告.json]
 //	aieval compare 旧报告.json 新报告.json [--allow-different-cases]
 //
@@ -26,7 +28,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/ai/eval"
 )
 
-const usage = "usage: aieval run [--out 报告.json] [--record cassette.json | --replay cassette.json] | aieval replay cassette.json [--out 报告.json] | aieval compare 旧报告.json 新报告.json [--allow-different-cases]"
+const usage = "usage: aieval run [--out 报告.json] [--record cassette.json | --replay cassette.json] | aieval classifier [--out 报告.json] [--record cassette.json | --replay cassette.json] | aieval agent [--out 报告.json] [--record cassette.json | --replay cassette.json] | aieval replay cassette.json [--out 报告.json] | aieval compare 旧报告.json 新报告.json [--allow-different-cases]"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -60,6 +62,10 @@ func run(args []string) (err error) {
 			return errors.New("--record 和 --replay 不能同时使用")
 		}
 		return runSuite(*out, *record, *replay)
+	case "classifier":
+		return runClassifierSuite(args[1:])
+	case "agent":
+		return runAgentSuite(args[1:])
 	case "replay":
 		cassette, out, err := replayArgs(args[1:])
 		if err != nil {
