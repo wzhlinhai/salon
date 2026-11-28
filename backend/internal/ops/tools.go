@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/google/uuid"
 )
 
 // Tool 是一个 AI 工具定义，格式对应 OpenAI 兼容 Chat Completions 的 function tool。
@@ -29,7 +30,7 @@ func (e *ToolError) Error() string { return "invalid arguments: " + strings.Join
 func (r *Registry) Tools(caller Caller) []Tool {
 	var tools []Tool
 	for _, e := range r.ops {
-		if e.ai == AINone || !r.allowed(caller, e) {
+		if e.ai == AINone || (e.self && caller.StaffID == uuid.Nil) || !r.allowed(caller, e) {
 			continue
 		}
 		desc := e.summary
@@ -78,7 +79,7 @@ func (r *Registry) ChatTools(caller Caller) []Tool {
 	for _, e := range r.ops {
 		switch {
 		case e.kind == Read && e.ai == AIDirect:
-			if !r.allowed(caller, e) {
+			if (e.self && caller.StaffID == uuid.Nil) || !r.allowed(caller, e) {
 				continue
 			}
 			tools = append(tools, Tool{Name: e.name, Description: e.summary, Parameters: r.toolSchema(e)})
@@ -135,6 +136,9 @@ func (r *Registry) CallTool(ctx context.Context, caller Caller, name string, arg
 	caller.Channel = ChannelAI
 	e, ok := r.ops[name]
 	if !ok || e.ai == AINone {
+		return nil, ErrUnknownOperation
+	}
+	if e.self && caller.StaffID == uuid.Nil {
 		return nil, ErrUnknownOperation
 	}
 	if len(args) == 0 {

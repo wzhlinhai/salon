@@ -98,6 +98,23 @@ func WithdrawReminders(ctx context.Context, q *dbgen.Queries, now time.Time, sto
 	})
 }
 
+// WithdrawRemindersFor 撤回一个对象在某位收件人那里所有未撤回的提醒；转交时只撤回原收件人的。
+func WithdrawRemindersFor(ctx context.Context, q *dbgen.Queries, now time.Time, storeID, recipientID uuid.UUID, subject Subject) error {
+	if subject.Empty() || !subject.Valid() {
+		return ErrInvalidReminder
+	}
+	if err := q.LockOutboxSubject(ctx, dbgen.LockOutboxSubjectParams{
+		StoreID:     storeID,
+		SubjectKind: subject.Kind, SubjectID: subject.ID,
+	}); err != nil {
+		return err
+	}
+	return q.WithdrawOutboxForRecipient(ctx, dbgen.WithdrawOutboxForRecipientParams{
+		Now: timestamp(now), StoreID: storeID, RecipientID: recipientID,
+		SubjectKind: subject.Kind, SubjectID: subject.ID,
+	})
+}
+
 // runDispatcher 把 tier=now 的 queued 提醒置为 sent；当日和每周简报留给第 2 步。
 func runDispatcher(ctx context.Context, q *dbgen.Queries, storeID uuid.UUID, now time.Time) error {
 	return q.DispatchNowOutbox(ctx, dbgen.DispatchNowOutboxParams{Now: timestamp(now), StoreID: storeID})

@@ -1,6 +1,6 @@
 // Package storeai 实现门店 AI 的 always-on 骨架：收件箱、事件、会话、定时器、
-// 记忆、发件箱和交办（ADR-0015）。本步只做存储与流转，运行本身由可注入的
-// RunFunc 提供，不接模型。
+// 记忆、发件箱、交办、转交和运行（ADR-0015）。投递与存储只传结构化字段；
+// 运行由可注入的 RunFunc 提供，生产实现是 Runner。
 package storeai
 
 import (
@@ -17,7 +17,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/db/dbgen"
 )
 
-// 收件箱事件的种类。B 步会再加 coupon_redeemed。
+// 收件箱事件的种类。
 const (
 	// EventFollowUpDue 是跟进或周期定时器到点时写入的事件。
 	EventFollowUpDue = "follow_up_due"
@@ -29,7 +29,18 @@ const (
 	EventRequestAnswered = "request_answered"
 	// EventLateAnswer 是改交以后原来那位员工晚到的回答。
 	EventLateAnswer = "late_answer"
+	// EventCouponRedeemed 是团购券核销成功。
+	EventCouponRedeemed = "coupon_redeemed"
+	// EventCouponLinked 是团购券关联到单据。
+	EventCouponLinked = "coupon_linked"
+	// EventCouponUnlinked 是团购券取消关联。
+	EventCouponUnlinked = "coupon_unlinked"
+	// EventCouponRevoked 是团购核销被撤销。
+	EventCouponRevoked = "coupon_revoked"
 )
+
+// SubjectCouponRedemption 是团购核销记录的对象类别。
+const SubjectCouponRedemption = "coupon_redemption"
 
 // 包内哨兵错误。运行和操作把这些错误映射成自己的响应，不把内部文字直接暴露给模型。
 var (
@@ -59,6 +70,8 @@ var (
 	ErrInvalidAnswer = errors.New("invalid answer")
 	// ErrRequestClosed：交办已经回答、改交或取消。
 	ErrRequestClosed = errors.New("request is closed")
+	// ErrNoHandoverTarget：原收件人不在职，且没有可改交的在职店长或老板。
+	ErrNoHandoverTarget = errors.New("no active handover target")
 	// ErrLeaseLost：运行保存时收件箱租约已经不在自己手上。
 	ErrLeaseLost = errors.New("inbox lease lost")
 	// ErrInvalidRunResult：RunFunc 返回了不认识的会话状态。

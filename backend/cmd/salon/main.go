@@ -18,6 +18,7 @@
 // 开发环境启用假登录，二者不能同时设置。
 // PAYROLL_AUTO_LOCK=off 关闭后台自动锁月循环（开发环境和端到端测试使用）。
 // AI_REMINDERS=off 关闭后台 AI 提醒循环（开发环境和端到端测试使用）。
+// AI_AGENT=on 且配置了 AI 模型时启动门店 AI 循环；默认关闭。
 package main
 
 import (
@@ -48,6 +49,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/payroll"
 	"github.com/wzhlinhai/salon/backend/internal/reminders"
 	"github.com/wzhlinhai/salon/backend/internal/staff"
+	"github.com/wzhlinhai/salon/backend/internal/storeai"
 	"github.com/wzhlinhai/salon/backend/internal/wechat"
 	"github.com/wzhlinhai/salon/backend/internal/wechat/fakewechat"
 )
@@ -146,7 +148,7 @@ func serve(ctx context.Context, pool *pgxpool.Pool) error {
 		return err
 	}
 	customerLogin := miniprogram.NewLoginService(pool, authn, wechatProvider)
-	e, _ := httpapi.New(pool, httpapi.Config{
+	e, registry := httpapi.New(pool, httpapi.Config{
 		Authenticate: authn.Authenticate, AuthenticateCustomer: authn.AuthenticateCustomer,
 		Login: authn.Login, CustomerLogin: customerLogin.Login, AIModel: model, Groupbuy: providers,
 	})
@@ -156,8 +158,18 @@ func serve(ctx context.Context, pool *pgxpool.Pool) error {
 	if os.Getenv("AI_REMINDERS") != "off" {
 		go reminders.RunLoop(ctx, pool, time.Now, model, slog.Default())
 	}
+	agentOn := aiAgentEnabled(os.Getenv("AI_AGENT"), model != nil)
+	if agentOn {
+		runner := &storeai.Runner{Registry: registry, Model: model, Logger: slog.Default()}
+		go storeai.RunLoop(ctx, pool, time.Now, runner.Run, slog.Default())
+	}
+	slog.Info("store ai agent", "enabled", agentOn)
 	sc := echo.StartConfig{Address: addr, HideBanner: true}
 	return sc.Start(ctx, e)
+}
+
+func aiAgentEnabled(value string, modelConfigured bool) bool {
+	return value == "on" && modelConfigured
 }
 
 // wechatLoginProvider 按环境变量选择真实或开发假微信登录；二者同时配置时拒绝启动。

@@ -15,7 +15,7 @@ import (
 // Register 声明「我的提醒」的读和已读操作。
 func Register(r *ops.Registry) {
 	ops.Register(r, ops.Operation[struct{}, MyReminderList]{
-		Name: "list_my_reminders", Summary: "查看本人的 AI 提醒和未读数", Kind: ops.Read,
+		Name: "list_my_reminders", Summary: "查看本人的 AI 提醒和未读数", Kind: ops.Read, Self: true,
 		Permission: ops.LoggedIn, AI: ops.AINone, Handle: listMyReminders,
 	})
 	ops.Register(r, ops.Operation[MarkMyReminderReadInput, MarkMyReminderReadResult]{

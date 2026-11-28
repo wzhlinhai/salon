@@ -91,3 +91,22 @@ func TestWechatLoginProviderSelection(t *testing.T) {
 		}
 	})
 }
+
+func TestAIAgentEnabled(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		model bool
+		want  bool
+	}{
+		{"on", true, true},
+		{"on", false, false},
+		{"off", true, false},
+		{"", true, false},
+		{"ON", true, false},
+		{"other", true, false},
+	} {
+		if got := aiAgentEnabled(tc.value, tc.model); got != tc.want {
+			t.Fatalf("aiAgentEnabled(%q, %v) = %v, want %v", tc.value, tc.model, got, tc.want)
+		}
+	}
+}

@@ -25,7 +25,7 @@ func registerPunches(r *ops.Registry) {
 	ops.Register(r, ops.Operation[VoidPunchInput, Punch]{Name: "void_punch", Summary: "作废补卡", Kind: ops.Write, Permission: perm.AttendanceManage, AI: ops.AIDraft, Handle: voidPunch})
 	ops.Register(r, ops.Operation[ApproveAttendanceInput, AttendanceApproval]{Name: "approve_attendance", Summary: "核准当天全部考勤异常", Kind: ops.Write, Permission: perm.AttendanceManage, AI: ops.AIDraft, Handle: approveAttendance})
 	ops.Register(r, ops.Operation[RevokeAttendanceApprovalInput, AttendanceApproval]{Name: "revoke_attendance_approval", Summary: "撤销考勤核准", Kind: ops.Write, Permission: perm.AttendanceManage, AI: ops.AIDraft, Handle: revokeAttendanceApproval})
-	ops.Register(r, ops.Operation[ListMyAttendanceInput, StaffAttendance]{Name: "list_my_attendance", Summary: "查看本人月度考勤", Kind: ops.Read, Permission: perm.AttendanceClock, AI: ops.AIDirect, Handle: listMyAttendance})
+	ops.Register(r, ops.Operation[ListMyAttendanceInput, StaffAttendance]{Name: "list_my_attendance", Summary: "查看本人月度考勤", Kind: ops.Read, Self: true, Permission: perm.AttendanceClock, AI: ops.AIDirect, Handle: listMyAttendance})
 	ops.Register(r, ops.Operation[GetStaffAttendanceInput, StaffAttendance]{Name: "get_staff_attendance", Summary: "查看员工月度考勤", Kind: ops.Read, Permission: perm.AttendanceManage, AI: ops.AIDirect, Handle: getStaffAttendance})
 	ops.Register(r, ops.Operation[ListAttendanceSummaryInput, AttendanceSummaryList]{Name: "list_attendance_summary", Summary: "查看本店月度考勤统计", Kind: ops.Read, Permission: perm.AttendanceManage, AI: ops.AIDirect, Handle: listAttendanceSummary})
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/ops"
 	"github.com/wzhlinhai/salon/backend/internal/redpackets"
 	"github.com/wzhlinhai/salon/backend/internal/settings"
+	"github.com/wzhlinhai/salon/backend/internal/storeai"
 )
 
 // Input 是一笔计划支付及其支付方式所需字段。
@@ -245,6 +246,9 @@ func releaseGroupbuy(ctx context.Context, env ops.Env, orderID uuid.UUID) error 
 		}
 		released, err := env.Q.ReleaseRedemption(ctx, dbgen.ReleaseRedemptionParams{StoreID: env.Caller.StoreID, ID: row.ID})
 		if err != nil {
+			return err
+		}
+		if err := storeai.EmitCouponUnlinked(ctx, env.Q, env.Caller.TenantID, env.Caller.StoreID, env.Now, released.ID, orderID); err != nil {
 			return err
 		}
 		after := redemptionAuditView(released)

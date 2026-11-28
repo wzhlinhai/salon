@@ -42,6 +42,9 @@ func linkCouponOrder(ctx context.Context, env ops.Env, in *LinkCouponOrderInput)
 			return err
 		}
 		after = view(linked)
+		if err := emitCouponLinked(ctx, env.Q, env.Now, linked); err != nil {
+			return err
+		}
 		return nil
 	})
 	if err != nil {
@@ -89,6 +92,9 @@ func unlinkCouponOrder(ctx context.Context, env ops.Env, in *UnlinkCouponOrderIn
 			return err
 		}
 		after = view(released)
+		if err := emitCouponUnlinked(ctx, env.Q, env.Caller.TenantID, env.Caller.StoreID, env.Now, released.ID, orderID); err != nil {
+			return err
+		}
 		return nil
 	})
 	if err != nil {

@@ -606,19 +606,19 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 ## 门店 AI
 
-`internal/storeai` 是门店 AI always-on 骨架的第 1 步（ADR-0015）：只做存储与流转，运行本身由可注入的 `RunFunc` 提供，不接模型、工具或分类器。门店一个收件箱，每位员工一个；同一个收件箱同一时刻只有一个 worker。业务事件、定时器、交办、发件箱都只传编号和结构化字段，不传自由文字。
+`internal/storeai` 是门店 AI always-on 骨架（ADR-0015）：B1 步接了模型、工具、核销事件和转交，分类器与评测留到 B2。门店一个收件箱，每位员工一个；同一个收件箱同一时刻只有一个 worker。业务事件、定时器、交办、发件箱都只传编号和结构化字段，不传自由文字。
 
 表：
 
 - `ai_inboxes` 收件箱。门店收件箱 `staff_id` 为空，员工收件箱 `staff_id` 有值；部分唯一索引各保证一个。`lease_token`/`lease_until` 是单 worker 租约。
-- `ai_inbox_events` 持久事件。`(inbox_id, source_key)` 唯一，重复写入不报错也不新增；`subject_kind`/`subject_id` 同时为空或同时有值；`payload` 是 JSON 对象。本步的事件种类有 `follow_up_due`、`periodic_due`、`request`、`request_answered`、`late_answer`。
+- `ai_inbox_events` 持久事件。`(inbox_id, source_key)` 唯一，重复写入不报错也不新增；`subject_kind`/`subject_id` 同时为空或同时有值；`payload` 是 JSON 对象。事件种类有 `follow_up_due`、`periodic_due`、`request`、`request_answered`、`late_answer`、`coupon_redeemed`、`coupon_linked`、`coupon_unlinked`、`coupon_revoked`。
 - `ai_sessions` 会话。按收件箱和对象接回未关闭的会话；没有对象的事件总是新开会话。`messages` 是 JSON 数组，`status` 为 `active`/`waiting`/`closed`。
 - `ai_timers` 跟进和周期定时器。跟进到点置 `fired`；周期按 `settings.Location` 的本地时刻加天/周，错过几次只发一条。到点只写收件箱事件，从不直接启动运行。
 - `ai_memory_files` AI 记忆。门店一套、员工每人一套；路径只允许 `instructions.md`、`index.md`、`reported.md`、`notes/<名>.md`、`progress/<名>.md`，`<名>` 为 `^[a-z0-9][a-z0-9_-]{0,63}$`；每个文件不超过 16384 字节，每个收件箱最多 200 个。每次加载三个常驻文件，`notes/`、`progress/` 按需读。
 - `ai_outbox` AI 提醒的外发表。`tier` 为 `now`/`daily`/`weekly`，`body` 1–200 字，`parent_id` 是话题父条。同一收件人同一对象：还没发就替换，已经发过就接在话题父条下面，撤回则整件事的各收件人行都置 `withdrawn`。
-- `ai_requests` 交办。只有编号和结构化字段（`kind`、`subject`、`options`、`due_at`），没有自由文字列。员工只能选 `options` 里的短代码回答；改交后原条置 `reassigned`，原来那位晚到的回答作为 `late_answer` 事件交门店核对。
+- `ai_requests` 交办。只有编号和结构化字段（`kind`、`subject`、`options`、`due_at`），没有自由文字列；`attempt` 记录已经到点提醒过几次。员工只能选 `options` 里的短代码回答；改交后原条置 `reassigned`，原来那位晚到的回答作为 `late_answer` 事件交门店核对。
 
-流转：业务代码调用 `Emit` 写事件（或由调度器到点写 `follow_up_due`/`periodic_due`）；`RunOnce` 接受可注入时钟，每家门店先按这一轮开始时刻跑调度器和派发器，再挑出有待处理事件的收件箱。worker 用 `UPDATE ... WHERE lease_until IS NULL OR lease_until < now` 认领收件箱，重置上一个 worker 残留的 `running` 事件（`attempts` 到 3 的直接置 `failed`，`last_error` 写「多次运行中断」），再取最多 50 条 `pending`、到时间且 `attempts<3` 的事件置为 `running`、`attempts+1`。认领、续租、保存和失败退避都在各自时刻重新取时钟，续租不会用一轮开始时的旧时间。事件按对象分组，组内按 `created_at, id` 排序；有未关闭会话就接回，否则新建。运行成功在一个事务里校验租约、保存会话、把事件置 `done`；失败或 panic 时 `attempts<3` 的改回 `pending`，`not_before=失败时刻+attempts 分钟`，到 3 次置 `failed`，`last_error` 截到 200 字。不同收件箱并行度上限 4，每次运行 4 分钟，租约 5 分钟。`run` 为空时只跑调度器和派发器，不动收件箱。`RunLoop` 每 5 秒一轮，`Wake` 会提前叫醒；本步不在 `main.go` 启动它。
+流转：业务代码调用 `Emit` 写事件（或由调度器到点写 `follow_up_due`/`periodic_due`）；`RunOnce` 接受可注入时钟，每家门店先按这一轮开始时刻跑调度器和派发器，再挑出有待处理事件的收件箱。worker 用 `UPDATE ... WHERE lease_until IS NULL OR lease_until < now` 认领收件箱，重置上一个 worker 残留的 `running` 事件（`attempts` 到 3 的直接置 `failed`，`last_error` 写「多次运行中断」），再取最多 50 条 `pending`、到时间且 `attempts<3` 的事件置为 `running`、`attempts+1`。认领、续租、保存和失败退避都在各自时刻重新取时钟，续租不会用一轮开始时的旧时间。事件按对象分组，组内按 `created_at, id` 排序；有未关闭会话就接回，否则新建。运行成功在一个事务里校验租约、保存会话、把事件置 `done`；失败或 panic 时 `attempts<3` 的改回 `pending`，`not_before=失败时刻+attempts 分钟`，到 3 次置 `failed`，`last_error` 截到 200 字。不同收件箱并行度上限 4，每次运行 4 分钟，租约 5 分钟。`run` 为空时只跑调度器和派发器，不动收件箱。`RunLoop` 每 5 秒一轮，`Wake` 会提前叫醒；`main.go` 在 `AI_AGENT=on` 且配置了模型时启动它。
 
 派发器只把 `tier=now` 的 `queued` 行置为 `sent`；`daily`/`weekly` 本步留在 `queued`，第 2 步做当日/每周简报。记忆的路径、字节数和文件数在 Go 里先校验，数据库 CHECK 兜底；写新文件前锁住收件箱行再数，避免并发超过 200 个。发件箱对 `(store, recipient, subject)` 拿事务咨询锁，保证同一件事的并发写入只留一条。交办的收件人用 `FOR SHARE` 校验本店在职员工；回答和改交都先锁交办行、再锁员工行。
 
@@ -629,7 +629,49 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 | `list_my_reminders` | 只看本人已发出、未撤回的话题父条，按话题最近一次发出时间倒序，最多 50 条；`replies` 是同一话题已发出的子条；`unread_count` 是本人已发出且未读的父条和子条总数。父条和子条各一条查询。 |
 | `mark_my_reminder_read` | 把本人的一条话题父条和它已发出的子条中未读的置为已读；别人的、不存在的、撤回的、未发出的返回 404；已读再标不报错。这是阅读状态，不写操作日志。 |
 
-本步还没接：模型和 agent 循环、工具、分类器、团购核销写事件、转交和它的门店设置、`main.go` 里启动 `RunLoop`（B 步带 `AI_AGENT` 开关）、当日/每周简报的派发、员工对话进收件箱、前端页面。所有新表都按 `tenant_id` + `store_id` 隔离，`TestEveryTableIsTenantIsolated` 和 `TestBusinessForeignKeysIncludeTenant` 覆盖。
+### 团购券事件
+
+`internal/groupbuy` 在业务操作同一个事务里调用 `storeai`，任一步失败整个操作回滚；`storeai` 不反向依赖 `groupbuy`。对象一律是 `Subject{kind:"coupon_redemption", id:核销记录 id}`。
+
+| 操作 | 写的事件 | 同时做什么 |
+| --- | --- | --- |
+| `redeem_coupon` 从 `pending`/`unknown` 落 `redeemed` | `coupon_redeemed`，`source_key=coupon_redeemed:<id>` | 不撤回。payload 带 `redemption_id`、`platform`、`redeemed_by`、`redeemed_at`、`revocable_until`；抖音为核销后 1 小时，其他平台为 null。幂等重放不写事件。 |
+| `link_coupon_order` | `coupon_linked`，`source_key=coupon_linked:<id>:<linked_at unix 纳秒>` | `ResolveSubject`：撤回这个对象所有未撤回的 AI 提醒、取消门店收件箱这个对象的跟进、把所有 open 交办置 cancelled。可重复关联，各次 source_key 不同。 |
+| `unlink_coupon_order` | `coupon_unlinked`，`source_key=coupon_unlinked:<id>:<now unix 纳秒>` | 只写事件，不撤回任何东西。 |
+| `revoke_coupon` 落 `revoked` 的两条路径 | `coupon_revoked`，`source_key=coupon_revoked:<id>` | 同样 `ResolveSubject`。 |
+| `void_order` 释放已关联的团购券 | `coupon_unlinked`，`source_key=coupon_unlinked:<id>:<now unix 纳秒>` | 只写事件；券清空关联后可再次关联或撤销。 |
+
+### 转交
+
+`NextHandover(ctx, q, now, requestID)` 纯代码判断，不由模型决定；交办行先锁，员工行后锁。
+
+1. 交办不是 `open`：什么都不做。
+2. 有 `due_at` 且 `due_at - now` 不超过 `ai_handover_manager_margin_minutes`：改交给当班店长（角色名「店长」且当天在班）；没有当班店长就交给在职老板（多位取最早建档，再按 id）。原收件人已经是店长/老板时不再改交，只再提醒。
+3. `attempt=0`：再提醒同一个人，`attempt+1`，往他收件箱写 `request` 事件，`source_key=request:<id>:remind:<attempt>`。
+4. 之后：改交给当班、同岗位（`staff.position_id` 相同）的另一位在职员工，按当天最早打卡选；没有就走第 2 条的店长/老板。
+5. 每次改交用 `ReassignRequest`，只撤回原收件人在这个对象上的提醒（`WithdrawRemindersFor`）。
+6. 下一次跟进 = `min(now + ai_handover_remind_minutes, due_at - ai_handover_manager_margin_minutes)`；后一项早于 now 时取 `now+1 分钟`；到了 `due_at` 之后不再定跟进。
+
+「当班」采用 `attendance.calculate` 的现有口径：当天第一条有效打卡是上班，出现第二条时最后一条视为下班；因此当班 = 当天恰好只有一条有效打卡。
+
+门店设置（`group "ai"`，默认值/范围）：
+
+| Key | 默认 | 范围 | 用途 |
+| --- | --- | --- | --- |
+| `ai_coupon_link_wait_minutes` | 30 | 5–240 | 核销后多久还没关联就提醒核销的人 |
+| `ai_handover_remind_minutes` | 30 | 5–240 | 交办后多久再提醒、再过同样时间改交 |
+| `ai_handover_manager_margin_minutes` | 15 | 0–120 | 离时限不到这么多分钟直接交店长 |
+
+### 运行
+
+`storeai.Runner{Registry, Model, Logger}` 的 `Run` 满足 `RunFunc`。模型未配置返回错误，事件按 A 步规则重试。会话消息接着上次保存的往下加；每次运行都把系统提示、三个常驻记忆文件和本批事件（只有 `kind`、`subject`、`payload`）交给模型。工具循环最多 `ai.MaxModelCalls` 次，超过就保存已有消息、会话保持 active，事件照常置 done、不重试。模型调用 `finish` 时用它给的 `closed`/`waiting`，否则 active。
+
+- **门店运行**（`inbox.staff_id` 为空）：Caller 是老板角色，`StaffID` 为空、`Owner=true`、`Permissions=perm.All()`、`Channel=AI`。工具 = `Registry.ReadTools(这个 caller)` 加 `schedule_follow_up`、`create_request`、`hand_over`、`cancel_request`、`finish`。因为 `StaffID` 为空，`ops.LoggedIn` 的读操作（例如「我的提醒」）不会出现在工具里；标了 `Self` 的本人读操作（例如「本人月度考勤」「我的档案」）也会跳过，`CallReadTool` 同样拒绝。门店运行没有 `PutReminder` 工具，落点是「门店运行不直接给员工发 AI 提醒」。
+- **员工运行**（`inbox.staff_id` 有值）：Caller 用 `auth.LoadCaller` 按这位员工当前角色组装本人权限，`Channel=AI`。工具 = `Registry.ReadTools(本人)` 加 `remind_me`、`finish`；`remind_me` 的收件人固定本人，正文 1–200 字。员工运行不能交办、不能转交。
+
+`main.go` 只有在 `AI_AGENT=on` 且配置了 AI 模型时才 `go storeai.RunLoop(...)`，默认关闭；启动时打一行日志说明开关状态。系统提示里写明本步流程：`coupon_redeemed` 定跟进；跟进到点查关联，未关联就交办给 `redeemed_by`；交办跟进到点 `hand_over`；`coupon_linked`/`coupon_revoked` 结束；`coupon_unlinked` 重新定跟进。
+
+还没接：分类器、评测和录像（B2）、前端、交办的页面回答操作、当日/每周简报派发、员工对话进收件箱、草稿发起人为空。所有新表都按 `tenant_id` + `store_id` 隔离，`TestEveryTableIsTenantIsolated` 和 `TestBusinessForeignKeysIncludeTenant` 覆盖。
 
 ## AI 评测
 
