@@ -1,0 +1,189 @@
+{
+  "model": "deepseek-v4.1-flash",
+  "base_url_host": "opencode.ai",
+  "case_file_hash": "e3b609a1d32f04d40541fe1009bb0e0b2aebbec1f019ed29c40fff8f260af3fc",
+  "total": 6,
+  "pass": 6,
+  "accuracy": 1,
+  "cases": [
+    {
+      "id": "coupon-redeemed-schedules",
+      "description": "券核销后按门店设置定跟进",
+      "expected": [
+        {
+          "tool": "schedule_follow_up",
+          "args": {
+            "minutes": 30,
+            "subject_id": "01a22137-3f62-7ff0-9d72-34d020e7f3a5",
+            "subject_kind": "coupon_redemption"
+          }
+        }
+      ],
+      "actual": [
+        {
+          "tool": "schedule_follow_up",
+          "args": {
+            "minutes": 30,
+            "subject_id": "01a22137-3f62-7ff0-9d72-34d020e7f3a5",
+            "subject_kind": "coupon_redemption"
+          }
+        },
+        {
+          "tool": "finish",
+          "args": {
+            "status": "waiting",
+            "waiting_for": "12:30 查该抖音券核销是否已关联单据"
+          }
+        }
+      ],
+      "hit": true
+    },
+    {
+      "id": "followup-due-unlinked-requests-redeemer",
+      "description": "跟进到点仍未关联，先查券再交办给核销人",
+      "expected": [
+        {
+          "tool": "list_redemptions",
+          "args": {
+            "from": "2026-11-10",
+            "to": "2026-11-10",
+            "unlinked_only": true
+          }
+        },
+        {
+          "tool": "create_request",
+          "args": {
+            "due_at": "2026-11-10T13:00:00+08:00",
+            "kind": "inform",
+            "subject_id": "01a22137-6528-7219-819f-4dde7527884f",
+            "subject_kind": "coupon_redemption",
+            "to_staff_id": "0290a047-c389-44b2-816b-0c5703e68604"
+          }
+        }
+      ],
+      "actual": [
+        {
+          "tool": "create_request",
+          "args": {
+            "due_at": "2026-11-10T13:00:00+08:00",
+            "kind": "inform",
+            "subject_id": "01a22137-6528-7219-819f-4dde7527884f",
+            "subject_kind": "coupon_redemption",
+            "to_staff_id": "0290a047-c389-44b2-816b-0c5703e68604"
+          }
+        },
+        {
+          "tool": "finish",
+          "args": {
+            "status": "waiting",
+            "waiting_for": "核销人关联抖音券 eval-douyin-1（交办跟进 12:30）"
+          }
+        }
+      ],
+      "hit": true
+    },
+    {
+      "id": "followup-due-linked-finishes",
+      "description": "跟进到点但券已关联，结束不交办",
+      "expected": [
+        {
+          "tool": "finish",
+          "args": {
+            "status": "closed"
+          }
+        }
+      ],
+      "actual": [
+        {
+          "tool": "finish",
+          "args": {
+            "status": "closed"
+          }
+        }
+      ],
+      "hit": true
+    },
+    {
+      "id": "handover-followup-due",
+      "description": "交办的跟进到点，执行转交判断",
+      "expected": [
+        {
+          "tool": "hand_over",
+          "args": {
+            "request_id": "01a22137-c413-7beb-970a-aea038395153"
+          }
+        }
+      ],
+      "actual": [
+        {
+          "tool": "hand_over",
+          "args": {
+            "request_id": "01a22137-c413-7beb-970a-aea038395153"
+          }
+        },
+        {
+          "tool": "finish",
+          "args": {
+            "status": "waiting",
+            "waiting_for": "核销员工完成关联并等待下次跟进（12:30 已再提醒）"
+          }
+        }
+      ],
+      "hit": true
+    },
+    {
+      "id": "coupon-linked-finishes",
+      "description": "券关联单据后结束",
+      "expected": [
+        {
+          "tool": "finish",
+          "args": {
+            "status": "closed"
+          }
+        }
+      ],
+      "actual": [
+        {
+          "tool": "finish",
+          "args": {
+            "status": "closed"
+          }
+        }
+      ],
+      "hit": true
+    },
+    {
+      "id": "employee-request-reminds-now",
+      "description": "员工收到交办，用本人权限写 now 提醒且正文不含手机号",
+      "expected": [
+        {
+          "tool": "remind_me",
+          "args": {
+            "subject_id": "01a22138-13bd-7a1e-9784-a80fda9245b1",
+            "subject_kind": "coupon_redemption",
+            "tier": "now"
+          }
+        }
+      ],
+      "actual": [
+        {
+          "tool": "remind_me",
+          "args": {
+            "body": "有一张团购券已核销但还没关联到单据，请尽快核对并补关联，避免钱收不回来。",
+            "subject_id": "01a22138-13bd-7a1e-9784-a80fda9245b1",
+            "subject_kind": "coupon_redemption",
+            "tier": "now"
+          }
+        },
+        {
+          "tool": "finish",
+          "args": {
+            "status": "waiting",
+            "waiting_for": "团购券核销后的单据关联核对"
+          }
+        }
+      ],
+      "hit": true
+    }
+  ]
+}

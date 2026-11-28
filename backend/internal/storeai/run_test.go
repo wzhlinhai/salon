@@ -86,8 +86,17 @@ func finalTurn(text string) ai.Message {
 	return ai.Message{Role: ai.RoleAssistant, Content: text}
 }
 
+type allowingClassifier struct{}
+
+func (allowingClassifier) Chat(context.Context, []ai.Message, []ops.Tool) (ai.Message, error) {
+	return ai.Message{Role: ai.RoleAssistant, Content: `{"decision":"allow"}`}, nil
+}
+
 func newRunner(shop *optest.Shop, model ai.Model) *storeai.Runner {
-	return &storeai.Runner{Registry: shop.Registry, Model: func() ai.Model { return model }, Logger: discardLogger()}
+	return &storeai.Runner{
+		Registry: shop.Registry, Model: func() ai.Model { return model },
+		Classifier: func() ai.Model { return allowingClassifier{} }, Logger: discardLogger(),
+	}
 }
 
 func insertCouponRedemption(t *testing.T, shop *optest.Shop, now time.Time) uuid.UUID {
@@ -386,6 +395,25 @@ func TestStorePromptUsesAISettings(t *testing.T) {
 	prompt := model.systemPrompt()
 	if !strings.Contains(prompt, "45 分钟") || !strings.Contains(prompt, "2026-11-27") {
 		t.Fatalf("prompt = %s", prompt)
+	}
+	if !strings.Contains(prompt, "redeemed_by") || !strings.Contains(prompt, "unlinked_only=true") {
+		t.Fatalf("prompt lacks follow-up redeemer instructions: %s", prompt)
+	}
+}
+
+func TestEmployeePromptIncludesRequestFlow(t *testing.T) {
+	shop := open(t)
+	now := at("2026-11-27", 10, 0)
+	id := insertCouponRedemption(t, shop, now)
+	staff, _ := shop.Hire("小李", "002", "li01", shop.Role("发型师"))
+	createRequest(t, shop, now, storeai.CreateRequestInput{StoreID: shop.Res.StoreID, ToStaffID: staff, Kind: "inform", Subject: storeai.Subject{Kind: storeai.SubjectCouponRedemption, ID: id}})
+	model := &scriptedModel{turns: []ai.Message{finalTurn("安静")}}
+	runOnce(t, shop, now, newRunner(shop, model).Run)
+	prompt := model.systemPrompt()
+	for _, want := range []string{"收到 request 事件", "remind_me", "finish waiting", "不写顾客姓名和手机号", "读不到也不影响写提醒"} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("prompt lacks %q: %s", want, prompt)
+		}
 	}
 }
 

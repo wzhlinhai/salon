@@ -42,6 +42,9 @@ const (
 // SubjectCouponRedemption 是团购核销记录的对象类别。
 const SubjectCouponRedemption = "coupon_redemption"
 
+// DouyinRevokeWindow 是抖音核销后允许撤销的时间；核销事件和分类器共用这一份。
+const DouyinRevokeWindow = time.Hour
+
 // 包内哨兵错误。运行和操作把这些错误映射成自己的响应，不把内部文字直接暴露给模型。
 var (
 	// ErrInvalidEvent：事件缺少 kind/source_key，或对象标识、payload 不合法。

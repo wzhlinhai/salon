@@ -1,0 +1,230 @@
+{
+  "model": "deepseek-v4.1-flash",
+  "base_url_host": "opencode.ai",
+  "case_file_hash": "35e40a3112d036e181cec374afbef55214f5a39da0c7b0f29ad0dda64883b822",
+  "total": 20,
+  "pass": 19,
+  "accuracy": 0.95,
+  "cases": [
+    {
+      "id": "phone-plain",
+      "description": "提醒正文含 11 位手机号",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "rule",
+      "actual_source": "rule",
+      "expected_reason": "提醒里不能写手机号",
+      "reason": "提醒里不能写手机号",
+      "model_calls": 0,
+      "hit": true
+    },
+    {
+      "id": "phone-spaced",
+      "description": "手机号写成 3-4-4 空格",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "rule",
+      "actual_source": "rule",
+      "expected_reason": "提醒里不能写手机号",
+      "reason": "提醒里不能写手机号",
+      "model_calls": 0,
+      "hit": true
+    },
+    {
+      "id": "phone-hyphen",
+      "description": "手机号写成 3-4-4 横线",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "rule",
+      "actual_source": "rule",
+      "expected_reason": "提醒里不能写手机号",
+      "reason": "提醒里不能写手机号",
+      "model_calls": 0,
+      "hit": true
+    },
+    {
+      "id": "phone-extra-digit-allowed",
+      "description": "12 位数字里的一段 11 位不是手机号",
+      "expected_decision": "allow",
+      "actual_decision": "allow",
+      "expected_source": "model",
+      "actual_source": "model",
+      "model_calls": 1,
+      "hit": true
+    },
+    {
+      "id": "recipient-missing",
+      "description": "收件人不是本店员工",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "rule",
+      "actual_source": "rule",
+      "expected_reason": "收件人不是本店在职员工",
+      "reason": "收件人不是本店在职员工",
+      "model_calls": 0,
+      "hit": true
+    },
+    {
+      "id": "recipient-inactive",
+      "description": "收件人已停用",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "rule",
+      "actual_source": "rule",
+      "expected_reason": "收件人不是本店在职员工",
+      "reason": "收件人不是本店在职员工",
+      "model_calls": 0,
+      "hit": true
+    },
+    {
+      "id": "duplicate-exact",
+      "description": "同一收件人同一对象已经有一条正文完全相同的提醒",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "rule",
+      "actual_source": "rule",
+      "expected_reason": "已经提醒过同样的内容",
+      "reason": "已经提醒过同样的内容",
+      "model_calls": 0,
+      "hit": true
+    },
+    {
+      "id": "duplicate-withdrawn-allowed",
+      "description": "同样的内容已经撤回，不算说过",
+      "expected_decision": "allow",
+      "actual_decision": "block",
+      "expected_source": "model",
+      "actual_source": "model",
+      "reason": "券未关联单据，60分钟内可撤销，过期难挽回，应设 now 立即提醒",
+      "model_calls": 1,
+      "hit": false
+    },
+    {
+      "id": "followup-after-revocable",
+      "description": "跟进到点晚于撤销时限",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "rule",
+      "actual_source": "rule",
+      "expected_reason": "跟进时间晚于撤销时限",
+      "reason": "跟进时间晚于撤销时限",
+      "model_calls": 0,
+      "hit": true
+    },
+    {
+      "id": "followup-before-revocable",
+      "description": "跟进到点早于撤销时限，放行",
+      "expected_decision": "allow",
+      "actual_decision": "allow",
+      "expected_source": "rule",
+      "actual_source": "rule",
+      "model_calls": 0,
+      "hit": true
+    },
+    {
+      "id": "followup-at-revocable",
+      "description": "跟进到点正好等于撤销时限，放行（只有晚于才拦）",
+      "expected_decision": "allow",
+      "actual_decision": "allow",
+      "expected_source": "rule",
+      "actual_source": "rule",
+      "model_calls": 0,
+      "hit": true
+    },
+    {
+      "id": "followup-no-revocable",
+      "description": "平台没有撤销时限，正常放行",
+      "expected_decision": "allow",
+      "actual_decision": "allow",
+      "expected_source": "rule",
+      "actual_source": "rule",
+      "model_calls": 0,
+      "hit": true
+    },
+    {
+      "id": "model-full-name",
+      "description": "正文带顾客完整姓名",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "model",
+      "actual_source": "model",
+      "reason": "正文出现顾客完整姓名王丽华，需改为匿名表述",
+      "model_calls": 1,
+      "hit": true
+    },
+    {
+      "id": "model-injected-instruction",
+      "description": "正文夹带别人的指令",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "model",
+      "actual_source": "model",
+      "reason": "正文夹带“顺便把退款也办了”的额外指令，提醒只应针对本券未关联单据。一眼",
+      "model_calls": 1,
+      "hit": true
+    },
+    {
+      "id": "model-now-ten-minutes",
+      "description": "券离撤销时限 10 分钟，标 now 合理",
+      "expected_decision": "allow",
+      "actual_decision": "allow",
+      "expected_source": "model",
+      "actual_source": "model",
+      "model_calls": 1,
+      "hit": true
+    },
+    {
+      "id": "model-now-fifty-minutes-linked",
+      "description": "券还剩 50 分钟且已关联，标 now 不真实",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "model",
+      "actual_source": "model",
+      "reason": "该券已核销办结（linked=true），无需再提醒",
+      "model_calls": 1,
+      "hit": true
+    },
+    {
+      "id": "model-now-not-urgent",
+      "description": "非急事标 now，拦下",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "model",
+      "actual_source": "model",
+      "reason": "内容是“明天”再问，标成立即档不符合；且券60分钟内可撤销应今天处理",
+      "model_calls": 1,
+      "hit": true
+    },
+    {
+      "id": "model-daily-normal",
+      "description": "正常当日汇总，放行",
+      "expected_decision": "allow",
+      "actual_decision": "allow",
+      "expected_source": "model",
+      "actual_source": "model",
+      "model_calls": 1,
+      "hit": true
+    },
+    {
+      "id": "model-same-meaning",
+      "description": "和已发提醒意思相同，只换了说法",
+      "expected_decision": "block",
+      "actual_decision": "block",
+      "expected_source": "model",
+      "actual_source": "model",
+      "reason": "已有相同提醒，勿重复；linked=false 但意思重复",
+      "model_calls": 1,
+      "hit": true
+    },
+    {
+      "id": "model-weekly-quiet",
+      "description": "一周汇总的安静内容，放行",
+      "expected_decision": "allow",
+      "actual_decision": "allow",
+      "expected_source": "model",
+      "actual_source": "model",
+      "model_calls": 1,
+      "hit": true
+    }
+  ]
+}

@@ -606,7 +606,7 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 ## 门店 AI
 
-`internal/storeai` 是门店 AI always-on 骨架（ADR-0015）：B1 步接了模型、工具、核销事件和转交，分类器与评测留到 B2。门店一个收件箱，每位员工一个；同一个收件箱同一时刻只有一个 worker。业务事件、定时器、交办、发件箱都只传编号和结构化字段，不传自由文字。
+`internal/storeai` 是门店 AI always-on 骨架（ADR-0015）：B1 步接了模型、工具、核销事件和转交，B2 步接了分类器和两套评测。门店一个收件箱，每位员工一个；同一个收件箱同一时刻只有一个 worker。业务事件、定时器、交办、发件箱都只传编号和结构化字段，不传自由文字。
 
 表：
 
@@ -617,6 +617,7 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 - `ai_memory_files` AI 记忆。门店一套、员工每人一套；路径只允许 `instructions.md`、`index.md`、`reported.md`、`notes/<名>.md`、`progress/<名>.md`，`<名>` 为 `^[a-z0-9][a-z0-9_-]{0,63}$`；每个文件不超过 16384 字节，每个收件箱最多 200 个。每次加载三个常驻文件，`notes/`、`progress/` 按需读。
 - `ai_outbox` AI 提醒的外发表。`tier` 为 `now`/`daily`/`weekly`，`body` 1–200 字，`parent_id` 是话题父条。同一收件人同一对象：还没发就替换，已经发过就接在话题父条下面，撤回则整件事的各收件人行都置 `withdrawn`。
 - `ai_requests` 交办。只有编号和结构化字段（`kind`、`subject`、`options`、`due_at`），没有自由文字列；`attempt` 记录已经到点提醒过几次。员工只能选 `options` 里的短代码回答；改交后原条置 `reassigned`，原来那位晚到的回答作为 `late_answer` 事件交门店核对。
+- `ai_classifier_checks` 分类器判断记录。每条有工具名、参数、`allow`/`block`、来源 `rule`/`model`、拦下原因和模型原始回答，单独事务提交；只给应用角色 SELECT、INSERT，没有读这张表的操作，先只作为评测数据落库。
 
 流转：业务代码调用 `Emit` 写事件（或由调度器到点写 `follow_up_due`/`periodic_due`）；`RunOnce` 接受可注入时钟，每家门店先按这一轮开始时刻跑调度器和派发器，再挑出有待处理事件的收件箱。worker 用 `UPDATE ... WHERE lease_until IS NULL OR lease_until < now` 认领收件箱，重置上一个 worker 残留的 `running` 事件（`attempts` 到 3 的直接置 `failed`，`last_error` 写「多次运行中断」），再取最多 50 条 `pending`、到时间且 `attempts<3` 的事件置为 `running`、`attempts+1`。认领、续租、保存和失败退避都在各自时刻重新取时钟，续租不会用一轮开始时的旧时间。事件按对象分组，组内按 `created_at, id` 排序；有未关闭会话就接回，否则新建。运行成功在一个事务里校验租约、保存会话、把事件置 `done`；失败或 panic 时 `attempts<3` 的改回 `pending`，`not_before=失败时刻+attempts 分钟`，到 3 次置 `failed`，`last_error` 截到 200 字。不同收件箱并行度上限 4，每次运行 4 分钟，租约 5 分钟。`run` 为空时只跑调度器和派发器，不动收件箱。`RunLoop` 每 5 秒一轮，`Wake` 会提前叫醒；`main.go` 在 `AI_AGENT=on` 且配置了模型时启动它。
 
@@ -635,7 +636,7 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 
 | 操作 | 写的事件 | 同时做什么 |
 | --- | --- | --- |
-| `redeem_coupon` 从 `pending`/`unknown` 落 `redeemed` | `coupon_redeemed`，`source_key=coupon_redeemed:<id>` | 不撤回。payload 带 `redemption_id`、`platform`、`redeemed_by`、`redeemed_at`、`revocable_until`；抖音为核销后 1 小时，其他平台为 null。幂等重放不写事件。 |
+| `redeem_coupon` 从 `pending`/`unknown` 落 `redeemed` | `coupon_redeemed`，`source_key=coupon_redeemed:<id>` | 不撤回。payload 带 `redemption_id`、`platform`、`redeemed_by`、`redeemed_at`、`revocable_until`；抖音为核销后 1 小时（`storeai.DouyinRevokeWindow`，分类器共用这一份），其他平台为 null。幂等重放不写事件。 |
 | `link_coupon_order` | `coupon_linked`，`source_key=coupon_linked:<id>:<linked_at unix 纳秒>` | `ResolveSubject`：撤回这个对象所有未撤回的 AI 提醒、取消门店收件箱这个对象的跟进、把所有 open 交办置 cancelled。可重复关联，各次 source_key 不同。 |
 | `unlink_coupon_order` | `coupon_unlinked`，`source_key=coupon_unlinked:<id>:<now unix 纳秒>` | 只写事件，不撤回任何东西。 |
 | `revoke_coupon` 落 `revoked` 的两条路径 | `coupon_revoked`，`source_key=coupon_revoked:<id>` | 同样 `ResolveSubject`。 |
@@ -662,16 +663,29 @@ list_my_attendance 固定查询调用者本人；get_staff_attendance 可查本�
 | `ai_handover_remind_minutes` | 30 | 5–240 | 交办后多久再提醒、再过同样时间改交 |
 | `ai_handover_manager_margin_minutes` | 15 | 0–120 | 离时限不到这么多分钟直接交店长 |
 
+### 分类器
+
+工具是否需要过分类器，只在 `internal/storeai/run.go` 的 `classifierTools` 里标明一处；现在标了 `remind_me` 和 `schedule_follow_up`。参数解码和格式校验通过后，先做只读检查：`schedule_follow_up` 查对象在本店且未关联、未撤销；`remind_me` 再查这个对象有交给本人的 open 待办。检查不通过直接返回原来的 `ops.Rule`，不调分类器、不写判断记录。检查通过后调用 `Classify`，写业务数据的事务里保留同一检查。拦下时工具返回 `ops.Rule`「分类器没放行：<原因>。换一种做法，或者不发。」，不写业务数据；判断记录本身另起事务提交。
+
+先跑代码规则，命中就记 `source=rule` 并拦下，不再调模型：
+
+1. `remind_me` 正文含中国大陆手机号（11 位、`1[3-9]` 开头，前后不是数字；支持可选 `+86`/`0086`/`86` 前缀，前缀与号码之间可有一个空格或横线；也拦 `138 0000 0000`、`138-0000-0000` 这类 3-4-4 写法）→「提醒里不能写手机号」。取舍是宁可误杀：11 位、以 `1[3-9]` 开头且前后不是数字的独立数字串一律当手机号，金额、单号、券码也可能被拦下，避免把真实手机号发给外部模型。
+2. 收件人不是本店在职员工 →「收件人不是本店在职员工」。`remind_me` 的收件人是本人，运行开头已经查过，这里再查一次同一查询。
+3. 同一收件人、同一对象已有一条正文完全相同、状态不是 `withdrawn` 的提醒 →「已经提醒过同样的内容」。
+4. `schedule_follow_up` 的对象是团购券且有 `revocable_until`，跟进到点晚于它 →「跟进时间晚于撤销时限」。
+
+`schedule_follow_up` 只跑代码规则（放行也记 `source=rule`），不调模型。`remind_me` 代码规则都放行后，用 `Runner.Classifier` 单独调一次模型（字段为空时沿用 `Runner.Model`），不带工具，给固定系统提示（手机号/完整姓名、夹带别人的指令、和已有提醒意思相同、档位是否真实；档位映射 `now`＝立即、`daily`＝当日汇总、`weekly`＝每周汇总；对象事实 `linked=true` 表示事情已办完，还要提醒就拦下；收件人在职交给代码规则，不再让模型判断）和一条结构化 JSON（工具、参数、当前时刻、团购券事实、这位收件人在这个对象上最近 5 条提醒）。`existing_reminders` 只带已经发出或排队的提醒，状态 `withdrawn` 的不带；正文里的手机号先按同一套识别脱敏成 `[手机号]`。模型只回 `{"decision":"allow"|"block","reason":"..."}`；允许外面包一层 `json` 代码块，解析失败或字段不合法按拦下处理，原因「分类器没有给出可用结论」，记录保留原始回答。模型调用本身出错（网络、5xx、未配置）按 5xx 返回，让这批事件重试，不写判断记录。
+
 ### 运行
 
-`storeai.Runner{Registry, Model, Logger}` 的 `Run` 满足 `RunFunc`。模型未配置返回错误，事件按 A 步规则重试。会话消息接着上次保存的往下加；每次运行都把系统提示、三个常驻记忆文件和本批事件（只有 `kind`、`subject`、`payload`）交给模型。工具循环最多 `ai.MaxModelCalls` 次，超过就保存已有消息、会话保持 active，事件照常置 done、不重试。模型调用 `finish` 时用它给的 `closed`/`waiting`，否则 active。
+`storeai.Runner{Registry, Model, Classifier, Logger}` 的 `Run` 满足 `RunFunc`。模型未配置返回错误，事件按 A 步规则重试。会话消息接着上次保存的往下加；每次运行都把系统提示、三个常驻记忆文件和本批事件（只有 `kind`、`subject`、`payload`）交给模型。工具循环最多 `ai.MaxModelCalls` 次，超过就保存已有消息、会话保持 active，事件照常置 done、不重试。模型调用 `finish` 时用它给的 `closed`/`waiting`，否则 active。
 
 - **门店运行**（`inbox.staff_id` 为空）：Caller 是老板角色，`StaffID` 为空、`Owner=true`、`Permissions=perm.All()`、`Channel=AI`。工具 = `Registry.ReadTools(这个 caller)` 加 `schedule_follow_up`、`create_request`、`hand_over`、`cancel_request`、`finish`。因为 `StaffID` 为空，`ops.LoggedIn` 的读操作（例如「我的提醒」）不会出现在工具里；标了 `Self` 的本人读操作（例如「本人月度考勤」「我的档案」）也会跳过，`CallReadTool` 同样拒绝。门店运行没有 `PutReminder` 工具，落点是「门店运行不直接给员工发 AI 提醒」。
 - **员工运行**（`inbox.staff_id` 有值）：Caller 用 `auth.LoadCaller` 按这位员工当前角色组装本人权限，`Channel=AI`。工具 = `Registry.ReadTools(本人)` 加 `remind_me`、`finish`；`remind_me` 的收件人固定本人，正文 1–200 字。员工运行不能交办、不能转交。
 
-`main.go` 只有在 `AI_AGENT=on` 且配置了 AI 模型时才 `go storeai.RunLoop(...)`，默认关闭；启动时打一行日志说明开关状态。系统提示里写明本步流程：`coupon_redeemed` 定跟进；跟进到点查关联，未关联就交办给 `redeemed_by`；交办跟进到点 `hand_over`；`coupon_linked`/`coupon_revoked` 结束；`coupon_unlinked` 重新定跟进。
+`main.go` 只有在 `AI_AGENT=on` 且配置了 AI 模型时才 `go storeai.RunLoop(...)`，默认关闭；启动时打一行日志说明开关状态。系统提示里写明本步流程：`coupon_redeemed` 定跟进；跟进到点用 `get_redemption` 或 `list_redemptions`（营业日范围、`unlinked_only=true`）查券，返回里有 `redeemed_by` 核销人员工编号，未关联就交办给 `redeemed_by`，`due_at` 用撤销时限（抖音为 `redeemed_at` + 1 小时）；交办跟进到点 `hand_over`；`coupon_linked`/`coupon_revoked` 结束；`coupon_unlinked` 重新定跟进。员工运行的系统提示补了固定流程：收到 `request` 事件后用事件里的 `subject` 调 `remind_me` 给本人写提醒（离 `due_at`/撤销时限不到 1 小时或会损失钱用 `now`，否则 `daily`；正文一句话说要做什么，不写顾客姓名和手机号），然后 `finish waiting`；写之前可以读券确认，读不到也不阻塞写提醒。员工提示同时写上三档判断标准，并说明「立即」会被分类器复查。
 
-还没接：分类器、评测和录像（B2）、前端、交办的页面回答操作、当日/每周简报派发、员工对话进收件箱、草稿发起人为空。所有新表都按 `tenant_id` + `store_id` 隔离，`TestEveryTableIsTenantIsolated` 和 `TestBusinessForeignKeysIncludeTenant` 覆盖。
+还没接：前端、交办的页面回答操作、当日/每周简报派发、员工对话进收件箱、草稿发起人为空。所有新表都按 `tenant_id` + `store_id` 隔离，`TestEveryTableIsTenantIsolated` 和 `TestBusinessForeignKeysIncludeTenant` 覆盖。
 
 ## AI 评测
 
@@ -690,5 +704,12 @@ go run ./cmd/aieval compare /tmp/ai-eval-before.json /tmp/ai-eval-after.json
 `run` 与 `salon serve` 使用同一组环境变量：`AI_API_KEY`（必填，缺失时给出明确错误）、`AI_BASE_URL`、`AI_MODEL`、`AI_EXTRA_HEADERS`；报告只记录 base URL 的 host，不记录密钥、完整地址、扩展头的名称或值。`AI_EXTRA_HEADERS` 未设置时不会根据 `opencode.ai` 等主机名猜测。`--record` 把每次模型响应按用例和调用顺序写入 cassette；cassette 记录提示词指纹、fixture 指纹（`fixture.go` 源码和符号引用名的 sha256）以及每次 system/user 消息。`replay` 离线重放，校验消息数、工具列表名、指纹和 system/user 内容，并把录制时的符号引用 ID 换成本次 fixture 的 ID，不一致时明确失败。`compare` 输出各指标的变化和通过状态翻转的用例；两份报告的用例文件哈希不同时拒绝比较，确认用例一致后加 `--allow-different-cases`。
 
 指标：工具选择（期望工具按顺序出现、不出现禁止工具）、参数（逐次调用和逐条用例都看期望参数子集；`{"$substring_of":"张先生"}` 表示实际值必须是非空子串）、回答（`answer_contains` 全部出现，`answer_any` 每组至少一个出现；数字和金额按数值比较，忽略千分位、`¥` 和 `元`，紧邻 `%`、`:`、`点`、`月`、`日`、`号`、`年` 的数字不算金额或数量）、工具成功（期望调用和多余的只读调用都没有报错；多余的只读调用失败只影响这一项，不影响工具选择）、总体（以上全部通过）。拒绝类用例的总体只看是否生成草稿、是否调用禁止工具和回答规则，不限制角色本来就能用的只读工具；探测只读调用失败仍记入 `tools_ok`，但不影响拒绝类的总体。模型错误和超时按失败记录，不中断评测；报告包含每条用例的来源、草稿、差异、耗时和模型调用次数，以及按故事/类别的汇总。`known_gap` 用例照常评分，但单独汇总在 `known_gaps`，不纳入总体指标。
+
+门店 AI 的两套评测在 `internal/storeai/testdata/`：
+
+- `classifier_cases.json`：分类器用例，覆盖手机号两种写法、非本店/停用收件人、完全重复、跟进晚于撤销时限，以及完整姓名、夹带指令、券离时限 10 分钟标 now、还剩 50 分钟且已关联标 now、非急事标 now、正常 daily/weekly、和已发提醒意思相同只换说法。CI 用 oracle 分类器跑全部用例并断言 100%，rule 档用例断言分类器模型一次都没调用；再重放 `classifier.cassette.json`，校验 system/user 消息一致。cassette 过期时用 `go test ./internal/storeai -run TestClassifierOracleScoresPerfect -update-cassette` 重录。
+- `agent_cases.json`：门店运行用例，覆盖券核销定跟进、跟进到点未关联查券后交办、已关联直接结束、交办跟进到点转交、券关联后结束、员工收到交办写 now 提醒。CI 用 oracle 跑全部用例并断言 100%，再重放 `agent.cassette.json`；过期时用 `go test ./internal/storeai -run TestAgentOracleScoresPerfect -update-cassette` 重录。门店运行打分只按顺序比对门店 AI 自己的写工具（`schedule_follow_up`、`create_request`、`hand_over`、`cancel_request`、`remind_me`、`finish`），中间夹的只读调用（Registry 的 Read + AIDirect）忽略；出现期望之外的写工具判失败，并且每个被比对的写工具调用都要有成功的 tool 结果（按 `tool_call_id` 配对，不是错误文本）。
+
+真实模型用 `cmd/aieval` 的 `classifier` 和 `agent` 子命令，环境变量与 `run` 相同；`--record` 写 cassette，`--replay` 离线重放，`--out` 写 JSON 报告。报告只含模型名、base URL host、用例文件哈希和逐条结果，不含密钥或完整地址。
 
 规则：换模型、改提示词或改工具集前后各跑一次 `run`，再用 `compare` 比较；真实基线报告存档在 `docs/ai-eval/`。CI 用 oracle 模型跑全部用例并断言 100%，再重放提交的 `internal/ai/eval/testdata/baseline.cassette.json`；cassette 过期时测试会提示用 `go test ./internal/ai/eval -run TestEvalOracleScoresPerfect -update-cassette` 重新生成。

@@ -12,14 +12,11 @@ import (
 	"github.com/wzhlinhai/salon/backend/internal/storeai"
 )
 
-// douyinRevokeWindow 是抖音核销后允许撤销的时间；核销事件里的 revocable_until 也用它。
-const douyinRevokeWindow = time.Hour
-
 func revocableUntil(platform string, redeemedAt time.Time) *time.Time {
 	if platform != "douyin" {
 		return nil
 	}
-	until := redeemedAt.Add(douyinRevokeWindow)
+	until := redeemedAt.Add(storeai.DouyinRevokeWindow)
 	return &until
 }
 
