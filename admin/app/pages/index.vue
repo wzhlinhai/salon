@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 首页（样稿 01）：只回答「接下来两个小时」。左边是接下来的时间线，右边是在店里的人和等人确认的 AI 草稿。
+// 首页（样稿 01）：只回答「接下来两个小时」。左边是接下来的时间线，右边是门店 AI 写给我还没看的提醒、在店里的人和等人确认的 AI 草稿。
 // 管店、收银、派轮牌的人看全店；其余员工看自己的那一条，加上今天的业绩提成。有打卡权限的没打卡时最上面提醒一句。
 definePageMeta({ title: '首页' })
 
@@ -82,6 +82,7 @@ onMounted(retrySettings)
       </div>
 
       <aside class="flex min-w-0 flex-col gap-8 empty:hidden">
+        <HomeReminders />
         <HomeFloor v-if="can('queue.view') && me" :staff-id="wholeStore ? undefined : me.staff.id" :serving="serving" />
         <HomeDrafts v-if="can('report.view')" title="待你确认" :drafts="pendingDrafts" />
         <HomeDrafts v-else title="我起草的" :drafts="myDrafts" waiting-for="等店长确认" />

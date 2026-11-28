@@ -27,3 +27,6 @@ export const navItems: { label: string, icon: string, to: string, permission: st
 
 // 待确认（AI 起草等人确认）在侧栏、顶栏和区块标题里用同一个图标。
 export const DRAFTS_ICON = 'i-lucide-inbox'
+
+// 我的提醒（门店 AI 写给本人的话）在侧栏、顶栏和首页用同一个图标。
+export const REMINDERS_ICON = 'i-lucide-bell'

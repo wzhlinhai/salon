@@ -13,6 +13,9 @@ watch(() => route.path, () => {
 const pageTitle = computed(() => pageCrumbTitle.value || String(route.meta.title || '首页'))
 
 const { pending: pendingDrafts, load: loadDrafts, reset: resetDrafts } = useDrafts()
+// 侧栏的数按件算（一件事连同后续算一件），和首页、「我的提醒」页的「没看过」同一口径。
+const { unreadItems: unreadReminderItems, load: loadReminders, reset: resetReminders } = useMyReminders()
+const unreadReminders = computed(() => unreadReminderItems.value.length)
 const { reset: resetAi, open: aiOpen } = useAiChat()
 
 const visibleNav = computed(() => navItems.filter(item => !item.permission || can(item.permission)))
@@ -72,6 +75,7 @@ const pageDescription = computed(() => String(route.meta.description || ''))
 
 const pageIcon = computed(() => {
   if (route.path === '/drafts') return DRAFTS_ICON
+  if (route.path === '/reminders') return REMINDERS_ICON
   return navItems.find(item => isActive(item.to))?.icon ?? ''
 })
 // 二级页（各张报表、顾客档案、员工详情）在顶栏前面放上一级的链接，点了回入口。
@@ -97,17 +101,22 @@ const searchOpen = ref(false)
 watch(() => me.value?.staff.id, (staffId) => {
   resetAi()
   resetDrafts()
+  resetReminders()
   if (staffId) {
     void loadDrafts()
+    void loadReminders({ quiet: true })
     void loadStore()
   }
 }, { immediate: true })
 
-// 别人起草的也要让我看到：页面开着时每分钟刷新一次待确认计数。
+// 别人起草的、门店 AI 新写的提醒也要让我看到：页面开着时每分钟刷新一次待确认和我的提醒的计数。
 let draftTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   draftTimer = setInterval(() => {
-    if (me.value && document.visibilityState === 'visible') void loadDrafts({ quiet: true })
+    if (me.value && document.visibilityState === 'visible') {
+      void loadDrafts({ quiet: true })
+      void loadReminders({ quiet: true })
+    }
   }, 60_000)
 })
 onBeforeUnmount(() => clearInterval(draftTimer))
@@ -163,6 +172,19 @@ onBeforeUnmount(() => clearInterval(draftTimer))
             <template v-if="!collapsed">
               <span>待确认</span>
               <span v-if="pendingDrafts.length" class="ms-auto text-xs text-muted tabular-nums">{{ pendingDrafts.length }}</span>
+            </template>
+          </NuxtLink>
+          <NuxtLink
+            to="/reminders"
+            data-testid="reminders-nav"
+            class="side-item"
+            :class="[isActive('/reminders') ? 'side-on' : '', collapsed ? 'justify-center' : '']"
+            :aria-label="collapsed ? '我的提醒' : undefined"
+          >
+            <UIcon :name="REMINDERS_ICON" class="side-icon" aria-hidden="true" />
+            <template v-if="!collapsed">
+              <span>我的提醒</span>
+              <span v-if="unreadReminders" data-testid="reminders-unread" class="ms-auto text-xs text-muted tabular-nums">{{ unreadReminders }}<span class="sr-only"> 件没看过</span></span>
             </template>
           </NuxtLink>
 
