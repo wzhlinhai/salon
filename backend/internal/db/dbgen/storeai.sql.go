@@ -12,6 +12,32 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const cancelFollowUpForRequest = `-- name: CancelFollowUpForRequest :exec
+UPDATE ai_timers SET status = 'cancelled'
+WHERE store_id = $1 AND inbox_id = $2 AND kind = 'follow_up' AND status = 'scheduled'
+  AND subject_kind = $3 AND subject_id = $4
+  AND payload->>'request_id' = $5::text
+`
+
+type CancelFollowUpForRequestParams struct {
+	StoreID     uuid.UUID
+	InboxID     uuid.UUID
+	SubjectKind *string
+	SubjectID   *uuid.UUID
+	RequestID   string
+}
+
+func (q *Queries) CancelFollowUpForRequest(ctx context.Context, arg CancelFollowUpForRequestParams) error {
+	_, err := q.db.Exec(ctx, cancelFollowUpForRequest,
+		arg.StoreID,
+		arg.InboxID,
+		arg.SubjectKind,
+		arg.SubjectID,
+		arg.RequestID,
+	)
+	return err
+}
+
 const cancelFollowUpTimers = `-- name: CancelFollowUpTimers :exec
 UPDATE ai_timers SET status = 'cancelled'
 WHERE store_id = $1 AND inbox_id = $2 AND kind = 'follow_up' AND status = 'scheduled'
@@ -32,6 +58,23 @@ func (q *Queries) CancelFollowUpTimers(ctx context.Context, arg CancelFollowUpTi
 		arg.SubjectKind,
 		arg.SubjectID,
 	)
+	return err
+}
+
+const cancelOpenRequestsForSubject = `-- name: CancelOpenRequestsForSubject :exec
+UPDATE ai_requests SET status = 'cancelled'
+WHERE store_id = $1 AND subject_kind = $2 AND subject_id = $3
+  AND status = 'open'
+`
+
+type CancelOpenRequestsForSubjectParams struct {
+	StoreID     uuid.UUID
+	SubjectKind string
+	SubjectID   uuid.UUID
+}
+
+func (q *Queries) CancelOpenRequestsForSubject(ctx context.Context, arg CancelOpenRequestsForSubjectParams) error {
+	_, err := q.db.Exec(ctx, cancelOpenRequestsForSubject, arg.StoreID, arg.SubjectKind, arg.SubjectID)
 	return err
 }
 
@@ -389,6 +432,49 @@ func (q *Queries) GetMyReminderParent(ctx context.Context, arg GetMyReminderPare
 	return i, err
 }
 
+const getOpenRequestForSubjectAndStaff = `-- name: GetOpenRequestForSubjectAndStaff :one
+SELECT tenant_id, store_id, id, to_staff_id, kind, subject_kind, subject_id, options, due_at, status, answer, answered_at, previous_id, created_at, attempt FROM ai_requests
+WHERE store_id = $1 AND subject_kind = $2 AND subject_id = $3
+  AND to_staff_id = $4 AND status = 'open'
+ORDER BY created_at, id
+LIMIT 1
+`
+
+type GetOpenRequestForSubjectAndStaffParams struct {
+	StoreID     uuid.UUID
+	SubjectKind string
+	SubjectID   uuid.UUID
+	ToStaffID   uuid.UUID
+}
+
+func (q *Queries) GetOpenRequestForSubjectAndStaff(ctx context.Context, arg GetOpenRequestForSubjectAndStaffParams) (AiRequest, error) {
+	row := q.db.QueryRow(ctx, getOpenRequestForSubjectAndStaff,
+		arg.StoreID,
+		arg.SubjectKind,
+		arg.SubjectID,
+		arg.ToStaffID,
+	)
+	var i AiRequest
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.ToStaffID,
+		&i.Kind,
+		&i.SubjectKind,
+		&i.SubjectID,
+		&i.Options,
+		&i.DueAt,
+		&i.Status,
+		&i.Answer,
+		&i.AnsweredAt,
+		&i.PreviousID,
+		&i.CreatedAt,
+		&i.Attempt,
+	)
+	return i, err
+}
+
 const getOpenSession = `-- name: GetOpenSession :one
 SELECT tenant_id, store_id, id, inbox_id, subject_kind, subject_id, status, waiting_for, messages, created_at, updated_at FROM ai_sessions
 WHERE store_id = $1 AND inbox_id = $2
@@ -473,7 +559,7 @@ func (q *Queries) GetQueuedOutbox(ctx context.Context, arg GetQueuedOutboxParams
 }
 
 const getRequest = `-- name: GetRequest :one
-SELECT tenant_id, store_id, id, to_staff_id, kind, subject_kind, subject_id, options, due_at, status, answer, answered_at, previous_id, created_at FROM ai_requests WHERE id = $1
+SELECT tenant_id, store_id, id, to_staff_id, kind, subject_kind, subject_id, options, due_at, status, answer, answered_at, previous_id, created_at, attempt FROM ai_requests WHERE id = $1
 `
 
 func (q *Queries) GetRequest(ctx context.Context, id uuid.UUID) (AiRequest, error) {
@@ -494,6 +580,7 @@ func (q *Queries) GetRequest(ctx context.Context, id uuid.UUID) (AiRequest, erro
 		&i.AnsweredAt,
 		&i.PreviousID,
 		&i.CreatedAt,
+		&i.Attempt,
 	)
 	return i, err
 }
@@ -641,7 +728,7 @@ func (q *Queries) GetStoreInbox(ctx context.Context, arg GetStoreInboxParams) (A
 }
 
 const getSuccessor = `-- name: GetSuccessor :one
-SELECT tenant_id, store_id, id, to_staff_id, kind, subject_kind, subject_id, options, due_at, status, answer, answered_at, previous_id, created_at FROM ai_requests WHERE previous_id = $1
+SELECT tenant_id, store_id, id, to_staff_id, kind, subject_kind, subject_id, options, due_at, status, answer, answered_at, previous_id, created_at, attempt FROM ai_requests WHERE previous_id = $1
 ORDER BY created_at DESC, id DESC LIMIT 1
 `
 
@@ -663,6 +750,7 @@ func (q *Queries) GetSuccessor(ctx context.Context, previousID *uuid.UUID) (AiRe
 		&i.AnsweredAt,
 		&i.PreviousID,
 		&i.CreatedAt,
+		&i.Attempt,
 	)
 	return i, err
 }
@@ -685,6 +773,40 @@ func (q *Queries) InboxLeaseHeld(ctx context.Context, arg InboxLeaseHeldParams) 
 	var held bool
 	err := row.Scan(&held)
 	return held, err
+}
+
+const incrementRequestAttempt = `-- name: IncrementRequestAttempt :one
+UPDATE ai_requests SET attempt = attempt + 1
+WHERE id = $1 AND store_id = $2 AND status = 'open'
+RETURNING tenant_id, store_id, id, to_staff_id, kind, subject_kind, subject_id, options, due_at, status, answer, answered_at, previous_id, created_at, attempt
+`
+
+type IncrementRequestAttemptParams struct {
+	ID      uuid.UUID
+	StoreID uuid.UUID
+}
+
+func (q *Queries) IncrementRequestAttempt(ctx context.Context, arg IncrementRequestAttemptParams) (AiRequest, error) {
+	row := q.db.QueryRow(ctx, incrementRequestAttempt, arg.ID, arg.StoreID)
+	var i AiRequest
+	err := row.Scan(
+		&i.TenantID,
+		&i.StoreID,
+		&i.ID,
+		&i.ToStaffID,
+		&i.Kind,
+		&i.SubjectKind,
+		&i.SubjectID,
+		&i.Options,
+		&i.DueAt,
+		&i.Status,
+		&i.Answer,
+		&i.AnsweredAt,
+		&i.PreviousID,
+		&i.CreatedAt,
+		&i.Attempt,
+	)
+	return i, err
 }
 
 const insertInboxEvent = `-- name: InsertInboxEvent :execrows
@@ -785,7 +907,7 @@ INSERT INTO ai_requests (tenant_id, store_id, to_staff_id, kind, subject_kind, s
                          status, answer, answered_at, previous_id, created_at)
 VALUES ($1, $2, $3, $4, $5, $6,
         $7::jsonb, $8, 'open', NULL, NULL, $9, $10)
-RETURNING tenant_id, store_id, id, to_staff_id, kind, subject_kind, subject_id, options, due_at, status, answer, answered_at, previous_id, created_at
+RETURNING tenant_id, store_id, id, to_staff_id, kind, subject_kind, subject_id, options, due_at, status, answer, answered_at, previous_id, created_at, attempt
 `
 
 type InsertRequestParams struct {
@@ -830,6 +952,7 @@ func (q *Queries) InsertRequest(ctx context.Context, arg InsertRequestParams) (A
 		&i.AnsweredAt,
 		&i.PreviousID,
 		&i.CreatedAt,
+		&i.Attempt,
 	)
 	return i, err
 }
@@ -1269,6 +1392,42 @@ func (q *Queries) ListTimers(ctx context.Context, inboxID uuid.UUID) ([]AiTimer,
 	return items, nil
 }
 
+const lockCouponRedemptionSubject = `-- name: LockCouponRedemptionSubject :one
+SELECT id, tenant_id, store_id, platform, coupon_code, idempotency_key, status, redeemed_at, redeemed_by, revoked_at, order_id, created_at, deal_id, purchase_price, store_price, linked_at, order_payment_id FROM coupon_redemptions
+WHERE store_id = $1 AND id = $2
+FOR SHARE
+`
+
+type LockCouponRedemptionSubjectParams struct {
+	StoreID uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) LockCouponRedemptionSubject(ctx context.Context, arg LockCouponRedemptionSubjectParams) (CouponRedemption, error) {
+	row := q.db.QueryRow(ctx, lockCouponRedemptionSubject, arg.StoreID, arg.ID)
+	var i CouponRedemption
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.StoreID,
+		&i.Platform,
+		&i.CouponCode,
+		&i.IdempotencyKey,
+		&i.Status,
+		&i.RedeemedAt,
+		&i.RedeemedBy,
+		&i.RevokedAt,
+		&i.OrderID,
+		&i.CreatedAt,
+		&i.DealID,
+		&i.PurchasePrice,
+		&i.StorePrice,
+		&i.LinkedAt,
+		&i.OrderPaymentID,
+	)
+	return i, err
+}
+
 const lockInbox = `-- name: LockInbox :one
 SELECT tenant_id, store_id, id, staff_id, lease_token, lease_until, created_at FROM ai_inboxes WHERE id = $1 FOR NO KEY UPDATE
 `
@@ -1306,7 +1465,7 @@ func (q *Queries) LockOutboxSubject(ctx context.Context, arg LockOutboxSubjectPa
 }
 
 const lockRequest = `-- name: LockRequest :one
-SELECT tenant_id, store_id, id, to_staff_id, kind, subject_kind, subject_id, options, due_at, status, answer, answered_at, previous_id, created_at FROM ai_requests WHERE id = $1 FOR NO KEY UPDATE
+SELECT tenant_id, store_id, id, to_staff_id, kind, subject_kind, subject_id, options, due_at, status, answer, answered_at, previous_id, created_at, attempt FROM ai_requests WHERE id = $1 FOR NO KEY UPDATE
 `
 
 func (q *Queries) LockRequest(ctx context.Context, id uuid.UUID) (AiRequest, error) {
@@ -1327,6 +1486,7 @@ func (q *Queries) LockRequest(ctx context.Context, id uuid.UUID) (AiRequest, err
 		&i.AnsweredAt,
 		&i.PreviousID,
 		&i.CreatedAt,
+		&i.Attempt,
 	)
 	return i, err
 }
@@ -1530,7 +1690,7 @@ func (q *Queries) SaveSession(ctx context.Context, arg SaveSessionParams) (AiSes
 const setRequestAnswered = `-- name: SetRequestAnswered :one
 UPDATE ai_requests SET status = 'answered', answer = $1, answered_at = $2
 WHERE id = $3 AND store_id = $4
-RETURNING tenant_id, store_id, id, to_staff_id, kind, subject_kind, subject_id, options, due_at, status, answer, answered_at, previous_id, created_at
+RETURNING tenant_id, store_id, id, to_staff_id, kind, subject_kind, subject_id, options, due_at, status, answer, answered_at, previous_id, created_at, attempt
 `
 
 type SetRequestAnsweredParams struct {
@@ -1563,6 +1723,7 @@ func (q *Queries) SetRequestAnswered(ctx context.Context, arg SetRequestAnswered
 		&i.AnsweredAt,
 		&i.PreviousID,
 		&i.CreatedAt,
+		&i.Attempt,
 	)
 	return i, err
 }
@@ -1570,7 +1731,7 @@ func (q *Queries) SetRequestAnswered(ctx context.Context, arg SetRequestAnswered
 const setRequestCancelled = `-- name: SetRequestCancelled :one
 UPDATE ai_requests SET status = 'cancelled'
 WHERE id = $1 AND store_id = $2
-RETURNING tenant_id, store_id, id, to_staff_id, kind, subject_kind, subject_id, options, due_at, status, answer, answered_at, previous_id, created_at
+RETURNING tenant_id, store_id, id, to_staff_id, kind, subject_kind, subject_id, options, due_at, status, answer, answered_at, previous_id, created_at, attempt
 `
 
 type SetRequestCancelledParams struct {
@@ -1596,6 +1757,7 @@ func (q *Queries) SetRequestCancelled(ctx context.Context, arg SetRequestCancell
 		&i.AnsweredAt,
 		&i.PreviousID,
 		&i.CreatedAt,
+		&i.Attempt,
 	)
 	return i, err
 }
@@ -1603,7 +1765,7 @@ func (q *Queries) SetRequestCancelled(ctx context.Context, arg SetRequestCancell
 const setRequestReassigned = `-- name: SetRequestReassigned :one
 UPDATE ai_requests SET status = 'reassigned'
 WHERE id = $1 AND store_id = $2
-RETURNING tenant_id, store_id, id, to_staff_id, kind, subject_kind, subject_id, options, due_at, status, answer, answered_at, previous_id, created_at
+RETURNING tenant_id, store_id, id, to_staff_id, kind, subject_kind, subject_id, options, due_at, status, answer, answered_at, previous_id, created_at, attempt
 `
 
 type SetRequestReassignedParams struct {
@@ -1629,6 +1791,7 @@ func (q *Queries) SetRequestReassigned(ctx context.Context, arg SetRequestReassi
 		&i.AnsweredAt,
 		&i.PreviousID,
 		&i.CreatedAt,
+		&i.Attempt,
 	)
 	return i, err
 }
@@ -1890,6 +2053,32 @@ func (q *Queries) WithdrawOutbox(ctx context.Context, arg WithdrawOutboxParams) 
 	_, err := q.db.Exec(ctx, withdrawOutbox,
 		arg.Now,
 		arg.StoreID,
+		arg.SubjectKind,
+		arg.SubjectID,
+	)
+	return err
+}
+
+const withdrawOutboxForRecipient = `-- name: WithdrawOutboxForRecipient :exec
+UPDATE ai_outbox SET status = 'withdrawn', withdrawn_at = $1
+WHERE store_id = $2 AND recipient_id = $3
+  AND subject_kind = $4 AND subject_id = $5
+  AND status <> 'withdrawn'
+`
+
+type WithdrawOutboxForRecipientParams struct {
+	Now         pgtype.Timestamptz
+	StoreID     uuid.UUID
+	RecipientID uuid.UUID
+	SubjectKind string
+	SubjectID   uuid.UUID
+}
+
+func (q *Queries) WithdrawOutboxForRecipient(ctx context.Context, arg WithdrawOutboxForRecipientParams) error {
+	_, err := q.db.Exec(ctx, withdrawOutboxForRecipient,
+		arg.Now,
+		arg.StoreID,
+		arg.RecipientID,
 		arg.SubjectKind,
 		arg.SubjectID,
 	)

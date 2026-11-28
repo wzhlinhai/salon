@@ -322,3 +322,37 @@ SELECT * FROM ai_inboxes WHERE id = sqlc.arg(id);
 UPDATE ai_outbox SET read_at = sqlc.arg(now)
 WHERE store_id = sqlc.arg(store_id) AND recipient_id = sqlc.arg(recipient_id)
   AND status = 'sent' AND read_at IS NULL AND (id = sqlc.arg(id) OR parent_id = sqlc.arg(id));
+
+-- name: CancelOpenRequestsForSubject :exec
+UPDATE ai_requests SET status = 'cancelled'
+WHERE store_id = sqlc.arg(store_id) AND subject_kind = sqlc.arg(subject_kind) AND subject_id = sqlc.arg(subject_id)
+  AND status = 'open';
+
+-- name: IncrementRequestAttempt :one
+UPDATE ai_requests SET attempt = attempt + 1
+WHERE id = sqlc.arg(id) AND store_id = sqlc.arg(store_id) AND status = 'open'
+RETURNING *;
+
+-- name: WithdrawOutboxForRecipient :exec
+UPDATE ai_outbox SET status = 'withdrawn', withdrawn_at = sqlc.arg(now)
+WHERE store_id = sqlc.arg(store_id) AND recipient_id = sqlc.arg(recipient_id)
+  AND subject_kind = sqlc.arg(subject_kind) AND subject_id = sqlc.arg(subject_id)
+  AND status <> 'withdrawn';
+
+-- name: LockCouponRedemptionSubject :one
+SELECT * FROM coupon_redemptions
+WHERE store_id = sqlc.arg(store_id) AND id = sqlc.arg(id)
+FOR SHARE;
+
+-- name: GetOpenRequestForSubjectAndStaff :one
+SELECT * FROM ai_requests
+WHERE store_id = sqlc.arg(store_id) AND subject_kind = sqlc.arg(subject_kind) AND subject_id = sqlc.arg(subject_id)
+  AND to_staff_id = sqlc.arg(to_staff_id) AND status = 'open'
+ORDER BY created_at, id
+LIMIT 1;
+
+-- name: CancelFollowUpForRequest :exec
+UPDATE ai_timers SET status = 'cancelled'
+WHERE store_id = sqlc.arg(store_id) AND inbox_id = sqlc.arg(inbox_id) AND kind = 'follow_up' AND status = 'scheduled'
+  AND subject_kind = sqlc.arg(subject_kind) AND subject_id = sqlc.arg(subject_id)
+  AND payload->>'request_id' = sqlc.arg(request_id)::text;

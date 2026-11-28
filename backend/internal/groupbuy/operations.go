@@ -249,7 +249,7 @@ func revoke(ctx context.Context, env ops.Env, in LookupInput, providers *Provide
 		return finish(ctx, env, in.Key, "revoke_coupon", CouponResult{}, ErrUnknown)
 	}
 	if result.Status == "redeemed" {
-		if row.Platform == "douyin" && env.Now.Sub(row.RedeemedAt.Time) > time.Hour {
+		if until := revocableUntil(row.Platform, row.RedeemedAt.Time); until != nil && env.Now.After(*until) {
 			return nil, ops.Rule("抖音核销超过一小时不可撤销")
 		}
 		result, err = p.Revoke(ctx, request)
@@ -281,6 +281,7 @@ func finish(ctx context.Context, env ops.Env, key, action string, result CouponR
 			return err
 		}
 		before := view(row)
+		beforeStatus := row.Status
 		// 平台已经撤销时以平台结果为准；即使券在初次检查后被关联，也要落 revoked。
 		if action == "revoke_coupon" && platformErr == nil && result.Platform == row.Platform && result.Status == "revoked" && row.Status == "redeemed" {
 			orderStatus := ""
@@ -302,6 +303,9 @@ func finish(ctx context.Context, env ops.Env, key, action string, result CouponR
 				}
 			}
 			if err != nil {
+				return err
+			}
+			if err := emitCouponRevoked(ctx, q, env.Now, row); err != nil {
 				return err
 			}
 			out = view(row)
@@ -341,6 +345,16 @@ func finish(ctx context.Context, env ops.Env, key, action string, result CouponR
 			row, err = q.UpdateRedemption(ctx, dbgen.UpdateRedemptionParams{StoreID: env.Caller.StoreID, IdempotencyKey: key, Status: row.Status, RedeemedAt: row.RedeemedAt, RevokedAt: row.RevokedAt})
 			if err != nil {
 				return err
+			}
+			if action == "redeem_coupon" && row.Status == "redeemed" && (beforeStatus == "pending" || beforeStatus == "unknown") {
+				if err := emitCouponRedeemed(ctx, q, env.Now, row); err != nil {
+					return err
+				}
+			}
+			if action == "revoke_coupon" && row.Status == "revoked" && beforeStatus == "redeemed" {
+				if err := emitCouponRevoked(ctx, q, env.Now, row); err != nil {
+					return err
+				}
 			}
 		}
 		out = view(row)

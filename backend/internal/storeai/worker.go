@@ -34,7 +34,7 @@ const (
 	inboxParallelism  = 4
 )
 
-// RunFunc 是收件箱 worker 一次可注入的运行。本步不接模型。
+// RunFunc 是收件箱 worker 一次可注入的运行；生产实现是 Runner.Run。
 type RunFunc func(ctx context.Context, in RunInput) (RunResult, error)
 
 // RunInput 是一次运行拿到的全部输入。Session 是按对象接回或新建的会话。

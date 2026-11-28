@@ -30,7 +30,7 @@ type OK struct {
 
 func registerSelf(r *ops.Registry) {
 	ops.Register(r, ops.Operation[GetMeInput, Me]{
-		Name: "get_me", Summary: "查看我自己的档案、角色和权限", Kind: ops.Read,
+		Name: "get_me", Summary: "查看我自己的档案、角色和权限", Kind: ops.Read, Self: true,
 		Permission: ops.LoggedIn, AI: ops.AIDirect,
 		Handle: func(ctx context.Context, env ops.Env, _ *GetMeInput) (*Me, error) {
 			st, err := view(ctx, env, env.Caller.StaffID)

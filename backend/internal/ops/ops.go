@@ -206,6 +206,8 @@ type Operation[I, O any] struct {
 	Phased bool
 	// Locking 表示 Read 操作为了报价一致会取行锁；它仍不写表，但不能在只读事务里执行。
 	Locking bool
+	// Self 表示操作只查调用者本人；没有员工身份的调用者（例如门店 AI 的门店运行）不可用。
+	Self bool
 	// Summary 是面向人和 AI 的一句话说明。
 	Summary    string
 	Kind       Kind

@@ -139,9 +139,12 @@ var (
 // OwnerRoleName 是内置老板角色的名称。
 const OwnerRoleName = "老板"
 
+// ManagerRoleName 是默认角色里的店长名称；转交时按它找当班店长。
+const ManagerRoleName = "店长"
+
 // DefaultRoles 是四个默认角色的初始权限（ADR-0009 的表格）。老板是内置角色，不在此列。
 var DefaultRoles = []DefaultRole{
-	{"店长", map[ops.Permission]ops.Grant{
+	{ManagerRoleName, map[ops.Permission]ops.Grant{
 		OrderCreate:         plain,
 		OrderEdit:           {Scope: ops.ScopeStore, WindowDays: days(7)},
 		OrderVoid:           {WindowDays: days(7)},

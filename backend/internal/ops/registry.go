@@ -36,6 +36,7 @@ type entry struct {
 	ai                AIMode
 	phased            bool
 	locking           bool
+	self              bool
 	// call 把 JSON 参数解码为 I 并执行操作，返回 *O。
 	call func(ctx context.Context, env Env, args []byte) (any, error)
 }
@@ -61,6 +62,9 @@ func Register[I, O any](r *Registry, op Operation[I, O]) {
 	if err := validate(op.Name, op.Kind, op.Permission, op.AI, op.DraftViewRequires, op.Handle != nil); err != nil {
 		panic(fmt.Sprintf("ops: invalid operation %q: %v", op.Name, err))
 	}
+	if op.Self && op.Kind != Read {
+		panic(fmt.Sprintf("ops: invalid operation %q: self operations must be reads", op.Name))
+	}
 	if err := validateInputDefaults(reflect.TypeFor[I]()); err != nil {
 		panic(fmt.Sprintf("ops: invalid operation %q: %v", op.Name, err))
 	}
@@ -82,6 +86,7 @@ func Register[I, O any](r *Registry, op Operation[I, O]) {
 		ai:                op.AI,
 		phased:            op.Phased,
 		locking:           op.Locking,
+		self:              op.Self,
 		call: func(ctx context.Context, env Env, args []byte) (any, error) {
 			in := new(I)
 			if err := json.Unmarshal(args, in); err != nil {
@@ -213,6 +218,9 @@ func validateInputPhones(input reflect.Type) error {
 
 // invoke 是所有调用的共同路径：渠道、权限检查后按操作声明提供租户事务。
 func (r *Registry) invoke(ctx context.Context, caller Caller, e *entry, run func(context.Context, Env) (any, error)) (any, error) {
+	if e.self && caller.StaffID == uuid.Nil {
+		return nil, ErrUnknownOperation
+	}
 	if caller.Channel == ChannelAI && e.ai == AINone {
 		return nil, ErrUnknownOperation
 	}

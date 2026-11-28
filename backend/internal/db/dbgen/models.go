@@ -231,6 +231,7 @@ type AiRequest struct {
 	AnsweredAt  pgtype.Timestamptz
 	PreviousID  *uuid.UUID
 	CreatedAt   pgtype.Timestamptz
+	Attempt     int16
 }
 
 type AiSession struct {
