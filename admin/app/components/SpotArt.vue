@@ -26,7 +26,8 @@ const tones: Record<SpotArtName, { tone: string, x: number, y: number }> = {
   phone: { tone: 'pink', x: 54, y: 54 },
   tag: { tone: 'purple', x: 50, y: 56 },
   key: { tone: 'blue', x: 50, y: 52 },
-  sign: { tone: 'orange', x: 36, y: 74 }
+  sign: { tone: 'orange', x: 36, y: 74 },
+  bell: { tone: 'blue', x: 48, y: 58 }
 }
 
 // 不规则色块：绕中心一圈 9 个点，半径随种子起伏，再用二次曲线连圆。种子取名字，每次画出来一样。
@@ -234,6 +235,15 @@ const id = useId()
         <rect x="26" y="40" width="68" height="34" rx="4" fill="#fff" />
         <path d="M38 52 h28 M38 62 h18" />
         <path d="M76 56 l4 4 l8 -9" stroke-width="2.6" />
+      </template>
+
+      <template v-else-if="name === 'bell'">
+        <path d="M60 10 V22" />
+        <path d="M40 64 C40 40 46 22 60 22 C74 22 80 40 80 64 Z" fill="#fff" />
+        <rect x="34" y="62" width="52" height="8" rx="4" fill="#fff" />
+        <circle cx="60" cy="77" r="5" fill="#fff" />
+        <path d="M26 38 l-7 -5 M24 50 h-9 M94 38 l7 -5 M96 50 h9" />
+        <path d="M50 34 C47 40 46 48 46 54" stroke-width="1.6" />
       </template>
 
       <template v-else>
